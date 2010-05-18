@@ -7,7 +7,7 @@ This is the heart of the main server. This is what accepts incoming
 network connections, authenticates users, spawns userserver's, and
 relays IMAP messages between an IMAP client and a userserver.
 
-The basic example for how to set up an aynchat server was cribbed from:
+The basic example for how to set up an asynchat server was cribbed from:
 
   http://parijatmishra.wordpress.com/2008/01/06/pythons-asynchat-module/
 
@@ -24,14 +24,16 @@ import socket
 import os
 
 
+# The logger all parts of the server use.
+# XXX Perhaps this should be in a separate module
+#
 logging.basicConfig(level=logging.DEBUG,
                     format="%(created)-15s %(levelname)8s %(thread)d %(name)s "
                     "%(message)s")
+log      = logging.getLogger(__name__)
 
-log                     = logging.getLogger(__name__)
-
-BACKLOG                 = 5
-SIZE                    = 1024
+BACKLOG  = 5
+SIZE     = 1024
 
 # The Dict of active mail stores. The key the '<username>:<mailstore location>'
 #
@@ -77,11 +79,11 @@ class MailStoreClient(asynchat.async_chat):
         # so that it can be looked up when new connections come in
         #
         active_mailstores[self.name] = self
-        
+
         # XXX Create pipe for talking to MailStore
         #
         conn_to_srvr, self.conn_to_clnt = multiprocessing.Pipe()
-        
+
         # XXX Create UserStore process for user_name
         #
         self.user_store = multiprocessing.Process(target = mailstore.create,
@@ -121,15 +123,6 @@ class MailStoreClient(asynchat.async_chat):
     def handle_read(self):
         """
         """
-        
-    
-        
-    
-    
-
-    
-        
-
 #############################################################################
 #
 class IMAPClient(asynchat.async_chat):
@@ -139,13 +132,13 @@ class IMAPClient(asynchat.async_chat):
     #
     def __init__(self, conn_sock, client_address, server):
         """
-        As     can    be     seen,    the     init     method    calls
+        As can be seen, the init method calls
         async_chat.set_terminator() method with a string argument. The
-        string argument  tells async_chat that a message  or record is
-        terminated  when it encounters  the string  in the  data. Now,
-        loop() will  wait on this client socket  and call async_chat’s
+        string argument tells async_chat that a message or record is
+        terminated when it encounters the string in the data. Now,
+        loop() will wait on this client socket and call async_chat’s
         handle_read() method. async_chat’s handle_read() will read the
-        data, look at it,  and call the collect_incoming_data() method
+        data, look at it, and call the collect_incoming_data() method
         that you define.
         """
         asynchat.async_chat.__init__(self, conn_sock)

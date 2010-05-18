@@ -1,2 +1,3 @@
 include README
 include asimapd.py
+recursive-include tests *
