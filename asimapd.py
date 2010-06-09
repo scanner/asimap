@@ -9,12 +9,22 @@ IMAP service that is typically backed by MH mail folders.
 
 # system imports
 #
+
+# Application imports
+#
+from asimap import __version__
+import options
+import logging
+
 #############################################################################
 #
 def main():
     """
 
     """
+    
+    (options.options, args) = options.parser.parse_args()
+    logging.setup_logging(options)
 
     return
 
