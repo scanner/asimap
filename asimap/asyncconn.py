@@ -16,6 +16,12 @@ from collections import deque
 import asyncore
 import asynchat
 import socket
+import logging
+
+# By default every file is its own logging module. Kind of simplistic
+# but it works for now.
+#
+log      = logging.getLogger("asimap.%s" % __name__)
 
 ##################################################################
 ##################################################################

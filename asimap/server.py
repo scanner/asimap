@@ -23,14 +23,10 @@ import logging
 import socket
 import os
 
-
-# The logger all parts of the server use.
-# XXX Perhaps this should be in a separate module
+# By default every file is its own logging module. Kind of simplistic
+# but it works for now.
 #
-logging.basicConfig(level=logging.DEBUG,
-                    format="%(created)-15s %(levelname)8s %(thread)d %(name)s "
-                    "%(message)s")
-log      = logging.getLogger(__name__)
+log      = logging.getLogger("asimap.%s" % __name__)
 
 BACKLOG  = 5
 SIZE     = 1024
