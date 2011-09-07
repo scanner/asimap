@@ -190,7 +190,6 @@ class IMAPClient(asynchat.async_chat):
             self.reading_string_literal = True
             self.push("+ Ready for more input\r\n")
             return
-
         # Otherwise we have a full IMAP message from the client
         # we need to parse it.
         #
