@@ -66,7 +66,8 @@ def main():
                         "thread=%(thread)d name=%(name)s %(message)s")
     log = logging.getLogger("asimap")
 
-    server = asimap.server.IMAPServer(m)
+    server = asimap.server.IMAPServer(options)
+    asyncore.loop()
         
 
     return
