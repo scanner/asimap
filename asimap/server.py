@@ -25,10 +25,10 @@ import re
 # By default every file is its own logging module. Kind of simplistic
 # but it works for now.
 #
-log      = logging.getLogger("asimap.%s" % __name__)
+log      = logging.getLogger("%s" % __name__)
 
 BACKLOG  = 5
-RE_LITERAL_STRING_START = r'\{(\d+)\}$'
+RE_LITERAL_STRING_START = re.compile(r'\{(\d+)\}$')
 
 # This dict is all of the subprocesses that we have created. One for each
 # authenticated user with at least one active connection.
@@ -75,6 +75,7 @@ class IMAPSubprocessHandle(object):
                   is passed to the subprocess so that it can look up which unix
                   user to switch to for handling that user's mailbox.
         """
+        self.log = logging.getLogger("%s.IMAPSubprocessHandle" % __name__)
         self.user = user
         self.port = None
         self.user_maildir = None
@@ -135,7 +136,7 @@ class IMAPSubprocessHandle(object):
 
         self.subprocess = None
         if self.rc != 0:
-            logger.error("Subprocess had non-zero return code: %d" % rc) 
+            self.log.error("Subprocess had non-zero return code: %d" % rc) 
         return False
     
     
@@ -160,12 +161,15 @@ class IMAPServer(asyncore.dispatcher):
         - `options` : The options set on the command line
         """
         self.options = options
-
+        self.log = logging.getLogger("%s.IMAPServer" % __name__)
+        
         asyncore.dispatcher.__init__(self)
         self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
         self.set_reuse_addr()
         self.bind((options.interface, options.port))
         self.listen(BACKLOG)
+        self.log.info("IMAP Server listening on %s:%d" % \
+                          (options.interface,options.port))
         return
 
     ##################################################################
@@ -180,7 +184,7 @@ class IMAPServer(asyncore.dispatcher):
         if pair is not None:
             sock,addr = pair
             print "Incoming connection from %s" % repr(pair)
-            handler = IMAPClientHandler(sock, self._options)
+            handler = IMAPClientHandler(sock, self.options)
 
 ##################################################################
 ##################################################################
@@ -206,7 +210,9 @@ class IMAPClientHandler(asynchat.async_chat):
     def __init__(self, sock, options):
         """
         """
-        asyncchat.async_chat.__init__(self, sock = sock)
+        self.log = logging.getLogger("%s.IMAPClientHandler" % __name__)
+
+        asynchat.async_chat.__init__(self, sock = sock)
 
         self.reading_string_literal = False
         self.ibuffer = []
@@ -219,7 +225,7 @@ class IMAPClientHandler(asynchat.async_chat):
         """
         Buffer data read from the connect for later processing.
         """
-        log.debug("collect_incoming_data: [%s]" % data)
+        self.log.debug("collect_incoming_data: [%s]" % data)
         self.ibuffer.append(data)
         return
     
@@ -252,7 +258,7 @@ class IMAPClientHandler(asynchat.async_chat):
         our client and we pass it off to an ServerIMAPClient object to deal
         with.
         """
-        log.debug("found_terminator")
+        self.log.debug("found_terminator")
 
         if self.reading_string_literal:
             # If we were reading a string literal, then we switch back
@@ -268,7 +274,7 @@ class IMAPClientHandler(asynchat.async_chat):
         # a string literal for the number of characters defined by
         # the integer inside of the '{}'
         #
-        m = re_literal_start.search(self.ibuffer[-1])
+        m = RE_LITERAL_STRING_START.search(self.ibuffer[-1])
         if m:
             # Set how many characters to read
             #
@@ -299,7 +305,7 @@ class IMAPClientHandler(asynchat.async_chat):
         Basically tell the ServerIMAPMessageProcessor that its services will no
         longer be needed and various bits of cleanup.
         """
-        log.info("Client disconnected")
+        self.log.info("Client disconnected")
         self.msg_processor.client_disconnected()
         self.msg_processor = None
         return
@@ -330,7 +336,7 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
                                IMAP client. We can use its 'push()' method to
                                send messages to the IMAP client.
         """
-        self.log = logging.getLogger("ServerIMAPMessageProcessor")
+        self.log = logging.getLogger("%s.ServerIMAPMessageProcessor" % __name__)
 
         asynchat.async_chat.__init__(self)
 
@@ -539,6 +545,7 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
         self.authenticated = False
         self.user = None
         self.subprocess = None
-        self.close()
+        if self.socket is not None:
+            self.close()
         return
     

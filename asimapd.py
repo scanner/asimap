@@ -11,6 +11,8 @@ IMAP service that is typically backed by MH mail folders.
 #
 import optparse
 import logging
+import socket
+import asyncore
 
 # Application imports
 #
@@ -63,11 +65,16 @@ def main():
         level = logging.WARNING
 
     logging.basicConfig(level=level,
-                        format="%(asctime)s %(created)s level=%(levelname)s "
-                        "thread=%(thread)d name=%(name)s %(message)s")
-    log = logging.getLogger("asimap")
+                        format="%(asctime)s %(created)s %(levelname)s "
+                        "%(name)s %(message)s")
+    log = logging.getLogger("asimapd")
 
-    server = asimap.server.IMAPServer(options)
+    try:
+        server = asimap.server.IMAPServer(options)
+    except socket.error, e:
+        log.error("Unable to create server object on %s:%d: socket " \
+                  "error: %s" % (options.interface, options.port, e))
+        return
 
     # XXX We should do the loop inside of 'while True' and at the end of each
     #     loop run through all of the subprocess handles and call 'is_alive()'
