@@ -15,6 +15,7 @@ import logging
 # Application imports
 #
 import asimap
+import asimap.server
 
 ############################################################################
 #
