@@ -67,8 +67,18 @@ def main():
     log = logging.getLogger("asimap")
 
     server = asimap.server.IMAPServer(options)
+
+    # XXX We should do the loop inside of 'while True' and at the end of each
+    #     loop run through all of the subprocess handles and call 'is_alive()'
+    #     on them to reap them so that when they go away due to idleness we do
+    #     not leave zombie processes waiting around for their parent to reap
+    #     them.
+    #
+    #     We have to do this because subprocesses will stay around after they
+    #     have been started up until they have been idle for a certain amount
+    #     of time with no active clients.
+    #
     asyncore.loop()
-        
 
     return
 
