@@ -200,27 +200,28 @@ class IMAPClientCommand(object):
 
     #######################################################################
     #
-    def __init__(self, imap_command, input_stream = None):
-        """This will instantiate the IMAPClientCommand object. It will also
-        cause it to be parsed. If there are any failures in parsing the
-        message from the client several different exceptions may be raised.
-
-        If the IMAP Client Command requires that the server do additional
-        dialog (for things such as the AUTHENTICATE command), the caller needs
-        to pass in the 'input_stream' which is the connection to the client.
-
-        We otherwise expect the entire command from the client to be passed in
-        via the imap_command parameter. This means all literal strings must
-        have been read in for us to process.
+    def __init__(self, imap_command):
+        """
+        Create the IMAPClientCommand object. This does NOT parse the string we
+        were given, though. You need to call the 'parse()' method for that.
         """
         self.input = imap_command
-        self.input_stream = input_stream
         self.return_uids = False
         self.tag = None
         self.command = None
-        self._parse()
         return
 
+    ##################################################################
+    #
+    def parse(self):
+        """
+        Do the actual parsing of the IMAP command. This is separated from the
+        init method so that if we hit a parsing exception the actual object
+        gets created at least and potentially has self.tag set.
+        """
+        self._parse()
+        return
+    
     #######################################################################
     #
     def __str__(self):
