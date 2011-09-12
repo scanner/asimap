@@ -20,7 +20,7 @@ import pytz
 # asimapd imports
 #
 import asimap.utils
-from asimap.sarch import IMAPSearch
+from asimap.search import IMAPSearch
 from asimap.fetch import FetchAtt
 
 

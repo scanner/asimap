@@ -9,7 +9,14 @@ single connected IMAP client.
 
 # system imports
 #
+import sys
+import logging
 
+# asimapd imports
+#
+
+# Local constants
+#
 CAPABILITIES = ('IMAP4rev1', 'IDLE', 'NAMESPACE', 'ID', 'UIDPLUS')
 SERVER_ID = { 'name'        : 'asimapd',
               'version'     : '0.1',
@@ -60,7 +67,7 @@ class BaseClientHandler(object):
                     client we are handling. This lets us send messages to that
                     IMAP client.
         """
-        self.log = logging.getLogger("%s.ServerIMAPMessageProcessor" % __name__)
+        self.log = logging.getLogger("%s.BaseClientHandler" % __name__)
         self.client = client
         self.state = None
 
@@ -244,7 +251,7 @@ class PreAuthenticated(BaseClientHandler):
                     IMAP client.
         """
         BaseClientHandler.__init__(self, client)
-        self.log = logging.getLogger("%s.ServerIMAPMessageProcessor" % __name__)
+        self.log = logging.getLogger("%s.PreAuthenticated" % __name__)
         return
     
     ## The following commands are supported in the non-authenticated state.

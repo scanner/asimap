@@ -399,10 +399,10 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
             # message we had problems with.
             #
             if imap_cmd.tag is not None:
-                msg = "%s BAD %s\r\n" % (self.tag, str(e))
+                msg = "%s BAD %s\r\n" % (imap_cmd.tag, str(e))
             else:
                 msg = "* BAD %s\r\n" % str(e)
-            self.client_connect.push(msg)
+            self.client_connection.push(msg)
             return
 
         # This hands the IMAP command to be processed by the client handler
@@ -496,8 +496,14 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
         # Send the message on to the client. We check to make sure this exists
         # in case the client suddenly disconnects from us.
         #
-        if self.client_connect is not None:
-            self.client_connect.push(imap_msg)
+        if self.client_connection is not None:
+            self.client_connection.push(imap_msg)
+        else:
+            # XXX need better debugging so we have some idea of what client
+            #     we were expecting to be able to talk to.
+            #
+            self.log.warn("Unable to send message to client, "
+                          "client_connection was None")
         return
 
     ##################################################################

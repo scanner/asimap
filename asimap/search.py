@@ -13,7 +13,7 @@ import os.path
 
 # asimap imports
 #
-import asimp.utils
+import asimap.utils
 
 ############################################################################
 #
