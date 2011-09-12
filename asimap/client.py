@@ -100,10 +100,10 @@ class BaseClientHandler(object):
         # XXX This is not how this is going to work.. need to revisit
         #     this when we actually get around to implementing 'IDLE'
         #
-        if idling and imap_command.command != "done":
+        if self.idling and imap_command.command != "done":
             self.client.push("%s BAD Expected 'DONE' not: %s\r\n" % \
-                                 (self.imap_command.tag,
-                                  self.imap_command.command))
+                                 (imap_command.tag,
+                                  imap_command.command))
             return
                 
         # Since the imap command was properly parsed we know it is a valid
@@ -113,10 +113,10 @@ class BaseClientHandler(object):
         #
         # If no such method exists then this is not a supported command.
         #
-        if not hasattr(self, 'do_%s' % self.imap_command.command):
+        if not hasattr(self, 'do_%s' % imap_command.command):
             self.client.push("%s BAD Sorry, %s is not a supported "
-                             "command\r\n" % (self.imap_command.tag,
-                                              self.imap_command.command))
+                             "command\r\n" % (imap_command.tag,
+                                              imap_command.command))
             return
 
         # Okay. The command was a known command. Process it. Each 'do_' method
@@ -125,18 +125,18 @@ class BaseClientHandler(object):
         # by this method.
         #
         try:
-            result = getattr(self, 'do_%s' % self.imap_command.command)()
+            result = getattr(self, 'do_%s' % imap_command.command)(imap_command)
         except No, e:
-            self.client.push("%s NO %s\r\n" % (self.imap_command.tag, str(e)))
+            self.client.push("%s NO %s\r\n" % (imap_command.tag, str(e)))
             return
         except Bad, e:
-            self.client.push("%s BAD %s\r\n" % (self.imap_command.tag, str(e)))
+            self.client.push("%s BAD %s\r\n" % (imap_command.tag, str(e)))
             return
         except KeyboardInterrupt:
             sys.exit(0)
         except Exception, e:
             self.client.push("%s BAD Unhandled exception: %s\r\n" % \
-                                 (self.imap_command.tag, str(e)))
+                                 (imap_command.tag, str(e)))
             raise
 
         # If there was no result from running this command then everything went
@@ -145,12 +145,12 @@ class BaseClientHandler(object):
         #
         if result is None:
             self.client.push("%s OK %s completed\r\n" % \
-                                 (self.imap_command.tag,
-                                  self.imap_command.command.upper()))
+                                 (imap_command.tag,
+                                  imap_command.command.upper()))
         else:
             self.client.push("%s OK %s %s completed\r\n" % \
-                                 (self.imap_command.tag, result,
-                                  self.imap_command.command.upper()))
+                                 (imap_command.tag, result,
+                                  imap_command.command.upper()))
         return
 
     ## The following commands are supported in any state.
@@ -158,24 +158,40 @@ class BaseClientHandler(object):
 
     #########################################################################
     #
-    def do_capability(self):
+    def do_capability(self, imap_command):
+        """
+        Return the capabilities of this server.
+
+        Arguments:
+        - `imap_command`: The full IMAP command object.
+        """
         self.client.push("* CAPABILITY %s\r\n" % ' '.join(CAPABILITIES))
         return None
 
     #########################################################################
     #
-    def do_namespace(self):
+    def do_namespace(self, imap_command):
         """
         We currently only support a single personal name space. No leading
         prefix is used on personal mailboxes and '/' is the hierarchy delimiter.
+
+        Arguments:
+        - `imap_command`: The full IMAP command object.
         """
         self.client.push('* NAMESPACE (("" "/")) NIL NIL\r\n')
         return None
 
     #########################################################################
     #
-    def do_id(self):
-        self.client.id = self.imap_command.id_dict
+    def do_id(self, imap_command):
+        """
+        Construct an ID response... uh.. lookup the rfc that defines this.
+        
+        Arguments:
+        - `imap_command`: The full IMAP command object.
+        """
+
+        self.client_id = imap_command.id_dict
         res = []
         for k,v in SERVER_ID.iteritems():
             res.extend(['"%s"' % k,'"%s"' % v])
@@ -184,12 +200,15 @@ class BaseClientHandler(object):
 
     #########################################################################
     #
-    def do_idle(self):
+    def do_idle(self, imap_command):
         """
         The idle command causes the server to wait until the client sends
         us a 'DONE' continuation. During that time the client can not send
         any commands to the server. However, the client can still get
         asynchronous messages from the server.
+
+        Arguments:
+        - `imap_command`: The full IMAP command object.
         """
         # Because this is a blocking command the main server read-loop
         # for this connection is not going to hit the read() again
@@ -204,21 +223,27 @@ class BaseClientHandler(object):
 
     #########################################################################
     #
-    def do_noop(self):
+    def do_noop(self, imap_command):
         """
         This does nothing. In subclasses we might want to see if there are any
         pending messages to send the client (but that should not be necessary
         since our server will of its own accord send async messages to the
         client when various things happen.
+
+        Arguments:
+        - `imap_command`: The full IMAP command object.
         """
         return None
 
     #########################################################################
     #
-    def do_logout(self):
+    def do_logout(self, imap_command):
         """
         This just sets our state to 'logged out'. Our caller will take the
         appropriate actions to finishing a client's log out request.
+
+        Arguments:
+        - `imap_command`: The full IMAP command object.
         """
         self.client.push("* BYE Logging out of asimap server. Good bye.\r\n")
         self.state = "logged_out"
@@ -263,6 +288,9 @@ class PreAuthenticated(BaseClientHandler):
         """
         We do not support any authentication mechanisms at this time.. just
         password authentication via the 'login' IMAP client command.
+
+        Arguments:
+        - `imap_command`: The full IMAP command object.
         """
         if self.state == "authenticated":
             raise Bad("client already is in the authenticated state")
@@ -270,10 +298,13 @@ class PreAuthenticated(BaseClientHandler):
 
     ##################################################################
     #
-    def do_login(self):
+    def do_login(self, imap_command):
         """
         Process a LOGIN command with a username and password from the IMAP
         client.
+
+        Arguments:
+        - `imap_command`: The full IMAP command object.
         """
 
         # XXX This should poke the authentication mechanism we were passed
@@ -287,15 +318,15 @@ class PreAuthenticated(BaseClientHandler):
             raise Bad("client already is in the authenticated state")
 
         # try:
-        #     user = self.auth_system.authenticate(self.imap_command.user_name,
-        #                                          self.imap_command.password)
+        #     user = self.auth_system.authenticate(imap_command.user_name,
+        #                                          imap_command.password)
         # except AuthenticationException, e:
         #     raise No(str(e.value))
 
         # self.state = "authenticated"
         # self.user = user
-        if self.imap_command.user_name == "test" and \
-                self.imap_command.password == "test":
+        if imap_command.user_name == "test" and \
+                imap_command.password == "test":
             self.user = "test"
             self.state = "authenticated"
         else:

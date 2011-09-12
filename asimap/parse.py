@@ -16,6 +16,7 @@ import email
 import datetime
 import os.path
 import pytz
+import logging
 
 # asimapd imports
 #
@@ -205,6 +206,7 @@ class IMAPClientCommand(object):
         Create the IMAPClientCommand object. This does NOT parse the string we
         were given, though. You need to call the 'parse()' method for that.
         """
+        self.log = logging.getLogger("%s.IMAPClientCommand" % __name__)
         self.input = imap_command
         self.return_uids = False
         self.tag = None
@@ -261,6 +263,8 @@ class IMAPClientCommand(object):
         tag SPACE command command_arguments* CRLF
         """
 
+        self.log.debug("Parsing IMAP message: %s" % self.input)
+
         # We must always begin with a tag. Pull it off. If this fails it will
         # raise an exception that is caught by our caller.
         #
@@ -285,9 +289,14 @@ class IMAPClientCommand(object):
         #
         getattr(self, '_p_%s' % self.command)()
 
-        # commands are terminated by a CRLF
-        self._p_simple_string('\r\n', syntax_error = "missing expected <cr>" \
-                              "<lf> at the end of the message")
+        # NOTE: the asynchat we are using swallows the line terminators we tell
+        #       it to look for so the CRLF is not part of our input string. We
+        #       are leaving this code here commented out in case we change our
+        #       mind how this is going to work.
+        #
+        # # commands are terminated by a CRLF
+        # self._p_simple_string('\r\n', syntax_error = "missing expected <cr>" \
+        #                       "<lf> at the end of the message")
 
         return
 

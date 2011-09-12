@@ -13,7 +13,6 @@ relays IMAP messages between an IMAP client and a userserver.
 import asyncore
 import asynchat
 import logging
-import subprocess
 import shlex
 import socket
 import ssl
@@ -21,6 +20,7 @@ import os
 import pwd
 import re
 import traceback
+import subprocess
 
 # asimap imports
 #
@@ -71,7 +71,7 @@ class IMAPSubprocessHandle(object):
 
     ##################################################################
     #
-    def __init__(self, user):
+    def __init__(self, user, maildir):
         """
         
         Arguments:
@@ -82,8 +82,8 @@ class IMAPSubprocessHandle(object):
         """
         self.log = logging.getLogger("%s.IMAPSubprocessHandle" % __name__)
         self.user = user
+        self.maildir = maildir
         self.port = None
-        self.user_maildir = None
         self.subprocess = None
         self.rc = None
 
@@ -94,9 +94,11 @@ class IMAPSubprocessHandle(object):
         Start our subprocess. This assumes that we have no subprocess
         already. If we do then we will be basically creating an orphan process.
         """
-        self.subprocess = Popen(cmd, preexec_fn = self.setuid_to_user,
-                                close_fds = True, cwd = user_maildir,
-                                stdout = subprocess.PIPE)
+        self.subprocess = subprocess.Popen(cmd,
+                                           preexec_fn = self.setuid_to_user,
+                                           close_fds = True,
+                                           cwd = self.maildir,
+                                           stdout = subprocess.PIPE)
 
         # We expect the subprocess to send back to us over its stdout a single
         # line which has the port it is listening on.
@@ -132,7 +134,7 @@ class IMAPSubprocessHandle(object):
         communication with the subprocess. If it returns false then 'start()'
         must be called before attempting to talk to the subprocess.
         """
-        if subprocess is None:
+        if self.subprocess is None:
             return False
         
         self.rc = self.subprocess.poll()
@@ -263,8 +265,6 @@ class IMAPClientHandler(asynchat.async_chat):
         our client and we pass it off to an ServerIMAPClient object to deal
         with.
         """
-        self.log.debug("found_terminator")
-
         if self.reading_string_literal:
             # If we were reading a string literal, then we switch back
             # to reading lines.
@@ -297,7 +297,10 @@ class IMAPClientHandler(asynchat.async_chat):
         #
         msg = "".join(self.ibuffer)
         self.ibuffer = []
-        self.msg_processor.message(msg)
+        if self.msg_processor is None:
+            self.log.error("We have no message processor to send a message to.")
+        else:
+            self.msg_processor.message(msg)
         return
 
     ##################################################################
@@ -311,8 +314,9 @@ class IMAPClientHandler(asynchat.async_chat):
         longer be needed and various bits of cleanup.
         """
         self.log.info("Client disconnected")
-        self.msg_processor.client_disconnected()
-        self.msg_processor = None
+        if self.msg_procesor is not None:
+            self.msg_processor.client_disconnected()
+            self.msg_processor = None
         return
     
 
@@ -468,8 +472,6 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
 
         2) we have read the whole IMAP message from the subprocess.
         """
-        self.log.debug("found_terminator")
-
         if not self.reading_message:
             # We have hit our line terminator.. we should have an ascii
             # representation of an int in our buffer.. read that to determine
