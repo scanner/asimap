@@ -12,6 +12,8 @@ connections on localhost.
 
 # system imports
 #
+import sys
+import socket
 import asyncore
 import asynchat
 import logging
@@ -24,6 +26,20 @@ import pwd
 log      = logging.getLogger("asimap.%s" % __name__)
 
 BACKLOG  = 5
+
+####################################################################
+#
+def set_user_server_program(prg):
+    """
+    Sets the 'USER_SERVER_PROGRAM' attribute on this module (so other modules
+    will known how to launch the user server.)
+
+    Arguments:
+    - `prg`: An absolute path to the user server program.
+    """
+    module = sys.modules[__name__]
+    setattr(module, "USER_SERVER_PROGRAM", prg)
+    return
 
 ##################################################################
 ##################################################################
@@ -143,6 +159,7 @@ class IMAPUserServer(asyncore.dispatcher):
         self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
         self.set_reuse_addr()
         self.bind(("127.0.0.1", 0))
+        self.address = self.socket.getsockname()
         self.listen(BACKLOG)
         return
 

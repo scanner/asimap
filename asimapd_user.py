@@ -25,12 +25,15 @@ XXX We communicate with the server via localhost TCP sockets. We REALLY should
 
 # system imports
 #
+import sys
 import optparse
 import logging
+import asyncore
 
 # Application imports
 #
 import asimap
+import asimap.user_server
 
 ############################################################################
 #
@@ -75,8 +78,8 @@ def main():
         level = logging.WARNING
 
     logging.basicConfig(level=level,
-                        format="%(asctime)s %(created)s level=%(levelname)s "
-                        "thread=%(thread)d name=%(name)s %(message)s")
+                        format="%(asctime)s %(created)s %(process)d "
+                        "%(levelname)s %(name)s %(message)s")
     log = logging.getLogger("asimap_user")
 
     server = asimap.user_server.IMAPUserServer(options)
@@ -84,7 +87,8 @@ def main():
     # Print on stdout the port we are listening on so that the asimapd server
     # knows how to talk to us.
     #
-    sys.stdout.write("%d\n" % server.port)
+    ip,port = server.address
+    sys.stdout.write("%d\n" % port)
     sys.stdout.flush()
     sys.stdout.close()
 

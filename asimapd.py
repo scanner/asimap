@@ -9,6 +9,8 @@ IMAP service that is typically backed by MH mail folders.
 
 # system imports
 #
+import sys
+import os.path
 import optparse
 import logging
 import socket
@@ -18,6 +20,7 @@ import asyncore
 #
 import asimap
 import asimap.server
+import asimap.user_server
 
 ############################################################################
 #
@@ -65,9 +68,28 @@ def main():
         level = logging.WARNING
 
     logging.basicConfig(level=level,
-                        format="%(asctime)s %(created)s %(levelname)s "
-                        "%(name)s %(message)s")
+                        format="%(asctime)s %(created)s %(process)d "
+                        "%(levelname)s %(name)s %(message)s")
     log = logging.getLogger("asimapd")
+
+    # Using the location of the server program determine the location of
+    # the user_server program (if it was not set via a command line option.)
+    #
+    user_server_program = os.path.abspath(os.path.join(os.path.dirname(sys.argv[0]),"asimapd_user.py"))
+
+    # Make sure the user server program exists and is executable before we go
+    # any further..
+    #
+    if not os.path.exists(user_server_program) or \
+            not os.path.isfile(user_server_program):
+        log.error("User server program does not exist or is not a file: '%s'" \
+                      % user_server_program)
+        exit(-1)
+
+    # Set this as a variable in the asimap.user_server module.
+    #
+    log.debug("user server program is: '%s'" % user_server_program)
+    asimap.user_server.set_user_server_program(user_server_program)
 
     try:
         server = asimap.server.IMAPServer(options)

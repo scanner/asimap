@@ -11,9 +11,11 @@ single connected IMAP client.
 #
 import sys
 import logging
+import os.path
 
 # asimapd imports
 #
+import auth
 
 # Local constants
 #
@@ -268,7 +270,7 @@ class PreAuthenticated(BaseClientHandler):
 
     ##################################################################
     #
-    def __init__(self, client):
+    def __init__(self, client, auth_system):
         """
         Arguments:
         - `client`: An asynchat.async_chat object that is connected to the IMAP
@@ -277,6 +279,7 @@ class PreAuthenticated(BaseClientHandler):
         """
         BaseClientHandler.__init__(self, client)
         self.log = logging.getLogger("%s.PreAuthenticated" % __name__)
+        self.auth_system = auth_system
         return
     
     ## The following commands are supported in the non-authenticated state.
@@ -284,7 +287,7 @@ class PreAuthenticated(BaseClientHandler):
 
     ##################################################################
     #
-    def do_authenticated(self, ):
+    def do_authenticated(self):
         """
         We do not support any authentication mechanisms at this time.. just
         password authentication via the 'login' IMAP client command.
@@ -317,20 +320,21 @@ class PreAuthenticated(BaseClientHandler):
         if self.state == "authenticated":
             raise Bad("client already is in the authenticated state")
 
-        # try:
-        #     user = self.auth_system.authenticate(imap_command.user_name,
-        #                                          imap_command.password)
-        # except AuthenticationException, e:
-        #     raise No(str(e.value))
+        try:
+            self.user = self.auth_system.authenticate(imap_command.user_name,
+                                                      imap_command.password)
 
-        # self.state = "authenticated"
-        # self.user = user
-        if imap_command.user_name == "test" and \
-                imap_command.password == "test":
-            self.user = "test"
+            # Even if the user authenticates properly, we can not allow them to
+            # login if they have no maildir.
+            #
+            if not (os.path.exists(self.user.maildir) and \
+                    os.path.isdir(self.user.maildir)):
+                raise No("You have no mailbox directory setup")
+            
+            self.user.auth_system = self.auth_system
             self.state = "authenticated"
-        else:
-            raise No("Bad login")
+        except auth.AuthenticationException, e:
+            raise No(str(e.value))
         return None
     
         
