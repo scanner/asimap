@@ -336,6 +336,27 @@ class PreAuthenticated(BaseClientHandler):
         except auth.AuthenticationException, e:
             raise No(str(e.value))
         return None
-    
+
+##################################################################
+##################################################################
+#
+class Authenticated(BaseClientHandler):
+    """
+    The 'authenticated' client IMAP command handler. Basically this handles all
+    of the IMAP messages from the IMAP client when they have authenticated and
+    we are running in the user_server subprocess.
+
+    This is basically the main command dispatcher for pretty much everything
+    that the IMAP client is going to do.
+    """
+
+    ##################################################################
+    #
+    def __init__(self, maildir):
+        """
         
-        
+        Arguments:
+        - `maildir`: The directory our mail spool is in.
+        """
+        self.maildir = maildir
+        return

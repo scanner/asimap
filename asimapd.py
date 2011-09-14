@@ -15,6 +15,8 @@ import optparse
 import logging
 import socket
 import asyncore
+import traceback
+import select
 
 # Application imports
 #
@@ -109,6 +111,15 @@ def main():
     #     of time with no active clients.
     #
     asyncore.loop()
+    # while True:
+    #     try:
+    #         asyncore.loop()
+    #     except select.error, e:
+    #         tb = traceback.format_exc()
+    #         log.error("asyncore.loop() returned select.error: %s\n%s" % \
+    #                       (str(e), tb))
+    #     else:
+    #         break
 
     return
 

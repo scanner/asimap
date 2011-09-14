@@ -49,28 +49,6 @@ user_imap_subprocesses = { }
 ##################################################################
 ##################################################################
 #
-class SubprocessPortReader(asynchat.async_chat):
-    """
-    Set up an asynchat based client that will read the port from
-    the client
-    """
-
-    ##################################################################
-    #
-    def __init__(self, subprocess_stdout):
-        """
-        
-        Arguments:
-        - `subprocess_stdout`:
-        """
-        self._subprocess_stdout = subprocess_stdout
-        
-        
-        
-
-##################################################################
-##################################################################
-#
 class IMAPSubprocessHandle(object):
     """
     This is a handle to a multiprocess.Popen instance, the localhost port that
@@ -399,7 +377,6 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
         self.client_connection = client_connection
         self.client_handler = PreAuthenticated(self.client_connection,
                                                AUTH_SYSTEMS["test_auth"])
-        self.authenticated = False
         self.ibuffer = []
         self.subprocess = None
         self.reading_message = False
@@ -427,7 +404,7 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
         #     we push messages before the connection has actually been
         #     established?
         #
-        if self.authenticated:
+        if self.client_handler.state == "authenticated":
             self.push("%d\n" % len(msg))
             self.push(msg)
             return
