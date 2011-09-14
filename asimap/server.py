@@ -49,6 +49,28 @@ user_imap_subprocesses = { }
 ##################################################################
 ##################################################################
 #
+class SubprocessPortReader(asynchat.async_chat):
+    """
+    Set up an asynchat based client that will read the port from
+    the client
+    """
+
+    ##################################################################
+    #
+    def __init__(self, subprocess_stdout):
+        """
+        
+        Arguments:
+        - `subprocess_stdout`:
+        """
+        self._subprocess_stdout = subprocess_stdout
+        
+        
+        
+
+##################################################################
+##################################################################
+#
 class IMAPSubprocessHandle(object):
     """
     This is a handle to a multiprocess.Popen instance, the localhost port that
@@ -113,6 +135,7 @@ class IMAPSubprocessHandle(object):
         #     I wonder if we can use a new asynchat client to handle this
         #     communication.
         #
+        self.log.debug("Reading port from subprocess.")
         try:
             self.port = int(self.subprocess.stdout.read().strip())
         except ValueError, e:
@@ -122,6 +145,7 @@ class IMAPSubprocessHandle(object):
             # failed and we need to tell our caller so they can deal with it.
             #
             raise
+        self.log.debug("Subprocess is listening on port: %d" % self.port)
         return
 
     ##################################################################

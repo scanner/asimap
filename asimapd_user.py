@@ -25,6 +25,7 @@ XXX We communicate with the server via localhost TCP sockets. We REALLY should
 
 # system imports
 #
+import os
 import sys
 import optparse
 import logging
@@ -88,6 +89,12 @@ def main():
     # knows how to talk to us.
     #
     ip,port = server.address
+
+    # We need to make sure stdout is unbuffered so that whatever we write here
+    # will be immediately be sent to our calling process instead of waiting
+    # for however many bytes stdout wants before it flushes the the output.
+    #
+    sys.stdout = os.fdopen(sys.stdout.fileno(), "w", 0)
     sys.stdout.write("%d\n" % port)
     sys.stdout.flush()
     sys.stdout.close()
@@ -95,7 +102,7 @@ def main():
     # And now loop forever.. breaking out of the loop every now and then to
     # see if we have had no active clients for awhile (and if we do not then
     # we exit.)
-
+    #
     log.info("Starting main loop.")
     while True:
         asyncore.loop(count = 30)

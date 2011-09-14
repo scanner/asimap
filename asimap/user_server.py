@@ -156,6 +156,8 @@ class IMAPUserServer(asyncore.dispatcher):
         self.options = options
 
         asyncore.dispatcher.__init__(self)
+        self.log = logging.getLogger("%s.IMAPServer" % __name__)
+
         self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
         self.set_reuse_addr()
         self.bind(("127.0.0.1", 0))
@@ -163,6 +165,20 @@ class IMAPUserServer(asyncore.dispatcher):
         self.listen(BACKLOG)
         return
 
+    ##################################################################
+    #
+    def log_info(self, message, type = "info"):
+        """
+        Replace the log_info method with one that uses our stderr logger
+        instead of trying to write to stdout.
+
+        Arguments:
+        - `message`:
+        - `type`:
+        """
+        if type not in self.ignore_log_types:
+            self.log.info('%s: %s' % (type, message))
+    
     ##################################################################
     #
     def handle_accept(self):
@@ -174,6 +190,6 @@ class IMAPUserServer(asyncore.dispatcher):
         pair = self.accept()
         if pair is not None:
             sock,addr = pair
-            print "Incoming connection from %s" % repr(pair)
-            handler = IMAPUserClientHandler(sock, self._options)
+            self.log.info("Incoming connection from %s" % repr(pair))
+            handler = IMAPUserClientHandler(sock, self.options)
         
