@@ -369,3 +369,13 @@ class Authenticated(BaseClientHandler):
         self.maildir = maildir
         self.state = "authenticated"
         return
+
+    #########################################################################
+    #
+    def do_authenticate(self):
+        raise Bad("client already is in the authenticated state")
+
+    #########################################################################
+    #
+    def do_login(self):
+        raise Bad("client already is in the authenticated state")
