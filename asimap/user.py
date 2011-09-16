@@ -46,4 +46,11 @@ class User(object):
         self.auth_system = None
         return
 
-        
+    ##################################################################
+    #
+    def __str__(self):
+        if self.imap_username != self.local_username:
+            return "imap: %s, local: %s" % (self.imap_username,
+                                            self.local_username)
+        else:
+            return self.imap_username

@@ -94,6 +94,8 @@ class BaseClientHandler(object):
         Arguments:
         - `imap_command`: An instance parse.IMAPClientCommand
         """
+        self.log.debug("Processing received IMAP command: %s %s" % \
+                           (imap_command.tag, imap_command.command))
 
         # Before anything else if we are idling then we only accept
         # a DONE continuation from the IMAP client. Everything else
@@ -276,6 +278,7 @@ class PreAuthenticated(BaseClientHandler):
         - `client`: An asynchat.async_chat object that is connected to the IMAP
                     client we are handling. This lets us send messages to that
                     IMAP client.
+        - `auth_system`: The auth system we use to authenticate the IMAP client.
         """
         BaseClientHandler.__init__(self, client)
         self.log = logging.getLogger("%s.PreAuthenticated" % __name__)
@@ -352,11 +355,17 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    def __init__(self, maildir):
+    def __init__(self, client, maildir):
         """
         
         Arguments:
+        - `client`: An asynchat.async_chat object that is connected to the IMAP
+                    client we are handling. This lets us send messages to that
+                    IMAP client.
         - `maildir`: The directory our mail spool is in.
         """
+        BaseClientHandler.__init__(self, client)
+        self.log = logging.getLogger("%s.Authenticated" % __name__)
         self.maildir = maildir
+        self.state = "authenticated"
         return

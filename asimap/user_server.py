@@ -83,7 +83,7 @@ class IMAPUserClientHandler(asynchat.async_chat):
         self.reading_message = False
         self.ibuffer = []
         self.set_terminator(self.LINE_TERMINATOR)
-        self.client_handler = Authenticated(os.getcwd())
+        self.client_handler = Authenticated(self,os.getcwd())
         return
 
     ##################################################################
@@ -188,10 +188,31 @@ class IMAPUserClientHandler(asynchat.async_chat):
                 self.push("* BAD %s\r\n" % str(e))
             return
 
-        # Otherwise parsed the message, act on it.
+        # Message parsed successfully. Hand it off to the message processor to
+        # respond to.
         #
-        self.push("%s OK %s completed\r\n" % (imap_cmd.tag,imap_cmd.command))
-        # self.client_handler.command(imap_cmd)
+        self.client_handler.command(imap_cmd)
+
+        # If our state is "logged_out" after processing the command then the
+        # client has logged out of the authenticated state. We need to close
+        # our connection to the main server process.
+        #
+        if self.client_handler.state == "logged_out":
+            self.log.info("Client has logged out of the subprocess")
+            if self.socket is not None:
+                self.close()
+        return
+
+    ##################################################################
+    #
+    def handle_close(self):
+        """
+        Huh. The main server process severed its connection with us. That is a
+        bit strange, but, I guess it crashed or something.
+        """
+        self.log.info("main server closed its connection with us.")
+        if self.socket is not None:
+            self.close()
         return
 
 ##################################################################

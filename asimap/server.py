@@ -359,7 +359,7 @@ class IMAPClientHandler(asynchat.async_chat):
 #
 class ServerIMAPMessageProcessor(asynchat.async_chat):
     """
-    This class is the commnication channel to the subprocess that handles all
+    This class is the communication channel to the subprocess that handles all
     of a specific IMAP client's messages.
 
     This class and the IMAPClientHandler form the two parts of communictation
@@ -409,7 +409,6 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
         self.client_handler = PreAuthenticated(self.client_connection,
                                                AUTH_SYSTEMS["test_auth"])
         self.subprocess = None
-        self.reading_message = False
 
         # We do not buffer and process data from the subprocess. As soon as we
         # get it, we send it on to the IMAP client.
@@ -596,7 +595,8 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
         """
 
         self.client_handler.state = "non_authenticated"
-
+        self.log.info("Connection with subprocess for %s has closed" % \
+                          self.client_handler.user)
         # See if the subprocess is alive.. if it is not then it ungraciously
         # went away and we need to tell the IMAP client to go away too.
         #
@@ -604,17 +604,16 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
             self.log.warn("Our subprocess for user '%s' went away " \
                           "unexpectedly with the exit code: %d" % \
                           (self.client_handler.user,self.subprocess.rc))
-            if self.socket is not None:
-                self.close()
+        if self.socket is not None:
+            self.close()
 
-            # Since we lost the connection to our subprocess close the
-            # connection to the IMAP client too.
-            #
-            self.client_connection.close()
-            self.client_connection = None
-
-
+        # Since we lost the connection to our subprocess close the
+        # connection to the IMAP client too.
+        #
+        self.client_connection.close()
+        self.client_connection = None
         self.client_handler.user = None
+        self.client_handler = None
         return
 
     ##################################################################
