@@ -12,8 +12,6 @@ single connected IMAP client.
 import sys
 import logging
 import os.path
-import mailbox
-import sqlite3
 
 # asimapd imports
 #
@@ -353,10 +351,6 @@ class Authenticated(BaseClientHandler):
 
     This is basically the main command dispatcher for pretty much everything
     that the IMAP client is going to do.
-
-    XXX This should probably be moved into its own module so that we do not end
-        up importing all the modules we need here when just handling
-        pre-authenticated clients.
     """
 
     ##################################################################
@@ -374,15 +368,46 @@ class Authenticated(BaseClientHandler):
         BaseClientHandler.__init__(self, client)
         self.log = logging.getLogger("%s.Authenticated" % __name__)
         self.server = user_server
+        self.db = user_server.db
+        self.mbox = user_server.mailbox
         self.state = "authenticated"
+        self.examine = False # If a mailbox is selected in 'examine' mode
         return
 
     #########################################################################
     #
-    def do_authenticate(self):
+    def do_authenticate(self, cmd):
         raise Bad("client already is in the authenticated state")
 
     #########################################################################
     #
-    def do_login(self):
+    def do_login(self, cmd):
         raise Bad("client already is in the authenticated state")
+
+    ##################################################################
+    #
+    def do_select(self, cmd, examine = False):
+        """
+        Select a folder, enter in to 'selected' mode.
+        
+        Arguments:
+        - `cmd`: The IMAP command we are executing
+        - `examine`: Opens the folder in read only mode if True
+        """
+
+        try:
+            self.mbox.lock()
+            self.selected_folder = self.mbox.get_folder(cmd.mailbox_name)
+            self.state = 'selected'
+            self.examine = examine
+            self.debug("Selected mailbox '%s', examine: %s" % \
+                           (cmd.mailbox_name,self.examine))
+        except mailbox.NoSuchMailboxError,e:
+            self.log.debug("Unable to select mailbox %s: %s" % \
+                               (cmd.mailbox_name, str(e)))
+            raise No("No such mailbox '%s'" % cmd.mailbox_name)
+        finally:
+            self.mbox.flush()
+            self.mbox.unlock()
+
+        

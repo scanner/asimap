@@ -118,10 +118,11 @@ def main():
     log.info("Idle for at least 15 minutes. Exiting.")
     asyncore.close_all()
 
-    # Close our handle to the sqlite3 database.
+    # Close our handle to the sqlite3 database and our MH mailbox.
     #
     server.db.commit()
     server.db.close()
+    server.mailbox.close()
 
     return
 

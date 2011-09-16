@@ -20,6 +20,7 @@ import logging
 import os
 import pwd
 import sqlite3
+import mailbox
 
 # asimap imports
 #
@@ -75,7 +76,7 @@ class IMAPUserClientHandler(asynchat.async_chat):
 
     ##################################################################
     #
-    def __init__(self, sock, server, options):
+    def __init__(self, sock, port, server, options):
         """
         """
         asynchat.async_chat.__init__(self, sock = sock)
@@ -85,6 +86,11 @@ class IMAPUserClientHandler(asynchat.async_chat):
         self.ibuffer = []
         self.set_terminator(self.LINE_TERMINATOR)
 
+        # A reference to our entry in the server.handlers dict so we can remove
+        # it when our connection to the main server is shutdown.
+        #
+        self.port = port
+        
         # A handle on the server process and its database connection.
         #
         self.server = server
@@ -205,6 +211,11 @@ class IMAPUserClientHandler(asynchat.async_chat):
         #
         if self.client_handler.state == "logged_out":
             self.log.info("Client has logged out of the subprocess")
+
+            # Be sure to remove our entry from the server.handlers dict.
+            #
+            del self.server.handlers[self.port]
+            
             if self.socket is not None:
                 self.close()
         return
@@ -219,6 +230,10 @@ class IMAPUserClientHandler(asynchat.async_chat):
         self.log.info("main server closed its connection with us.")
         if self.socket is not None:
             self.close()
+
+        # Be sure to remove our entry from the server.handlers dict.
+        #
+        del self.server.handlers[self.port]
         return
 
 ##################################################################
@@ -256,7 +271,15 @@ class IMAPUserServer(asyncore.dispatcher):
         self.address = self.socket.getsockname()
         self.listen(BACKLOG)
         self.maildir = maildir
+        self.mailbox = mailbox.MH(self.maildir, create = True)
         self.db = sqlite3.connect(os.path.join(self.maildir, "asimap.db"))
+
+        # The dict mapping the port connected on to specific handlers.  This is
+        # how other handlers can see each other which they need to do for
+        # various async updates that they may cause each other when processing
+        # imap commands.
+        #
+        self.handlers = { }
         return
 
     ##################################################################
@@ -294,5 +317,6 @@ class IMAPUserServer(asyncore.dispatcher):
         if pair is not None:
             sock,addr = pair
             self.log.info("Incoming connection from %s" % repr(pair))
-            handler = IMAPUserClientHandler(sock, self, self.options)
+            handler = IMAPUserClientHandler(sock, addr[1], self, self.options)
+            self.handlers[addr[1]] = handler
         
