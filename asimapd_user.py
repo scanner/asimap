@@ -83,7 +83,7 @@ def main():
                         "%(levelname)s %(name)s %(message)s")
     log = logging.getLogger("asimap_user")
 
-    server = asimap.user_server.IMAPUserServer(options)
+    server = asimap.user_server.IMAPUserServer(options, os.getcwd())
 
     # Print on stdout the port we are listening on so that the asimapd server
     # knows how to talk to us.
@@ -117,6 +117,12 @@ def main():
     #
     log.info("Idle for at least 15 minutes. Exiting.")
     asyncore.close_all()
+
+    # Close our handle to the sqlite3 database.
+    #
+    server.db.commit()
+    server.db.close()
+
     return
 
 ############################################################################

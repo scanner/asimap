@@ -19,6 +19,7 @@ import asynchat
 import logging
 import os
 import pwd
+import sqlite3
 
 # asimap imports
 #
@@ -74,7 +75,7 @@ class IMAPUserClientHandler(asynchat.async_chat):
 
     ##################################################################
     #
-    def __init__(self, sock, options):
+    def __init__(self, sock, server, options):
         """
         """
         asynchat.async_chat.__init__(self, sock = sock)
@@ -83,7 +84,12 @@ class IMAPUserClientHandler(asynchat.async_chat):
         self.reading_message = False
         self.ibuffer = []
         self.set_terminator(self.LINE_TERMINATOR)
-        self.client_handler = Authenticated(self,os.getcwd())
+
+        # A handle on the server process and its database connection.
+        #
+        self.server = server
+        self.options = options
+        self.client_handler = Authenticated(self, self.server)
         return
 
     ##################################################################
@@ -228,7 +234,7 @@ class IMAPUserServer(asyncore.dispatcher):
 
     ##################################################################
     #
-    def __init__(self, options):
+    def __init__(self, options, maildir):
         """
         Setup our dispatcher.. listen on a port we are supposed to accept
         connections on. When something connects to it create an
@@ -236,6 +242,7 @@ class IMAPUserServer(asyncore.dispatcher):
 
         Arguments:
         - `options` : The options set on the command line
+        - `maildir` : The directory our mailspool and database are in
         """
         
         self.options = options
@@ -248,6 +255,8 @@ class IMAPUserServer(asyncore.dispatcher):
         self.bind(("127.0.0.1", 0))
         self.address = self.socket.getsockname()
         self.listen(BACKLOG)
+        self.maildir = maildir
+        self.db = sqlite3.connect(os.path.join(self.maildir, "asimap.db"))
         return
 
     ##################################################################
@@ -285,5 +294,5 @@ class IMAPUserServer(asyncore.dispatcher):
         if pair is not None:
             sock,addr = pair
             self.log.info("Incoming connection from %s" % repr(pair))
-            handler = IMAPUserClientHandler(sock, self.options)
+            handler = IMAPUserClientHandler(sock, self, self.options)
         

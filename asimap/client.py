@@ -12,6 +12,8 @@ single connected IMAP client.
 import sys
 import logging
 import os.path
+import mailbox
+import sqlite3
 
 # asimapd imports
 #
@@ -351,22 +353,27 @@ class Authenticated(BaseClientHandler):
 
     This is basically the main command dispatcher for pretty much everything
     that the IMAP client is going to do.
+
+    XXX This should probably be moved into its own module so that we do not end
+        up importing all the modules we need here when just handling
+        pre-authenticated clients.
     """
 
     ##################################################################
     #
-    def __init__(self, client, maildir):
+    def __init__(self, client, user_server):
         """
         
         Arguments:
         - `client`: An asynchat.async_chat object that is connected to the IMAP
                     client we are handling. This lets us send messages to that
                     IMAP client.
-        - `maildir`: The directory our mail spool is in.
+        - `user_server`: A handle on the user server object (which holds the
+                         handle to our sqlite3 db, etc.
         """
         BaseClientHandler.__init__(self, client)
         self.log = logging.getLogger("%s.Authenticated" % __name__)
-        self.maildir = maildir
+        self.server = user_server
         self.state = "authenticated"
         return
 
