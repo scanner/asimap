@@ -220,16 +220,22 @@ class IMAPServer(asyncore.dispatcher):
 #
 class IMAPClientHandler(asynchat.async_chat):
     """
-    A handler for a connection with an IMAP Client.
+    This class is a communication channel to a specific IMAP client.
 
-    If the IMAP Client has not been authenticated and associated with a
-    subprocess then we parse a limited set IMAP messages from this client --
-    enough to require it to authenticate.
+    This class and the ServerIMAPMessageProcessor form the two parts of
+    communictation between an IMAP client and the subprocess running as a user
+    handling all of that IMAP client's messages.
 
-    If we have an associated subprocess then we gather up the data for a
-    message and pass it on as a single message to the subprocess letting it
-    parse the message and give us a response to send back to the IMAP client
-    that is connected to us.
+    A handler for a connection with an IMAP client.
+
+    This will suck in messages from the client, sending back continuation
+    strings so that it gets an entire message.
+
+    When an entire message has been received we pass it off to a
+    ServerIMAPMessageProcessor to deal with.
+
+    That ServerIMAPMessageProcessor will call our '.push()' method to send
+    messages back to the IMAP client.
     """
 
     LINE_TERMINATOR     = "\r\n"
@@ -301,6 +307,11 @@ class IMAPClientHandler(asynchat.async_chat):
         # a string literal for the number of characters defined by
         # the integer inside of the '{}'
         #
+        if len(self.ibuffer) == 0:
+            # Empty messages are bad too!
+            self.push("* BAD We do not accept empty messages.\r\n")
+            return
+
         m = RE_LITERAL_STRING_START.search(self.ibuffer[-1])
         if m:
             # Set how many characters to read
@@ -339,25 +350,41 @@ class IMAPClientHandler(asynchat.async_chat):
         if self.msg_processor is not None:
             self.msg_processor.client_disconnected()
             self.msg_processor = None
+        if self.socket is not None:
+            self.close()
         return
-    
 
 ##################################################################
 ##################################################################
 #
 class ServerIMAPMessageProcessor(asynchat.async_chat):
     """
-    This is the server object that handles full messages from the IMAP client
-    and either processes them and responds to the client (if the client is not
-    authenticated) or passes the commands on to a subprocess that processes the
-    commands. Messages from the subprocess are then relayed back to the IMAP
-    client via the client_connection object.
+    This class is the commnication channel to the subprocess that handles all
+    of a specific IMAP client's messages.
 
-    An instance of this is created for every IMAP client that connects to the
-    server.
+    This class and the IMAPClientHandler form the two parts of communictation
+    between an IMAP client and the subprocess running as a user handling all
+    of that IMAP client's messages.
 
-    If there is no subprocess for this authenticated user we create one and
-    connect to it via a localhost TCP connection.
+    This class is given full IMAP messages from the IMAP client.
+
+    When we get a full message we either:
+
+    1) hand the message to an instance of the PreAuthenticated class.
+    2) send it to a subprocess to handle and respond to.
+
+    The PreAuthenticated class is an IMAP message processor that understands
+    the IMAP commands from the IMAP client that all involve the
+    'before-authentication' steps.
+
+    Once a client has successfully authenticated with the server we connect to
+    a subprocess that is running as that user and send all further messages
+    from the client to that subprocess to handle. 
+   
+    When that subprocess disconnects we move back in to the
+    'before-authentication' state (or if the subprocess crashed, we disconnect
+    from the client.)
+
     """
 
     ##################################################################
@@ -375,12 +402,20 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
         asynchat.async_chat.__init__(self)
 
         self.client_connection = client_connection
+
+        # The IMAP message processor that handles all of the IMAP commands
+        # from the client when we are in the not-authenticated state.
+        #
         self.client_handler = PreAuthenticated(self.client_connection,
                                                AUTH_SYSTEMS["test_auth"])
-        self.ibuffer = []
         self.subprocess = None
         self.reading_message = False
-        self.set_terminator("\n")
+
+        # We do not buffer and process data from the subprocess. As soon as we
+        # get it, we send it on to the IMAP client.
+        #
+        self.set_terminator(None)
+        return
 
     ##################################################################
     #
@@ -486,63 +521,15 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
     #
     def collect_incoming_data(self, data):
         """
-        Buffer data read from the connect for later processing.
+        We have received data from the subprocess handling the IMAP client's
+        messages.
         """
         self.log.debug("collect_incoming_data: [%s]" % data)
-        self.ibuffer.append(data)
+
+        if self.client_connection is not None:
+            self.client_connection.push(data)
         return
     
-    ##################################################################
-    #
-    def found_terminator(self):
-        """
-        The subprocess will send us messages to send to the IMAP client. Like
-        the messages we send to the subprocess we will be getting fully formed
-        IMAP protocol messages that are prefixed by a length and a newline.
-
-        So we have two states:
-
-        1) we are waiting for a newline so we can know how many characters long
-           the IMAP message is.
-
-        2) we have read the whole IMAP message from the subprocess.
-        """
-        if not self.reading_message:
-            # We have hit our line terminator.. we should have an ascii
-            # representation of an int in our buffer.. read that to determine
-            # how many characters the actual IMAP message we need to read is.
-            #
-            msg_length = int("".join(self.ibuffer).strip())
-            self.ibuffer = []
-            self.log.debug("Read IMAP message length indicator: %d" % \
-                           msg_length)
-            self.set_terminator(msg_length)
-            return
-
-        # If we were reading a full IMAP message then this means we have
-        # received the entire message and we need to switch the line terminator
-        # back to '\n' reading lines.
-        #
-        imap_msg = "".join(self.ibuffer)
-        self.ibuffer = []
-        self.reading_message = False
-        self.set_terminator("\n")
-
-        self.log.debug("Got complete IMAP message: %s" % imap_msg)
-
-        # Send the message on to the client. We check to make sure this exists
-        # in case the client suddenly disconnects from us.
-        #
-        if self.client_connection is not None:
-            self.client_connection.push(imap_msg)
-        else:
-            # XXX need better debugging so we have some idea of what client
-            #     we were expecting to be able to talk to.
-            #
-            self.log.warn("Unable to send message to client, "
-                          "client_connection was None")
-        return
-
     ##################################################################
     #
     def get_and_connect_subprocess(self, user):
@@ -617,11 +604,16 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
             self.log.warn("Our subprocess for user '%s' went away " \
                           "unexpectedly with the exit code: %d" % \
                           (self.client_handler.user,self.subprocess.rc))
+            if self.socket is not None:
+                self.close()
 
             # Since we lost the connection to our subprocess close the
             # connection to the IMAP client too.
             #
             self.client_connection.close()
+            self.client_connection = None
+
+
         self.client_handler.user = None
         return
 

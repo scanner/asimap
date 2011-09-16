@@ -53,20 +53,21 @@ def set_user_server_program(prg):
 #
 class IMAPUserClientHandler(asynchat.async_chat):
     """
-    A handler for a connection with an IMAP client (all of the data is
-    relayed through the asimapd.)
+    This class receives messages from the main server process.
 
-    This deals with the part of the IMAP client protocol for when the
-    client is authenticated.
+    These messages are recevied by the main server process from an IMAP client
+    and it has sent them on to us to process.
 
-    We will be receiving IMAP messages from clients relayed through
-    the asimapd. This means the protocol for reading these messages is
-    a little bit different.
+    All of the messages we receive will be for an IMAP client that has
+    successfully authenticated with the main server.
 
-    We no longer need to watch and parse continuation messages. The
-    asimapd server will collect a full message and pass it on to
-    us. We first get a length terminated by a newline, and then that
-    many characters (for the rest of the message.)
+    The messages will be in the form of a decimal ascii integer followed by a
+    new line that represents the length of the entire IMAP message we are being
+    sent.
+
+    After that will be the IMAP message (of the pre-indicated length.)
+
+    To send messages back to the IMAP client we follow the same protocol.
     """
 
     LINE_TERMINATOR     = "\n"
@@ -93,8 +94,9 @@ class IMAPUserClientHandler(asynchat.async_chat):
         instead of trying to write to stdout.
 
         Arguments:
-        - `message`:
-        - `type`:
+        - `message`: The message to log
+        - `type`: Type of message to log.. maps to 'info','error',etc on the
+                  logger object.
         """
         if type not in self.ignore_log_types:
             if type == "info":
@@ -181,15 +183,14 @@ class IMAPUserClientHandler(asynchat.async_chat):
             # message we had problems with.
             #
             if imap_cmd.tag is not None:
-                msg = "%s BAD %s\r\n" % (imap_cmd.tag, str(e))
+                self.push("%s BAD %s\r\n" % (imap_cmd.tag, str(e)))
             else:
-                msg = "* BAD %s\r\n" % str(e)
-            self.push(msg)
+                self.push("* BAD %s\r\n" % str(e))
             return
 
         # Otherwise parsed the message, act on it.
         #
-        self.push("%s OK %s completed" % (imap_cmd.tag,imap_cmd.command))
+        self.push("%s OK %s completed\r\n" % (imap_cmd.tag,imap_cmd.command))
         # self.client_handler.command(imap_cmd)
         return
 
