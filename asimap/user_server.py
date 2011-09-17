@@ -28,6 +28,7 @@ import asimap
 import asimap.parse
 
 from asimap.client import Authenticated
+from asimap.db import Database
 
 # By default every file is its own logging module. Kind of simplistic
 # but it works for now.
@@ -272,7 +273,7 @@ class IMAPUserServer(asyncore.dispatcher):
         self.listen(BACKLOG)
         self.maildir = maildir
         self.mailbox = mailbox.MH(self.maildir, create = True)
-        self.db = sqlite3.connect(os.path.join(self.maildir, "asimap.db"))
+        self.db = Database(maildir)
 
         # The dict mapping the port connected on to specific handlers.  This is
         # how other handlers can see each other which they need to do for
