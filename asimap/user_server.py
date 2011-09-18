@@ -96,7 +96,7 @@ class IMAPUserClientHandler(asynchat.async_chat):
         #
         self.server = server
         self.options = options
-        self.client_handler = Authenticated(self, self.server)
+        self.cmd_processor = Authenticated(self, self.server)
         return
 
     ##################################################################
@@ -204,18 +204,18 @@ class IMAPUserClientHandler(asynchat.async_chat):
         # Message parsed successfully. Hand it off to the message processor to
         # respond to.
         #
-        self.client_handler.command(imap_cmd)
+        self.cmd_processor.command(imap_cmd)
 
         # If our state is "logged_out" after processing the command then the
         # client has logged out of the authenticated state. We need to close
         # our connection to the main server process.
         #
-        if self.client_handler.state == "logged_out":
+        if self.cmd_processor.state == "logged_out":
             self.log.info("Client has logged out of the subprocess")
 
-            # Be sure to remove our entry from the server.handlers dict.
+            # Be sure to remove our entry from the server.clients dict.
             #
-            del self.server.handlers[self.port]
+            del self.server.clients[self.port]
             
             if self.socket is not None:
                 self.close()
@@ -232,9 +232,9 @@ class IMAPUserClientHandler(asynchat.async_chat):
         if self.socket is not None:
             self.close()
 
-        # Be sure to remove our entry from the server.handlers dict.
+        # Be sure to remove our entry from the server.clients dict.
         #
-        del self.server.handlers[self.port]
+        del self.server.clients[self.port]
         return
 
 ##################################################################
@@ -274,14 +274,28 @@ class IMAPUserServer(asyncore.dispatcher):
         self.listen(BACKLOG)
         self.maildir = maildir
         self.mailbox = mailbox.MH(self.maildir, create = True)
+
+        # A handle to the sqlite3 database where we store our persistent
+        # information.
+        #
         self.db = Database(maildir)
 
-        # The dict mapping the port connected on to specific handlers.  This is
-        # how other handlers can see each other which they need to do for
-        # various async updates that they may cause each other when processing
-        # imap commands.
+        # A dict of the active mailboxes. An active mailbox is one that has an
+        # instance of an asimap.mailbox.Mailbox class.
         #
-        self.handlers = { }
+        # We keep active mailboxes around when IMAP clients are poking them in
+        # some way. Active mailboxes are gotten rid of after a certain amount
+        # of time during which no client pokes it.
+        #
+        # The key is the mailbox name.
+        #
+        self.active_mailboxes = { }
+
+        # A dict of the active IMAP clients that are talking to us.
+        #
+        # The key is the port number of the attached client.
+        #
+        self.clients = { }
         return
 
     ##################################################################
@@ -320,5 +334,5 @@ class IMAPUserServer(asyncore.dispatcher):
             sock,addr = pair
             self.log.info("Incoming connection from %s" % repr(pair))
             handler = IMAPUserClientHandler(sock, addr[1], self, self.options)
-            self.handlers[addr[1]] = handler
+            self.clients[addr[1]] = handler
         
