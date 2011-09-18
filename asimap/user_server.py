@@ -264,7 +264,8 @@ class IMAPUserServer(asyncore.dispatcher):
         self.options = options
 
         asyncore.dispatcher.__init__(self)
-        self.log = logging.getLogger("%s.IMAPUserServer" % __name__)
+        self.log = logging.getLogger("%s.%s" % (__name__,
+                                                self.__class__.__name__))
 
         self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
         self.set_reuse_addr()

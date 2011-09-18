@@ -11,7 +11,8 @@ server.
 # system imports
 #
 import sqlite3
-
+import os.path
+import logging
 
 ##################################################################
 ##################################################################
@@ -31,8 +32,13 @@ class Database(object):
         Arguments:
         - `maildir`: The directory where our database file lives.
         """
+        self.log = logging.getLogger("%s.%s" % (__name__,
+                                                self.__class__.__name__))
         self.maildir = maildir
-        self.conn = sqlite3.connect(os.path.join(self.maildir, "asimap.db"))
+        self.db_filename = os.path.join(self.maildir, "asimap.db")
+        self.log.debug("Opening database file: '%s'" % self.db_filename)
+        self.conn = sqlite3.connect(self.db_filename)
+        self.conn.execute("vacuum")
 
         # Set up the database if necessary. Apply any migrations that
         # we need to.
@@ -54,20 +60,27 @@ class Database(object):
         try:
             c = self.conn.cursor()
             c.execute("select version from versions "
-                      "order desc by version limit 1")
+                      "order by version desc limit 1")
             v = c.fetchone()
-            version = int(v[0])
-            
+            c.close()
+            version = int(v[0]) + 1
         except sqlite3.OperationalError, e:
             # if we have no versions table then our first migration is 0.
             #
             if str(e) != "no such table: versions":
-                raise e
+                raise
 
         # Apply all the migrations that have not been applied yet.
         #
-        for migration in MIGRATIONS[version:]:
+        for idx,migration in enumerate(MIGRATIONS[version:], start=version):
+            self.log.debug("Applying migration version %d (%s)" % \
+                               (idx, migration.__name__))
+            c = self.conn.cursor()
             migration(c)
+            c.execute("insert into versions (version) values (?)", str(idx))
+            self.conn.commit()
+            c.close()
+
         return
 
     ##################################################################
@@ -100,9 +113,8 @@ def initial_migration(c):
     Arguments:
     - `c`: sqlite3 db connection
     """
-    c.execute("create table versions (v int primary key)")
-    c.commit()
-
+    c.execute("create table versions (version integer primary key, "
+                                      "date text default CURRENT_TIMESTAMP)")
 
 MIGRATIONS = [
     initial_migration,
