@@ -379,19 +379,13 @@ class Authenticated(BaseClientHandler):
         - `examine`: Opens the folder in read only mode if True
         """
 
-        try:
-            self.mbox.lock()
-            self.selected_folder = self.mbox.get_folder(cmd.mailbox_name)
-            self.state = 'selected'
-            self.examine = examine
-            self.debug("Selected mailbox '%s', examine: %s" % \
-                           (cmd.mailbox_name,self.examine))
-        except mailbox.NoSuchMailboxError,e:
-            self.log.debug("Unable to select mailbox %s: %s" % \
-                               (cmd.mailbox_name, str(e)))
-            raise No("No such mailbox '%s'" % cmd.mailbox_name)
-        finally:
-            self.mbox.flush()
-            self.mbox.unlock()
+        mbox = asimap.mbox.Mailbox(cmd.mailbox_name, self.server)
+        mbox.selected(self)
+        self.mbox = mbox
+        self.state = "selected"
+        self.examine = examine
+        self.log.debug("Selected mailbox: '%s', examine: %s" % \
+                           (cmd.mailbox_name, examine))
+        return
 
         
