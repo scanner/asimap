@@ -273,7 +273,14 @@ class IMAPUserServer(asyncore.dispatcher):
         self.address = self.socket.getsockname()
         self.listen(BACKLOG)
         self.maildir = maildir
+        print repr(mailbox)
         self.mailbox = mailbox.MH(self.maildir, create = True)
+
+        # A global counter for the next available uid_vv is stored in the user
+        # server object. Mailboxes will get this value and increment it when
+        # they need a new uid_vv.
+        #
+        self.uid_vv = 0
 
         # A handle to the sqlite3 database where we store our persistent
         # information.
@@ -281,7 +288,7 @@ class IMAPUserServer(asyncore.dispatcher):
         self.db = Database(maildir)
 
         # A dict of the active mailboxes. An active mailbox is one that has an
-        # instance of an asimap.mailbox.Mailbox class.
+        # instance of an asimap.mbox.Mailbox class.
         #
         # We keep active mailboxes around when IMAP clients are poking them in
         # some way. Active mailboxes are gotten rid of after a certain amount
@@ -296,8 +303,45 @@ class IMAPUserServer(asyncore.dispatcher):
         # The key is the port number of the attached client.
         #
         self.clients = { }
+
+        # and finally restore any pesistent state stored in the db for the user
+        # server.
+        #
+        self._restore_from_db()
         return
 
+    ##################################################################
+    #
+    def _restore_from_db(self):
+        """
+        Restores any user server persistent state we may have in the db.
+        If there is none saved yet then we save a bunch of default values.
+        """
+        c = self.db.conn.cursor()
+        c.execute("select uid_vv from user_server limit 1")
+        if c.rowcount == 0:
+            c.execute("insert into user_server (uid_vv) values (?)",
+                      str(self.uid_vv))
+            c.close()
+            self.db.commit()
+        else:
+            self.uid_vv = int(c.fetchone()[0])
+            c.close()
+        return
+
+    ##################################################################
+    #
+    def get_next_uid_vv(self):
+        """
+        Return the next uid_vv. Also update the underlying database
+        so that its uid_vv state remains up to date.
+        """
+        self.uid_vv += 1
+        c = self.server.db.conn.cursor()
+        c.execute("update user_server set uid_vv = ?", str(self.uid_vv))
+        c.close()
+        return self.uid_vv
+    
     ##################################################################
     #
     def log_info(self, message, type = "info"):

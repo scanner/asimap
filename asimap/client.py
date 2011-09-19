@@ -15,7 +15,7 @@ import os.path
 
 # asimapd imports
 #
-import auth
+import asimap.mbox
 
 # Local constants
 #

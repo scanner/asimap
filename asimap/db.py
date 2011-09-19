@@ -115,7 +115,19 @@ def initial_migration(c):
     """
     c.execute("create table versions (version integer primary key, "
                                       "date text default CURRENT_TIMESTAMP)")
+    c.execute("create table user_server (id integer primary key, "
+                                        "uid_vv integer, "
+                                        "date text default CURRENT_TIMESTAMP)")
+    c.execute("create table mailboxes (name text primary key,"
+                                      "uid_vv integer, attributes text, "
+                                      "date text default CURRENT_TIMESTAMP")
+    return
 
+# The list of migrations we have so far. These are executed in order. They are
+# executed only once. They are executed when the database is opened. We track
+# which ones have been executed and new ones are executed when the database is
+# next opened.
+#
 MIGRATIONS = [
     initial_migration,
     ]

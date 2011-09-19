@@ -11,7 +11,8 @@ setup(
     long_description = 'asimap is a python based IMAP server using local file stores, like MH as the mail store.',
     author = 'Scanner',
     author_email = 'scanner@apricot.com',
-    # url = 'http://github.com/asimap',
-    # download_url = 'http://github.com/asimap/download',
+    url = 'http://github.com/scanner/asimap',
+    download_url = 'http://github.com/asimap/archives/master',
     packages = ["asimap"],
+    scripts = ["asimapd.py", "asimapd_user.py"]
     )
