@@ -378,14 +378,13 @@ class Authenticated(BaseClientHandler):
         - `cmd`: The IMAP command we are executing
         - `examine`: Opens the folder in read only mode if True
         """
-
+        self.log.debug("do_select(): mailbox: '%s', examine: %s" % \
+                           (cmd.mailbox_name, examine))
         mbox = asimap.mbox.Mailbox(cmd.mailbox_name, self.server)
         mbox.selected(self)
         self.mbox = mbox
         self.state = "selected"
         self.examine = examine
-        self.log.debug("Selected mailbox: '%s', examine: %s" % \
-                           (cmd.mailbox_name, examine))
         return
 
         

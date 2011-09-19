@@ -212,11 +212,7 @@ class IMAPUserClientHandler(asynchat.async_chat):
         #
         if self.cmd_processor.state == "logged_out":
             self.log.info("Client has logged out of the subprocess")
-
-            # Be sure to remove our entry from the server.clients dict.
-            #
-            del self.server.clients[self.port]
-            
+            self.cleanup()
             if self.socket is not None:
                 self.close()
         return
@@ -229,12 +225,28 @@ class IMAPUserClientHandler(asynchat.async_chat):
         bit strange, but, I guess it crashed or something.
         """
         self.log.info("main server closed its connection with us.")
+        self.cleanup()
         if self.socket is not None:
             self.close()
+        return
 
-        # Be sure to remove our entry from the server.clients dict.
+    ##################################################################
+    #
+    def cleanup(self):
+        """
+        This cleans up various references and resources held open by this
+        client.
+
+        The code was collected here because it is called when a client logs out
+        or when the main server closes the connection to us.
+        """
+        # Be sure to remove our entry from the server.clients dict. Also go
+        # through all of the active mailboxes and make sure the client
+        # unselects any if it had selections on them.
         #
         del self.server.clients[self.port]
+        for mbox in self.server.active_mailboxes.itervalues():
+            mbox.unselected(self.cmd_processor)
         return
 
 ##################################################################
@@ -318,14 +330,15 @@ class IMAPUserServer(asyncore.dispatcher):
         If there is none saved yet then we save a bunch of default values.
         """
         c = self.db.conn.cursor()
-        c.execute("select uid_vv from user_server limit 1")
-        if c.rowcount <= 0:
+        c.execute("select uid_vv from user_server order by id desc limit 1")
+        results = c.fetchone()
+        if results is None:
             c.execute("insert into user_server (uid_vv) values (?)",
                       str(self.uid_vv))
             c.close()
             self.db.commit()
         else:
-            self.uid_vv = int(c.fetchone()[0])
+            self.uid_vv = int(results[0])
             c.close()
         return
 
@@ -337,8 +350,8 @@ class IMAPUserServer(asyncore.dispatcher):
         so that its uid_vv state remains up to date.
         """
         self.uid_vv += 1
-        c = self.server.db.conn.cursor()
-        c.execute("update user_server set uid_vv = ?", str(self.uid_vv))
+        c = self.db.conn.cursor()
+        c.execute("update user_server set uid_vv = ?", (str(self.uid_vv),))
         c.close()
         return self.uid_vv
     

@@ -11,6 +11,8 @@ that holds all the folders.)
 
 # system imports
 #
+import time
+import logging
 import mailbox
 
 # asimap import
@@ -76,6 +78,7 @@ class Mailbox(object):
                     database connection, and all of the IMAP clients
                     currently connected to us.
         """
+        self.log = logging.getLogger("%s.%s" % (__name__, self.__class__.__name__))
         self.server = server
         self.name = name
         self.uid_vv = None
@@ -137,16 +140,17 @@ class Mailbox(object):
         """
         c = self.server.db.conn.cursor()
         c.execute("select uid_vv,attributes from mailboxes where name=?",
-                  self.name)
-        if c.rowcount <= 0:
+                  (self.name,))
+        results = c.fetchone()
+        if results is None:
             self.uid_vv = self.server.get_next_uid_vv()
-            c.execute("insert into mailboxes (name,uid_vv,attributes) "
-                      "(?,?,?)", (name, str(self.uid_vv),
+            c.execute("insert into mailboxes (name,uid_vv,attributes) values "
+                      "(?,?,?)", (self.name, str(self.uid_vv),
                                   ",".join(self.attributes)))
             c.close()
             self.server.db.commit()
         else:
-            uid_vv,attributes = c.fetchone()
+            uid_vv,attributes = results
             self.uid_vv = int(uid_vv)
             self.attributes = attributes.split(",")
             c.close()
@@ -204,7 +208,36 @@ class Mailbox(object):
         Arguments:
         - `client`: The client that has selected this mailbox.
         """
+        if client.client.port in self.clients:
+            raise No("Mailbox '%s' is already selected" % self.name)
+        self.clients[client.client.port] = client
+
+    ##################################################################
+    #
+    def unselected(self, client):
+        """
+        When the client is no longer selecting/examining this mailbox.
+
+        Pretty simple in that we remove the client from the dict of
+        clients. If there are no clients then we set the time at which the
+        last time client left so the server can know when this mailbox has
+        been around for long enough with no active clients to warrant getting
+        rid of.
+
+        Arguments:
+        - `client`: The client that is no longer looking at this mailbox.
+        """
+        # We only bother with doing anything in the client is actually
+        # in this mailbox's list of clients.
+        #
+        if client.client.port not in self.clients:
+            return
         
+        del self.clients[client.client.port]
+        if len(self.clients) == 0:
+            self.log.debug("unselected(): No clients, starting timer")
+            self.time_since_selected = time.time()
+        return
     
     #########################################################################
     #
