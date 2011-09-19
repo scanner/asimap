@@ -380,11 +380,27 @@ class Authenticated(BaseClientHandler):
         """
         self.log.debug("do_select(): mailbox: '%s', examine: %s" % \
                            (cmd.mailbox_name, examine))
+
+        # Selecting a mailbox, even if the attempt fails, automatically
+        # deselects any already selected mailbox.
+        #
+        if self.state == "selected":
+            self.state = "authenticated"
+            self.mbox.unselected(self)
+
         mbox = asimap.mbox.Mailbox(cmd.mailbox_name, self.server)
         mbox.selected(self)
         self.mbox = mbox
         self.state = "selected"
         self.examine = examine
         return
+
+    #########################################################################
+    #
+    def do_examine(self, cmd):
+        """
+        examine a specific mailbox (just like select, but read only)
+        """
+        return self.do_select(cmd, examine = True)
 
         

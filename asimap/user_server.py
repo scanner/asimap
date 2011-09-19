@@ -353,6 +353,7 @@ class IMAPUserServer(asyncore.dispatcher):
         c = self.db.conn.cursor()
         c.execute("update user_server set uid_vv = ?", (str(self.uid_vv),))
         c.close()
+        self.db.commit()
         return self.uid_vv
     
     ##################################################################
