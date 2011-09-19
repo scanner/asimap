@@ -15,7 +15,7 @@ import mailbox
 
 # asimap import
 #
-from asimap.client import No, Bad
+from asimap.exceptions import No, Bad
 
 ##################################################################
 ##################################################################
@@ -138,7 +138,7 @@ class Mailbox(object):
         c = self.server.db.conn.cursor()
         c.execute("select uid_vv,attributes from mailboxes where name=?",
                   self.name)
-        if c.rowcount == 0:
+        if c.rowcount <= 0:
             self.uid_vv = self.server.get_next_uid_vv()
             c.execute("insert into mailboxes (name,uid_vv,attributes) "
                       "(?,?,?)", (name, str(self.uid_vv),

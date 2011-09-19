@@ -319,7 +319,7 @@ class IMAPUserServer(asyncore.dispatcher):
         """
         c = self.db.conn.cursor()
         c.execute("select uid_vv from user_server limit 1")
-        if c.rowcount == 0:
+        if c.rowcount <= 0:
             c.execute("insert into user_server (uid_vv) values (?)",
                       str(self.uid_vv))
             c.close()

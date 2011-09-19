@@ -16,6 +16,7 @@ import os.path
 # asimapd imports
 #
 import asimap.mbox
+from asimap.exceptions import No, Bad
 
 # Local constants
 #
@@ -32,23 +33,6 @@ SERVER_ID = { 'name'        : 'asimapd',
 # from rfc2060.
 #
 STATES = ("not_authenticated","authenticated","selected","logged_out")
-
-#######################################################################
-#
-# We have some basic exceptions used during the processing of commands
-# to determine how we respond in exceptional situations
-#
-class No(Exception):
-    def __init__(self, value = "no"):
-        self.value = value
-    def __str__(self):
-        return repr(self.value)
-
-class Bad(Exception):
-    def __init__(self, value = "bad"):
-        self.value = value
-    def __str__(self):
-        return repr(self.value)
 
 ##################################################################
 ##################################################################

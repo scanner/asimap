@@ -120,7 +120,7 @@ def initial_migration(c):
                                         "date text default CURRENT_TIMESTAMP)")
     c.execute("create table mailboxes (name text primary key,"
                                       "uid_vv integer, attributes text, "
-                                      "date text default CURRENT_TIMESTAMP")
+                                      "date text default CURRENT_TIMESTAMP)")
     return
 
 # The list of migrations we have so far. These are executed in order. They are
