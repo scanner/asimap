@@ -329,7 +329,7 @@ class IMAPUserServer(asyncore.dispatcher):
         Restores any user server persistent state we may have in the db.
         If there is none saved yet then we save a bunch of default values.
         """
-        c = self.db.conn.cursor()
+        c = self.db.cursor()
         c.execute("select uid_vv from user_server order by id desc limit 1")
         results = c.fetchone()
         if results is None:

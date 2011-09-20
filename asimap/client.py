@@ -387,6 +387,7 @@ class Authenticated(BaseClientHandler):
         if self.state == "selected":
             self.state = "authenticated"
             self.mbox.unselected(self)
+            self.mbox = None
 
         mbox = asimap.mbox.Mailbox(cmd.mailbox_name, self.server)
         mbox.selected(self)

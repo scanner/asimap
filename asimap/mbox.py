@@ -18,6 +18,7 @@ import mailbox
 # asimap import
 #
 from asimap.exceptions import No, Bad
+from asimap.constants import SYSTEM_FLAGS, PERMANENT_FLAGS, SYSTEM_FLAG_MAP
 
 ##################################################################
 ##################################################################
@@ -82,6 +83,8 @@ class Mailbox(object):
         self.server = server
         self.name = name
         self.uid_vv = None
+        self.mtime = None
+        self.next_uid = 1
 
         # You can not instantiate a mailbox that does not exist in the
         # underlying file system.
@@ -212,6 +215,48 @@ class Mailbox(object):
             raise No("Mailbox '%s' is already selected" % self.name)
         self.clients[client.client.port] = client
 
+        self.mailbox.lock()
+        try:
+            # Now send back messages to this client that it expects upon
+            # selecting a mailbox.
+            #
+            # Flags on messages are represented by being in an MH sequence.
+            # The sequence name == the flag on the message.
+            #
+            # NOTE: '\' is not a permitted character in an MH sequence name so
+            #       we translate "SRecent" to '\Recent', 'SUnseen
+            #
+            seq = self.mailbox.get_sequences()
+            mbox_keys = self.mailbox.keys()
+            self.client.client.push("* %d EXISTS\r\n" % len(mbox_keys))
+            if "SRecent" in seq:
+                self.client.client.push("* %d RECENT\r\n" % \
+                                            len(seq["SRecent"]))
+            else:
+                self.client.client.push("* 0 RECENT\r\n")
+            if "unseen" in seq:
+                # Message id of the first message that is unseen.
+                #
+                self.client.client.push("* OK [UNSEEN %d]\r\n" % \
+                                            mbox_keys.index(seq['unseen'][0]))
+            self.client.client.push("* OK [UIDVALIDITY %d]\r\n" % self.uid_vv)
+
+            # Each sequence is a valid flag.. we send back to the client all
+            # of the system flags and any other sequences that are defined on
+            # this mailbox.
+            #
+            flags = SYSTEM_FLAGS[:]
+            for k in seq.keys():
+                if k not in SYSTEM_FLAG_MAP:
+                    flags.append(k)
+            self.client.client.push("* FLAGS (%s)" % " ".join(flags))
+            self.client.client.push("* OK [PERMANENTFLAGS (%s)]" % \
+                                        " ".join(PERMANENT_FLAGS))
+        finally:
+            self.mailbox.unlock()
+
+        return
+
     ##################################################################
     #
     def unselected(self, client):
@@ -282,6 +327,90 @@ class Mailbox(object):
         - `name`: The name of the mailbox to delete
         - `server`: The user server object
         """
+        if name == "inbox":
+            raise InvalidMailbox("You are not allowed to delete the inbox")
+
+        try:
+            mailbox = server.mailbox.get_folder(name)
+        except mailbox.NoSuchMailboxError, e:
+            raise NoSuchMailbox("No such mailbox: '%s'" % name)
+
+        try:
+            mailbox.lock()
+            inferior_mailboxes = mailbox.list_folders()
+
+            # See if this mailbox is an activemailbox
+            #
+            active_mailbox = None
+            if name in server.active_mailboxes:
+                active_mailbox = server.active_mailboxes[name]
+
+            # When deleting a mailbox it will cause to be deleted every
+            # message in that mailbox to be deleted. If we have an
+            # activemailbox then we need to follow its forms for deleting all
+            # the messages. If we do not we can just delete them directly.
+            #
+            if active_mailbox:
+                # XXX How this works will be defined when we get to the
+                #     methods for storing flags on a message.
+                # for key in mailbox.iterkeys():
+                #     mailbox.message(key).store('\\Deleted')
+                # mailbox.expunge()
+                pass
+            else:
+                mailbox.clear()
+
+                # If there are any message references in our db do a SQL
+                # command that deletes all message entries stored in this
+                # mailbox.
+                #
+                # XXX c.execute("delete from messages where mailbox=?",(name,))
+
+            # If the mailbox has inferior mailboxes then we do not actually
+            # delete it. It gets the '\Noselect' flag though.
+            #
+            if len(inferior_mailboxes) > 0:
+                # If we have an active mailbox we will use its methods for
+                # setting the flags.
+                #
+                if active_mailbox:
+                    active_mailbox.set_flags(["\\Noselect"])
+                else:
+                    c = server.db.cursor()
+                    c.execute("update mailboxes set flags='\\Noselect' where "
+                              "name = ?", (name,))
+                    c.close()
+                    server.db.commit()
+            else:
+                # We have no inferior mailboxes. This mailbox is gone. If it
+                # is active we remove it from the list of active mailboxes
+                # and if it has any clients that have it selected they are
+                # moved back to the unauthenticated state.
+                #
+                if active_mailbox:
+                    for client in active_mailbox.clients.itervalues():
+                        client.state = "authenticated"
+                        client.mbox = None
+                    del server.active_mailboxes[name]
+
+                    # XXX rfc2060 says nothing about notifying other clients
+                    #     that the mailbox they have selected is now gone. ^_^;;
+                    #     I _guess_ they will get a "No" response to any
+                    #     'selected' state command they send us.
+                
+                # Delete all traces of the mailbox from our db.
+                #
+                c = server.db.cursor()
+                c.execute("delete from mailboxes where name = ?", (name,))
+                c.close()
+                server.db.commit()
+
+                # And remove the mailbox from the filesystem.
+                #
+                server.mailbox.remove_folder(name)
+
+        finally:
+            mailbox.close()
         return
 
     
