@@ -65,7 +65,7 @@ class Mailbox(object):
 
     ##################################################################
     #
-    def __init__(self, name, server, add_to_active = False):
+    def __init__(self, name, server, add_to_active = True):
         """
         This represents an active mailbox. You can only instantiate
         this class for mailboxes that actually in the file system.
@@ -161,6 +161,8 @@ class Mailbox(object):
         sequence.
 
         XXX Right now we do not do the uid/uid_vv resync..
+        XXX This is where the \Marked and \Unmarked flags need to be set on
+            the mailbx too!
         """
 
         # If the .mh_sequence file does not exist create it.
@@ -186,6 +188,14 @@ class Mailbox(object):
                 seq['Seen'] = msgs
             self.mailbox.set_sequences(seq)
 
+            # Now see if our mtime is different than the mtime of the acutal
+            # mail folder. If it is then update our version and the database.
+            #
+            mtime = int(os.path.getmtime(self.mailbox._path))
+            if self.mtime != mtime:
+                self.mtime = mtime
+                self._commit_to_db()
+
         finally:
             self.mailbox.unlock()
         return
@@ -199,33 +209,35 @@ class Mailbox(object):
         defaults.
         """
         c = self.server.db.cursor()
-        c.execute("select uid_vv,attributes from mailboxes where name=?",
-                  (self.name,))
+        c.execute("select uid_vv,attributes,mtime,next_uid from mailboxes "
+                  "where name=?", (self.name,))
         results = c.fetchone()
         if results is None:
             self.uid_vv = self.server.get_next_uid_vv()
-            c.execute("insert into mailboxes (name,uid_vv,attributes) values "
-                      "(?,?,?)", (self.name, str(self.uid_vv),
-                                  ",".join(self.attributes)))
+            c.execute("insert into mailboxes (name, uid_vv, attributes, "
+                      "mtime, next_uid) values (?,?,?,?,?)",
+                      (self.name, self.uid_vv,",".join(self.attributes),
+                       int(os.path.getmtime(self.mailbox._path)),self.next_uid))
             c.close()
             self.server.db.commit()
         else:
-            uid_vv,attributes = results
-            self.uid_vv = int(uid_vv)
+            self.uid_vv,attributes,self.mtime,self.next_uid = results
             self.attributes = attributes.split(",")
             c.close()
         return
 
     ##################################################################
     #
-    def _commit_to_db(self, ):
+    def _commit_to_db(self):
         """
         Write the state of the mailbox back to the database for persistent
         storage.
         """
         c = self.server.db.cursor()
-        c.execute("update mailboxes set uid_vv=?, attributes=? where name=?",
-                  (self.uid_vv, ",".join(self.attributes),self.name))
+        c.execute("update mailboxes set uid_vv=?, attributes=?, next_uid=?,"
+                  "mtime=? where name=?",
+                  (self.uid_vv, ",".join(self.attributes),self.next_uid,
+                   int(os.path.getmtime(self.mailbox._path)),self.name))
         c.close()
         self.server.db.commit()
         return

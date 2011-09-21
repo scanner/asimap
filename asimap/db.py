@@ -37,7 +37,8 @@ class Database(object):
         self.maildir = maildir
         self.db_filename = os.path.join(self.maildir, "asimap.db")
         self.log.debug("Opening database file: '%s'" % self.db_filename)
-        self.conn = sqlite3.connect(self.db_filename)
+        self.conn = sqlite3.connect(self.db_filename,
+                                    detect_types = sqlite3.PARSE_DECLTYPES)
         self.conn.execute("vacuum")
 
         # Set up the database if necessary. Apply any migrations that
@@ -128,6 +129,7 @@ def initial_migration(c):
                                         "date text default CURRENT_TIMESTAMP)")
     c.execute("create table mailboxes (name text primary key,"
                                       "uid_vv integer, attributes text, "
+                                      "mtime integer, next_uid integer, "
                                       "date text default CURRENT_TIMESTAMP)")
     return
 

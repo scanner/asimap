@@ -21,11 +21,12 @@ import os
 import pwd
 import sqlite3
 import mailbox
-
+import time
 # asimap imports
 #
 import asimap
 import asimap.parse
+import asimap.mbox
 
 from asimap.client import Authenticated
 from asimap.db import Database
@@ -353,7 +354,7 @@ class IMAPUserServer(asyncore.dispatcher):
         so that its uid_vv state remains up to date.
         """
         self.uid_vv += 1
-        c = self.db.conn.cursor()
+        c = self.db.cursor()
         c.execute("update user_server set uid_vv = ?", (str(self.uid_vv),))
         c.close()
         self.db.commit()
@@ -385,19 +386,10 @@ class IMAPUserServer(asyncore.dispatcher):
 
     ##################################################################
     #
-    def find_all_folders(self):
-        """
-        This goes through all of the folders and makes sure we have
-        db records for all of them.
-        """
-        pass
-
-    ##################################################################
-    #
     def check_all_folders(self, ):
         """
-        This goes through all of the folders and makes sure we have
-        db records for all of them.
+        This goes through all of the folders and makes sure we have db records
+        for all of them.
 
         It then sees if any of the mtimes we have on disk disagree with the
         mtimes we have in the database.
@@ -406,9 +398,62 @@ class IMAPUserServer(asyncore.dispatcher):
 
         If the folder is an active folder it may cause messages to be generated
         and sent to clients that are watching it in some way.
+
+        The folder's \Marked and \Unmarked attributes maybe set in the process
+        of this run.
         """
-        pass
-    
+        def find_subfolders(mbox, path):
+            """
+            Find all subfolders and if they are not in our dict of extant
+            mboxes, add it to the list of mboxes to instantiate.
+            """
+            for sub_mbox_name in mbox.list_folders():
+                name = os.path.join(path, sub_mbox_name)
+                if name not in extant_mboxes:
+                    mboxes_to_create.append(name)
+                find_subfolders(mbox.get_folder(sub_mbox_name), name)
+
+        # Get all of the folders and mtimes we know about from the sqlite db at
+        # the beginning. This takes more memory (not _that_ much really in the
+        # grand scheme of things) but it gives the answers in one go-round to
+        # the db and we get to deal with the data in an easier format.
+        #
+        extant_mboxes = { }
+        mboxes_to_create = []
+        c = self.db.cursor()
+        c.execute("select name, mtime from mailboxes order by name")
+        for row in c:
+            name, mtime = row
+            extant_mboxes[name] = mtime
+
+        find_subfolders(self.mailbox, "")
+
+        # Now 'mboxes_to_create' is a list of full mailbox names that were in
+        # the file system but not in the database. Instantiate these (with the
+        # create flag set so that we will not get any nasty surpises about
+        # missing .mh_sequence files)
+        #
+        for mbox_name in mboxes_to_create:
+            self.log.debug("Creating mailbox %s" % mbox_name)
+            asimap.mbox.Mailbox(mbox_name, self, add_to_active = False)
+
+        # Now go through all the previously extant mailboxes and see
+        # if their mtimes have changed warranting us to force them to resync.
+        #
+        for mbox_name,mtime in extant_mboxes.iteritems():
+            path = os.path.join(self.mailbox._path, mbox_name)
+            if int(os.path.getmtime(path)) != mtime:
+                # The mtime differs.. force the mailbox to resync.
+                #
+                self.log.debug("Mtime differs db: %d, dir: %d. Resyncing "
+                               "mbox %s" % (mtime, int(os.path.getmtime(path)),
+                                            mbox_name))
+                if mbox_name in self.active_mailboxes:
+                    self.active_mailboxes[mbox_name].resync()
+                else:
+                    m = asimap.mbox.Mailbox(mbox_name, self)
+                    m.resync()
+        return
     
     ##################################################################
     #
