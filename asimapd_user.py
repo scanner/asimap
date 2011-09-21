@@ -99,19 +99,31 @@ def main():
     sys.stdout.flush()
     sys.stdout.close()
 
+    # Before we start our main loop find all folders and potentially update
+    # their \Marked and \Unmarked attributes (and at least populating our
+    # db with all of the folders that we can find.)
+    #
+    server.check_all_folders()
+    
     # And now loop forever.. breaking out of the loop every now and then to
     # see if we have had no active clients for awhile (and if we do not then
     # we exit.)
     #
     log.info("Starting main loop.")
     while True:
-        asyncore.loop(count = 30)
+        asyncore.loop(count = 1)
 
-        # XXX Is this kosher? Using the length of the global socket_map
-        #     to see if there any channels outside of our listening one?
+        # At the end of each loop if we have had no clients for <n> minutes
+        # then we should exit to save resources because no one is using us.
         #
-        if len(asyncore.socket_map) == 1:
+        if server.time_since_no_clients is not None and \
+                time.time() - server.time_since_no_clients > 900:
             break
+
+        # Otherwise we do a run through all of our folders and see if any of
+        # them have changed.
+        #
+        server.check_all_folders()
 
     # Exiting!
     #

@@ -95,7 +95,15 @@ class Database(object):
         self.conn.commit()
         return
 
-
+    ##################################################################
+    #
+    def cursor(self):
+        """
+        A convenience method that retrieves a cursor for people to use.
+        """
+        return self.conn.cursor()
+        
+    
 ##################################################################
 ##################################################################
 #

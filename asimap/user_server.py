@@ -272,12 +272,10 @@ class IMAPUserServer(asyncore.dispatcher):
         - `options` : The options set on the command line
         - `maildir` : The directory our mailspool and database are in
         """
-        
         self.options = options
 
         asyncore.dispatcher.__init__(self)
-        self.log = logging.getLogger("%s.%s" % (__name__,
-                                                self.__class__.__name__))
+        self.log = logging.getLogger("%s.%s" % (__name__,self.__class__.__name__))
 
         self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
         self.set_reuse_addr()
@@ -285,9 +283,8 @@ class IMAPUserServer(asyncore.dispatcher):
         self.address = self.socket.getsockname()
         self.listen(BACKLOG)
         self.maildir = maildir
-        print repr(mailbox)
         self.mailbox = mailbox.MH(self.maildir, create = True)
-
+        
         # A global counter for the next available uid_vv is stored in the user
         # server object. Mailboxes will get this value and increment it when
         # they need a new uid_vv.
@@ -315,6 +312,12 @@ class IMAPUserServer(asyncore.dispatcher):
         # The key is the port number of the attached client.
         #
         self.clients = { }
+
+        # When we have any connected clients this time gets set to
+        # None. Otherwise use it to determine when we have hung around long
+        # enough with no connected clients and decide to exit.
+        #
+        self.time_since_no_clients = time.time()
 
         # and finally restore any pesistent state stored in the db for the user
         # server.
@@ -378,6 +381,34 @@ class IMAPUserServer(asyncore.dispatcher):
                 self.log.debug(message)
             else:
                 self.log.info(message)
+        return
+
+    ##################################################################
+    #
+    def find_all_folders(self):
+        """
+        This goes through all of the folders and makes sure we have
+        db records for all of them.
+        """
+        pass
+
+    ##################################################################
+    #
+    def check_all_folders(self, ):
+        """
+        This goes through all of the folders and makes sure we have
+        db records for all of them.
+
+        It then sees if any of the mtimes we have on disk disagree with the
+        mtimes we have in the database.
+
+        If they do we then do a resync of that folder.
+
+        If the folder is an active folder it may cause messages to be generated
+        and sent to clients that are watching it in some way.
+        """
+        pass
+    
     
     ##################################################################
     #

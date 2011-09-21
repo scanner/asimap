@@ -11,6 +11,7 @@ that holds all the folders.)
 
 # system imports
 #
+import os.path
 import time
 import logging
 import mailbox
@@ -64,7 +65,7 @@ class Mailbox(object):
 
     ##################################################################
     #
-    def __init__(self, name, server):
+    def __init__(self, name, server, add_to_active = False):
         """
         This represents an active mailbox. You can only instantiate
         this class for mailboxes that actually in the file system.
@@ -78,6 +79,17 @@ class Mailbox(object):
                     together all of the active mailboxes, the
                     database connection, and all of the IMAP clients
                     currently connected to us.
+
+        - `add_to_active`: if true when we create this instance we will also
+                           add it to the list of active folders on the server
+                           object.
+
+                           This is used when we wish to check if a folder has
+                           had any interesting changes that warrant it getting
+                           a '\Marked' or '\Unmarked' flag, but there are no
+                           clients currently selecting it or poking it so it
+                           does not warrant hanging around after we have
+                           updated its state.
         """
         self.log = logging.getLogger("%s.%s" % (__name__, self.__class__.__name__))
         self.server = server
@@ -93,7 +105,7 @@ class Mailbox(object):
             self.mailbox = server.mailbox.get_folder(name)
         except mailbox.NoSuchMailboxError, e:
             raise NoSuchMailbox("No such mailbox: '%s'" % name)
-        
+
         # The list of attributes on this mailbox (this is things such as
         # '\Noselect'
         #
@@ -113,7 +125,7 @@ class Mailbox(object):
         # active mailboxes and remove the ones that have no clients for some
         # period of time (like 15 minutes.)
         #
-        self.time_since_selected = None
+        self.time_since_selected = time.time()
 
         # The dict of clients that currently have this mailbox selected.
         # This includes clients that used 'EXAMINE' instead of 'SELECT'
@@ -126,13 +138,58 @@ class Mailbox(object):
         #
         self._restore_from_db()
 
+        # And make sure our mailbox on disk state is up to snuff and update
+        # our db if we need to.
+        #
+        self.resync()
+
         # And finally we add ourself to the dictionary of active mailboxes
         # that the server is tracking.
         #
-        self.server.active_mailboxes[name] = self
+        if add_to_active:
+            self.server.active_mailboxes[name] = self
 
         return
 
+    ##################################################################
+    #
+    def resync(self):
+        """
+        This will go through the mailbox on disk and make sure all of the
+        messages have proper uuid's, make sure we have a .mh_sequences file
+        and that it is up to date with what messages are in the 'seen'
+        sequence.
+
+        XXX Right now we do not do the uid/uid_vv resync..
+        """
+
+        # If the .mh_sequence file does not exist create it.
+        #
+        # XXX Bad that we are reaching in to the mailbox.MH object to
+        #     find thepath to the sequences file.
+        #
+        if not os.path.exists(os.path.join(self.mailbox._path,'.mh_sequences')):
+            os.close(os.open(os.path.join(self.mailbox._path, '.mh_sequences'),
+                             os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0600))
+
+        try:
+            self.mailbox.lock()
+            # Whenever we resync the mailbox we update the sequence for 'seen'
+            # based on 'seen' are all the messages that are NOT in the
+            # 'unseen' sequence.
+            #
+            seq = self.mailbox.get_sequences()
+            msgs = self.mailbox.keys()
+            if 'unseen' in seq:
+                seq['Seen'] = list(set(msgs) - set(seq['unseen']))
+            else:
+                seq['Seen'] = msgs
+            self.mailbox.set_sequences(seq)
+
+        finally:
+            self.mailbox.unlock()
+        return
+    
     ##################################################################
     #
     def _restore_from_db(self):
@@ -141,7 +198,7 @@ class Mailbox(object):
         mailbox does not exist in the db we create an entry for it with
         defaults.
         """
-        c = self.server.db.conn.cursor()
+        c = self.server.db.cursor()
         c.execute("select uid_vv,attributes from mailboxes where name=?",
                   (self.name,))
         results = c.fetchone()
@@ -157,6 +214,20 @@ class Mailbox(object):
             self.uid_vv = int(uid_vv)
             self.attributes = attributes.split(",")
             c.close()
+        return
+
+    ##################################################################
+    #
+    def _commit_to_db(self, ):
+        """
+        Write the state of the mailbox back to the database for persistent
+        storage.
+        """
+        c = self.server.db.cursor()
+        c.execute("update mailboxes set uid_vv=?, attributes=? where name=?",
+                  (self.uid_vv, ",".join(self.attributes),self.name))
+        c.close()
+        self.server.db.commit()
         return
     
     ##################################################################
@@ -213,7 +284,15 @@ class Mailbox(object):
         """
         if client.client.port in self.clients:
             raise No("Mailbox '%s' is already selected" % self.name)
+
+        if '\\Noselect' in self.attributes:
+            raise No("You can not select the mailbox '%s'" % self.name)
+        
         self.clients[client.client.port] = client
+
+        # A client has us selected. Turn of the expiry time.
+        #
+        self.time_since_selected = None
 
         self.mailbox.lock()
         try:
@@ -228,29 +307,29 @@ class Mailbox(object):
             #
             seq = self.mailbox.get_sequences()
             mbox_keys = self.mailbox.keys()
-            self.client.client.push("* %d EXISTS\r\n" % len(mbox_keys))
+            client.client.push("* %d EXISTS\r\n" % len(mbox_keys))
             if "SRecent" in seq:
-                self.client.client.push("* %d RECENT\r\n" % \
+                client.client.push("* %d RECENT\r\n" % \
                                             len(seq["SRecent"]))
             else:
-                self.client.client.push("* 0 RECENT\r\n")
+                client.client.push("* 0 RECENT\r\n")
             if "unseen" in seq:
                 # Message id of the first message that is unseen.
                 #
-                self.client.client.push("* OK [UNSEEN %d]\r\n" % \
+                client.client.push("* OK [UNSEEN %d]\r\n" % \
                                             mbox_keys.index(seq['unseen'][0]))
-            self.client.client.push("* OK [UIDVALIDITY %d]\r\n" % self.uid_vv)
+            client.client.push("* OK [UIDVALIDITY %d]\r\n" % self.uid_vv)
 
             # Each sequence is a valid flag.. we send back to the client all
             # of the system flags and any other sequences that are defined on
             # this mailbox.
             #
-            flags = SYSTEM_FLAGS[:]
+            flags = list(SYSTEM_FLAGS)
             for k in seq.keys():
                 if k not in SYSTEM_FLAG_MAP:
                     flags.append(k)
-            self.client.client.push("* FLAGS (%s)" % " ".join(flags))
-            self.client.client.push("* OK [PERMANENTFLAGS (%s)]" % \
+            client.client.push("* FLAGS (%s)\r\n" % " ".join(flags))
+            client.client.push("* OK [PERMANENTFLAGS (%s)]\r\n" % \
                                         " ".join(PERMANENT_FLAGS))
         finally:
             self.mailbox.unlock()
@@ -283,6 +362,50 @@ class Mailbox(object):
             self.log.debug("unselected(): No clients, starting timer")
             self.time_since_selected = time.time()
         return
+
+    ####################################################################
+    #
+    @classmethod
+    def is_outofdate(cls, name, server):
+        """
+        This gets the mtime of the folder both as it is recorded in the
+        database and what it is in the file actual file system and compares
+        them.
+
+        We use the active mailbox object if it exists instead of doing a
+        sqlite3 query.
+
+        If the mtime recorded in the db differs from the mtime of the file
+        system then we return true.
+
+        This provides a way to see if a folder has been modified without
+        instantiating it.
+
+        Arguments:
+        - `cls`: The Mailbox class
+        - `name`: The name of the mailbox
+        - `server`: a handle on the server object
+        """
+        if name in server.active_mailboxes:
+            mbox_mtime = server.active_mailboxes[name].mtime
+        else:
+            try:
+                c = self.server.db.cursor()
+                c.execute("select mtime from mailboxes where name=?",
+                          (self.name,))
+                results = c.fetchone()
+                if results is None:
+                    raise NoSuchMailbox("The mailbox '%s' does not exist")
+                else:
+                    mbox_mtime = int(results[0])
+            finally:
+                c.close()
+
+        # XXX Ug. Not good to reach in to the mailbox to get the path to the
+        #     directory..
+        #
+        dir_mtime = int(os.path.getmtime(os.path.abspath(os.path.expanduser(name))))
+        return mbox_mtime != dir_mtime
     
     #########################################################################
     #
@@ -295,16 +418,54 @@ class Mailbox(object):
         if name == "inbox":
             raise InvalidMailbox("Can not create a mailbox named 'inbox'")
 
-        # ... ....
-        # ... .... Do useful stuff here
-        # ... ....
+        log = logging.getLogger("%s.%s" % (__name__, cls.__name__))
+
+        # If the mailbox already exists than it can not be created either One
+        # exception is if the mailbox exists but with the "\Noselect"
+        # flag.. this means that it was previously deleted and sitting in its
+        # place is a phantom mailbox. In this case we remove the '\Noselect'
+        # flag and return success.
+        #
+        if name in server.active_mailboxes:
+            mbox = server.active_mailboxes
+        else:
+            try:
+                mbox = cls(name,server)
+            except NoSuchMailbox:
+                mbox = None
+
+        # See if the mailbox exists but with the '\Noselect' attribute.
+        #
+        if mbox:
+            if '\\Noselect' in mbox.attributes:
+                mbox.attributes = []
+                mbox._commit_to_db()
+            else:
+                raise MailboxExists("Mailbox %s already exists" % name)
         
-        return cls(name, server)
+        # The mailbox does not exist, we can create it.
+        #
+        # NOTE: We need to create any intermediate path elements, and what is
+        #       more those intermediate path elements are not actually created
+        #       mailboxes until they have been explicitly 'created'. But that
+        #       is annoying. I will just create the intermediary directories.
+        #
+        mbox_chain = []
+        chain_name = name
+        while chain_name != "":
+            mbox_chain.append(chain_name)
+            chain_name = os.path.dirname(chain_name)
+
+        mbox_chain.reverse()
+        for m in mbox_chain:
+            mbox = mailbox.MH(m, create = True)
+            mbox = cls(m, server)
+        return
     
     ####################################################################
     #
     @classmethod
-    def delete(name, server):
+    def delete(cls, name, server):
         """
         Delete the specified mailbox.
 
@@ -335,6 +496,7 @@ class Mailbox(object):
         except mailbox.NoSuchMailboxError, e:
             raise NoSuchMailbox("No such mailbox: '%s'" % name)
 
+        do_delete = False
         try:
             mailbox.lock()
             inferior_mailboxes = mailbox.list_folders()
@@ -344,60 +506,48 @@ class Mailbox(object):
             active_mailbox = None
             if name in server.active_mailboxes:
                 active_mailbox = server.active_mailboxes[name]
+            else:
+                active_mailbox = cls(name, server)
 
+            # You can not delete a mailbox that has the '\Noselect' attribute.
+            #
+            if '\\Noselect' in mailbox.attributes:
+                raise InvalidMailbox("The mailbox '%s' is already deleted" % \
+                                         name)
+                
             # When deleting a mailbox it will cause to be deleted every
             # message in that mailbox to be deleted. If we have an
-            # activemailbox then we need to follow its forms for deleting all
-            # the messages. If we do not we can just delete them directly.
+            # activemailbox we need to tell all clients that have it selected
+            # that the number of messages in it has changed.
             #
-            if active_mailbox:
-                # XXX How this works will be defined when we get to the
-                #     methods for storing flags on a message.
-                # for key in mailbox.iterkeys():
-                #     mailbox.message(key).store('\\Deleted')
-                # mailbox.expunge()
-                pass
-            else:
-                mailbox.clear()
-
-                # If there are any message references in our db do a SQL
-                # command that deletes all message entries stored in this
-                # mailbox.
-                #
-                # XXX c.execute("delete from messages where mailbox=?",(name,))
+            mailbox.clear()
+            for client in active_mailbox.clients.itervalues():
+                client.client.push("* 0 EXISTS\r\n")
+                client.client.push("* 0 RECENT\r\n")
 
             # If the mailbox has inferior mailboxes then we do not actually
             # delete it. It gets the '\Noselect' flag though.
             #
             if len(inferior_mailboxes) > 0:
-                # If we have an active mailbox we will use its methods for
-                # setting the flags.
-                #
-                if active_mailbox:
-                    active_mailbox.set_flags(["\\Noselect"])
-                else:
-                    c = server.db.cursor()
-                    c.execute("update mailboxes set flags='\\Noselect' where "
-                              "name = ?", (name,))
-                    c.close()
-                    server.db.commit()
+                active_mailbox.attributes = ["\\Noselect"]
+                active_mailbox._commit_to_db()
             else:
                 # We have no inferior mailboxes. This mailbox is gone. If it
                 # is active we remove it from the list of active mailboxes
                 # and if it has any clients that have it selected they are
                 # moved back to the unauthenticated state.
                 #
-                if active_mailbox:
-                    for client in active_mailbox.clients.itervalues():
-                        client.state = "authenticated"
-                        client.mbox = None
-                    del server.active_mailboxes[name]
+                # XXX rfc2060 says nothing about notifying other clients
+                #     that the mailbox they have selected is now gone. ^_^;;
+                #     I _guess_ they will get a "No" response to any
+                #     'selected' state command they send us.
+                #     Perhaps we should send back the 'TRYCREATE' flag?
+                #
+                for client in active_mailbox.clients.itervalues():
+                    client.state = "authenticated"
+                    client.mbox = None
+                del server.active_mailboxes[name]
 
-                    # XXX rfc2060 says nothing about notifying other clients
-                    #     that the mailbox they have selected is now gone. ^_^;;
-                    #     I _guess_ they will get a "No" response to any
-                    #     'selected' state command they send us.
-                
                 # Delete all traces of the mailbox from our db.
                 #
                 c = server.db.cursor()
@@ -405,14 +555,17 @@ class Mailbox(object):
                 c.close()
                 server.db.commit()
 
-                # And remove the mailbox from the filesystem.
+                # We need to delay the 'delete' of the actual mailbox until
+                # after we release the lock.. but we only delete the actual
+                # mailbox outside of the try/finally close if we are actually
+                # deleting it.
                 #
-                server.mailbox.remove_folder(name)
-
+                do_delete = True
         finally:
             mailbox.close()
-        return
 
-    
-        
-    
+        # And remove the mailbox from the filesystem.
+        #
+        if do_delete:
+            server.mailbox.remove_folder(name)
+        return

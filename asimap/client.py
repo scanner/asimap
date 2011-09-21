@@ -394,7 +394,9 @@ class Authenticated(BaseClientHandler):
         self.mbox = mbox
         self.state = "selected"
         self.examine = examine
-        return
+        if self.examine:
+            return "[READ-ONLY]"
+        return "[READ-WRITE]"
 
     #########################################################################
     #
@@ -404,4 +406,27 @@ class Authenticated(BaseClientHandler):
         """
         return self.do_select(cmd, examine = True)
 
+    ##################################################################
+    #
+    def do_create(self, cmd):
+        """
+        Create the specified mailbox.
         
+        Arguments:
+        - `cmd`: The IMAP command we are executing
+        """
+        asimap.mbox.Mailbox.create(cmd.mailbox_name, self.server)
+        return
+
+    ##################################################################
+    #
+    def do_delete(self, cmd):
+        """
+        Delete the specified mailbox.
+
+        Arguments:
+        - `cmd`: The IMAP command we are executing
+        """
+        asimap.mbox.Mailbox.delete(cmd.mailbox_name, self.server)
+        return
+
