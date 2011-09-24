@@ -130,6 +130,8 @@ def initial_migration(c):
     c.execute("create table mailboxes (name text primary key,"
                                       "uid_vv integer, attributes text, "
                                       "mtime integer, next_uid integer, "
+                                      "num_msgs integer, num_recent integer, "
+                                      "first_unseen integer, "
                                       "date text default CURRENT_TIMESTAMP)")
     return
 

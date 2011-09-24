@@ -22,10 +22,10 @@ PERMANENT_FLAGS = (r'\Answered', r'\Deleted', r'\Draft', r'\Flagged', r'\Seen',
 # the actual mh sequence name and the corresponding system flag.
 #
 SYSTEM_FLAG_MAP = {
-    'Answered' : r'\Answered',
+    'replied'  : r'\Answered',
     'Deleted'  : r'\Deleted',
     'Draft'    : r'\Draft',
-    'Flagged'  : r'\Flagged',
+    'flagged'  : r'\Flagged',
     'Recent'   : r'\Recent',
     'Seen'     : r'\Seen',
     'unseen'   : r'\Unseen',

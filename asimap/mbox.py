@@ -15,11 +15,16 @@ import os.path
 import time
 import logging
 import mailbox
+import re
+from email.parser import HeaderParser
 
 # asimap import
 #
 from asimap.exceptions import No, Bad
 from asimap.constants import SYSTEM_FLAGS, PERMANENT_FLAGS, SYSTEM_FLAG_MAP
+
+
+uid_re = re.compile(r'^(?P<uidvv>\d+)\.(?P<uid>\d+)$')
 
 ##################################################################
 ##################################################################
@@ -91,11 +96,11 @@ class Mailbox(object):
                            does not warrant hanging around after we have
                            updated its state.
         """
-        self.log = logging.getLogger("%s.%s" % (__name__, self.__class__.__name__))
+        self.log = logging.getLogger("%s.%s.%s" % (__name__, self.__class__.__name__,name))
         self.server = server
         self.name = name
-        self.uid_vv = None
-        self.mtime = None
+        self.uid_vv = self.server.get_next_uid_vv()
+        self.mtime = 0
         self.next_uid = 1
 
         # You can not instantiate a mailbox that does not exist in the
@@ -109,7 +114,7 @@ class Mailbox(object):
         # The list of attributes on this mailbox (this is things such as
         # '\Noselect'
         #
-        self.attributes = []
+        self.attributes = set()
 
         # When a mailbox is no longer selected by _any_ client, then after a
         # period of time we destroy this instance of the Mailbox object (NOT
@@ -160,9 +165,23 @@ class Mailbox(object):
         and that it is up to date with what messages are in the 'seen'
         sequence.
 
-        XXX Right now we do not do the uid/uid_vv resync..
-        XXX This is where the \Marked and \Unmarked flags need to be set on
-            the mailbx too!
+        This is also what controls setting the '\Marked' and '\Unmarked' flags
+        on the mailbox as well as marking individual messages as '\Recent'
+
+        We have a '\Seen' flag and we derive this by seeing what messages are
+        in the unseen sequence.
+
+        Since the definition of '\Recent' in rfc2060 is rather vague we are
+        going to take all messages marked as '\Unseen' and also give them the
+        attribute '\Recent'
+
+        Any folder with unseen messages will be tagged with '\Marked.' That is
+        how we are going to treat that flag.
+
+        Calling this method will cause 'EXISTS' and 'RECENT' messages to be
+        sent to any clients attached to this mailbox if the mailbox has had
+        changes in the number of messages or the messages that were added to
+        it.
         """
 
         # If the .mh_sequence file does not exist create it.
@@ -183,12 +202,47 @@ class Mailbox(object):
             seq = self.mailbox.get_sequences()
             msgs = self.mailbox.keys()
             if 'unseen' in seq:
+                # Create the 'Seen' sequence by the difference between all the
+                # messages in the mailbox and the unseen ones.
+                #
+                # The Recent sequence mirrors the unseen sequence.
+                #
                 seq['Seen'] = list(set(msgs) - set(seq['unseen']))
+                seq['Recent'] = seq['unseen']
+
+                # A mailbox gets '\Marked' if it has any unseen messages.
+                #
+                if '\\Unmarked' in self.attributes:
+                    self.attributes.remove('\\Unmarked')
+                self.attributes.add('\\Marked')
+
             else:
+                # There are no unseen messages in the mailbox thus the Seen
+                # sequence mirrors the set of all messages.
+                #
                 seq['Seen'] = msgs
+
+                # Since the Recent sequence mirrors the unseen sequence make
+                # sure it is removed too.
+                #
+                if 'Recent' in seq:
+                    del seq['Recent']
+
+                # A mailbox is '\Unmarked' if it has no unseen messages.
+                #
+                if '\\Marked' in self.attributes:
+                    self.attributes.remove('\\Marked')
+                self.attributes.add('\\Unmarked')
+
             self.mailbox.set_sequences(seq)
 
-            # Now see if our mtime is different than the mtime of the acutal
+            # Now comes the big work. We need to make sure every message
+            # has a UID following the rules of the rfc. This is a fairly
+            # hairy process so we put it off into its own method.
+            #
+            self._check_update_all_msg_uids()
+
+            # Now see if our mtime is different than the mtime of the actual
             # mail folder. If it is then update our version and the database.
             #
             mtime = int(os.path.getmtime(self.mailbox._path))
@@ -199,6 +253,112 @@ class Mailbox(object):
         finally:
             self.mailbox.unlock()
         return
+    
+    ##################################################################
+    #
+    def _check_update_all_msg_uids(self):
+        """
+        This will loop through all of the messages in the folder checking to
+        see if they have UID_VV.UID's in them. If they do not or it is out of
+        sequence (UID's must be monotonically increasing at all times) then we
+        have to generate new UID's for every message after the out-of-sequence
+        one we encountered.
+
+        NOTE: The important thing to note is that we store the uid_vv / uid for
+              message _in the message_ itself. This way if the message is moved
+              around we will know if it is out of sequence, a totally new
+              message, or from a different mailbox.
+
+              The downside is that we need to pick at every message to find
+              this header information but we will try to do this as efficiently
+              as possible.
+
+        NOTE: My big worry is the spam mailboxes which get many many messages
+              per minute which means we will be scanning that directory
+              constantly and that load may be just too much even for our
+              'acceptably slow server'.
+
+              We may need to add an attribute to a mailbox like "do not scan"
+              so that it is never looked at. We generally do not care if we get
+              new mail in the spam folder anyways.
+        """
+
+        # As we go through messages we need to know if the current UID we are
+        # looking at is proper (ie: greater than the one of the previous
+        # message.)
+        #
+        # If we hit one that is not then from that message on we need to
+        # re-number all of their UID's.
+        #
+        redoing_rest_of_folder = False
+        prev_uid = 0
+
+        # Loop through all of the messages in this mailbox.
+        #
+        # For each message see if it has the header that we use to define the
+        # uid_vv / uid for a message.
+        #
+        # If the message does not, or if it has a uid lower than the previous
+        # uid, or if its uid_vv does not match the uid_vv of this mailbox then
+        # 'redoing' goes to true and we now update this message and every
+        # successive message adding a proper uid_vv/uid header.
+        #
+        for msg in self.mailbox.keys():
+
+            # If we are not redoing the rest of the folder check to see if
+            # this messages uid_vv / uid is what we expect.
+            #
+            if not redoing_rest_of_folder:
+                try:
+                    fp = self.mailbox.get_file(key)
+                    msg_hdrs = HeaderParser().parse(fp, headersonly = True)
+                finally:
+                    fp.close()
+
+                if 'x-asimapd-uid' in msg_hdrs:
+                    try:
+                        uid_vv,uid = msg_hdrs['x-asimapd-uid'].split(".")
+                        uid_vv = int(uid_vv)
+                        uid = int(uid)
+
+                        # If the uid_vv is different or the uid is NOT
+                        # monotonically increasing from the previous uid then
+                        # we have to redo the rest of the folder.
+                        #
+                        if uid_vv != self.uid_vv or uid <= prev_uid:
+                            redoing_rest_of_folder = True
+                        else:
+                            prev_uid == uid
+
+                    except ValueError:
+                        # the uid was not properly formed. This counts as
+                        # having no uid.
+                        #
+                        self.log.info("msg %s had malformed uid header: %s" % \
+                                          (key, msg_hdrs['x-asimapd-uid']))
+                        redoing_rest_of_folder = True
+
+            # at this point we MAY be redoing this message (and the rest of the
+            # folder) so we check again.. if we are not then skip to the next
+            # iteration of this loop.
+            #
+            if redoing_rest_of_folder:
+                self._update_msg_uid(key)
+        
+        # And we are done..
+        #
+        return
+
+    ##################################################################
+    #
+    def _update_msg_uid(self, msg):
+        """
+        
+        Arguments:
+        - `msg`:
+        """
+        pass
+    
     
     ##################################################################
     #
@@ -213,7 +373,6 @@ class Mailbox(object):
                   "where name=?", (self.name,))
         results = c.fetchone()
         if results is None:
-            self.uid_vv = self.server.get_next_uid_vv()
             c.execute("insert into mailboxes (name, uid_vv, attributes, "
                       "mtime, next_uid) values (?,?,?,?,?)",
                       (self.name, self.uid_vv,",".join(self.attributes),
@@ -222,7 +381,7 @@ class Mailbox(object):
             self.server.db.commit()
         else:
             self.uid_vv,attributes,self.mtime,self.next_uid = results
-            self.attributes = attributes.split(",")
+            self.attributes = set(attributes.split(","))
             c.close()
         return
 
@@ -538,10 +697,14 @@ class Mailbox(object):
                 client.client.push("* 0 RECENT\r\n")
 
             # If the mailbox has inferior mailboxes then we do not actually
-            # delete it. It gets the '\Noselect' flag though.
+            # delete it. It gets the '\Noselect' flag though. It also gets a
+            # new uid_vv so that if it is recreated before being fully removed
+            # from the db no imap client will confuse it with the existing
+            # mailbox.
             #
             if len(inferior_mailboxes) > 0:
-                active_mailbox.attributes = ["\\Noselect"]
+                active_mailbox.attributes = set("\\Noselect")
+                active_mailbox.uid_vv = server.get_next_uid_vv()
                 active_mailbox._commit_to_db()
             else:
                 # We have no inferior mailboxes. This mailbox is gone. If it

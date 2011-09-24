@@ -248,6 +248,14 @@ class IMAPUserClientHandler(asynchat.async_chat):
         del self.server.clients[self.port]
         for mbox in self.server.active_mailboxes.itervalues():
             mbox.unselected(self.cmd_processor)
+
+        # If the user server has no more clients then start the idle timeout
+        # clock
+        #
+        if len(self.server.clients) == 0:
+            self.log("cleanup(): Server has no clients, starting timeout clock")
+            self.time_since_no_clients = time.time()
+
         return
 
 ##################################################################
@@ -467,6 +475,7 @@ class IMAPUserServer(asyncore.dispatcher):
         if pair is not None:
             sock,addr = pair
             self.log.info("Incoming connection from %s" % repr(pair))
+            self.time_since_no_clients = None
             handler = IMAPUserClientHandler(sock, addr[1], self, self.options)
             self.clients[addr[1]] = handler
         
