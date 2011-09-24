@@ -95,7 +95,9 @@ class Mailbox(object):
         self.name = name
         self.uid_vv = self.server.get_next_uid_vv()
         self.mtime = 0
-        self.next_uid = 1
+        self.next_uid = 0
+        self.num_msgs = 0
+        self.num_recent = 0
 
         # You can not instantiate a mailbox that does not exist in the
         # underlying file system.
@@ -105,10 +107,11 @@ class Mailbox(object):
         except mailbox.NoSuchMailboxError, e:
             raise NoSuchMailbox("No such mailbox: '%s'" % name)
 
+
         # The list of attributes on this mailbox (this is things such as
         # '\Noselect'
         #
-        self.attributes = set()
+        self.attributes = set('\\Unmarked')
 
         # When a mailbox is no longer selected by _any_ client, then after a
         # period of time we destroy this instance of the Mailbox object (NOT
@@ -147,13 +150,6 @@ class Mailbox(object):
         # our db if we need to.
         #
         self.resync()
-
-        # And finally we add ourself to the dictionary of active mailboxes
-        # that the server is tracking.
-        #
-        if add_to_active:
-            self.server.active_mailboxes[name] = self
-
         return
 
     ##################################################################
@@ -278,18 +274,16 @@ class Mailbox(object):
                 # compare to next time we enter this method.
                 #
                 self.num_msgs = len(msgs)
-                self.num_recent = len(seq['Recent'])
+                self.num_recent = 0
+                if 'Recent' in seq:
+                    self.num_recent = len(seq['Recent'])
 
                 # Notify all listening clients that the number of messages and
                 # number of recent messages has changed.
                 #
                 for client in self.clients:
-                    client.client.push("* %d EXISTS\r\n" % len(msgs))
-                    if 'Recent' in seq:
-                        client.client.push("* %d RECENT\r\n" % \
-                                               len(seq["Recent"]))
-                    else:
-                        client.client.push("* 0 RECENT\r\n")
+                    client.client.push("* %d EXISTS\r\n" % self.num_msgs)
+                    client.client.push("* %d RECENT\r\n" % self.num_recent)
 
             self._commit_to_db()
 
@@ -403,7 +397,7 @@ class Mailbox(object):
                 #
                 self.next_uid +=1
                 new_uid = "%010d.%010d" % (self.uid_vv, self.next_uid)
-                del msg['x-asimapd-uid']
+                del full_msg['X-asimapd-uid']
                 full_msg['X-asimapd-uid'] = new_uid
                 self.mailbox[msg] = full_msg
         
