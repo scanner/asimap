@@ -131,7 +131,6 @@ def initial_migration(c):
                                       "uid_vv integer, attributes text, "
                                       "mtime integer, next_uid integer, "
                                       "num_msgs integer, num_recent integer, "
-                                      "first_unseen integer, "
                                       "date text default CURRENT_TIMESTAMP)")
     return
 

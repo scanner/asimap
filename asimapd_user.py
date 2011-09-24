@@ -117,8 +117,8 @@ def main():
         # At the end of each loop if we have had no clients for <n> minutes
         # then we should exit to save resources because no one is using us.
         #
-        if server.time_since_no_clients is not None and \
-                time.time() - server.time_since_no_clients > 900:
+        if server.expiry is not None and \
+               server.expiry < time.time():
             break
 
         # Otherwise we do a run through all of our folders and see if any of

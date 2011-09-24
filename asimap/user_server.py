@@ -254,7 +254,7 @@ class IMAPUserClientHandler(asynchat.async_chat):
         #
         if len(self.server.clients) == 0:
             self.log("cleanup(): Server has no clients, starting timeout clock")
-            self.time_since_no_clients = time.time()
+            self.expiry = time.time() + 1800
 
         return
 
@@ -326,7 +326,7 @@ class IMAPUserServer(asyncore.dispatcher):
         # None. Otherwise use it to determine when we have hung around long
         # enough with no connected clients and decide to exit.
         #
-        self.time_since_no_clients = time.time()
+        self.expiry = time.time() + 1800
 
         # and finally restore any pesistent state stored in the db for the user
         # server.
@@ -443,7 +443,7 @@ class IMAPUserServer(asyncore.dispatcher):
         #
         for mbox_name in mboxes_to_create:
             self.log.debug("Creating mailbox %s" % mbox_name)
-            asimap.mbox.Mailbox(mbox_name, self, add_to_active = False)
+            asimap.mbox.Mailbox(mbox_name, self, expiry = 45)
 
         # Now go through all the previously extant mailboxes and see
         # if their mtimes have changed warranting us to force them to resync.
@@ -461,6 +461,21 @@ class IMAPUserServer(asyncore.dispatcher):
                 else:
                     m = asimap.mbox.Mailbox(mbox_name, self)
                     m.resync()
+
+        # And finally check all active mailboxes to see if they have no clients
+        # and are beyond their expiry time.
+        #
+        expired = []
+        for mbox_name,mbox in self.active_mailboxes.iteritems():
+            if len(mbox.clients) == 0 and \
+                    mbox.expiry is not None and \
+                    mbox.expiry < time.time():
+                expired.append(mbox_name)
+
+        for mbox_name in expired:
+            self.log.debug("Expiring mailbox '%s'" % mbox_name)
+            del self.active_mailboxes(mbox_name)
+
         return
     
     ##################################################################
@@ -475,7 +490,7 @@ class IMAPUserServer(asyncore.dispatcher):
         if pair is not None:
             sock,addr = pair
             self.log.info("Incoming connection from %s" % repr(pair))
-            self.time_since_no_clients = None
+            self.expiry = None
             handler = IMAPUserClientHandler(sock, addr[1], self, self.options)
             self.clients[addr[1]] = handler
         

@@ -70,7 +70,7 @@ class Mailbox(object):
 
     ##################################################################
     #
-    def __init__(self, name, server, add_to_active = True):
+    def __init__(self, name, server, expiry = None):
         """
         This represents an active mailbox. You can only instantiate
         this class for mailboxes that actually in the file system.
@@ -85,16 +85,10 @@ class Mailbox(object):
                     database connection, and all of the IMAP clients
                     currently connected to us.
 
-        - `add_to_active`: if true when we create this instance we will also
-                           add it to the list of active folders on the server
-                           object.
+        - `expiry`: If not none then it specifies the number of seconds in the
+                    future when we want this mailbox to be turfed out if it has
+                    no active clients.
 
-                           This is used when we wish to check if a folder has
-                           had any interesting changes that warrant it getting
-                           a '\Marked' or '\Unmarked' flag, but there are no
-                           clients currently selecting it or poking it so it
-                           does not warrant hanging around after we have
-                           updated its state.
         """
         self.log = logging.getLogger("%s.%s.%s" % (__name__, self.__class__.__name__,name))
         self.server = server
@@ -125,12 +119,18 @@ class Mailbox(object):
         # client is actively looking at, but we take our time doing this in
         # case a client is selecting between various mailboxes.
         #
-        # Once no client has this mailbox selected this gets a
-        # timestamp. Every loop through the main server will check all the
-        # active mailboxes and remove the ones that have no clients for some
-        # period of time (like 15 minutes.)
+        # Whenever the list of active clients attached to this mailbox is
+        # non-zero self.expiry will have a value of None. Otherwise it has the
+        # time since epoch in seconds when this mailbox should be turfed out.
         #
-        self.time_since_selected = time.time()
+        # We let the caller pass in a desired expiry. This is used when just
+        # wanting to resync() a mailbox but not have it hang around for a long
+        # time.
+        #
+        if expiry is None:
+            self.expiry = time.time() + 900
+        else:
+            self.expiry = time.time() + expiry
 
         # The dict of clients that currently have this mailbox selected.
         # This includes clients that used 'EXAMINE' instead of 'SELECT'
@@ -156,6 +156,28 @@ class Mailbox(object):
 
         return
 
+    ##################################################################
+    #
+    def marked(self, bool):
+        """
+        A helper function that toggles the '\Marked' or '\Unmarked' flags on a
+        folder (another one of those annoying things in the RFC you really only
+        need one of these flags.)
+
+        Arguments:
+        - `bool`: if True the \Marked attribute is added to the folder. If
+                  False the \Unmarked attribute is added to the folder.
+        """
+        if bool:
+            if '\\Unmarked' in self.attributes:
+                self.attributes.remove('\\Unmarked')
+                self.attributes.add('\\Marked')
+        else:
+            if '\\Marked' in self.attributes:
+                self.attributes.remove('\\Marked')
+                self.attributes.add('\\Unmarked')
+        return
+    
     ##################################################################
     #
     def resync(self):
@@ -212,10 +234,7 @@ class Mailbox(object):
 
                 # A mailbox gets '\Marked' if it has any unseen messages.
                 #
-                if '\\Unmarked' in self.attributes:
-                    self.attributes.remove('\\Unmarked')
-                self.attributes.add('\\Marked')
-
+                self.marked(True)
             else:
                 # There are no unseen messages in the mailbox thus the Seen
                 # sequence mirrors the set of all messages.
@@ -230,9 +249,7 @@ class Mailbox(object):
 
                 # A mailbox is '\Unmarked' if it has no unseen messages.
                 #
-                if '\\Marked' in self.attributes:
-                    self.attributes.remove('\\Marked')
-                self.attributes.add('\\Unmarked')
+                self.marked(False)
 
             self.mailbox.set_sequences(seq)
 
@@ -240,15 +257,41 @@ class Mailbox(object):
             # has a UID following the rules of the rfc. This is a fairly
             # hairy process so we put it off into its own method.
             #
-            self._check_update_all_msg_uids()
+            self._check_update_all_msg_uids(msgs)
 
             # Now see if our mtime is different than the mtime of the actual
             # mail folder. If it is then update our version and the database.
             #
-            mtime = int(os.path.getmtime(self.mailbox._path))
-            if self.mtime != mtime:
-                self.mtime = mtime
-                self._commit_to_db()
+            self.mtime = int(os.path.getmtime(self.mailbox._path))
+
+            # Before we finish if the number of messages in the folder or the
+            # number of messages in the Recent sequence is different than the
+            # last time we did a resync then this folder is intersted (\Marked)
+            # and we need to tell all clients listening to this folder about
+            # its new sizes.
+            #
+            seq = self.mailbox.get_sequences()
+            if len(msgs) != self.num_msgs or \
+                    ('Recent' in seq and len(seq['Recent']) != self.num_recent):
+
+                # Update the mbox's accounting of things so we know what to
+                # compare to next time we enter this method.
+                #
+                self.num_msgs = len(msgs)
+                self.num_recent = len(seq['Recent'])
+
+                # Notify all listening clients that the number of messages and
+                # number of recent messages has changed.
+                #
+                for client in self.clients:
+                    client.client.push("* %d EXISTS\r\n" % len(msgs))
+                    if 'Recent' in seq:
+                        client.client.push("* %d RECENT\r\n" % \
+                                               len(seq["Recent"]))
+                    else:
+                        client.client.push("* 0 RECENT\r\n")
+
+            self._commit_to_db()
 
         finally:
             self.mailbox.unlock()
@@ -256,7 +299,7 @@ class Mailbox(object):
     
     ##################################################################
     #
-    def _check_update_all_msg_uids(self):
+    def _check_update_all_msg_uids(self, msgs):
         """
         This will loop through all of the messages in the folder checking to
         see if they have UID_VV.UID's in them. If they do not or it is out of
@@ -281,6 +324,12 @@ class Mailbox(object):
               We may need to add an attribute to a mailbox like "do not scan"
               so that it is never looked at. We generally do not care if we get
               new mail in the spam folder anyways.
+
+        Arguments:
+        - `msgs`: A list of all of the message keys. Since we already looked
+          this information up in the function that is calling us there is
+          little point in diving back down to the disk to enumerate the list of
+          message keys again.
         """
 
         # As we go through messages we need to know if the current UID we are
@@ -303,14 +352,13 @@ class Mailbox(object):
         # 'redoing' goes to true and we now update this message and every
         # successive message adding a proper uid_vv/uid header.
         #
-        for msg in self.mailbox.keys():
-
+        for msg in msgs:
             # If we are not redoing the rest of the folder check to see if
             # this messages uid_vv / uid is what we expect.
             #
             if not redoing_rest_of_folder:
                 try:
-                    fp = self.mailbox.get_file(key)
+                    fp = self.mailbox.get_file(msg)
                     msg_hdrs = HeaderParser().parse(fp, headersonly = True)
                 finally:
                     fp.close()
@@ -328,7 +376,7 @@ class Mailbox(object):
                         if uid_vv != self.uid_vv or uid <= prev_uid:
                             redoing_rest_of_folder = True
                         else:
-                            prev_uid == uid
+                            prev_uid = uid
 
                     except ValueError:
                         # the uid was not properly formed. This counts as
@@ -337,29 +385,38 @@ class Mailbox(object):
                         self.log.info("msg %s had malformed uid header: %s" % \
                                           (key, msg_hdrs['x-asimapd-uid']))
                         redoing_rest_of_folder = True
+                else:
+                    redoing_rest_of_folder = True
 
             # at this point we MAY be redoing this message (and the rest of the
             # folder) so we check again.. if we are not then skip to the next
             # iteration of this loop.
             #
             if redoing_rest_of_folder:
-                self._update_msg_uid(key)
+                try:
+                    fp = self.mailbox.get_file(msg)
+                    full_msg = mailbox.MHMessage(HeaderParser().parse(fp))
+                finally:
+                    fp.close()
+
+                # Remove the old header if it exists and add the new one
+                #
+                self.next_uid +=1
+                new_uid = "%010d.%010d" % (self.uid_vv, self.next_uid)
+                del msg['x-asimapd-uid']
+                full_msg['X-asimapd-uid'] = new_uid
+                self.mailbox[msg] = full_msg
         
+        # If we had to redo the folder then we believe it is indeed now
+        # interesting so set the \Marked attribute on it.
+        #
+        if redoing_rest_of_folder:
+            self.marked(True)
+
         # And we are done..
         #
         return
 
-    ##################################################################
-    #
-    def _update_msg_uid(self, msg):
-        """
-        
-        Arguments:
-        - `msg`:
-        """
-        pass
-    
-    
     ##################################################################
     #
     def _restore_from_db(self):
@@ -369,18 +426,23 @@ class Mailbox(object):
         defaults.
         """
         c = self.server.db.cursor()
-        c.execute("select uid_vv,attributes,mtime,next_uid from mailboxes "
-                  "where name=?", (self.name,))
+        c.execute("select uid_vv,attributes,mtime,next_uid,num_msgs,"
+                  "num_recent from mailboxes where name=?", (self.name,))
         results = c.fetchone()
         if results is None:
             c.execute("insert into mailboxes (name, uid_vv, attributes, "
-                      "mtime, next_uid) values (?,?,?,?,?)",
-                      (self.name, self.uid_vv,",".join(self.attributes),
-                       int(os.path.getmtime(self.mailbox._path)),self.next_uid))
+                      "mtime, next_uid, num_msgs, num_recent) "
+                      "values (?,?,?,?,?,?,0)", \
+                          (self.name,
+                           self.uid_vv,
+                           ",".join(self.attributes),
+                           int(os.path.getmtime(self.mailbox._path)),
+                           self.next_uid,
+                           len(self.mailbox.keys())))
             c.close()
             self.server.db.commit()
         else:
-            self.uid_vv,attributes,self.mtime,self.next_uid = results
+            self.uid_vv,attributes,self.mtime,self.next_uid,self.num_msgs,self.num_recent = results
             self.attributes = set(attributes.split(","))
             c.close()
         return
@@ -408,7 +470,7 @@ class Mailbox(object):
         This mailbox is being selected by a client.
 
         Add the client to the dict of clients that have this mailbox selected.
-        Resets the self.time_since_selected attribute to None.
+        Resets the self.expiry attribute to None.
 
         from rfc2060:
 
@@ -459,14 +521,23 @@ class Mailbox(object):
         if '\\Noselect' in self.attributes:
             raise No("You can not select the mailbox '%s'" % self.name)
         
-        self.clients[client.client.port] = client
-
         # A client has us selected. Turn of the expiry time.
         #
-        self.time_since_selected = None
+        self.expiry = None
 
         self.mailbox.lock()
         try:
+            # When a client selects a mailbox we do a resync to make sure we
+            # give it up to date information.
+            #
+            self.resync()
+
+            # Add the client to the mailbox _after_ we do the resync. This way
+            # we will not potentially send EXISTS and RECENT messages to the
+            # client twice.
+            #
+            self.clients[client.client.port] = client
+
             # Now send back messages to this client that it expects upon
             # selecting a mailbox.
             #
@@ -474,14 +545,14 @@ class Mailbox(object):
             # The sequence name == the flag on the message.
             #
             # NOTE: '\' is not a permitted character in an MH sequence name so
-            #       we translate "SRecent" to '\Recent', 'SUnseen
+            #       we translate "Recent" to '\Recent'
             #
             seq = self.mailbox.get_sequences()
             mbox_keys = self.mailbox.keys()
             client.client.push("* %d EXISTS\r\n" % len(mbox_keys))
-            if "SRecent" in seq:
+            if "Recent" in seq:
                 client.client.push("* %d RECENT\r\n" % \
-                                            len(seq["SRecent"]))
+                                            len(seq["Recent"]))
             else:
                 client.client.push("* 0 RECENT\r\n")
             if "unseen" in seq:
@@ -531,7 +602,7 @@ class Mailbox(object):
         del self.clients[client.client.port]
         if len(self.clients) == 0:
             self.log.debug("unselected(): No clients, starting timer")
-            self.time_since_selected = time.time()
+            self.expiry = time.time() + 900 # Expires in 15 minutes
         return
 
     ####################################################################
