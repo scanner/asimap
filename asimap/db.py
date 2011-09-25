@@ -132,6 +132,10 @@ def initial_migration(c):
                                       "mtime integer, next_uid integer, "
                                       "num_msgs integer, num_recent integer, "
                                       "date text default CURRENT_TIMESTAMP)")
+    c.execute("create table sequences (id integer primary key, "
+                                      "name text, mailbox text, "
+                                      "sequence text, "
+                                      "date text default CURRENT_TIMESTAMP)")
     return
 
 # The list of migrations we have so far. These are executed in order. They are
