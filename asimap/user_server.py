@@ -245,7 +245,8 @@ class IMAPUserClientHandler(asynchat.async_chat):
         # through all of the active mailboxes and make sure the client
         # unselects any if it had selections on them.
         #
-        del self.server.clients[self.port]
+        if self.port in self.server.clients:
+            del self.server.clients[self.port]
         for mbox in self.server.active_mailboxes.itervalues():
             mbox.unselected(self.cmd_processor)
 
@@ -253,7 +254,8 @@ class IMAPUserClientHandler(asynchat.async_chat):
         # clock
         #
         if len(self.server.clients) == 0:
-            self.log("cleanup(): Server has no clients, starting timeout clock")
+            self.log.debug("cleanup(): Server has no clients, starting "
+                           "timeout clock")
             self.expiry = time.time() + 1800
 
         return

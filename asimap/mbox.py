@@ -55,7 +55,7 @@ def get_uid_from_file(fp, msg, log = None):
     # blank line then we have reached the end of the header.
     #
     for line in fp:
-        if len(line) == 0:
+        if len(line.strip()) == 0:
             return (None, None)
         if line[0:15].lower() == 'x-asimapd-uid: ':
             break
@@ -145,7 +145,6 @@ class Mailbox(object):
         self.next_uid = 0
         self.num_msgs = 0
         self.num_recent = 0
-        self.seq_unseen = set()
 
         # You can not instantiate a mailbox that does not exist in the
         # underlying file system.
@@ -155,11 +154,10 @@ class Mailbox(object):
         except mailbox.NoSuchMailboxError, e:
             raise NoSuchMailbox("No such mailbox: '%s'" % name)
 
-
         # The list of attributes on this mailbox (this is things such as
         # '\Noselect'
         #
-        self.attributes = set('\\Unmarked')
+        self.attributes = set(['\\Unmarked'])
 
         # When a mailbox is no longer selected by _any_ client, then after a
         # period of time we destroy this instance of the Mailbox object (NOT
@@ -192,12 +190,16 @@ class Mailbox(object):
         # (and if there are no, then create an entry in the db for this
         # mailbox.
         #
-        self._restore_from_db()
+        # NOTE: If we get back 'False' from _restore_from_db() that means there
+        #       was no entry for this mailbox in the db which means that we
+        #       need to force a full resync of the mailbox since it is new.
+        #
+        force_resync = self._restore_from_db()
 
         # And make sure our mailbox on disk state is up to snuff and update
         # our db if we need to.
         #
-        self.resync()
+        self.resync(force = not force_resync)
         return
 
     ##################################################################
@@ -364,6 +366,9 @@ class Mailbox(object):
             if safe_changes == False and \
                     (start_mtime > self.mtime or force == True):
 
+                self.log.debug("Doing a message resync because: %d > %d or "
+                               "%s" % (start_mtime, self.mtime, repr(force)))
+
                 # See what messages we need to scan.. either JUST the ones
                 # starting at the first unseen message or ALL of the messages.
                 #
@@ -374,13 +379,15 @@ class Mailbox(object):
                 # NOTE: Force causes this efficiency check to be skipped.
                 #
                 unseen_seq = set(seq.get('unseen', []))
-                new_unseen = set(seq.get('unseen', [])) - self.seq_unseen
+                new_unseen = sorted(list(set(seq.get('unseen', [])) -
+                                         self.seq_unseen))
+
                 if force == False and len(new_unseen) > 0:
                     self.log.debug("new unseen msgs, rescanning %d to %d" % \
                                        (new_unseen[0], msgs[-1]))
-                    self._check_update_all_msg_uids(msgs[new_unseen[0]:])
-                    self.seq_unseen = unseen_seq
+                    self._check_update_all_msg_uids(msgs[msgs.index(new_unseen[0]):])
                 else:
+                    self.log.debug("rescanning all %d messages" % len(msgs))
                     self._check_update_all_msg_uids(msgs)
 
                 check_all_done = time.time()
@@ -389,7 +396,10 @@ class Mailbox(object):
                                    ((check_all_done-check_all_start),
                                     (check_all_done-start_time)))
             else:
-                self.log.debug("Skipping 'check_update_all_msg_uids")
+                self.log.debug("Skipping 'check_update_all_msg_uids' because "
+                               "safe_changes: %s, start_mtime: %d, mtime: %d, "
+                               "force: %s" % (repr(safe_changes), start_mtime,
+                                              self.mtime, force))
                 # we need this for the final time delta debug statement.
                 check_all_done = time.time()
 
@@ -400,6 +410,9 @@ class Mailbox(object):
             # its new sizes.
             #
             seq = self.mailbox.get_sequences()
+            self.log.debug("mailbox unseen sequence: %s" % str(self.seq_unseen))
+            self.seq_unseen = set(seq.get('unseen', []))
+            self.log.debug("mailbox unseen sequence after update: %s" % str(self.seq_unseen))
             if len(msgs) != self.num_msgs or \
                     ('Recent' in seq and len(seq['Recent']) != self.num_recent):
 
@@ -425,6 +438,7 @@ class Mailbox(object):
         # And update the mtime before we leave..
         #
         self.mtime = int(os.path.getmtime(self.mailbox._path))
+        self.log.debug("mtime on folder is now: %d" % self.mtime)
         self._commit_to_db()
 
         end_time = time.time()
@@ -495,7 +509,7 @@ class Mailbox(object):
             if not redoing_rest_of_folder:
                 try:
                     fp = self.mailbox.get_file(msg)
-                    uid_vv, uid = get_uid_from_file(fp, self.log)
+                    uid_vv, uid = get_uid_from_file(fp, msg, self.log)
                 finally:
                     fp.close()
 
@@ -503,9 +517,11 @@ class Mailbox(object):
                 # monotonically increasing from the previous uid then
                 # we have to redo the rest of the folder.
                 #
+                self.log.debug("For msg %d: %s:%s"%(msg,repr(uid_vv),repr(uid)))
                 if uid_vv != self.uid_vv or uid <= prev_uid or \
                         uid_vv == None or uid == None:
                     redoing_rest_of_folder = True
+                    self.log.debug("Found uid_vv/uid out of sequence. Redoing rest of folder.")
                 else:
                     prev_uid = uid
 
@@ -527,6 +543,7 @@ class Mailbox(object):
                 del full_msg['X-asimapd-uid']
                 full_msg['X-asimapd-uid'] = new_uid
                 self.mailbox[msg] = full_msg
+                self.log.debug("Updated message %d with new uid: %s" % (msg, new_uid))
         
         # If we had to redo the folder then we believe it is indeed now
         # interesting so set the \Marked attribute on it.
@@ -565,6 +582,8 @@ class Mailbox(object):
                            int(os.path.getmtime(self.mailbox._path)),
                            self.next_uid,
                            len(self.mailbox.keys())))
+
+            self.seq_unseen = set(self.mailbox.get_sequences().get('unseen', []))
             c.execute("insert into sequences (id,name,mailbox,sequence) "
                       "values (NULL,?,?,?)",
                       ("unseen", self.name,
@@ -581,7 +600,10 @@ class Mailbox(object):
             if results == None:
                 self.seq_unseen = set()
             else:
-                self.seq_unseen = set([int(x) for x in results[0].split(",")])
+                if len(results[0]) > 0:
+                    self.seq_unseen = set([int(x) for x in results[0].split(",")])
+                else:
+                    self.seq_unseen = set()
             c.close()
         return True
 
@@ -599,7 +621,7 @@ class Mailbox(object):
                    int(os.path.getmtime(self.mailbox._path)),self.name))
         c.execute("update sequences set sequence=? where mailbox=? and name=?",
                   (",".join([str(x) for x in self.seq_unseen]),
-                   self.mailbox, "useen"))
+                   self.name, "useen"))
         c.close()
         self.server.db.commit()
         return
@@ -699,8 +721,9 @@ class Mailbox(object):
             if "unseen" in seq:
                 # Message id of the first message that is unseen.
                 #
-                client.client.push("* OK [UNSEEN %d]\r\n" % \
-                                            mbox_keys.index(seq['unseen'][0]))
+                first_unseen = sorted(seq['unseen'])[0]
+                first_unseen = mbox_keys.index(first_unseen) + 1
+                client.client.push("* OK [UNSEEN %d]\r\n" % first_unseen)
             client.client.push("* OK [UIDVALIDITY %d]\r\n" % self.uid_vv)
 
             # Each sequence is a valid flag.. we send back to the client all
