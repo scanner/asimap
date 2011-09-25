@@ -176,7 +176,7 @@ class Mailbox(object):
     
     ##################################################################
     #
-    def resync(self):
+    def resync(self, force = False, safe_changes = False):
         """
         This will go through the mailbox on disk and make sure all of the
         messages have proper uuid's, make sure we have a .mh_sequences file
@@ -200,7 +200,37 @@ class Mailbox(object):
         sent to any clients attached to this mailbox if the mailbox has had
         changes in the number of messages or the messages that were added to
         it.
+
+        Arguments:
+
+        - `force`: If true we will do a complete resync even if the mtime of
+                   the folder is not greater than the mtime recorded in the
+                   mailbox object. Otherwise we will skip the 'check all
+                   messages for valid uids' step of the process. The theory is
+                   that if the mtime has not changed no new messages have been
+                   added or removed so there is no need to do a complete uid
+                   update.
+
+        - `safe_changes`: This flag goes one step further than `force`. If this
+                          is true then we are saying that any changes that
+                          exist to the mailbox that caused its mtime to change
+                          are indeed 'safe' and we do NOT need to scan all of
+                          the messages to make sure their UID's match up
+                          properly.
+
+                          This is typically called when _we_ the asimap user
+                          server have caused the mtime on the folder to change
+                          and we have already assured that all of the uid's for
+                          all of the messages properly exist.
         """
+
+        start_time = time.time()
+
+        # Get the mtime of the folder at the start so when we need to check to
+        # see if we need to do a full scan we have this value before anything
+        # we have done in this routine has a chance to modify it.
+        #
+        start_mtime = int(os.path.getmtime(self.mailbox._path))
 
         # If the .mh_sequence file does not exist create it.
         #
@@ -249,16 +279,29 @@ class Mailbox(object):
 
             self.mailbox.set_sequences(seq)
 
+            check_all_start = time.time()
+            self.log.debug("resync: Time to check sequences: %d" % \
+                               (check_all_start - start_time))
             # Now comes the big work. We need to make sure every message
             # has a UID following the rules of the rfc. This is a fairly
             # hairy process so we put it off into its own method.
             #
-            self._check_update_all_msg_uids(msgs)
-
-            # Now see if our mtime is different than the mtime of the actual
-            # mail folder. If it is then update our version and the database.
+            # NOTE: However we ONLY do this if the mtime of the folder does NOT
+            #       match the mtime we have stored in this object. This is
+            #       because things like __init__() and selected() call 'resync'
+            #       to make sure all of the sequences are properly up to date
+            #       without seeing if the mtime has indeed changed.
             #
-            self.mtime = int(os.path.getmtime(self.mailbox._path))
+            if start_mtime > self.mtime:
+                self._check_update_all_msg_uids(msgs)
+                check_all_done = time.time()
+                self.log.debug("resync: time to check all uids: %d, total "
+                               "resync time so far: %d" % \
+                                   ((check_all_done-check_all_start),
+                                    (check_all_done-start_time)))
+            else:
+                # we need this for the final time delta debug statement.
+                check_all_done = time.time()
 
             # Before we finish if the number of messages in the folder or the
             # number of messages in the Recent sequence is different than the
@@ -285,12 +328,21 @@ class Mailbox(object):
                     client.client.push("* %d EXISTS\r\n" % self.num_msgs)
                     client.client.push("* %d RECENT\r\n" % self.num_recent)
 
-            self._commit_to_db()
 
         finally:
             self.mailbox.unlock()
+
+        # And update the mtime before we leave..
+        #
+        self.mtime = int(os.path.getmtime(self.mailbox._path))
+        self._commit_to_db()
+
+        end_time = time.time()
+        self.log.debug("resync: Time to do all client updates: %d, total "
+                       "resync time: %d" % ((end_time-check_all_done),
+                                            (end_time-start_time)))
         return
-    
+
     ##################################################################
     #
     def _check_update_all_msg_uids(self, msgs):
@@ -519,8 +571,8 @@ class Mailbox(object):
         #
         self.expiry = None
 
-        self.mailbox.lock()
         try:
+            self.mailbox.lock()
             # When a client selects a mailbox we do a resync to make sure we
             # give it up to date information.
             #
