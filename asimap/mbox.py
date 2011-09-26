@@ -997,3 +997,41 @@ class Mailbox(object):
         if do_delete:
             server.mailbox.remove_folder(name)
         return
+
+    ####################################################################
+    #
+    @classmethod
+    def create(cls, old_name, new_name, server):
+        """
+        Rename a mailbox from odl_name to new_name.
+
+        It is an error to attempt to rename from a mailbox name that does not
+        exist or to a mailbox name that already exists.
+
+        Renaming INBOX will create a new mailbox, leaving INBOX empty.
+
+        Arguments:
+        - `cls`: Mailbox class
+        - `old_name`: the original name of the mailbox
+        - `new_name`: the new name of the mailbox
+        - `server`: the user server object
+        """
+        mbox = server.get_mailbox(old_name, expiry = 60)
+
+        # The mailbox we are moving to must not exist.
+        #
+        try:
+            tmp = server.mailbox.get_folder(new_name)
+        except mailbox.NoSuchMailboxError:
+            pass
+        else:
+            raise MailboxExists("Destination mailbox '%s' exists" % new_name)
+        
+        # Inbox is handled specially.
+        #
+        if new_name.downcase() != "inbox":
+            mbox.name = new_name
+
+            # We have to also update all of the inferior mailboxes of mbox
+            #
+

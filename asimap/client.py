@@ -434,3 +434,15 @@ class Authenticated(BaseClientHandler):
         asimap.mbox.Mailbox.delete(cmd.mailbox_name, self.server)
         return
 
+    ##################################################################
+    #
+    def do_rename(self, cmd):
+        """
+        Renames a mailbox from one name to another.
+        
+        Arguments:
+        - `cmd`: The IMAP command we are executing
+        """
+        asimap.mbox.Mailbox.rename(cmd.mailbox_src_name,cmd.mailbox_dst_name,
+                                   self.server)
+        return
