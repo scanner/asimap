@@ -396,7 +396,7 @@ class IMAPUserServer(asyncore.dispatcher):
 
     ##################################################################
     #
-    def get_mailbox(self, name, expirty):
+    def get_mailbox(self, name, expiry = 900):
         """
         A factory of sorts.. if we have an active mailbox with the given name
         return it.
@@ -408,7 +408,8 @@ class IMAPUserServer(asyncore.dispatcher):
         - `name`: The name of the mailbox our caller wants.
         - `expiry`: If we have to instantiate a mailbox give it this expiry
           time. Used so that boxes that are just being updated rarely expire
-          and do not take up excess memory in the server.
+          and do not take up excess memory in the server. Defaults to 15
+          minutes.
         """
         if name in self.active_mailboxes:
             return self.active_mailboxes[name]
