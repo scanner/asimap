@@ -389,7 +389,11 @@ class Authenticated(BaseClientHandler):
             self.mbox.unselected(self)
             self.mbox = None
 
-        mbox = asimap.mbox.Mailbox(cmd.mailbox_name, self.server)
+        # Note the 'selected()' method may fail with an exception and
+        # we should not set our state or the mailbox we have selected
+        # until 'selected()' returns without a failure.
+        #
+        mbox = self.server.get_mailbox(cmd.mailbox_name)
         mbox.selected(self)
         self.mbox = mbox
         self.state = "selected"

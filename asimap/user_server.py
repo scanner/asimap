@@ -396,6 +396,28 @@ class IMAPUserServer(asyncore.dispatcher):
 
     ##################################################################
     #
+    def get_mailbox(self, name):
+        """
+        A factory of sorts.. if we have an active mailbox with the given name
+        return it.
+
+        If we do not instantiate an instance of that mailbox and add it to our
+        list of active mailboxes.
+
+        Arguments:
+        - `name`: The name of the mailbox our caller wants.
+        """
+        if name in self.active_mailboxes:
+            return self.active_mailboxes[name]
+
+        # otherwise.. make an instance of this mailbox.
+        #
+        mbox = asimap.mbox.Mailbox(name, self)
+        self.active_mailboxes[name] = mbox
+        return mbox
+    
+    ##################################################################
+    #
     def check_all_folders(self, ):
         """
         This goes through all of the folders and makes sure we have db records

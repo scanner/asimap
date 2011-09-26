@@ -135,7 +135,6 @@ class Mailbox(object):
         - `expiry`: If not none then it specifies the number of seconds in the
                     future when we want this mailbox to be turfed out if it has
                     no active clients.
-
         """
         self.log = logging.getLogger("%s.%s.%s" % (__name__, self.__class__.__name__,name))
         self.server = server
@@ -274,6 +273,7 @@ class Mailbox(object):
                           all of the messages properly exist.
         """
 
+        self.log.debug("resync: Clients is now: %s" % repr(self.clients))
         start_time = time.time()
 
         # Get the mtime of the folder at the start so when we need to check to
@@ -409,7 +409,10 @@ class Mailbox(object):
                         if first_new_msg is None:
                             first = new_unseen[0]
                         else:
-                            first = min(new_unseen[0], first_new_msg)
+                            if len(new_unseen) > 0:
+                                first = min(new_unseen[0], first_new_msg)
+                            else:
+                                first = first_new_msg
                         self.log.debug("new unseen msgs, rescanning %d to "
                                        "%d" % (first, msgs[-1]))
                         self._check_update_all_msg_uids(msgs[msgs.index(first):])
@@ -435,24 +438,25 @@ class Mailbox(object):
             #
             seq = self.mailbox.get_sequences()
             self.seq_unseen = set(seq.get('unseen', []))
-            if len(msgs) != self.num_msgs or \
-                    ('Recent' in seq and len(seq['Recent']) != self.num_recent):
 
-                # Update the mbox's accounting of things so we know what to
-                # compare to next time we enter this method.
-                #
-                self.num_msgs = len(msgs)
-                self.num_recent = 0
-                if 'Recent' in seq:
-                    self.num_recent = len(seq['Recent'])
+            num_recent = 0
+            if 'Recent' in seq:
+                num_recent = len(seq['Recent'])
 
+            if len(msgs) != self.num_msgs or num_recent != self.num_recent:
                 # Notify all listening clients that the number of messages and
                 # number of recent messages has changed.
                 #
-                for client in self.clients:
-                    client.client.push("* %d EXISTS\r\n" % self.num_msgs)
-                    client.client.push("* %d RECENT\r\n" % self.num_recent)
+                self.log.debug("Sending updates to %d listening clients" % len(self.clients))
+                for client in self.clients.itervalues():
+                    self.log.debug("Sending updates to client on port %d" % client.client.port)
+                    client.client.push("* %d EXISTS\r\n" % len(msgs))
+                    client.client.push("* %d RECENT\r\n" % num_recent)
 
+            # Make sure to update our mailbox object with the new counts.
+            #
+            self.num_msgs = len(msgs)
+            self.num_recent = num_recent
 
         finally:
             self.mailbox.unlock()
@@ -764,6 +768,7 @@ class Mailbox(object):
             # client twice.
             #
             self.clients[client.client.port] = client
+            self.log.debug("selected: Clients is now: %s" % repr(self.clients))
 
             # Now send back messages to this client that it expects upon
             # selecting a mailbox.
@@ -790,6 +795,8 @@ class Mailbox(object):
                 client.client.push("* OK [UNSEEN %d]\r\n" % first_unseen)
             client.client.push("* OK [UIDVALIDITY %d]\r\n" % self.uid_vv)
 
+            self.log.debug("selected 2: Clients is now: %s" % repr(self.clients))
+
             # Each sequence is a valid flag.. we send back to the client all
             # of the system flags and any other sequences that are defined on
             # this mailbox.
@@ -804,6 +811,7 @@ class Mailbox(object):
         finally:
             self.mailbox.unlock()
 
+        self.log.debug("selected 3: Clients is now: %s" % repr(self.clients))
         return
 
     ##################################################################
@@ -833,50 +841,6 @@ class Mailbox(object):
             self.expiry = time.time() + 900 # Expires in 15 minutes
         return
 
-    ####################################################################
-    #
-    @classmethod
-    def is_outofdate(cls, name, server):
-        """
-        This gets the mtime of the folder both as it is recorded in the
-        database and what it is in the file actual file system and compares
-        them.
-
-        We use the active mailbox object if it exists instead of doing a
-        sqlite3 query.
-
-        If the mtime recorded in the db differs from the mtime of the file
-        system then we return true.
-
-        This provides a way to see if a folder has been modified without
-        instantiating it.
-
-        Arguments:
-        - `cls`: The Mailbox class
-        - `name`: The name of the mailbox
-        - `server`: a handle on the server object
-        """
-        if name in server.active_mailboxes:
-            mbox_mtime = server.active_mailboxes[name].mtime
-        else:
-            try:
-                c = self.server.db.cursor()
-                c.execute("select mtime from mailboxes where name=?",
-                          (self.name,))
-                results = c.fetchone()
-                if results is None:
-                    raise NoSuchMailbox("The mailbox '%s' does not exist")
-                else:
-                    mbox_mtime = int(results[0])
-            finally:
-                c.close()
-
-        # XXX Ug. Not good to reach in to the mailbox to get the path to the
-        #     directory..
-        #
-        dir_mtime = int(os.path.getmtime(os.path.abspath(os.path.expanduser(name))))
-        return mbox_mtime != dir_mtime
-    
     #########################################################################
     #
     @classmethod
@@ -890,14 +854,14 @@ class Mailbox(object):
 
         log = logging.getLogger("%s.%s" % (__name__, cls.__name__))
 
-        # If the mailbox already exists than it can not be created either One
+        # If the mailbox already exists than it can not be created. One
         # exception is if the mailbox exists but with the "\Noselect"
         # flag.. this means that it was previously deleted and sitting in its
         # place is a phantom mailbox. In this case we remove the '\Noselect'
         # flag and return success.
         #
         if name in server.active_mailboxes:
-            mbox = server.active_mailboxes
+            mbox = server.active_mailboxes[name]
         else:
             try:
                 mbox = cls(name,server)
