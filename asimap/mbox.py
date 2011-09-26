@@ -369,26 +369,50 @@ class Mailbox(object):
                 self.log.debug("Doing a message resync because: %d > %d or "
                                "%s" % (start_mtime, self.mtime, repr(force)))
 
-                # See what messages we need to scan.. either JUST the ones
-                # starting at the first unseen message or ALL of the messages.
+                # Now the question is "do we scan all the messages in the
+                # folder" or "some subset of messages"
                 #
-                # We ONLY scan the messages in the unseen sequence IF
+                # Scanning all of the messages can be prohibitively expensive
+                # (15 seconds where the entire server does not respond) and
+                # more often than not the only thing happening is: messages are
+                # being removed and new messages are appended to the end of the
+                # mailbox neither of which require a rescan of the entire
+                # mailbox.
                 #
-                # o 
+                # if force is true then we will scan the entire folder.
                 #
-                # NOTE: Force causes this efficiency check to be skipped.
+                # Otherwise we do some manipulations.
+                # 
+                # If the unseen sequence is different than we find the lowest
+                # numbered message that is in the new unseen sequence than was
+                # not in the old unseen sequence.
                 #
-                unseen_seq = set(seq.get('unseen', []))
-                new_unseen = sorted(list(set(seq.get('unseen', [])) -
-                                         self.seq_unseen))
-
-                if force == False and len(new_unseen) > 0:
-                    self.log.debug("new unseen msgs, rescanning %d to %d" % \
-                                       (new_unseen[0], msgs[-1]))
-                    self._check_update_all_msg_uids(msgs[msgs.index(new_unseen[0]):])
-                else:
+                # Scan back from the end of the mailbox until we find the first
+                # message that has a uid_vv that matches the uid_vv of our
+                # folder.
+                #
+                # Given these two references to a message choose the lower of
+                # the two and scan from that point forward.
+                #
+                # XXX One has to wonder should we just use the 'first new msg'
+                #     and not bother with the unseen sequence?
+                #
+                if force == True:
                     self.log.debug("rescanning all %d messages" % len(msgs))
                     self._check_update_all_msg_uids(msgs)
+                else:
+                    unseen_seq = set(seq.get('unseen', []))
+                    new_unseen = sorted(list(set(seq.get('unseen', [])) -
+                                             self.seq_unseen))
+                    first_new_msg = self._find_msg_without_uidvv(msgs)
+                    if len(new_unseen) > 0 or first_new_msg is not None:
+                        if first_new_msg is None:
+                            first = new_unseen[0]
+                        else:
+                            first = min(new_unseen[0], first_new_msg)
+                        self.log.debug("new unseen msgs, rescanning %d to "
+                                       "%d" % (first, msgs[-1]))
+                        self._check_update_all_msg_uids(msgs[msgs.index(first):])
 
                 check_all_done = time.time()
                 self.log.debug("resync: time to check all uids: %d, total "
@@ -410,9 +434,7 @@ class Mailbox(object):
             # its new sizes.
             #
             seq = self.mailbox.get_sequences()
-            self.log.debug("mailbox unseen sequence: %s" % str(self.seq_unseen))
             self.seq_unseen = set(seq.get('unseen', []))
-            self.log.debug("mailbox unseen sequence after update: %s" % str(self.seq_unseen))
             if len(msgs) != self.num_msgs or \
                     ('Recent' in seq and len(seq['Recent']) != self.num_recent):
 
@@ -446,6 +468,50 @@ class Mailbox(object):
                        "resync time: %d" % ((end_time-check_all_done),
                                             (end_time-start_time)))
         return
+
+    ##################################################################
+    #
+    def _find_msg_without_uidvv(self, msgs):
+        """
+        This is a helper function for 'resync()'
+
+        It looks through the folder from the highest numbered message down to
+        find the first message without a valid uid_vv.
+
+        In general messages are only added to the end of a folder and this is
+        usually just a fraction of the entire folder's contents. Even after a
+        repack you do not need to rescan the entire folder.
+
+        This works even for the rare first-run case on a large folder which has
+        no messages we have added uid_vv/uid's to (it just takes longer..but it
+        was going to take longer anyways.)
+
+        We return None if the first message (last message in the folder) has a
+        valid uid_vv.
+
+        XXX NOTE This does not solve the case where a folder is re-ordered or
+            new messages stuck somewhere else besides the end.
+            
+        Arguments:
+        - `msgs`: the list of messages we are going to look through (in reverse)
+        """
+        first_msg = None
+        for msg in sorted(msgs, reverse = True):
+            try:
+                fp = self.mailbox.get_file(msg)
+                uid_vv, uid = get_uid_from_file(fp, msg, self.log)
+            finally:
+                fp.close()
+
+            # If we find a valid uid_vv then we are done.
+            #
+            if uid_vv == self.uid_vv:
+                return first_msg
+            first_msg = msg
+        # We get here we ran through the entire list of messages and did not
+        # find one with a valid uuid_vv.
+        #
+        return first_msg
 
     ##################################################################
     #
@@ -517,7 +583,6 @@ class Mailbox(object):
                 # monotonically increasing from the previous uid then
                 # we have to redo the rest of the folder.
                 #
-                self.log.debug("For msg %d: %s:%s"%(msg,repr(uid_vv),repr(uid)))
                 if uid_vv != self.uid_vv or uid <= prev_uid or \
                         uid_vv == None or uid == None:
                     redoing_rest_of_folder = True
@@ -543,7 +608,6 @@ class Mailbox(object):
                 del full_msg['X-asimapd-uid']
                 full_msg['X-asimapd-uid'] = new_uid
                 self.mailbox[msg] = full_msg
-                self.log.debug("Updated message %d with new uid: %s" % (msg, new_uid))
         
         # If we had to redo the folder then we believe it is indeed now
         # interesting so set the \Marked attribute on it.
