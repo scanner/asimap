@@ -117,7 +117,7 @@ class Mailbox(object):
 
     ##################################################################
     #
-    def __init__(self, name, server, expiry = None):
+    def __init__(self, name, server, expiry = 900):
         """
         This represents an active mailbox. You can only instantiate
         this class for mailboxes that actually in the file system.
@@ -134,7 +134,7 @@ class Mailbox(object):
 
         - `expiry`: If not none then it specifies the number of seconds in the
                     future when we want this mailbox to be turfed out if it has
-                    no active clients.
+                    no active clients. Defaults to 15 minutes.
         """
         self.log = logging.getLogger("%s.%s.%s" % (__name__, self.__class__.__name__,name))
         self.server = server
@@ -175,10 +175,7 @@ class Mailbox(object):
         # wanting to resync() a mailbox but not have it hang around for a long
         # time.
         #
-        if expiry is None:
-            self.expiry = time.time() + 900
-        else:
-            self.expiry = time.time() + expiry
+        self.expiry = time.time() + expiry
 
         # The dict of clients that currently have this mailbox selected.
         # This includes clients that used 'EXAMINE' instead of 'SELECT'
@@ -273,7 +270,6 @@ class Mailbox(object):
                           all of the messages properly exist.
         """
 
-        self.log.debug("resync: Clients is now: %s" % repr(self.clients))
         start_time = time.time()
 
         # Get the mtime of the folder at the start so when we need to check to
@@ -447,9 +443,7 @@ class Mailbox(object):
                 # Notify all listening clients that the number of messages and
                 # number of recent messages has changed.
                 #
-                self.log.debug("Sending updates to %d listening clients" % len(self.clients))
                 for client in self.clients.itervalues():
-                    self.log.debug("Sending updates to client on port %d" % client.client.port)
                     client.client.push("* %d EXISTS\r\n" % len(msgs))
                     client.client.push("* %d RECENT\r\n" % num_recent)
 
@@ -768,7 +762,6 @@ class Mailbox(object):
             # client twice.
             #
             self.clients[client.client.port] = client
-            self.log.debug("selected: Clients is now: %s" % repr(self.clients))
 
             # Now send back messages to this client that it expects upon
             # selecting a mailbox.
@@ -795,8 +788,6 @@ class Mailbox(object):
                 client.client.push("* OK [UNSEEN %d]\r\n" % first_unseen)
             client.client.push("* OK [UIDVALIDITY %d]\r\n" % self.uid_vv)
 
-            self.log.debug("selected 2: Clients is now: %s" % repr(self.clients))
-
             # Each sequence is a valid flag.. we send back to the client all
             # of the system flags and any other sequences that are defined on
             # this mailbox.
@@ -811,7 +802,6 @@ class Mailbox(object):
         finally:
             self.mailbox.unlock()
 
-        self.log.debug("selected 3: Clients is now: %s" % repr(self.clients))
         return
 
     ##################################################################
@@ -837,7 +827,7 @@ class Mailbox(object):
         
         del self.clients[client.client.port]
         if len(self.clients) == 0:
-            self.log.debug("unselected(): No clients, starting timer")
+            self.log.debug("unselected(): No clients, starting expiry timer")
             self.expiry = time.time() + 900 # Expires in 15 minutes
         return
 

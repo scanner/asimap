@@ -396,7 +396,7 @@ class IMAPUserServer(asyncore.dispatcher):
 
     ##################################################################
     #
-    def get_mailbox(self, name):
+    def get_mailbox(self, name, expirty):
         """
         A factory of sorts.. if we have an active mailbox with the given name
         return it.
@@ -406,13 +406,16 @@ class IMAPUserServer(asyncore.dispatcher):
 
         Arguments:
         - `name`: The name of the mailbox our caller wants.
+        - `expiry`: If we have to instantiate a mailbox give it this expiry
+          time. Used so that boxes that are just being updated rarely expire
+          and do not take up excess memory in the server.
         """
         if name in self.active_mailboxes:
             return self.active_mailboxes[name]
 
         # otherwise.. make an instance of this mailbox.
         #
-        mbox = asimap.mbox.Mailbox(name, self)
+        mbox = asimap.mbox.Mailbox(name, self, expiry = expiry)
         self.active_mailboxes[name] = mbox
         return mbox
     
@@ -476,15 +479,9 @@ class IMAPUserServer(asyncore.dispatcher):
             path = os.path.join(self.mailbox._path, mbox_name)
             if int(os.path.getmtime(path)) != mtime:
                 # The mtime differs.. force the mailbox to resync.
-                #
-                self.log.debug("Mtime differs db: %d, dir: %d. Resyncing "
-                               "mbox %s" % (mtime, int(os.path.getmtime(path)),
-                                            mbox_name))
-                if mbox_name in self.active_mailboxes:
-                    self.active_mailboxes[mbox_name].resync()
-                else:
-                    m = asimap.mbox.Mailbox(mbox_name, self)
-                    m.resync()
+                # 
+                m = self.get_mailbox(mbox_name, 60)
+                m.resync()
 
         # And finally check all active mailboxes to see if they have no clients
         # and are beyond their expiry time.
