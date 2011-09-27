@@ -13,6 +13,39 @@ server.
 import sqlite3
 import os.path
 import logging
+import re
+
+# We compile regexps as we use them and store the compiled object in this dict
+# to save us from having to recompile popular regular expressions.
+#
+# NOTE: If we know what they are ahead of time we should pre-populate this
+# dict.
+#
+USED_REGEXPS = { }
+
+####################################################################
+#
+def regexp(expr, item):
+    """
+    sqlite supports a regexp syntax but needs us to supply the function to
+    use. This is that function.
+
+    Arguments:
+    - `expr`: regular expression
+    - `item`: item to apply regular expression to
+    """
+    log = logging.getLogger("%s.regexp()" % __name__)
+    try:
+        if expr in USED_REGEXPS:
+            reg = USED_REGEXPS[expr]
+        else:
+            reg = re.compile(expr)
+            USED_REGEXPS[expr] = reg
+        log.debug("testing '%s' against '%s'" % (expr, item))
+        return reg.search(item) is not None
+    except Exception, e:
+        log.error("got exception: %s" % e)
+    return None
 
 ##################################################################
 ##################################################################
@@ -39,8 +72,15 @@ class Database(object):
         self.log.debug("Opening database file: '%s'" % self.db_filename)
         self.conn = sqlite3.connect(self.db_filename,
                                     detect_types = sqlite3.PARSE_DECLTYPES)
-        self.conn.execute("vacuum")
+        # We want to enable regexp matching in sqlite and in order to do that
+        # we have to supply it with a regexp function.
+        #
+        self.conn.create_function("REGEXP", 2, regexp)
 
+        # We do some housecleaning when we open the db.
+        #
+        self.conn.execute("vacuum")
+        
         # Set up the database if necessary. Apply any migrations that
         # we need to.
         #

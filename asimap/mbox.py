@@ -1213,8 +1213,8 @@ class Mailbox(object):
     
     ####################################################################
     #
-    @clssmethod
-    def list(cls, server, ref_mbox_name, mbox_match):
+    @classmethod
+    def list(cls, ref_mbox_name, mbox_match, server):
         """
         This returns a list of tuples of mailbox names and that mailboxes
         attributes. The list is generated from the mailboxes db shelf. The
@@ -1246,10 +1246,42 @@ class Mailbox(object):
           mailbox name.
         """
 
+        log = logging.getLogger("%s.%s.list()" % (__name__,cls.__name__))
+
         # The mbox_match character can not begin with '/' because our mailboxes
         # are unrooted.
         #
-        if mbox_match[0] == '/':
+        if len(mbox_match) > 0 and mbox_match[0] == '/':
             mbox_match = mbox_match[:1]
-        
-    
+
+        # we use normpath to collapse redundant separators and up-level
+        # references. But normpath of "" == "." so we make sure that case is
+        # handled.
+        #
+        if mbox_match != "":
+            mbox_match = os.path.normpath(mbox_match)
+
+        # Now we tack the ref_mbox_name and mbox_match together.
+        #
+        mbox_match = os.path.join(ref_mbox_name, mbox_match)
+        log.debug("mailbox match pattern: '%s'" % mbox_match)
+
+        # We need to escape all possible regular expression characters
+        # in our string so that it only matches what is expected by the
+        # imap specification.
+        #
+        mbox_match = "^" + re.escape(mbox_match) + "$"
+
+        # Every '\*' becomes '.*' and every % becomes [^/]
+        #
+        mbox_match = mbox_match.replace(r'\*', r'.*').replace(r'\%', r'[^\/]*')
+        log.debug("mailbox match regexp: '%s'" % mbox_match)
+        results = []
+        c = server.db.cursor()
+        r = c.execute("select name,attributes from mailboxes where name regexp ?", (mbox_match,))
+        for row in r:
+            mbox_name, attributes = row
+            attributes = set(attributes.split(","))
+            results.append((mbox_name, attributes))
+        c.close()
+        return results

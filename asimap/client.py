@@ -503,3 +503,9 @@ class Authenticated(BaseClientHandler):
             self.client.push('* LIST (\Noselect) "/" ""\r\n')
             return
 
+        results = asimap.mbox.Mailbox.list(cmd.mailbox_name, cmd.list_mailbox,
+                                           self.server)
+        for mbox_name, attributes in results:
+            self.client.push('* LIST (%s) "/" %s\r\n' % \
+                                 (' '.join(attributes), mbox_name))
+        return
