@@ -103,8 +103,8 @@ class Database(object):
         A convenience method that retrieves a cursor for people to use.
         """
         return self.conn.cursor()
-        
-    
+
+
 ##################################################################
 ##################################################################
 #
@@ -127,15 +127,19 @@ def initial_migration(c):
     c.execute("create table user_server (id integer primary key, "
                                         "uid_vv integer, "
                                         "date text default CURRENT_TIMESTAMP)")
-    c.execute("create table mailboxes (name text primary key,"
+    c.execute("create table mailboxes (id integer primary key, "
+                                      "name text,"
                                       "uid_vv integer, attributes text, "
                                       "mtime integer, next_uid integer, "
                                       "num_msgs integer, num_recent integer, "
                                       "date text default CURRENT_TIMESTAMP)")
+    c.execute("create unique index mailbox_names on mailboxes (name)")
     c.execute("create table sequences (id integer primary key, "
-                                      "name text, mailbox text, "
+                                      "name text, mailbox_id integer, "
                                       "sequence text, "
                                       "date text default CURRENT_TIMESTAMP)")
+    c.execute("create unique index seq_name_mbox on sequences (name,mailbox_id)")
+    c.execute("create index seq_mbox_id on sequences (mailbox_id)")
     return
 
 # The list of migrations we have so far. These are executed in order. They are
