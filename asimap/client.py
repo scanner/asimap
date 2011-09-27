@@ -446,3 +446,60 @@ class Authenticated(BaseClientHandler):
         asimap.mbox.Mailbox.rename(cmd.mailbox_src_name,cmd.mailbox_dst_name,
                                    self.server)
         return
+
+    ##################################################################
+    #
+    def do_subscribe(self, cmd):
+        """
+        The SUBSCRIBE command adds the specified mailbox name to the
+        server's set of "active" or "subscribed" mailboxes as returned by
+        the LSUB command.  This command returns a tagged OK response only
+        if the subscription is successful.
+
+        XXX we do not have any mailboxes that we support SUBSCRIBE for
+            (as I understand the purpose of this mailbox.)
+
+        Arguments:
+        - `cmd`: The IMAP command we are executing
+        """
+        raise No("Can not subscribe to the mailbox %s" % cmd.mailbox_name)
+    
+    ##################################################################
+    #
+    def do_unsubscribe(self, cmd):
+        """
+        The UNSUBSCRIBE command removes the specified mailbox name
+        from the server's set of "active" or "subscribed" mailboxes as
+        returned by the LSUB command.  This command returns a tagged
+        OK response only if the unsubscription is successful.
+        
+        XXX we do not have any mailboxes that we support SUBSCRIBE or
+            UNSUBSCRIBE for (as I understand the purpose of this
+            mailbox.)
+
+        Arguments:
+        - `cmd`: The IMAP command we are executing
+        """
+        raise No("Can not unsubscribe to the mailbox %s" % cmd.mailbox_name)
+
+    ##################################################################
+    #
+    def do_list(self, cmd):
+        """
+        The LIST command returns a subset of names from the complete
+        set of all names available to the client.  Zero or more
+        untagged LIST replies are returned, containing the name
+        attributes, hierarchy delimiter, and name; see the description
+        of the LIST reply for more detail.
+        
+        Arguments:
+        - `cmd`: The IMAP command we are executing
+        """
+        # Handle the special case where the client is basically just probing
+        # for the hierarchy sepration character.
+        #
+        if cmd.mailbox_name == "" and \
+           cmd.list_mailbox == "":
+            self.client.push('* LIST (\Noselect) "/" ""\r\n')
+            return
+

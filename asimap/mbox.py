@@ -1210,3 +1210,46 @@ class Mailbox(object):
                 mbox.mailbox.unlock()
                 new_mbox.mailbox.unlock()
         return
+    
+    ####################################################################
+    #
+    @clssmethod
+    def list(cls, server, ref_mbox_name, mbox_match):
+        """
+        This returns a list of tuples of mailbox names and that mailboxes
+        attributes. The list is generated from the mailboxes db shelf. The
+        'ref_mbox_name' defines the prefix of the mailboxes that will
+        match. ie: the mailbox name must begin with ref_mbox_name.
+
+        mbox_match is a pattern that determines which of the subset that match
+        ref_mbox_name will be returned to our caller.
+
+        The tricky part is that we need to re-interpret 'mbox_match' as a
+        regular expression that we can apply to our mbox names.
+
+        As near as I can tell '*' is like the shell glob pattern - it matches
+        zero or more characters.
+
+        '%' is special in that it matches zero or more characters, but not the
+        character that separates the hierarchies of mailboxes (ie: '/' in our
+        case.)
+
+        So we should be able to get away with: '*' -> '.*', '%' -> '[^/]*' We
+        also need to escape any characters that could be interpreted as part of
+        a regular expression.
+        
+        Arguments:
+        - `cls`: the mailbox class (this is a clas method)
+        - `server`: the user server object instance
+        - `ref_mbox_name`: The reference mailbox name
+        - `mbox_match`: The pattern of mailboxes to match under the reference
+          mailbox name.
+        """
+
+        # The mbox_match character can not begin with '/' because our mailboxes
+        # are unrooted.
+        #
+        if mbox_match[0] == '/':
+            mbox_match = mbox_match[:1]
+        
+    
