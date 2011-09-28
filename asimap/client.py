@@ -254,21 +254,6 @@ class BaseClientHandler(object):
 
     #########################################################################
     #
-    def do_noop(self, imap_command):
-        """
-        This does nothing. In subclasses we might want to see if there are any
-        pending messages to send the client (but that should not be necessary
-        since our server will of its own accord send async messages to the
-        client when various things happen.
-
-        Arguments:
-        - `imap_command`: The full IMAP command object.
-        """
-        self.send_pending_expunges()
-        return None
-
-    #########################################################################
-    #
     def do_logout(self, imap_command):
         """
         This just sets our state to 'logged out'. Our caller will take the
@@ -406,16 +391,43 @@ class Authenticated(BaseClientHandler):
 
         return
 
+    ##################################################################
+    #
+    def notifies(self):
+        """
+        Handles the common case of sending pending expunges and a resync where
+        we only notify this client of exists/recent.
+        """
+        self.send_pending_expunges()
+        if self.state == "selected" and self.mbox is not None:
+            self.mbox.resync(only_notify = self)
+        return
+    
+    #########################################################################
+    #
+    def do_noop(self, imap_command):
+        """
+        Do nothing.. but send any pending messages and do a resync.. but when
+        doing a resync only send the exists/recent to us (the mailbox might
+        have shrunk and if I am to understand the RFC correctly I can not send
+        out exists/recents that shrink the size of a mailbox.)
+
+        Arguments:
+        - `imap_command`: The full IMAP command object.
+        """
+        self.notifies()
+        return None
+
     #########################################################################
     #
     def do_authenticate(self, cmd):
-        self.send_pending_expunges()
+        self.notifies()
         raise Bad("client already is in the authenticated state")
 
     #########################################################################
     #
     def do_login(self, cmd):
-        self.send_pending_expunges()
+        self.notifies()
         raise Bad("client already is in the authenticated state")
 
     ##################################################################
@@ -470,7 +482,7 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        self.send_pending_expunges()
+        self.notifies()
         asimap.mbox.Mailbox.create(cmd.mailbox_name, self.server)
         return
 
@@ -490,7 +502,7 @@ class Authenticated(BaseClientHandler):
             self.mbox = None
             self.state = "authenticated"
         else:
-            self.send_pending_expunges()
+            self.notifies()
         asimap.mbox.Mailbox.delete(cmd.mailbox_name, self.server)
         return
 
@@ -503,7 +515,7 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        self.send_pending_expunges()
+        self.notifies()
         asimap.mbox.Mailbox.rename(cmd.mailbox_src_name,cmd.mailbox_dst_name,
                                    self.server)
         return
@@ -523,7 +535,7 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        self.send_pending_expunges()
+        self.notifies()
         raise No("Can not subscribe to the mailbox %s" % cmd.mailbox_name)
     
     ##################################################################
@@ -542,7 +554,7 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        self.send_pending_expunges()
+        self.notifies()
         raise No("Can not unsubscribe to the mailbox %s" % cmd.mailbox_name)
 
     ##################################################################
@@ -561,7 +573,7 @@ class Authenticated(BaseClientHandler):
         # Handle the special case where the client is basically just probing
         # for the hierarchy sepration character.
         #
-        self.send_pending_expunges()
+        self.notifies()
         if cmd.mailbox_name == "" and \
            cmd.list_mailbox == "":
             self.client.push('* LIST (\Noselect) "/" ""\r\n')
@@ -585,7 +597,7 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        self.send_pending_expunges()
+        self.notifies()
         return None
     
     ##################################################################
@@ -598,7 +610,7 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        self.send_pending_expunges()
+        self.notifies()
         mbox = self.server.get_mailbox(cmd.mailbox_name, expiry = 45)
         mbox.resync()
         result = []

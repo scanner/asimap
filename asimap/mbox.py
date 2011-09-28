@@ -197,7 +197,7 @@ class Mailbox(object):
 
     ##################################################################
     #
-    def resync(self, force = False, notify = False):
+    def resync(self, force = False, notify = True, only_notify = None):
         """
         This will go through the mailbox on disk and make sure all of the
         messages have proper uuid's, make sure we have a .mh_sequences file
@@ -244,8 +244,16 @@ class Mailbox(object):
           EXISTS that reduce the number of messages in the mailbox. Those
           clients that have not gotten the expungues should get them the next
           time they do a command.
+        - `only_notify`: A client. If this is set then when we do our exists
+          updates we will ONLY sent exists/recent messages to the client passed
+          in via `only_notify` (and those clients in IDLE)
 
         """
+        # If only_notify is not None then notify is forced to False.
+        #
+        if only_notify is not None:
+            notify = False
+
         # Get the mtime of the folder at the start so when we need to check to
         # see if we need to do a full scan we have this value before anything
         # we have done in this routine has a chance to modify it.
@@ -356,17 +364,22 @@ class Mailbox(object):
             if 'Recent' in seq:
                 num_recent = len(seq['Recent'])
 
-            # NOTE: Only send EXISTS messages if notify is True.
+            # NOTE: Only send EXISTS messages if notify is True and the client
+            # is not idling and the client is not the one passed in via
+            # 'only_notify'
             #
-            if notify and \
-                    (len(msgs) != self.num_msgs or \
-                         num_recent != self.num_recent):
+            if len(msgs) != self.num_msgs or \
+                    num_recent != self.num_recent:
                 # Notify all listening clients that the number of messages and
                 # number of recent messages has changed.
                 #
                 for client in self.clients.itervalues():
-                    client.client.push("* %d EXISTS\r\n" % len(msgs))
-                    client.client.push("* %d RECENT\r\n" % num_recent)
+                    if notify or \
+                       client.idling or \
+                       (only_notify is not None and \
+                        only_notify.client.port == client.client.port):
+                        client.client.push("* %d EXISTS\r\n" % len(msgs))
+                        client.client.push("* %d RECENT\r\n" % num_recent)
 
             # Make sure to update our mailbox object with the new counts.
             #
@@ -1029,6 +1042,9 @@ class Mailbox(object):
         # has shrunk: 5.2.: "it is NOT permitted to send an EXISTS response
         # that would reduce the number of messages in the mailbox; only the
         # EXPUNGE response can do this.
+        #
+        # Unless a client is sitting in IDLE, then it is okay send them
+        # exists/recents.
         #
         self.resync(notify = False)
         return
