@@ -1010,7 +1010,12 @@ class Mailbox(object):
             #
             msgs = self.mailbox.keys()
             for msg in seq['Deleted']:
+                # XXX Work around a bug in mailbox.MH() that tries to unlock a
+                #     closed file handle after deleting the file if the folder
+                #     is locked.
+                self.mailbox.unlock()
                 self.mailbox.discard(msg)
+                self.mailbox.lock()
                 which = msgs.index(msg) + 1
                 for c in clients_to_notify.itervalues():
                     c.client.push("* %d EXPUNGE\r\n" % which)
@@ -1025,7 +1030,7 @@ class Mailbox(object):
         # that would reduce the number of messages in the mailbox; only the
         # EXPUNGE response can do this.
         #
-        self.resync(no_notify = True)
+        self.resync(notify = False)
         return
 
     #########################################################################

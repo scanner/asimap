@@ -70,6 +70,12 @@ class BaseClientHandler(object):
         #
         self.tag = None
 
+        # If there are pending expunges that we need to send to the client
+        # during its next command (that we can send pending expunges during)
+        # they are stored here.
+        #
+        self.pending_expunges = []
+
         return
 
     ##################################################################
@@ -144,6 +150,22 @@ class BaseClientHandler(object):
                                   imap_command.command.upper()))
         return
 
+    ##################################################################
+    #
+    def send_pending_expunges(self):
+        """
+        Deal with pending expunges that have built up for this client.  This
+        can only be called during a command, but not during FETCH, STORE, or
+        SEARCH commands.
+
+        Also we will not call this during things like 'select' or 'close'
+        because they are no longer listening to the mailbox (but they will
+        empty the list of pending expunges.
+        """
+        for p in self.pending_expunges:
+            self.client.push(p)
+        self.pending_expunges = []
+    
     ## The following commands are supported in any state.
     ##
 
@@ -157,6 +179,7 @@ class BaseClientHandler(object):
         - `imap_command`: This is ignored.
         """
         self.idling = False
+        self.send_pending_expunges()
         self.client.push("%s OK IDLE terminated\r\n" % self.tag)
         return
     
@@ -169,6 +192,7 @@ class BaseClientHandler(object):
         Arguments:
         - `imap_command`: The full IMAP command object.
         """
+        self.send_pending_expunges()
         self.client.push("* CAPABILITY %s\r\n" % ' '.join(CAPABILITIES))
         return None
 
@@ -182,6 +206,7 @@ class BaseClientHandler(object):
         Arguments:
         - `imap_command`: The full IMAP command object.
         """
+        self.send_pending_expunges()
         self.client.push('* NAMESPACE (("" "/")) NIL NIL\r\n')
         return None
 
@@ -194,7 +219,7 @@ class BaseClientHandler(object):
         Arguments:
         - `imap_command`: The full IMAP command object.
         """
-
+        self.send_pending_expunges()
         self.client_id = imap_command.id_dict
         res = []
         for k,v in SERVER_ID.iteritems():
@@ -223,6 +248,7 @@ class BaseClientHandler(object):
         # If it is any other input we raise a bad syntax error.
         #
         self.client.push("+ idling\r\n")
+        self.send_pending_expunges()
         self.idling = True
         return False
 
@@ -238,6 +264,7 @@ class BaseClientHandler(object):
         Arguments:
         - `imap_command`: The full IMAP command object.
         """
+        self.send_pending_expunges()
         return None
 
     #########################################################################
@@ -250,6 +277,7 @@ class BaseClientHandler(object):
         Arguments:
         - `imap_command`: The full IMAP command object.
         """
+        self.pending_expunges = []
         self.client.push("* BYE Logging out of asimap server. Good bye.\r\n")
         self.state = "logged_out"
         return None
@@ -299,6 +327,7 @@ class PreAuthenticated(BaseClientHandler):
         Arguments:
         - `imap_command`: The full IMAP command object.
         """
+        self.send_pending_expunges()
         if self.state == "authenticated":
             raise Bad("client already is in the authenticated state")
         raise No("unsupported authentication mechanism")
@@ -321,6 +350,7 @@ class PreAuthenticated(BaseClientHandler):
         #     But for our first test we are going to accept a test user
         #     and password.
         #
+        self.send_pending_expunges()
         if self.state == "authenticated":
             raise Bad("client already is in the authenticated state")
 
@@ -374,29 +404,8 @@ class Authenticated(BaseClientHandler):
         self.state = "authenticated"
         self.examine = False # If a mailbox is selected in 'examine' mode
 
-        # If there are pending expunges that we need to send to the client
-        # during its next command (that we can send pending expunges during)
-        # they are stored here.
-        #
-        self.pending_expunges = []
         return
 
-    ##################################################################
-    #
-    def send_pending_expunges(self):
-        """
-        Deal with pending expunges that have built up for this client.  This
-        can only be called during a command, but not during FETCH, STORE, or
-        SEARCH commands.
-
-        Also we will not call this during things like 'select' or 'close'
-        because they are no longer listening to the mailbox (but they will
-        empty the list of pending expunges.
-        """
-        for p in self.pending_expunges:
-            self.client.push(p)
-        self.pending_expunges = []
-    
     #########################################################################
     #
     def do_authenticate(self, cmd):
@@ -718,6 +727,6 @@ class Authenticated(BaseClientHandler):
         #
         if self.examine:
             return
-        mbox.expunge(self)
+        self.mbox.expunge(self)
         return
 
