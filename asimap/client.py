@@ -357,16 +357,40 @@ class Authenticated(BaseClientHandler):
         self.mbox = user_server.mailbox
         self.state = "authenticated"
         self.examine = False # If a mailbox is selected in 'examine' mode
+
+        # If there are pending expunges that we need to send to the client
+        # during its next command (that we can send pending expunges during)
+        # they are stored here.
+        #
+        self.pending_expunges = []
         return
 
+    ##################################################################
+    #
+    def send_pending_expunges(self):
+        """
+        Deal with pending expunges that have built up for this client.  This
+        can only be called during a command, but not during FETCH, STORE, or
+        SEARCH commands.
+
+        Also we will not call this during things like 'select' or 'close'
+        because they are no longer listening to the mailbox (but they will
+        empty the list of pending expunges.
+        """
+        for p in self.pending_expunges:
+            self.client.push(p)
+        self.pending_expunges = []
+    
     #########################################################################
     #
     def do_authenticate(self, cmd):
+        self.send_pending_expunges()
         raise Bad("client already is in the authenticated state")
 
     #########################################################################
     #
     def do_login(self, cmd):
+        self.send_pending_expunges()
         raise Bad("client already is in the authenticated state")
 
     ##################################################################
@@ -385,6 +409,7 @@ class Authenticated(BaseClientHandler):
         # Selecting a mailbox, even if the attempt fails, automatically
         # deselects any already selected mailbox.
         #
+        self.pending_expunges = []
         if self.state == "selected":
             self.state = "authenticated"
             self.mbox.unselected(self)
@@ -420,6 +445,7 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
+        self.send_pending_expunges()
         asimap.mbox.Mailbox.create(cmd.mailbox_name, self.server)
         return
 
@@ -432,6 +458,14 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
+        # IF we are deleting the mailbox we currently have selected then we pop
+        # back to the authenticated state.
+        #
+        if self.mbox is not None and self.mbox.name == cmd.mailbox_name:
+            self.mbox = None
+            self.state = "authenticated"
+        else:
+            self.send_pending_expunges()
         asimap.mbox.Mailbox.delete(cmd.mailbox_name, self.server)
         return
 
@@ -444,6 +478,7 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
+        self.send_pending_expunges()
         asimap.mbox.Mailbox.rename(cmd.mailbox_src_name,cmd.mailbox_dst_name,
                                    self.server)
         return
@@ -463,6 +498,7 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
+        self.send_pending_expunges()
         raise No("Can not subscribe to the mailbox %s" % cmd.mailbox_name)
     
     ##################################################################
@@ -481,6 +517,7 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
+        self.send_pending_expunges()
         raise No("Can not unsubscribe to the mailbox %s" % cmd.mailbox_name)
 
     ##################################################################
@@ -499,6 +536,7 @@ class Authenticated(BaseClientHandler):
         # Handle the special case where the client is basically just probing
         # for the hierarchy sepration character.
         #
+        self.send_pending_expunges()
         if cmd.mailbox_name == "" and \
            cmd.list_mailbox == "":
             self.client.push('* LIST (\Noselect) "/" ""\r\n')
@@ -522,6 +560,7 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
+        self.send_pending_expunges()
         return None
     
     ##################################################################
@@ -534,7 +573,7 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-
+        self.send_pending_expunges()
         mbox = self.server.get_mailbox(cmd.mailbox_name, expiry = 45)
         mbox.resync()
         result = []
@@ -568,7 +607,7 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-
+        self.send_pending_expunges()
         try:
             mbox = self.server.get_mailbox(cmd.mailbox_name, expiry = 0)
         except asimap.mbox.NoSuchMailbox:
@@ -581,6 +620,88 @@ class Authenticated(BaseClientHandler):
         mbox.append(cmd.message, cmd.flag_list, cmd.date_time)
         return
 
+    ##################################################################
+    #
+    def do_check(self, cmd):
+        """
+        state: must be selected
+
+        Do a 'checkpoint' of the currently selected mailbox. Basically
+        this means for us we just do a resync.
+
+        This may cause messages to be generated but this is
+        okay. Clients should be prepared for that (but they should not
+        expect this to happen.)
+
+        Arguments:
+        - `cmd`: The IMAP command we are executing
+        """
+        if self.state != "selected" or self.mbox is None:
+            raise No("Client must be in the selected state")
+        self.send_pending_expunges()
+        self.mbox.resync()
+        return
+
+    ##################################################################
+    #
+    def do_close(self, cmd):
+        """
+        state: must be selected
+
+        The CLOSE command permanently removes all messages that have
+        the \Deleted flag set from the currently selected mailbox, and
+        returns to the authenticated state from the selected state.
+        No untagged EXPUNGE responses are sent.
+
+        No messages are removed, and no error is given, if the mailbox is
+        selected by an EXAMINE command or is otherwise selected read-only.
         
-    
-    
+        Arguments:
+        - `cmd`: The IMAP command we are executing
+        """
+        if self.state != "selected" or self.mbox is None:
+            raise No("Client must be in the selected state")
+
+        self.mbox.unselected(self)
+        self.pending_expunges = []
+        mbox = self.mbox
+        self.mbox = None
+        self.state = "authenticated"
+
+        # If the mailbox was selected via 'examine' then closing the mailbox
+        # does NOT do a purge of all messages marked with '\Delete'
+        #
+        if self.examine:
+            return
+
+        # Otherwise closing the mailbox (unlike doing a 'select' 'examine' or
+        # 'logout') will perform an expunge (just no messages will be sent to
+        # this client.) We pass no client parameter so the expunge does its
+        # work 'silently.'
+        #
+        mbox.expunge()
+        return
+
+    ##################################################################
+    #
+    def do_expunge(self, cmd):
+        """
+        Delete all messages marked with '\Delete' from the mailbox and send out
+        untagged expunge messages...
+
+        Arguments:
+        - `cmd`: The IMAP command we are executing
+        """
+        if self.state != "selected" or self.mbox is None:
+            raise No("Client must be in the selected state")
+        
+        self.send_pending_expunges()
+
+        # If we selected the mailbox via 'examine' then we can not make any
+        # changes anyways...
+        #
+        if self.examine:
+            return
+        mbox.expunge()
+        return
+

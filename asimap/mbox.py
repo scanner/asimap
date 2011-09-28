@@ -197,7 +197,7 @@ class Mailbox(object):
 
     ##################################################################
     #
-    def resync(self, force = False):
+    def resync(self, force = False, notify = False):
         """
         This will go through the mailbox on disk and make sure all of the
         messages have proper uuid's, make sure we have a .mh_sequences file
@@ -237,6 +237,14 @@ class Mailbox(object):
                    that if the mtime has not changed no new messages have been
                    added or removed so there is no need to do a complete uid
                    update.
+                   
+        - `notify`: If this is False we will NOT send an EXISTS message when
+          we resync the mailbox. This is likely because the size of the mailbox
+          has shrunk in size due to an expunge and we are not allowed to send
+          EXISTS that reduce the number of messages in the mailbox. Those
+          clients that have not gotten the expungues should get them the next
+          time they do a command.
+
         """
         # Get the mtime of the folder at the start so when we need to check to
         # see if we need to do a full scan we have this value before anything
@@ -348,7 +356,11 @@ class Mailbox(object):
             if 'Recent' in seq:
                 num_recent = len(seq['Recent'])
 
-            if len(msgs) != self.num_msgs or num_recent != self.num_recent:
+            # NOTE: Only send EXISTS messages if notify is True.
+            #
+            if notify and \
+                    (len(msgs) != self.num_msgs or \
+                         num_recent != self.num_recent):
                 # Notify all listening clients that the number of messages and
                 # number of recent messages has changed.
                 #
@@ -928,6 +940,92 @@ class Mailbox(object):
         finally:
             self.mailbox.unlock()
         self.resync()
+        return
+
+    ##################################################################
+    #
+    def expunge(self, client = None):
+        """
+        Perform an expunge. All messages in the 'Deleted' sequence are removed.
+
+        If a client is passed in then we send untagged expunge messages to that
+        client.
+
+        The RFC is pretty clear that we MUST NOT send an untagged expunge
+        message to any client if that client has no command in progress so we
+        can only send expunge's to the given client immediately.
+
+        Also we can not send an expunge during FETCH, STORE, or SEARCH
+        commands.
+
+        However, we CAN (MUST?) send expunges that are pending during all the
+        other commands so we need to store up the expunges that we register
+        here and during any of those other commands send out the built up
+        expunge's.
+
+        I think.
+
+        NOTE: We only store pending expunge messages if there are any clients
+              attached to this mailbox (besides the client passed in the
+              arguments.)
+
+        NOTE: IDLE is 'in the middle of a command' and is not on the prohibited
+              list so we also send untagged expunge messages to any clients in
+              IDLE
+
+        Arguments:
+
+        - `client`: the client to send the immediate untagged expunge messags
+          to.
+        """
+
+        try:
+            self.mailbox.lock()
+            # If there are no messages in the 'Deleted' sequence then we have
+            # nothing to do.
+            #
+            seq self.mailbox.get_sequences()
+            if 'Deleted' not in seq:
+                return
+
+            # See if there any other clients other than the one passed in the
+            # arguments and any NOT in IDLE that have this mailbox selected.
+            # This tells us whether we need to keep track of these expunges to
+            # send to the other clients.
+            #
+            clients_to_notify = { }
+            clients_to_pend = []
+            if client is not None:
+                clients_to_notify[client.client.port] = client
+
+            for port, c in self.clients.iteritems():
+                if c.idling:
+                    clients_to_notify[port] = c
+                elif port not in clients_to_notify:
+                    clients_to_pend.append(c)
+
+            # Now that we know who we are going to send expunges to immediately
+            # and who we are going to record them for later sending, go through
+            # the mailbox and delete the messages.
+            #
+            msgs = self.mailbox.keys()
+            for msg in seq['Deleted']:
+                self.mailbox.discard(msg)
+                which = msgs.index(msg) + 1
+                for c in clients_to_notify.itervalues():
+                    c.client.push("* %d EXPUNGE\r\n" % which)
+                for c in clients_to_pend:
+                    c.pending_expunges.append("* %d EXPUNGE\r\n" % which)
+                msgs.remove(msg)
+        finally:
+            self.mailbox.unlock()
+
+        # Resync the mailbox, but send NO exists messages because the mailbox
+        # has shrunk: 5.2.: "it is NOT permitted to send an EXISTS response
+        # that would reduce the number of messages in the mailbox; only the
+        # EXPUNGE response can do this.
+        #
+        self.resync(no_notify = True)
         return
 
     #########################################################################
