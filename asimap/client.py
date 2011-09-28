@@ -65,6 +65,11 @@ class BaseClientHandler(object):
         #
         self.idling = False
 
+        # This is used to keep track of the tag.. useful for when finishing an
+        # DONE command when idling.
+        #
+        self.tag = None
+
         return
 
     ##################################################################
@@ -82,19 +87,7 @@ class BaseClientHandler(object):
         self.log.debug("Processing received IMAP command: %s %s" % \
                            (imap_command.tag, imap_command.command))
 
-        # Before anything else if we are idling then we only accept
-        # a DONE continuation from the IMAP client. Everything else
-        # it sends us a is a BAD command.
-        #
-        # XXX This is not how this is going to work.. need to revisit
-        #     this when we actually get around to implementing 'IDLE'
-        #
-        if self.idling and imap_command.command != "done":
-            self.client.push("%s BAD Expected 'DONE' not: %s\r\n" % \
-                                 (imap_command.tag,
-                                  imap_command.command))
-            return
-                
+
         # Since the imap command was properly parsed we know it is a valid
         # command. If it is one we support there will be a method
         # on this object of the format "do_%s" that will actually do the
@@ -102,6 +95,7 @@ class BaseClientHandler(object):
         #
         # If no such method exists then this is not a supported command.
         #
+        self.tag = imap_command.tag
         if not hasattr(self, 'do_%s' % imap_command.command):
             self.client.push("%s BAD Sorry, %s is not a supported "
                              "command\r\n" % (imap_command.tag,
@@ -136,7 +130,15 @@ class BaseClientHandler(object):
             self.client.push("%s OK %s completed\r\n" % \
                                  (imap_command.tag,
                                   imap_command.command.upper()))
+        elif result is False:
+            # Some commands do NOT send an OK response immediately.. aka the
+            # IDLE command. If result is false then we just return.
+            #
+            return
         else:
+            # The command has some specific response it wants to send back as
+            # part of the tagged OK response.
+            #
             self.client.push("%s OK %s %s completed\r\n" % \
                                  (imap_command.tag, result,
                                   imap_command.command.upper()))
@@ -145,6 +147,19 @@ class BaseClientHandler(object):
     ## The following commands are supported in any state.
     ##
 
+    ##################################################################
+    #
+    def do_done(self, imap_command):
+        """
+        We have gotten a DONE. This is only called when we are idling.
+        
+        Arguments:
+        - `imap_command`: This is ignored.
+        """
+        self.idling = False
+        self.client.push("%s OK IDLE terminated\r\n" % self.tag)
+        return
+    
     #########################################################################
     #
     def do_capability(self, imap_command):
@@ -209,6 +224,7 @@ class BaseClientHandler(object):
         #
         self.client.push("+ idling\r\n")
         self.idling = True
+        return False
 
     #########################################################################
     #
@@ -702,6 +718,6 @@ class Authenticated(BaseClientHandler):
         #
         if self.examine:
             return
-        mbox.expunge()
+        mbox.expunge(self)
         return
 

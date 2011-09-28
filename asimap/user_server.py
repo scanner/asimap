@@ -186,6 +186,17 @@ class IMAPUserClientHandler(asynchat.async_chat):
         # Parse the IMAP message. If we can not parse it hand back a 'BAD'
         # response to the IMAP client.
         #
+        # We special case if the client is idling. In this state we look for
+        # ONLY a 'DONE' non-tagged message and when we get that we call the
+        # 'do_done()' method on the client command processor.
+        #
+        if self.cmd_processor.idling:
+            if imap_msg.lower().strip() != "done":
+                self.push("* BAD Expected 'DONE' not: %s\r\n" % imap_msg)
+            else:
+                self.cmd_processor.do_done(None)
+            return
+
         try:
             imap_cmd = asimap.parse.IMAPClientCommand(imap_msg)
             imap_cmd.parse()

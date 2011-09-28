@@ -984,7 +984,7 @@ class Mailbox(object):
             # If there are no messages in the 'Deleted' sequence then we have
             # nothing to do.
             #
-            seq self.mailbox.get_sequences()
+            seq = self.mailbox.get_sequences()
             if 'Deleted' not in seq:
                 return
 
