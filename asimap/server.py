@@ -294,8 +294,8 @@ class IMAPClientHandler(asynchat.async_chat):
         with.
         """
         if self.reading_string_literal:
-            # If we were reading a string literal, then we switch back
-            # to reading lines.
+            # If we were reading a string literal, then we switch back to
+            # reading lines.
             #
             self.reading_string_literal = False
             self.set_terminator(self.LINE_TERMINATOR)
@@ -318,6 +318,11 @@ class IMAPClientHandler(asynchat.async_chat):
             #
             self.set_terminator(int(m.group(1)))
             self.reading_string_literal = True
+
+            # We also tack on a \r\n to the ibuffer so that whatever parses
+            # the message knows how to parse the literal string corrctly.
+            #
+            self.ibuffer.append("\r\n")
 
             # Tell the IMAP client that we are ready to receive more data from
             # them.

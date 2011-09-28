@@ -18,17 +18,17 @@ class ProtocolException(Exception):
     def __init__(self, value = "protocol exception"):
         self.value = value
     def __str__(self):
-        return repr(self.value)
+        return self.value
 
 class No(ProtocolException):
     def __init__(self, value = "no"):
         self.value = value
     def __str__(self):
-        return repr(self.value)
+        return self.value
 
 class Bad(ProtocolException):
     def __init__(self, value = "bad"):
         self.value = value
     def __str__(self):
-        return repr(self.value)
+        return self.value
 

@@ -31,3 +31,6 @@ SYSTEM_FLAG_MAP = {
     'unseen'   : r'\Unseen',
     }
 
+REVERSE_SYSTEM_FLAG_MAP = {}
+for key,value in SYSTEM_FLAG_MAP.iteritems():
+    REVERSE_SYSTEM_FLAG_MAP[value] = key

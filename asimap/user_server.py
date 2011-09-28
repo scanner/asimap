@@ -496,6 +496,7 @@ class IMAPUserServer(asyncore.dispatcher):
 
         for mbox_name in expired:
             self.log.debug("Expiring mailbox '%s'" % mbox_name)
+            self.active_mailboxes[mbox_name].commit_to_db()
             del self.active_mailboxes[mbox_name]
 
         return

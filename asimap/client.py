@@ -16,6 +16,7 @@ import os.path
 # asimapd imports
 #
 import asimap.mbox
+import asimap.auth
 from asimap.exceptions import No, Bad
 
 # Local constants
@@ -320,8 +321,8 @@ class PreAuthenticated(BaseClientHandler):
             
             self.user.auth_system = self.auth_system
             self.state = "authenticated"
-        except auth.AuthenticationException, e:
-            raise No(str(e.value))
+        except asimap.auth.AuthenticationException, e:
+            raise No(str(e))
         return None
 
 ##################################################################
@@ -509,3 +510,77 @@ class Authenticated(BaseClientHandler):
             self.client.push('* LIST (%s) "/" %s\r\n' % \
                                  (' '.join(attributes), mbox_name))
         return
+
+    ####################################################################
+    #
+    def do_lsub(self, cmd):
+        """
+        The lsub command lists mailboxes we are subscribed to with the
+        'SUBSCRIBE' command. Since we do not support subscribing to
+        mailboxes, this list will always be empty, no?
+
+        Arguments:
+        - `cmd`: The IMAP command we are executing
+        """
+        return None
+    
+    ##################################################################
+    #
+    def do_status(self, cmd):
+        """
+        Get the designated mailbox and return the requested status
+        attributes to our client.
+
+        Arguments:
+        - `cmd`: The IMAP command we are executing
+        """
+
+        mbox = self.server.get_mailbox(cmd.mailbox_name, expiry = 45)
+        mbox.resync()
+        result = []
+        for att in cmd.status_att_list:
+            if att == "messages":
+                result.append("MESSAGES %d" % mbox.num_msgs)
+            elif att == "recent":
+                result.append("RECENT %d" % mbox.num_recent)
+            elif att == "uidnext":
+                result.append("UIDNEXT %d" % mbox.next_uid)
+            elif att == "uidvalidity":
+                result.append("UIDVALIDITY %d" % mbox.uid_vv)
+            elif att == "unseen":
+                if 'unseen' in mbox.sequences:
+                    result.append("UNSEEN %d" %  len(mbox.sequences['unseen']))
+                else:
+                    result.append("UNSEEN 0")
+            else:
+                raise Bad("Unsupported STATUS attribute '%s'" % att)
+        
+        self.client.push("* STATUS %s (%s)\r\n" % \
+                             (cmd.mailbox_name," ".join(result)))
+        return
+
+    ##################################################################
+    #
+    def do_append(self, cmd):
+        """
+        Append a message to a mailbox.
+
+        Arguments:
+        - `cmd`: The IMAP command we are executing
+        """
+
+        try:
+            mbox = self.server.get_mailbox(cmd.mailbox_name, expiry = 0)
+        except asimap.mbox.NoSuchMailbox:
+            # For APPEND and COPY if the mailbox does not exist we
+            # MUST supply the TRYCREATE flag so we catch the generic
+            # exception and return the appropriate NO result.
+            #
+            raise No("[TRYCREATE] No such mailbox: '%s'" % cmd.mailbox_name)
+        
+        mbox.append(cmd.message, cmd.flag_list, cmd.date_time)
+        return
+
+        
+    
+    
