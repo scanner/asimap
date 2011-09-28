@@ -1049,6 +1049,27 @@ class Mailbox(object):
         self.resync(notify = False)
         return
 
+    ##################################################################
+    #
+    def search(self, search_key):
+        """
+        Take the given IMAP search object and apply it to all of the messages
+        in the mailbox.
+        
+        Form a list (by message index) of the messages that match and return
+        that list to our caller.
+
+        Arguments:
+        - `search_key`: An IMAPSearch object instance
+        """
+        results = []
+        try:
+            self.mailbox.lock()
+            
+        finally:
+            self.mailbox.unlock()
+        return results
+    
     #########################################################################
     #
     @classmethod

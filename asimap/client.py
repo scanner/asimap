@@ -742,3 +742,20 @@ class Authenticated(BaseClientHandler):
         self.mbox.expunge(self)
         return
 
+    ##################################################################
+    #
+    def do_search(self, cmd):
+        """
+        Search... NOTE: Can not send untagged EXPUNGE messages during this
+        command.
+        
+        Arguments:
+        - `cmd`: The IMAP command we are executing
+        """
+        if self.state != "selected" or self.mbox is None:
+            raise No("Client must be in the selected state")
+        results = self.mbox.search(self.imap_command.search_key)
+        self.client.push("* SEARCH %s\r\n" % ' '.join([str(x) for x in results]))
+        return None
+        
+    

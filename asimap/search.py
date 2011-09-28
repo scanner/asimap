@@ -108,7 +108,7 @@ class IMAPSearch(object):
     
     #########################################################################
     #
-    def match(self, message, db_entry, uid, sequence_number, max, uid_max):
+    def match(self, message, db_entry, uid, sequence_number, id_max, uid_max):
         """This will apply the search criteria expressed in the creation of
         this IMAPSearch against the given message.
 
@@ -131,7 +131,7 @@ class IMAPSearch(object):
         self.uid = uid
         self.uid_max = uid_max
         self.number = sequence_number
-        self.max = max
+        self.id_max = id_max
 
         return getattr(self, '_match_%s' % self.op)()
 
@@ -173,7 +173,7 @@ class IMAPSearch(object):
         """
         for search_op in self.args['search_key']:
             if not search_op.match(self.msg, self.msg_entry, self.uid,
-                                   self.number, self.max, self.uid_max):
+                                   self.number, self.id_max, self.uid_max):
                 return False
         return True
 
@@ -195,7 +195,7 @@ class IMAPSearch(object):
         """
         for search_op in self.args['search_key']:
             if search_op.match(self.msg, self.msg_entry, self.uid, self.number,
-                               self.max, self.uid_max):
+                               self.id_max, self.uid_max):
                 return True
         return False
 
@@ -255,7 +255,7 @@ class IMAPSearch(object):
         XXX for things like 'message set' matches
         """
         for elt in self.args["msg_set"]:
-            if isinstance(elt,str) and elt == "*" and self.number == self.max:
+            if isinstance(elt,str) and elt == "*" and self.number == self.id_max:
                 return True
             elif isinstance(elt,int) and elt == self.number:
                 return True
@@ -272,7 +272,7 @@ class IMAPSearch(object):
         """
         return not self.args['search_key'].match(self.msg, self.msg_entry,
                                                  self.uid, self.number,
-                                                 self.max, self.uid_max)
+                                                 self.id_max, self.uid_max)
 
     #########################################################################
     #
