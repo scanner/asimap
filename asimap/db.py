@@ -41,7 +41,6 @@ def regexp(expr, item):
         else:
             reg = re.compile(expr)
             USED_REGEXPS[expr] = reg
-        log.debug("testing '%s' against '%s'" % (expr, item))
         return reg.search(item) is not None
     except Exception, e:
         log.error("got exception: %s" % e)

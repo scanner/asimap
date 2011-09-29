@@ -21,7 +21,8 @@ from asimap.exceptions import No, Bad
 
 # Local constants
 #
-CAPABILITIES = ('IMAP4rev1', 'IDLE', 'NAMESPACE', 'ID', 'UIDPLUS')
+#CAPABILITIES = ('IMAP4rev1', 'IDLE', 'NAMESPACE', 'ID', 'UIDPLUS')
+CAPABILITIES = ('IMAP4rev1', 'IDLE', 'ID')
 SERVER_ID = { 'name'        : 'asimapd',
               'version'     : '0.1',
               'vendor'      : 'Apricot Systematic',

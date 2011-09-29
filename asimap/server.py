@@ -253,6 +253,8 @@ class IMAPClientHandler(asynchat.async_chat):
         self.ibuffer = []
         self.set_terminator(self.LINE_TERMINATOR)
         self.msg_processor = ServerIMAPMessageProcessor(self)
+        self.push("* OK IMAP4rev1 Service Ready\r\n")
+        return
 
     ############################################################################
     #

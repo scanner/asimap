@@ -34,3 +34,31 @@ SYSTEM_FLAG_MAP = {
 REVERSE_SYSTEM_FLAG_MAP = {}
 for key,value in SYSTEM_FLAG_MAP.iteritems():
     REVERSE_SYSTEM_FLAG_MAP[value] = key
+
+####################################################################
+#
+def flag_to_seq(flag):
+    """
+    Map an IMAP flag to an mh sequence name. This basically sees if the flag
+    is one we need to translate or not.
+
+    Arguments:
+    - `flag`: The IMAP flag we are going to translate.
+    """
+    if flag in REVERSE_SYSTEM_MAP:
+        return REVERSE_SYSTEM_MAP[flag]
+    return flag
+
+####################################################################
+#
+def seq_to_flag(seq):
+    """
+    The reverse of flag to seq - map an MH sequence name to the IMAP flag.
+    
+    Arguments:
+    - `seq`: The MH sequence name
+    """
+    if seq in SYSTEM_MAP:
+        return SYSTEM_MAP[seq]
+    return seq
+
