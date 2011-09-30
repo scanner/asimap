@@ -1180,6 +1180,7 @@ class Mailbox(object):
                 msg_sequences = msg.get_sequences()
                 iter_results = []
                 for elt in msg_data_items:
+                    self.log.debug("fetch: applying: %s" % str(elt))
                     iter_results.append(elt.fetch(ctx))
 
                 results.append((idx, iter_results))

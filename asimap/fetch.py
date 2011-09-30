@@ -188,8 +188,6 @@ class FetchAtt(object):
         Fill in the details of our FetchAtt object based on what we parse
         from the given attribute/section/partial.
         """
-        self.log = logging.getLogger("%s.%s.%s" % (__name__, self.__class__.__name__,actual_command))
-        
         self.attribute = attribute
         self.section = section
         self.partial = partial
@@ -199,8 +197,8 @@ class FetchAtt(object):
             self.actual_command = self.attribute.upper()
         else:
             self.actual_command = actual_command
-            
-
+        self.log = logging.getLogger("%s.%s.%s" % (__name__, self.__class__.__name__,actual_command))
+        
     #######################################################################
     #
     def __repr__(self):
@@ -343,8 +341,10 @@ class FetchAtt(object):
                            msg.get_content_type() == 'message/rfc822':
                             msg = msg.get_payload(0)
                     else:
-                        raise BadSection("Unexpected section value: %s" % \
-                                         section[0])
+                        self.log.warn("body: Unexpected section[0] value: %s" %\
+                                          repr(section))
+                        raise BadSection("%s: Unexpected section value: %s" % \
+                                             (str(self),repr(section[0])))
             elif isinstance(section[0], int):
                 # We have an integer sub-section. This means that we
                 # need to pull apart the message (it MUST be a
