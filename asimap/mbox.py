@@ -1165,18 +1165,23 @@ class Mailbox(object):
             # we need the max id and max uuid.
             #
             msgs = self.mailbox.keys()
+            uid_vv, uid_max = self.get_uid_from_msg(msgs[-1])
             seq_max = len(self.mailbox)
             msg_idxs = asimap.utils.sequence_set_to_list(msg_set, seq_max)
+            self.log.debug("fetch: Fetching from message indices: %s" % ",".join([str(x) for x in msg_idxs]))
 
             # Go through each message and apply the msg_data_items.fetch() to
             # it building up a set of data to respond to the client with.
             #
             for idx in msg_idxs:
                 msg = self.mailbox.get_message(msgs[idx])
+                ctx = asimap.search.SearchContext(self, msgs[idx], idx, seq_max,
+                                                  uid_max, self.sequences)
                 msg_sequences = msg.get_sequences()
                 iter_results = []
                 for elt in msg_data_items:
-                    iter_results.append(str(elt), elt.fetch(msg))
+                    iter_results.append(elt.fetch(ctx))
+
                 results.append((idx, iter_results))
 
                 # If the message's sequences has changed from before we did the

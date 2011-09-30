@@ -15,10 +15,13 @@ import datetime
 import email.utils
 import calendar
 import pytz
+import logging
 
 # asimap imports
 #
 from exceptions import Bad
+
+LOG = logging.getLogger("%s" % (__name__,))
 
 ############################################################################
 #
@@ -60,7 +63,7 @@ def sequence_set_to_list(seq_set, seq_max):
     Arguments:
     - `seq_set`: The sequence set we want to convert to a list of numbers.
     """
-    result = set()
+    result = []
     for elt in seq_set:
         # Any occurences of '*' we can just swap in the sequence max value.
         #
@@ -68,12 +71,12 @@ def sequence_set_to_list(seq_set, seq_max):
             if seq_max == 0:
                 raise Bad("Message index '*' is greater than the size of "
                           "the mailbox")
-            result.add(seq_max)
+            result.append(seq_max)
         elif isinstance(elt, int):
             if elt > seq_max:
                 raise Bad("Message index '%d' is greater than the size of "
                           "the mailbox" % elt)
-            result.add(elt)
+            result.append(elt)
         elif isinstance(elt, tuple):
             start, end = elt
             if str(start) == "*":
@@ -81,12 +84,11 @@ def sequence_set_to_list(seq_set, seq_max):
             if str(end) == "*":
                 end = seq_max
                 
-            if start == 0 || end == 0 || start > seq_max || end > seq_max:
+            if start == 0 or end == 0 or start > seq_max or end > seq_max:
                 raise Bad("Message sequence '%s' is greater than the size of "
                           "the mailbox" % str(elt))
             if start > end:
-                result.union(set(range(end, start + 1)))
+                result.extend(range(end, start + 1))
             else:
-                result.union(set(range(start, end + 1)))
-    return sorted(list(result))
-
+                result.extend(range(start, end + 1))
+    return sorted(set(result))

@@ -10,8 +10,9 @@ Objects and functions to fetch elements of a message.
 #
 # System imports
 #
-import email.Utils
+import email.utils
 import os.path
+import logging
 from cStringIO import StringIO
 from email.Generator import Generator
 from email.Header import Header
@@ -20,10 +21,11 @@ from email.Header import Header
 #
 import asimap.utils
 import asimap.constants
+import asimap.exceptions
 
 ############################################################################
 #
-class BadSection(Exception):
+class BadSection(asimap.exceptions.Bad):
     def __init__(self, value = "bad 'section'"):
         self.value = value
     def __str__(self):
@@ -182,9 +184,12 @@ class FetchAtt(object):
     #
     def __init__(self, attribute, section = None, partial = None,
                  peek = False, ext_data = True, actual_command = None):
-        """Fill in the details of our FetchAtt object based on what we parse
+        """
+        Fill in the details of our FetchAtt object based on what we parse
         from the given attribute/section/partial.
         """
+        self.log = logging.getLogger("%s.%s.%s" % (__name__, self.__class__.__name__,actual_command))
+        
         self.attribute = attribute
         self.section = section
         self.partial = partial
@@ -218,57 +223,48 @@ class FetchAtt(object):
     
     #######################################################################
     #
-    def fetch(self, msg):
+    def fetch(self, ctx):
         """
         This method applies fetch criteria that this object represents
         to the message and message entry being passed in.
 
-        It returns a tuple.
-
-        The first element of the tuple it returns is a string that is
-        approrpriately formated as the body of the FETCH response.
-
-        The second element is a boolean indicating whether or not the
-        msg_entry object had any changes in its flags (and thus needs
-        to be saved to the database and a flag notify to be sent to
-        clients that have this mailbox selected.)
-
-        True indicates that the flags have changed.
+        It returns the part of the message wanted as a string ready to
+        be sent right back to the client that asked for it.
 
         NOTE: In case you are wondering a FETCH of a message can cause
         it to gain a '\Seen' flag.
         """
+        self.ctx = ctx
 
         # We can easily tell if this is going to change a message's flags.
         # The operation is 'body' and peek is False.
         #
-        changed = False
         if self.attribute == self.OP_BODY and self.peek is False and \
-                '\Seen' not in msg_entry.flags:
-            msg_entry.flags.append('\Seen')
-            changed = True
+                'Seen' not in self.ctx.sequences:
+            self.ctx.msg.remove_sequence('Unseen')
+            self.ctx.msg.add_sequence('Seen')
 
         # Based on the operation figure out what subroutine does the rest
         # of the work.
         #
         if self.attribute  == "body":
-            result = self.body(msg, self.section)
+            result = self.body(self.ctx.msg, self.section)
         elif self.attribute == "bodystructure":
-            result = self.bodystructure(msg)
+            result = self.bodystructure(self.ctx.msg)
         elif self.attribute == "envelope":
-            result = self.envelope(msg)
+            result = self.envelope(self.ctx.msg)
         elif self.attribute == "flags":
-            result = '(%s)' % ' '.join(msg_entry.flags)
+            result = '(%s)' % ' '.join([asimap.constants.seq_to_flag(x) for x in self.ctx.sequences])
         elif self.attribute == "internaldate":
-            result = '"%s"' % asimap.utils.formatdate(msg_entry.internal_date)
+            result = '"%s"' % asimap.utils.formatdate(self.ctx.internal_date)
         elif self.attribute == "rfc822.size":
-            result = str(len(email.Utils.fix_eols(msg.as_string())))
+            result = str(len(self.ctx.mailbox.get_string(self.ctx.msg_key)))
         elif self.attribute == "uid":
-            result = str(msg_entry.uid)
+            result = str(self.ctx.uid)
         else:
             raise NotImplemented
         
-        return ("%s %s" % (str(self), result), changed)
+        return "%s %s" % (str(self), result)
 
     #######################################################################
     #
@@ -288,7 +284,7 @@ class FetchAtt(object):
             # body() method. All further recursive calls will always have at
             # least one element in the section list when they are called.
             #
-            msg_text = msg.as_string()
+            msg_text = email.utils.fix_eols(msg.as_string())
         else:
             if len(section) == 1:
                 fp = StringIO()
@@ -384,7 +380,7 @@ class FetchAtt(object):
         #
         # Convert \n in to \r\n
         #
-        msg_text = email.Utils.fix_eols(msg_text)
+        msg_text = email.utils.fix_eols(msg_text)
         if self.partial:
             msg_text = msg_text[self.partial[0]:self.partial[1]]
 
