@@ -771,6 +771,16 @@ class Authenticated(BaseClientHandler):
         """
         if self.state != "selected" or self.mbox is None:
             raise No("Client must be in the selected state")
-        
+
+        results = self.mbox.fetch(self.msg_set, self.fetch_atts)
+        for r in results:
+            idx, iter_results = r
+            msg = []
+            for att, value in iter_results:
+                msg.append("%s %s" % (att, value))
+            self.client.push("* FETCH %d (%s)" % (idx, " ".join(msg)))
+        self.mbox.resync()
+        return None
+
         
     

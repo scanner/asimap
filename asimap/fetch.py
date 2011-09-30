@@ -19,6 +19,7 @@ from email.Header import Header
 # asimap imports
 #
 import asimap.utils
+import asimap.constants
 
 ############################################################################
 #
@@ -44,7 +45,7 @@ class TextGenerator(Generator):
         the body.
 
         We do this by having the 'clone()' method basically reverse
-        whether or nto we should print the headers, and the _write()
+        whether or not we should print the headers, and the _write()
         method looks at that instance variable to decide if it should
         print the headers or not.
 
@@ -217,7 +218,7 @@ class FetchAtt(object):
     
     #######################################################################
     #
-    def fetch(self, msg, msg_entry):
+    def fetch(self, msg):
         """
         This method applies fetch criteria that this object represents
         to the message and message entry being passed in.

@@ -25,7 +25,7 @@ import asimap.utils
 import asimap.search
 from asimap.exceptions import No, Bad
 from asimap.constants import SYSTEM_FLAGS, PERMANENT_FLAGS, SYSTEM_FLAG_MAP
-from asimap.constants import REVERSE_SYSTEM_FLAG_MAP
+from asimap.constants import REVERSE_SYSTEM_FLAG_MAP, seq_to_flag, flag_to_seq
 
 # RE used to see if a mailbox being created is just digits.
 #
@@ -390,6 +390,20 @@ class Mailbox(object):
             #
             self.num_msgs = len(msgs)
             self.num_recent = num_recent
+
+            # Now if any messages have changed which sequences they are from
+            # the last time we did this we need to issue untagged FETCH %d
+            # (FLAG (..)) to all of our active clients. This does not suffer
+            # the same restriction as EXISTS, RECENT, and EXPUNGE.
+            #
+            # XXX be sure to implement this..
+            #
+            # # Translate our squence names to IMAP flag names
+            # #
+            # flags = " ".join([seq_to_flag(x) for x in msg.get_sequences()])
+            # for client in self.clients:
+            #     client.client.push("* %d FETCH (FLAGS (%s))" % (idx,
+            #                                                     flags))
             self.sequences = seq
 
         finally:
@@ -1151,16 +1165,27 @@ class Mailbox(object):
             # we need the max id and max uuid.
             #
             msgs = self.mailbox.keys()
-            if len(msgs) == 0:
-                return results
-            seq_max = len(msgs)
+            seq_max = len(self.mailbox)
+            msg_idxs = asimap.utils.sequence_set_to_list(msg_set, seq_max)
 
-            for idx, msg in enumerate(msgs):
-                # IMAP messages are numbered starting from 1.
+            # Go through each message and apply the msg_data_items.fetch() to
+            # it building up a set of data to respond to the client with.
+            #
+            for idx in msg_idxs:
+                msg = self.mailbox.get_message(msgs[idx])
+                msg_sequences = msg.get_sequences()
+                iter_results = []
+                for elt in msg_data_items:
+                    iter_results.append(str(elt), elt.fetch(msg))
+                results.append((idx, iter_results))
+
+                # If the message's sequences has changed from before we did the
+                # fetch, rewrite the sequences on disk. A later resync() call
+                # will send out any necessary FETCH responses related to
+                # changed flags.
                 #
-                i = idx + 1
-                
-
+                if sorted(msg_sequences) != sorted(msg.get_sequences()):
+                    self.mailbox._dump_sequences(msg, msgs[idx])
         finally:
             self.mailbox.unlock()
         return results
