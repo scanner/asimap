@@ -1168,8 +1168,6 @@ class Mailbox(object):
             uid_vv, uid_max = self.get_uid_from_msg(msgs[-1])
             seq_max = len(self.mailbox)
             msg_idxs = asimap.utils.sequence_set_to_list(msg_set, seq_max)
-            self.log.debug("fetch: Fetching from message indices: %s" % ",".join([str(x) for x in msg_idxs]))
-            self.log.debug("fetch: %d messages in mailbox" % len(msgs))
 
             # Go through each message and apply the msg_data_items.fetch() to
             # it building up a set of data to respond to the client with.
@@ -1182,7 +1180,7 @@ class Mailbox(object):
                 msg_sequences = msg.get_sequences()
                 iter_results = []
                 for elt in msg_data_items:
-                    self.log.debug("fetch: applying: %s" % str(elt))
+                    self.log.debug("fetch: msg idx: %d, key: %d, fetch op: %s" % (idx,msgs[idx-1],str(elt)))
                     iter_results.append(elt.fetch(ctx))
 
                 results.append((idx, iter_results))

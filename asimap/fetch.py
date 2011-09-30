@@ -541,19 +541,13 @@ class FetchAtt(object):
         # key followed by value.
         #
         params = []
-        for k,v in msg.get_params():
+        for k,v in msg.get_params(failobj = [("CHARSET", "US-ASCII")]):
             if v == '':
                 continue
             params.append('"%s"' % k.upper())
             params.append('"%s"' % v)
-
-        if len(params) > 0:
-            result.append('(%s)' % ' '.join(params))
-        else:
-            # If we have no parameters we force assumption of
-            # 'charset' 'us-ascii'
-            #
-            result.append('("CHARSET" "US-ASCII")')
+        
+        result.append('(%s)' % ' '.join(params))
 
         # The body id (what is this? none of our message from a test
         # IMAP server ever set this.
