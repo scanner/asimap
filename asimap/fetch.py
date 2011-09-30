@@ -256,7 +256,7 @@ class FetchAtt(object):
         elif self.attribute == "internaldate":
             result = '"%s"' % asimap.utils.formatdate(self.ctx.internal_date)
         elif self.attribute == "rfc822.size":
-            result = str(len(self.ctx.mailbox.get_string(self.ctx.msg_key)))
+            result = str(len(self.ctx.mailbox.mailbox.get_string(self.ctx.msg_key)))
         elif self.attribute == "uid":
             result = str(self.ctx.uid)
         else:
@@ -269,8 +269,7 @@ class FetchAtt(object):
     def body(self, msg, section):
         """
         Fetch the appropriate part of the message and return it to the
-        user. If 'peek' is false, this will also potentially change
-        the /Seen flag on a message (if it is not set already.)
+        user.
         """
 
         msg_text = None
@@ -285,6 +284,7 @@ class FetchAtt(object):
             msg_text = email.utils.fix_eols(msg.as_string())
         else:
             if len(section) == 1:
+                self.log.debug("body: section[0] is a: %s" % type(section[0]))
                 fp = StringIO()
                 if isinstance(section[0], int):
                     # The want a sub-part. Get that sub-part. Watch
@@ -307,17 +307,17 @@ class FetchAtt(object):
                         #
                         try: 
                             msg = msg.get_payload(section[0]-1)
-                        except TypeError:
+                        except IndexError:
                             raise BadSection("Section %d does not exist in "
                                              "this message sub-part" % \
                                              section[0])
-                elif section[0] == 'TEXT':
+                elif isinstance(section[0],str) and section[0].upper() == 'TEXT':
                     g = TextGenerator(fp, headers = False)
-                elif isinstance(section[0], list):
-                    if section[0][0] == "HEADER.FIELDS":
+                elif isinstance(section[0], (list,tuple)):
+                    if section[0][0].upper() == "HEADER.FIELDS":
                         g = HeaderGenerator(fp, headers = section[0][1],
                                             skip = False)
-                    elif section[0][0] == "HEADER.FIELDS.NOT":
+                    elif section[0][0].upper() == "HEADER.FIELDS.NOT":
                         g = HeaderGenerator(fp, headers = section[0][1],
                                             skip = True)
                     else:
@@ -326,13 +326,13 @@ class FetchAtt(object):
                                          "not: %s" % section[0][0])
                 else:
                     g = HeaderGenerator(fp)
-                    if section[0] == 'MIME':
+                    if isinstance(section[0], str) and section[0].upper() == 'MIME':
                         # XXX just use the generator as it is for MIME.. I know
                         # this is not quite right in that it will accept more
                         # then it should, but it will otherwise work.
                         #
                         pass 
-                    elif section[0] == 'HEADER':
+                    elif isinstance(section[0],str) and section[0].upper() == 'HEADER':
                         # if the content type is message/rfc822 then to
                         # get the headers we need to use the first
                         # sub-part of this message.

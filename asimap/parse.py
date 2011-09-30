@@ -104,7 +104,7 @@ _search_atom_re = re.compile(_search_atom)
 # fetch att token - fetch atts are one of a set of words - just alpha
 # characters and a dot, no other specials, no numerics.
 #
-_fetch_att_atom = r'[a-zA-Z\.]+'
+_fetch_att_atom = r'[a-zA-Z82\.]+'
 _fetch_att_atom_re = re.compile(_fetch_att_atom)
 
 # a positive integer.
@@ -808,7 +808,8 @@ class IMAPClientCommand(object):
                 elif macro == "full":
                     return [ FetchAtt("flags"), FetchAtt("internaldate"),
                              FetchAtt("rfc822.size"), FetchAtt("envelope"),
-                             FetchAtt("body", section = None, partial = None) ]
+                             FetchAtt("bodystructure", ext_data = False,
+                                      actual_command = "BODY") ]
                 elif macro == "fast":
                     return [ FetchAtt("flags"), FetchAtt("internaldate"),
                              FetchAtt("rfc822.size") ]
@@ -871,7 +872,9 @@ class IMAPClientCommand(object):
             # a rfc822.text fetch is turned in to a body[text] fetch.
             #
             if fetch_att_tok == 'rfc822':
-                return FetchAtt('body', section = [], acutal_command = "RFC822")
+                return FetchAtt('body', section = [], actual_command = "RFC822")
+            elif fetch_att_tok == 'rfc822.size':
+                return FetchAtt(fetch_att_tok)
             elif fetch_att_tok == 'rfc822.header':
                 return FetchAtt('body', section = ['header'], peek = True,
                                 actual_command = "RFC822.HEADER")
