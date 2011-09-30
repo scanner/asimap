@@ -19,7 +19,8 @@ import pytz
 ############################################################################
 #
 def parsedate(date_time_str):
-    """All date time data is stored as a datetime.datetime object in UTC.
+    """
+    All date time data is stored as a datetime.datetime object in UTC.
     This routine uses common routines provided by python to parse a rfc822
     formatted date time in to a datetime.datetime object.
 
@@ -32,7 +33,8 @@ def parsedate(date_time_str):
 ############################################################################
 #
 def formatdate(datetime, localtime = False, usegmt = False):
-    """This is the reverse. It will take a datetime object and format
+    """
+    This is the reverse. It will take a datetime object and format
     and do the deconversions necessary to pass it to email.utils.formatdate()
     and thus return a string properly formatted as an RFC822 date.
     """

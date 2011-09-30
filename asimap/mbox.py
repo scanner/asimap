@@ -22,9 +22,14 @@ from datetime import datetime
 # asimap import
 #
 import asimap.utils
+import asimap.search
 from asimap.exceptions import No, Bad
 from asimap.constants import SYSTEM_FLAGS, PERMANENT_FLAGS, SYSTEM_FLAG_MAP
 from asimap.constants import REVERSE_SYSTEM_FLAG_MAP
+
+# RE used to see if a mailbox being created is just digits.
+#
+digits_re = re.compile(r'^[0-9]+$')
 
 ##################################################################
 ##################################################################
@@ -622,9 +627,16 @@ class Mailbox(object):
                     if msg in key_list:
                         full_msg.add_sequence(name)
 
-                # Save the updated message back to disk.
+                # Save the updated message back to disk. We get the mtime
+                # before we do this so that we can set the mtime back to this
+                # AFTER we write the message file. We do not want adding uid's
+                # to messges to mess up their mtime (which we use for IMAP
+                # 'internal-date' value of a message)
                 #
+                p = os.path.join(self.mailbox._path, str(msg))
+                mtime = os.path.getmtime(p)
                 self.mailbox[msg] = full_msg
+                os.utime(p, (mtime,mtime))
 
         # If we had to redo the folder then we believe it is indeed now
         # interesting so set the \Marked attribute on it.
@@ -930,10 +942,6 @@ class Mailbox(object):
         - `date_time`: The internal date on this message
         """
         msg = mailbox.MHMessage(message)
-        if date_time is not None:
-            msg['X-asimapd-internal-date'] = asimap.utils.formatdate(date_time)
-        else:
-            msg['X-asimapd-internal-date'] = asimap.utils.formatdate(datetime.now())
         for flag in flags:
             # We need to translate some flags in to the equivalent MH mailbox
             # sequence name.
@@ -950,6 +958,13 @@ class Mailbox(object):
             key = self.mailbox.add(msg)
             self.log.debug("append: message: %d, sequences: %s" % \
                                (key,", ".join(msg.get_sequences())))
+
+            # if a date_time was supplied then set the mtime on the file to
+            # that. We use mtime as our 'internal date' on messages.
+            #
+            if date_time is not None:
+                c = time.mktime(date_time.timetuple())
+                os.utime(os.path.join(self.mailbox._path, str(key)),(c,c))
         finally:
             self.mailbox.unlock()
         self.resync()
@@ -1051,7 +1066,7 @@ class Mailbox(object):
 
     ##################################################################
     #
-    def search(self, search_key):
+    def search(self, search):
         """
         Take the given IMAP search object and apply it to all of the messages
         in the mailbox.
@@ -1060,12 +1075,92 @@ class Mailbox(object):
         that list to our caller.
 
         Arguments:
-        - `search_key`: An IMAPSearch object instance
+        - `search`: An IMAPSearch object instance
         """
+        # Before we do a search we do a resync to make sure that we have
+        # attached uid's to all of our messages and various counts are up to
+        # sync. But we do it with notify turned off because we can not send any
+        # conflicting messages to this client (other clients that are idling do
+        # get any updates though.)
+        #
+        self.resync(notify = False)
+
         results = []
         try:
             self.mailbox.lock()
-            
+
+            # We get the full list of keys instead of using an iterator because
+            # we need the max id and max uuid.
+            #
+            msgs = self.mailbox.keys()
+            if len(msgs) == 0:
+                return results
+            seq_max = len(msgs)
+            uid_vv, uid_max = self.get_uid_from_msg(msgs[-1])
+            if uid_vv is None or uid_max is None:
+                self.resync(notify = False)
+
+            # Go through the messages one by one and pass them to the search
+            # object to see if they are or are not in the result set..
+            #
+            self.log.debug("Applying search to messages: %s" % str(search))
+            for idx, msg in enumerate(msgs):
+                # IMAP messages are numbered starting from 1.
+                #
+                i = idx + 1
+                ctx = asimap.search.SearchContext(self, msg, i, seq_max,
+                                                  uid_max, self.sequences)
+                if search.match(ctx):
+                    results.append(i)
+        finally:
+            self.mailbox.unlock()
+        return results
+
+    #########################################################################
+    #
+    def fetch(self, msg_set, msg_data_items):
+        """
+        Go through the messages in the mailbox. For the messages that are
+        within the indicated message set parse them and pull out the data
+        indicated by 'msg_data_items'
+
+        Return a list of tuples where the first element is the IMAP message
+        sequence number and the second is the requested data.
+
+        The requested data itself is a list of tuples. The first element is the
+        name of the data item from 'msg_data_items' and the second is the
+        requested data.
+
+        Arguments:
+        - `msg_set`: The set of messages we want to 
+        - `msg_data_items`:
+        """
+        # Before we do a search we do a resync to make sure that we have
+        # attached uid's to all of our messages and various counts are up to
+        # sync. But we do it with notify turned off because we can not send any
+        # conflicting messages to this client (other clients that are idling do
+        # get any updates though.)
+        #
+        self.resync(notify = False)
+
+        results = []
+        try:
+            self.mailbox.lock()
+
+            # We get the full list of keys instead of using an iterator because
+            # we need the max id and max uuid.
+            #
+            msgs = self.mailbox.keys()
+            if len(msgs) == 0:
+                return results
+            seq_max = len(msgs)
+
+            for idx, msg in enumerate(msgs):
+                # IMAP messages are numbered starting from 1.
+                #
+                i = idx + 1
+                
+
         finally:
             self.mailbox.unlock()
         return results
@@ -1078,8 +1173,14 @@ class Mailbox(object):
         Creates a mailbox on disk that does not already exist and
         instantiates a Mailbox object for it.
         """
-        if name == "inbox":
+        # You can not create 'INBOX' nor, because of MH rules, create a mailbox
+        # that is just the digits 0-9.
+        #
+        if name.lower() == "inbox":
             raise InvalidMailbox("Can not create a mailbox named 'inbox'")
+        if digits_re.match(name):
+            raise InvalidMailbox("Due to MH restrictions you can not create a "
+                                 "mailbox that is just digits: '%s'" % name)
 
         log = logging.getLogger("%s.%s.create()" % (__name__,cls.__name__))
         # If the mailbox already exists than it can not be created. One
@@ -1422,6 +1523,12 @@ class Mailbox(object):
         for row in r:
             mbox_name, attributes = row
             attributes = set(attributes.split(","))
+
+            # INBOX has to be specially named I believe.
+            #
+            if mbox_name.lower() == "inbox":
+                mbox_name = "INBOX"
+
             results.append((mbox_name, attributes))
         c.close()
         return results

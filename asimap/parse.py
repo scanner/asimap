@@ -1214,12 +1214,12 @@ class IMAPClientCommand(object):
     #######################################################################
     #
     def _p_srchkey_recent(self):
-        IMAPSearch('keyword', keyword = "\Recent")
+        return IMAPSearch('keyword', keyword = "\Recent")
 
     #######################################################################
     #
     def _p_srchkey_seen(self):
-        IMAPSearch('keyword', keyword = "\Seen")
+        return IMAPSearch('keyword', keyword = "\Seen")
 
     #######################################################################
     #

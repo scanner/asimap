@@ -45,8 +45,8 @@ def flag_to_seq(flag):
     Arguments:
     - `flag`: The IMAP flag we are going to translate.
     """
-    if flag in REVERSE_SYSTEM_MAP:
-        return REVERSE_SYSTEM_MAP[flag]
+    if flag in REVERSE_SYSTEM_FLAG_MAP:
+        return REVERSE_SYSTEM_FLAG_MAP[flag]
     return flag
 
 ####################################################################
@@ -58,7 +58,7 @@ def seq_to_flag(seq):
     Arguments:
     - `seq`: The MH sequence name
     """
-    if seq in SYSTEM_MAP:
-        return SYSTEM_MAP[seq]
+    if seq in SYSTEM_FLAG_MAP:
+        return SYSTEM_FLAG_MAP[seq]
     return seq
 

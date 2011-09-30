@@ -755,8 +755,22 @@ class Authenticated(BaseClientHandler):
         """
         if self.state != "selected" or self.mbox is None:
             raise No("Client must be in the selected state")
-        results = self.mbox.search(self.imap_command.search_key)
-        self.client.push("* SEARCH %s\r\n" % ' '.join([str(x) for x in results]))
+        results = self.mbox.search(cmd.search_key)
+        self.client.push("* SEARCH %s\r\n" % \
+                             ' '.join([str(x) for x in results]))
         return None
+        
+    ##################################################################
+    #
+    def do_fetch(self, cmd):
+        """
+        Fetch data from the messages indicated in the command.
+
+        Arguments:
+        - `cmd`: The IMAP command we are executing
+        """
+        if self.state != "selected" or self.mbox is None:
+            raise No("Client must be in the selected state")
+        
         
     
