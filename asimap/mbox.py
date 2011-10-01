@@ -360,7 +360,7 @@ class Mailbox(object):
                     first_new_msg = self._find_first_new_message(msgs,
                                                                  horizon=30)
                     first_msg_wo_uid = self._find_msg_without_uidvv(msgs)
-                    if first_new_msg and first_msg_wo_uid:
+                    if first_new_msg or first_msg_wo_uid:
                         start = min(x for x in [first_new_msg,first_msg_wo_uid] if x is not None)
                         self.log.debug("rescanning from %d to %d" % \
                                            (start, msgs[-1]))
@@ -483,7 +483,6 @@ class Mailbox(object):
         #       think all these messages have had their flags changed.
         #
         changed_msgs = changed_msgs & set(msgs)
-        self.log.debug("compute_and_publish_fetchs: messages with changed flags: %s" % [str(x) for x in changed_msgs])
 
         # And go through each message and publish a FETCH to every client with
         # all the flags that this message has.
@@ -503,7 +502,7 @@ class Mailbox(object):
                 if dont_notify and \
                         client.client.port == dont_notify.client.port:
                     continue
-                client.client.push("* FETCH %d (FLAGS (%s)\r\n" % (msg_idx,
+                client.client.push("* FETCH %d (FLAGS (%s))\r\n" % (msg_idx,
                                                                    flags))
         return
 
@@ -610,13 +609,14 @@ class Mailbox(object):
         if len(msgs) == 0:
             return None
         horizon_mtime = self.mtime - horizon
-        msg = None
+        found = None
         for msg in msgs:
             # XXX Ug, hate having to get the path this way..
             #
             if int(os.path.getmtime(os.path.join(self.mailbox._path,str(msg)))) > horizon_mtime:
+                found = msg
                 break
-        return msg
+        return found
 
     ##################################################################
     #
@@ -649,25 +649,10 @@ class Mailbox(object):
         for msg in msgs:
             uid_vv, uid = self.get_uid_from_msg(msg)
             if uid_vv == self.uid_vv:
+                return found
+            else:
                 found = msg
-                break
-
-        # If found is not None then we want the message _before_ it unless
-        # it is the first message (in which case we return None)
-        #
-        if found and msgs[0] == found:
-            return None
-
-        # If we did not find one then there is no message with a valid uuid
-        # in this folder.
-        #
-        if found is None:
-            return None
-
-        # Otherwise the first message with a non-valid uuid is the one BEFORE
-        # the one we found.
-        #
-        return msgs[msgs.index(found) - 1]
+        return found
 
     ##################################################################
     #
@@ -1320,6 +1305,82 @@ class Mailbox(object):
         - `action`: one of REMOVE_FLAGS, ADD_FLAGS, or REPLACE_FLAGS
         - `flags`:
         """
+        ####################################################################
+        #
+        def add_flags(flags, msgs, seqs):
+            """
+            Helpe function to add a flag to a sequence.
+
+            Also handles removing a message from then Seen/unseen sequences if
+            the flag being added is unseen/Seen.
+
+            Arguments:
+            - `flags`: The flags being added
+            - `msgs`: The messages it is being added to
+            - `seqs`: The dict of sequeneces
+            """
+            for flag in flags:
+                if flag not in seqs:
+                    seqs[flag] = []
+                for msg in msgs:
+                    if msg not in seqs[flag]:
+                        seqs[flag].append(msg)
+                    # When we add a message to the Seen sequence make sure
+                    # that message is not in the unseen sequence anymore.
+                    #
+                    if flag == "Seen" and 'unseen' in seqs and \
+                            msg in seqs['unseen']:
+                        seqs['unseen'].remove(msg)
+
+                    # Conversely, if we are adding a message to the unseen
+                    # sequence be sure to remove it from the seen sequence.
+                    #
+                    if flag == "unseen" and "Seen" in seqs and \
+                            msg in seqs['Seen']:
+                        seqs['Seen'].remove(msg)
+            return
+        ####################################################################
+        #
+        def remove_flags(flags, msgs, sequs):
+            """
+            Helper function to move a flag from a list of messages.
+            
+            Also handles adding a message from then Seen/unseen sequences if
+            the flag being removed is unseen/Seen.
+
+            Arguments:
+            - `flags`: The flag being added
+            - `msgs`: The messages it is being added to
+            - `seqs`: The dict of sequeneces
+            """
+            for flag in flags:
+                if flag in seqs:
+                    for msg in msgs:
+                        if msg in seqs[flag]:
+                            seqs[flag].remove(msg)
+
+                            # If we remove a message from the Seen sequence
+                            # be sure to add it to the unseen sequence.
+                            #
+                            if flag == "Seen":
+                                if "unseen" in seqs:
+                                    seqs["unseen"].append(msg)
+                                else:
+                                    seqs["unseen"] = [msg]
+                            # And conversely, message removed from unseen,
+                            # add it to Seen.
+                            #
+                            if flag == "unseen":
+                                if "Seen" in seqs:
+                                    seqs["Seen"].append(msg)
+                                else:
+                                    seqs["Seen"] = [msg]
+
+                    if len(seqs[flag]) == 0:
+                        del seqs[flag]
+            return
+        
+            
         if '\\Recent' in flags:
             raise No("You can not add or remove the '\\Recent' flag")
 
@@ -1328,10 +1389,10 @@ class Mailbox(object):
 
             # Get the list of message keys that msg_set indicates.
             #
-            msgs = self.mailbox.keys()
-            seq_max = len(msgs)
+            msg_keys = self.mailbox.keys()
+            seq_max = len(msg_keys)
             msg_idxs = asimap.utils.sequence_set_to_list(msg_set, seq_max)
-            msgs = [msgs[x] for x in msg_idxs]
+            msgs = [msg_keys[x-1] for x in msg_idxs]
 
             # Convert the flags to MH sequence names..
             #
@@ -1343,59 +1404,24 @@ class Mailbox(object):
             if action == ADD_FLAGS:
                 # For every message add it to every sequence in the list.
                 #
-                for flag in flags:
-                    if flag not in seqs:
-                        seqs[flag] = msgs
-                        continue
-                    for msg in msgs:
-                        if msg not in seqs[flag]:
-                            seqs[flag].append(msg)
+                add_flags(flags,msgs, seqs)
             elif action == REMOVE_FLAGS:
                 # For every message remove it from every seq in flags.
                 #
-                for flag in flags:
-                    if flag in seqs:
-                        for msg in msgs:
-                            if msg in seqs[flag]:
-                                seqs[flag].remove(msg)
-                        if len(seqs[flag]) == 0:
-                            del seqs[flag]
+                remove_flags(flags, msgs, seqs)
             elif action == REPLACE_FLAGS:
-                seqs_to_remove = list(set(seq.keys()) - set(flags))
+                seqs_to_remove = set(seqs.keys()) - set(flags)
                 seqs_to_remove.discard('Recent')
 
                 # Add new flags to messages.
                 #
-                for flag in flags:
-                    if flag not in seqs:
-                        seqs[flag] = msgs
-                    else:
-                        for msg in msgs:
-                            if msg not in seqs[flag]:
-                                seqs[flag].append(msg)
+                add_flags(flags, msgs, seqs)
 
                 # Remove computed flags from messages...
                 #
-                for flag in seqs_to_remove:
-                    if flag in seqs:
-                        for msg in msgs:
-                            if msg in seqs[flag]:
-                                seqs[flag].remove(msg)
-                        if len(seqs[flag]) == 0:
-                            del seqs[flag]
+                remove_flags(seqs_to_remove, msgs, seqs)
             else:
                 raise Bad("'%s' is an invalid STORE option" % action)
-
-            # NOTE: the 'unseen' sequence is derived by being all the messages
-            #       not in the 'Seen' sequence which may have been updated.
-            #
-            if 'Seen' in seqs:
-                unseen = list(set(msgs) - set(seq['Seen']))
-                if len(unseen) > 0:
-                    seqs['unseen'] = unseen
-                else:
-                    if 'unseen' in seqs:
-                        del seqs['unseen']
 
             # And when it is all done save our modified sequences back
             # to .mh_sequences
@@ -1745,8 +1771,7 @@ class Mailbox(object):
         # Now we tack the ref_mbox_name and mbox_match together.
         #
         mbox_match = os.path.join(ref_mbox_name, mbox_match)
-        log.debug("mailbox match pattern: '%s'" % mbox_match)
-
+        
         # We need to escape all possible regular expression characters
         # in our string so that it only matches what is expected by the
         # imap specification.
@@ -1756,7 +1781,6 @@ class Mailbox(object):
         # Every '\*' becomes '.*' and every % becomes [^/]
         #
         mbox_match = mbox_match.replace(r'\*', r'.*').replace(r'\%', r'[^\/]*')
-        log.debug("mailbox match regexp: '%s'" % mbox_match)
         results = []
         c = server.db.cursor()
         r = c.execute("select name,attributes from mailboxes where name regexp ?", (mbox_match,))

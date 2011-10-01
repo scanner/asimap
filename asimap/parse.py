@@ -598,7 +598,7 @@ class IMAPClientCommand(object):
         plus_or_minus = self._p_re(_plus_or_minus_re, silent = True)
         if plus_or_minus == '-':
             self.store_action = REMOVE_FLAGS
-        if plus_or_minus == '+':
+        elif plus_or_minus == '+':
             self.store_action = ADD_FLAGS
         else:
             self.store_action = REPLACE_FLAGS

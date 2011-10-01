@@ -9,6 +9,7 @@ A simplistic IMAP test client to use against our server.
 # system imports
 #
 import imaplib
+import time
 import optparse
 
 ############################################################################
@@ -21,7 +22,7 @@ def setup_option_parser():
     can be used for parsing them.
     """
     parser = optparse.OptionParser(usage = "%prog [options]",
-                                   version = asimap.__version__)
+                                   version = "0.1")
 
     parser.set_defaults(port = 993, interface = "0.0.0.0", tls = True)
 
@@ -43,7 +44,13 @@ def main():
 
     parser = setup_option_parser()
     (options, args) = parser.parse_args()
-
+    c = imaplib.IMAP4("localhost", 2021)
+    c.login("test", "test")
+    print "List: %s" % str(c.list(""))
+    print "Select inbox: %s" % str(c.select("inbox"))
+    while True:
+        print "Noop: %s" % str(c.noop())
+        time.sleep(5)
     return
 
 ############################################################################

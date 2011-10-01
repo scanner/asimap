@@ -807,7 +807,7 @@ class Authenticated(BaseClientHandler):
         #
         self.mbox.store(cmd.msg_set, cmd.store_action, cmd.flag_list)
         if cmd.silent:
-            mbox.resync(notify = False, dont_notify = self)
+            self.mbox.resync(notify = False, dont_notify = self)
         else:
-            mbox.resync(notify = False)
+            self.mbox.resync(notify = False)
         return
