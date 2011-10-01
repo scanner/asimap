@@ -130,7 +130,6 @@ class IMAPUserClientHandler(asynchat.async_chat):
         """
         Buffer data read from the connect for later processing.
         """
-        self.log.debug("collect_incoming_data: [%s]" % data)
         self.ibuffer.append(data)
         return
 
@@ -154,8 +153,6 @@ class IMAPUserClientHandler(asynchat.async_chat):
         from the channel and set the terminator back to LINE_TERMINATOR so that
         we can read the rest of the message from the IMAP client.
         """
-        self.log.debug("found_terminator")
-
         if not self.reading_message:
             # We have hit our line terminator.. we should have an ascii
             # representation of an int in our buffer.. read that to determine
@@ -164,8 +161,6 @@ class IMAPUserClientHandler(asynchat.async_chat):
             try:
                 msg_length = int("".join(self.ibuffer).strip())
                 self.ibuffer = []
-                self.log.debug("Read IMAP message length indicator: %d" % \
-                                   msg_length)
                 self.reading_message = True
                 self.set_terminator(msg_length)
             except ValueError,e:
@@ -180,8 +175,6 @@ class IMAPUserClientHandler(asynchat.async_chat):
         self.ibuffer = []
         self.reading_message = False
         self.set_terminator(self.LINE_TERMINATOR)
-
-        self.log.debug("Got complete IMAP message: %s" % imap_msg)
 
         # Parse the IMAP message. If we can not parse it hand back a 'BAD'
         # response to the IMAP client.

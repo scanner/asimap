@@ -83,7 +83,8 @@ fetch_atts = ("envelope",  "flags",  "internaldate", "rfc822.header",
               "body.peek", "body")
 
 # This is the list of flags we know specifically about.
-system_flags = ["\\answered", "\\flagged", "\\deleted", "\\seen", "\\draft"]
+system_flags = ["\\answered", "\\flagged", "\\deleted", "\\seen", "\\draft",
+                "\\recent"]
 
 # The list of commands that can be called via 'UID'
 #
@@ -223,7 +224,7 @@ class IMAPClientCommand(object):
         """
         self._parse()
         return
-    
+
     #######################################################################
     #
     def __str__(self):
@@ -263,7 +264,7 @@ class IMAPClientCommand(object):
         tag SPACE command command_arguments* CRLF
         """
 
-        self.log.debug("Parsing IMAP message: %s" % self.input)
+        self.log.debug("Parsing IMAP message: '%s'" % self.input)
 
         # We must always begin with a tag. Pull it off. If this fails it will
         # raise an exception that is caught by our caller.
@@ -1336,7 +1337,8 @@ class IMAPClientCommand(object):
 
         # Pull what should be a message off of our input string.
         #
-        msg_set = self._p_re(_msg_set_re)
+        msg_set = self._p_re(_msg_set_re, syntax_error = "missing or "
+                             "invalid message sequence set")
 
         # Now just because we got something does not mean it is a message
         # set. However, we know that it will be comma separated. Between the

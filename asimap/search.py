@@ -129,7 +129,7 @@ class SearchContext(object):
     ##################################################################
     #
     @property
-    def sequences(self, ):
+    def sequences(self):
         """
         The list of sequences that this message is in. If the message is not
         loaded we avoid loading the message object by just getting the
@@ -139,6 +139,11 @@ class SearchContext(object):
         if self._sequences:
             return self._sequences
 
+        # If the message is loaded use its sequence information.
+        #
+        if self._msg:
+            return self._msg.get_sequences()
+
         # Look at the mailbox sequences and figure out which ones this message
         # is in, if any.
         #
@@ -147,7 +152,7 @@ class SearchContext(object):
             if self.msg_key in key_list:
                 self._sequences.append(name)
         return self._sequences
-    
+
 ############################################################################
 #
 #
@@ -229,7 +234,7 @@ class IMAPSearch(object):
         elif self.op in (self.OP_KEYWORD):
             result += ', keyword = "%s"' % self.args['keyword']
         return result + ")"
-            
+
 
     ##################################################################
     #
@@ -240,7 +245,7 @@ class IMAPSearch(object):
         objects.
 
         We return True if it matches, False if it does not.
-        
+
         Arguments:
         - `ctx`: The SearchContext that contains the message we are
           applying this search object against and its meta-information
@@ -282,7 +287,7 @@ class IMAPSearch(object):
         header = self.args["header"]
         return header in self.ctx.msg and \
            self.ctx.msg[header].lower().find(self.args['string']) != -1
-            
+
     #########################################################################
     #
     def _match_and(self):
@@ -339,7 +344,7 @@ class IMAPSearch(object):
             if msg_part.get_payload(decode = True).lower().find(text) != -1:
                 return True
         return False
-            
+
     #########################################################################
     #
     def _match_larger(self):
@@ -392,7 +397,7 @@ class IMAPSearch(object):
         the specific date')
         """
         return self.ctx.internal_date.date() == self.args["date"].date()
-    
+
     #########################################################################
     #
     def _match_sentbefore(self):

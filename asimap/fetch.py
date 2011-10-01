@@ -57,7 +57,7 @@ class TextGenerator(Generator):
         """
         Generator.__init__(self, outfp)
         self._headers = headers
-    
+
     def _write(self, msg):
         # Just like the original _write in the Generator class except
         # that we do not write the headers if self._headers is false.
@@ -84,7 +84,7 @@ def _is8bitstring(s):
 ############################################################################
 #
 class HeaderGenerator(Generator):
-    
+
     def __init__(self, outfp, headers = [], skip = True):
         """
         A generator that prints out only headers. If 'skip' is true,
@@ -179,7 +179,7 @@ class FetchAtt(object):
     OP_RFC822_SIZE   = 'rfc822.size'
     OP_RFC822_TEXT   = 'rfc822.text'
     OP_UID           = 'uid'
-    
+
     #######################################################################
     #
     def __init__(self, attribute, section = None, partial = None,
@@ -198,7 +198,7 @@ class FetchAtt(object):
         else:
             self.actual_command = actual_command
         self.log = logging.getLogger("%s.%s.%s" % (__name__, self.__class__.__name__,actual_command))
-        
+
     #######################################################################
     #
     def __repr__(self):
@@ -214,11 +214,23 @@ class FetchAtt(object):
                 # we need to be careful how we convert HEADER.FIELDS and
                 # HEADER.FIELDS.NOT back in to a string.
                 #
-                result += '[%s]' % '.'.join([str(x).upper() for x in self.section])
+                sects = []
+                for s in self.section:
+                    # If this section is a list or a tuple then we have a
+                    # 'header.<fields<.not>> (header_list)' section and we need
+                    # convert that to a proper string for our FETCH response.
+                    #
+                    if isinstance(s,(list,tuple)):
+                        sects.append("%s (%s)" % \
+                                         (str(s[0]).upper(),
+                                          ' '.join(x.upper() for x in s[1])))
+                    else:
+                        sects.append(str(s).upper())
+                result += '[%s]' % '.'.join(sects)
             if self.partial:
                 result += "<%d.%d>" % (self.partial[0],self.partial[1])
         return result
-    
+
     #######################################################################
     #
     def fetch(self, ctx):
@@ -237,10 +249,11 @@ class FetchAtt(object):
         # We can easily tell if this is going to change a message's flags.
         # The operation is 'body' and peek is False.
         #
-        if self.attribute == self.OP_BODY and self.peek is False and \
-                'Seen' not in self.ctx.sequences:
-            self.ctx.msg.remove_sequence('Unseen')
-            self.ctx.msg.add_sequence('Seen')
+        if self.attribute == self.OP_BODY and self.peek is False:
+            if 'unseen' in self.ctx.sequences or \
+                    'Seen' not in self.ctx.sequences:
+                self.ctx.msg.remove_sequence('unseen')
+                self.ctx.msg.add_sequence('Seen')
 
         # Based on the operation figure out what subroutine does the rest
         # of the work.
@@ -261,7 +274,7 @@ class FetchAtt(object):
             result = str(self.ctx.uid)
         else:
             raise NotImplemented
-        
+
         return "%s %s" % (str(self), result)
 
     #######################################################################
@@ -284,7 +297,6 @@ class FetchAtt(object):
             msg_text = email.utils.fix_eols(msg.as_string())
         else:
             if len(section) == 1:
-                self.log.debug("body: section[0] is a: %s" % type(section[0]))
                 fp = StringIO()
                 if isinstance(section[0], int):
                     # The want a sub-part. Get that sub-part. Watch
@@ -305,7 +317,7 @@ class FetchAtt(object):
                         # Otherwise, get the sub-part they are after
                         # as the message to pass to the generator.
                         #
-                        try: 
+                        try:
                             msg = msg.get_payload(section[0]-1)
                         except IndexError:
                             raise BadSection("Section %d does not exist in "
@@ -331,7 +343,7 @@ class FetchAtt(object):
                         # this is not quite right in that it will accept more
                         # then it should, but it will otherwise work.
                         #
-                        pass 
+                        pass
                     elif isinstance(section[0],str) and section[0].upper() == 'HEADER':
                         # if the content type is message/rfc822 then to
                         # get the headers we need to use the first
@@ -374,7 +386,7 @@ class FetchAtt(object):
                                  section)
             g.flatten(msg)
             msg_text = fp.getvalue()
-        
+
         # We have our message text we need to return to our caller.
         # truncate if it we also have a 'partial' defined.
         #
@@ -419,7 +431,7 @@ class FetchAtt(object):
             if field not in msg:
                 result.append("NIL")
                 continue
-                
+
             # The from, sender, reply-to, to, cc, and bcc fields are
             # parenthesized lists of address structures.
             #
@@ -505,7 +517,7 @@ class FetchAtt(object):
             if not self.ext_data:
                 return '(%s "%s")' % (''.join(sub_parts),
                                       msg.get_content_subtype().upper())
-            
+
             # Otherwise this is a real 'bodystructure' fetch and we need to
             # return the extension data as well.
             #
@@ -546,7 +558,7 @@ class FetchAtt(object):
                 continue
             params.append('"%s"' % k.upper())
             params.append('"%s"' % v)
-        
+
         result.append('(%s)' % ' '.join(params))
 
         # The body id (what is this? none of our message from a test

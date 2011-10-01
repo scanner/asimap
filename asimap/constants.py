@@ -13,10 +13,10 @@ Various global constants.
 # message) and the subset of those flags that may not be set by a  user.
 #
 SYSTEM_FLAGS = (r'\Answered', r'\Deleted', r'\Draft', r'\Flagged', r'\Recent',
-                r'\Seen', r'\Unseen')
+                r'\Seen')
 NON_SETTABLE_FLAGS = (r'\Recent')
 PERMANENT_FLAGS = (r'\Answered', r'\Deleted', r'\Draft', r'\Flagged', r'\Seen',
-                   r'\Unseen', r'\*')
+                   r'\*')
 
 # mh does not allow '\' in sequence names so we have a mapping between
 # the actual mh sequence name and the corresponding system flag.
@@ -28,7 +28,6 @@ SYSTEM_FLAG_MAP = {
     'flagged'  : r'\Flagged',
     'Recent'   : r'\Recent',
     'Seen'     : r'\Seen',
-    'unseen'   : r'\Unseen',
     }
 
 REVERSE_SYSTEM_FLAG_MAP = {}

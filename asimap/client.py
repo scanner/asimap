@@ -91,10 +91,6 @@ class BaseClientHandler(object):
         Arguments:
         - `imap_command`: An instance parse.IMAPClientCommand
         """
-        self.log.debug("Processing received IMAP command: %s %s" % \
-                           (imap_command.tag, imap_command.command))
-
-
         # Since the imap command was properly parsed we know it is a valid
         # command. If it is one we support there will be a method
         # on this object of the format "do_%s" that will actually do the
@@ -166,7 +162,7 @@ class BaseClientHandler(object):
         for p in self.pending_expunges:
             self.client.push(p)
         self.pending_expunges = []
-    
+
     ## The following commands are supported in any state.
     ##
 
@@ -175,7 +171,7 @@ class BaseClientHandler(object):
     def do_done(self, imap_command):
         """
         We have gotten a DONE. This is only called when we are idling.
-        
+
         Arguments:
         - `imap_command`: This is ignored.
         """
@@ -183,7 +179,7 @@ class BaseClientHandler(object):
         self.send_pending_expunges()
         self.client.push("%s OK IDLE terminated\r\n" % self.tag)
         return
-    
+
     #########################################################################
     #
     def do_capability(self, imap_command):
@@ -216,7 +212,7 @@ class BaseClientHandler(object):
     def do_id(self, imap_command):
         """
         Construct an ID response... uh.. lookup the rfc that defines this.
-        
+
         Arguments:
         - `imap_command`: The full IMAP command object.
         """
@@ -299,7 +295,7 @@ class PreAuthenticated(BaseClientHandler):
         self.log = logging.getLogger("%s.PreAuthenticated" % __name__)
         self.auth_system = auth_system
         return
-    
+
     ## The following commands are supported in the non-authenticated state.
     ##
 
@@ -350,7 +346,7 @@ class PreAuthenticated(BaseClientHandler):
             if not (os.path.exists(self.user.maildir) and \
                     os.path.isdir(self.user.maildir)):
                 raise No("You have no mailbox directory setup")
-            
+
             self.user.auth_system = self.auth_system
             self.state = "authenticated"
         except asimap.auth.AuthenticationException, e:
@@ -374,7 +370,7 @@ class Authenticated(BaseClientHandler):
     #
     def __init__(self, client, user_server):
         """
-        
+
         Arguments:
         - `client`: An asynchat.async_chat object that is connected to the IMAP
                     client we are handling. This lets us send messages to that
@@ -403,7 +399,7 @@ class Authenticated(BaseClientHandler):
         if self.state == "selected" and self.mbox is not None:
             self.mbox.resync(only_notify = self)
         return
-    
+
     #########################################################################
     #
     def do_noop(self, imap_command):
@@ -436,7 +432,7 @@ class Authenticated(BaseClientHandler):
     def do_select(self, cmd, examine = False):
         """
         Select a folder, enter in to 'selected' mode.
-        
+
         Arguments:
         - `cmd`: The IMAP command we are executing
         - `examine`: Opens the folder in read only mode if True
@@ -479,7 +475,7 @@ class Authenticated(BaseClientHandler):
     def do_create(self, cmd):
         """
         Create the specified mailbox.
-        
+
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
@@ -512,7 +508,7 @@ class Authenticated(BaseClientHandler):
     def do_rename(self, cmd):
         """
         Renames a mailbox from one name to another.
-        
+
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
@@ -538,7 +534,7 @@ class Authenticated(BaseClientHandler):
         """
         self.notifies()
         raise No("Can not subscribe to the mailbox %s" % cmd.mailbox_name)
-    
+
     ##################################################################
     #
     def do_unsubscribe(self, cmd):
@@ -547,7 +543,7 @@ class Authenticated(BaseClientHandler):
         from the server's set of "active" or "subscribed" mailboxes as
         returned by the LSUB command.  This command returns a tagged
         OK response only if the unsubscription is successful.
-        
+
         XXX we do not have any mailboxes that we support SUBSCRIBE or
             UNSUBSCRIBE for (as I understand the purpose of this
             mailbox.)
@@ -567,7 +563,7 @@ class Authenticated(BaseClientHandler):
         untagged LIST replies are returned, containing the name
         attributes, hierarchy delimiter, and name; see the description
         of the LIST reply for more detail.
-        
+
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
@@ -600,7 +596,7 @@ class Authenticated(BaseClientHandler):
         """
         self.notifies()
         return None
-    
+
     ##################################################################
     #
     def do_status(self, cmd):
@@ -631,7 +627,7 @@ class Authenticated(BaseClientHandler):
                     result.append("UNSEEN 0")
             else:
                 raise Bad("Unsupported STATUS attribute '%s'" % att)
-        
+
         self.client.push("* STATUS %s (%s)\r\n" % \
                              (cmd.mailbox_name," ".join(result)))
         return
@@ -654,7 +650,7 @@ class Authenticated(BaseClientHandler):
             # exception and return the appropriate NO result.
             #
             raise No("[TRYCREATE] No such mailbox: '%s'" % cmd.mailbox_name)
-        
+
         mbox.append(cmd.message, cmd.flag_list, cmd.date_time)
         return
 
@@ -693,7 +689,7 @@ class Authenticated(BaseClientHandler):
 
         No messages are removed, and no error is given, if the mailbox is
         selected by an EXAMINE command or is otherwise selected read-only.
-        
+
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
@@ -732,7 +728,7 @@ class Authenticated(BaseClientHandler):
         """
         if self.state != "selected" or self.mbox is None:
             raise No("Client must be in the selected state")
-        
+
         self.send_pending_expunges()
 
         # If we selected the mailbox via 'examine' then we can not make any
@@ -749,17 +745,18 @@ class Authenticated(BaseClientHandler):
         """
         Search... NOTE: Can not send untagged EXPUNGE messages during this
         command.
-        
+
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
         if self.state != "selected" or self.mbox is None:
             raise No("Client must be in the selected state")
         results = self.mbox.search(cmd.search_key)
-        self.client.push("* SEARCH %s\r\n" % \
-                             ' '.join([str(x) for x in results]))
+        if len(results) > 0:
+            self.client.push("* SEARCH %s\r\n" % \
+                                 ' '.join([str(x) for x in results]))
         return None
-        
+
     ##################################################################
     #
     def do_fetch(self, cmd):
@@ -780,5 +777,37 @@ class Authenticated(BaseClientHandler):
         self.mbox.resync()
         return None
 
-        
-    
+    ##################################################################
+    #
+    def do_store(self, cmd):
+        """
+        The STORE command alters data associated with a message in the
+        mailbox.  Normally, STORE will return the updated value of the
+        data with an untagged FETCH response.  A suffix of ".SILENT" in
+        the data item name prevents the untagged FETCH, and the server
+        SHOULD assume that the client has determined the updated value
+        itself or does not care about the updated value.
+
+        By data we mean the flags on a message.
+
+        Arguments:
+        - `cmd`: The IMAP command we are executing
+        """
+        if self.state != "selected" or self.mbox is None:
+            raise No("Client must be in the selected state")
+
+        # We do not issue any messages to the client here. This is done
+        # automatically when 'resync' is called because resync will examine the
+        # in-memory copy of the sequences with what is on disk and if there are
+        # differences issue FETCH messages for each message with different
+        # flags.
+        #
+        # Unless 'SILENT' was set in which case we still notify all other
+        # clients listening to this mailbox, but not this client.
+        #
+        self.mbox.store(cmd.msg_set, cmd.store_action, cmd.flag_list)
+        if cmd.silent:
+            mbox.resync(notify = False, dont_notify = self)
+        else:
+            mbox.resync(notify = False)
+        return

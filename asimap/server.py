@@ -262,7 +262,6 @@ class IMAPClientHandler(asynchat.async_chat):
         """
         Buffer data read from the connect for later processing.
         """
-        self.log.debug("collect_incoming_data: [%s]" % data)
         self.ibuffer.append(data)
         return
     
@@ -530,8 +529,6 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
         We have received data from the subprocess handling the IMAP client's
         messages.
         """
-        self.log.debug("collect_incoming_data: [%s]" % data)
-
         if self.client_connection is not None:
             self.client_connection.push(data)
         return
