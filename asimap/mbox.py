@@ -260,6 +260,7 @@ class Mailbox(object):
           FETCH messages we will NOT include this client.
 
         """
+        self.log.debug("Starting resync")
         # If only_notify is not None then notify is forced to False.
         #
         if only_notify is not None:
@@ -404,15 +405,13 @@ class Mailbox(object):
             # (FLAG (..)) to all of our active clients. This does not suffer
             # the same restriction as EXISTS, RECENT, and EXPUNGE.
             #
-            # XXX be sure to implement this..
+            self._compute_and_publish_fetches(msgs, seq, dont_notify)
+
+            # And see if the folder is getting kinda 'gappy' with spaces
+            # between message keys. If it is, pack it.
             #
-            # # Translate our squence names to IMAP flag names
-            # #
-            # flags = " ".join([seq_to_flag(x) for x in msg.get_sequences()])
-            # for client in self.clients:
-            #     client.client.push("* %d FETCH (FLAGS (%s))" % (idx,
-            #                                                     flags))
             self.sequences = seq
+            self._pack_if_necessary(msgs)
 
         finally:
             self.mailbox.unlock()
@@ -421,6 +420,120 @@ class Mailbox(object):
         #
         self.mtime = int(os.path.getmtime(self.mailbox._path))
         self.commit_to_db()
+        return
+
+    ##################################################################
+    #
+    def _compute_and_publish_fetches(self, msgs, seqs, dont_notify = None):
+        """
+        A helper function for resync()
+
+        We see what messages have been added to any of the sequences since the
+        last time self.sequences was synchornized with what is on disk.
+
+        For every message that is a member of a sequence that was not a member
+        previously we issue a "FETCH" to every client listening to this
+        mailbox.
+
+        The "FETCH" lists all of the flags associated with that message.
+
+        We _skip_ the client that is indicated by 'dont_notify'
+
+        Arguments:
+        - `msgs`: A list of all of the message keys in this folder
+        - `seqs`: The latest representation of what the on disk sequences are
+        - `dont_notify`: The client to NOT send "FETCH" notices to
+        """
+        # We build up the set of messages that have changed flags
+        #
+        changed_msgs = set()
+
+        # If any sequence exists now that did not exist before, or does not
+        # exist now but did exist before then all of those messages in those
+        # sequences have changed flags.
+        #
+        for seq in set(seqs.keys()) ^ set(self.sequences.keys()):
+            if seq in seqs:
+                changed_msgs |= set(seqs[seq])
+            if seq in self.sequences:
+                changed_msgs |= set(self.sequences[seq])
+        
+        # Now that we have handled the messages that were in sequences that do
+        # not exist in one of seqs or self.sequences go through the sequences
+        # in seqs. For every sequence if it is in self.sequences find out what
+        # messages have either been added or removed from these sequences and
+        # add it to the set of changed messages.
+        #
+        for seq in seqs.keys():
+            if seq not in self.sequences:
+                continue
+            changed_msgs |= set(seqs[seq]) ^ set(self.sequences[seq])
+            
+        # Now eliminate all entries in our changed_msgs set that are NOT in
+        # msgs. We can not send FETCH's for messages that are no longer in the
+        # folder.
+        #
+        # NOTE: XXX a 'pack' of a folder is going to cause us to send out many
+        #       many FETCH's and most of these will be meaningless and
+        #       basically noops. My plan is that pack's will rarely be done
+        #       outside of asimapd, and asimapd will have a strategy for doign
+        #       occasional packs at the end of a resync and when it does it
+        #       will immediately update the in-memory copy of the list of
+        #       sequences so that the next time a resync() is done it will not
+        #       think all these messages have had their flags changed.
+        #
+        changed_msgs = changed_msgs & set(msgs)
+        self.log.debug("compute_and_publish_fetchs: messages with changed flags: %s" % [str(x) for x in changed_msgs])
+
+        # And go through each message and publish a FETCH to every client with
+        # all the flags that this message has.
+        #
+        for msg in sorted(list(changed_msgs)):
+            flags = []
+            for seq in seqs.keys():
+                if msg in seqs[seq]:
+                    flags.append(seq_to_flag(seq))
+
+            # Publish to every listening client except the one we are supposed
+            # to ignore.
+            #
+            flags = " ".join(flags)
+            msg_idx = msgs.index(msg) + 1
+            for client in self.clients.itervalues():
+                if dont_notify and \
+                        client.client.port == dont_notify.client.port:
+                    continue
+                client.client.push("* FETCH %d (FLAGS (%s)\r\n" % (msg_idx,
+                                                                   flags))
+        return
+
+    ##################################################################
+    #
+    def _pack_if_necessary(self, msgs):
+        """
+        We use the array of message keys from the folder to determine if it is
+        time to pack the folder.
+
+        The key is if there is more than a 20% difference between the number of
+        messages in the folder and the highest number in the folder and the
+        folder is larger than 100. This tells us it has a considerable number
+        of gaps and we then call pack on the folder.
+
+        NOTE: Immediately after calling 'pack' we update the in-memory copy of
+              the sequences with what is on the disk so that we do not generate
+              spurious 'FETCH' messages on the next folder resync().
+
+        Arguments:
+        - `msgs`: The list of all message keys in the folder.
+        """
+        if len(msgs) < 100:
+            return
+
+        if float(len(msgs)) / float(msgs[-1]) > 0.8:
+            return
+
+        self.mailbox.pack()
+        self.sequences = self.mailbox.get_sequences()
         return
 
     ##################################################################
