@@ -22,7 +22,7 @@ from asimap.exceptions import No, Bad
 # Local constants
 #
 #CAPABILITIES = ('IMAP4rev1', 'IDLE', 'NAMESPACE', 'ID', 'UIDPLUS')
-CAPABILITIES = ('IMAP4rev1', 'IDLE', 'ID')
+CAPABILITIES = ('IMAP4rev1', 'IDLE', 'ID', 'UNSELECT')
 SERVER_ID = { 'name'        : 'asimapd',
               'version'     : '0.1',
               'vendor'      : 'Apricot Systematic',
@@ -462,6 +462,24 @@ class Authenticated(BaseClientHandler):
             return "[READ-ONLY]"
         return "[READ-WRITE]"
 
+    ##################################################################
+    #
+    def do_unselect(self, cmd):
+        """
+        Unselect a mailbox. Similar to close, except it does not do an expunge.
+        
+        Arguments:
+        - `cmd`: The IMAP command we are executing
+        """
+        if self.state != "selected" or self.mbox is None:
+            raise No("Client must be in the selected state")
+
+        self.mbox.unselected(self)
+        self.pending_expunges = []
+        self.mbox = None
+        self.state = "authenticated"
+        return
+    
     #########################################################################
     #
     def do_examine(self, cmd):
@@ -751,6 +769,14 @@ class Authenticated(BaseClientHandler):
         """
         if self.state != "selected" or self.mbox is None:
             raise No("Client must be in the selected state")
+
+        # If this client has pending EXPUNGE messages then we return a tagged
+        # No response.. the client should see this and do a NOOP or such and
+        # receive the pending expunges.
+        #
+        if len(self.pending_expunges) > 0:
+            raise No("There are pending EXPUNGEs.")
+
         results = self.mbox.search(cmd.search_key)
         if len(results) > 0:
             self.client.push("* SEARCH %s\r\n" % \
@@ -768,6 +794,13 @@ class Authenticated(BaseClientHandler):
         """
         if self.state != "selected" or self.mbox is None:
             raise No("Client must be in the selected state")
+
+        # If this client has pending EXPUNGE messages then we return a tagged
+        # No response.. the client should see this and do a NOOP or such and
+        # receive the pending expunges.
+        #
+        if len(self.pending_expunges) > 0:
+            raise No("There are pending EXPUNGEs.")
 
         results = self.mbox.fetch(cmd.msg_set, cmd.fetch_atts)
         for r in results:
@@ -795,6 +828,13 @@ class Authenticated(BaseClientHandler):
         """
         if self.state != "selected" or self.mbox is None:
             raise No("Client must be in the selected state")
+
+        # If this client has pending EXPUNGE messages then we return a tagged
+        # No response.. the client should see this and do a NOOP or such and
+        # receive the pending expunges.
+        #
+        if len(self.pending_expunges) > 0:
+            raise No("There are pending EXPUNGEs.")
 
         # We do not issue any messages to the client here. This is done
         # automatically when 'resync' is called because resync will examine the
