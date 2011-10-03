@@ -374,6 +374,9 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
 
     This class is given full IMAP messages from the IMAP client.
 
+    IMAP messages are passed to us to pass to the subprocess by calling the
+    'message()' method.
+
     When we get a full message we either:
 
     1) hand the message to an instance of the PreAuthenticated class.

@@ -42,15 +42,24 @@ def main():
     Parse options.. connect to the IMAP server.. do some commands.
     """
 
+    print "Debug is: %s" % str(__debug__)
     parser = setup_option_parser()
     (options, args) = parser.parse_args()
+    imaplib.Debug = 1
     c = imaplib.IMAP4("localhost", 2021)
     c.login("test", "test")
     print "List: %s" % str(c.list(""))
     print "Select inbox: %s" % str(c.select("inbox"))
-    while True:
-        print "Noop: %s" % str(c.noop())
-        time.sleep(5)
+    print "Find unseen messages: %s" % str(c.search(None, 'unseen'))
+    print "LSUB: %s" % str(c.lsub("", "*"))
+    print "Fetch: %s" % str(c.fetch("1:2", "(FLAGS UID)"))
+    print "Fetch 2:" 
+    for res in c.fetch("1", "(FLAGS RFC822.SIZE INTERNALDATE BODYSTRUCTURE BODY.PEEK[HEADER.FIELDS (DATE FROM TO CC SUBJECT REFERENCES IN-REPLY-TO MESSAGE-ID MIME-VERSION CONTENT-TYPE CONTENT-CLASS X-CALENDAR-ATTACHMENT X-MAILING-LIST X-LOOP LIST-ID LIST-POST MAILING-LIST ORIGINATOR X-LIST SENDER RETURN-PATH X-BEENTHERE)])"):
+        print "   Got result: %s" % res
+    print "Bye bye: %s" % str(c.logout())
+    # while True:
+    #     print "Noop: %s" % str(c.noop())
+    #     time.sleep(5)
     return
 
 ############################################################################

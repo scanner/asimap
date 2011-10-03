@@ -13,6 +13,7 @@ Objects and functions to fetch elements of a message.
 import email.utils
 import os.path
 import logging
+import hashlib
 from cStringIO import StringIO
 from email.Generator import Generator
 from email.Header import Header
@@ -100,6 +101,7 @@ class HeaderGenerator(Generator):
         NOTE: Headers are compared in a case insensitive fashion so
         'bCc' and 'bCC' and 'bcc' are all the same.
         """
+        self.log = logging.getLogger("%s.%s" % (__name__, self.__class__.__name__))
         Generator.__init__(self, outfp)
         self._headers = [x.lower() for x in headers]
         self._skip = skip
@@ -467,6 +469,117 @@ class FetchAtt(object):
                 result.append('"%s"' % msg[field])
         return '(%s)' % " ".join(result)
 
+    ##################################################################
+    #
+    def body_languages(self, msg):
+        """
+        Find the language related headers in the message and return a
+        string suitable for the 'body language' element of a
+        bodystructure reply.
+
+        Arguments:
+        - `msg`: the message we are looking in..
+        """
+        # We want all of the header that end in "-language"
+        #
+        langs = []
+        for hdr,value in msg.items():
+            if hdr[-9:].lower() != "-language":
+                continue
+            if "," in value:
+                langs.extend(value.split(","))
+            elif ";" in value:
+                langs.extend(value.split(";"))
+            else:
+                langs.append(value)
+
+        if len(langs) == 0:
+            return "NIL"
+        elif len(langs) == 1:
+            return '"%s"' % langs[0]
+        else:
+            return "(%s)" % " ".join([str(x).strip() for x in langs])
+
+    ##################################################################
+    #
+    def body_location(self, msg):
+        """
+        Suss if the message part has a 'content-location' header or not
+        and return it if it does (or NIL if it does not.)
+        
+        Arguments:
+        - `msg`: the message (message part) we are looking at
+        """
+        if 'content-location' in msg:
+            return '"%s"' % msg['content-location']
+        return "NIL"
+
+    ##################################################################
+    #
+    def body_parameters(self, msg):
+        """
+        
+         body parameter parenthesized list
+            A parenthesized list of attribute/value pairs [e.g., (`foo`
+            `bar` `baz` `rag`) where `bar` is the value of `foo` and
+            `rag` is the value of `baz`] as defined in [MIME-IMB].
+
+        Arguments:
+        - `msg`:
+        """
+        if msg.get_params() is None:
+            return "NIL"
+        
+        msg_params = []
+        for k,v in msg.get_params():
+            if v == '':
+                continue
+            msg_params.append('"%s"' % k.upper())
+            msg_params.append('"%s"' % v)
+        if len(msg_params) > 0:
+            return "(%s)" % " ".join(msg_params)
+        else:
+            return "NIL"
+    
+    #######################################################################
+    #
+    def body_disposition(self, msg):
+        """
+        Return the body-disposition properly formatted for returning as
+        part of a BODYSTRUCTURE fetch.
+
+         body disposition
+            A parenthesized list, consisting of a disposition type
+            string, followed by a parenthesized list of disposition
+            attribute/value pairs as defined in [DISPOSITION].
+
+        This is the 'content-disposition' of the message.
+        
+        Arguments:
+        - `msg`: The message (or message sub-part) we are looking at
+        """
+        # If we have a content-disposition
+        #
+        if 'content-disposition' in msg:
+            # XXX We are hard coding what we assume will be in
+            # XXX content-disposition. This is doomed to eventual failure.
+            #
+            cd = msg.get_params(header='content-disposition')
+
+            # if the content disposition does not have parameters then just
+            # put 'NIL' for the parameter list, otherwise we have a list of
+            # key/value pairs for the disposition list.
+            #
+            if len(cd) == 1:
+                return '("%s" NIL)' % cd[0][0].upper()
+            else:
+                cdpl = []
+                for k,v in cd[1:]:
+                    cdpl.extend(['"%s" "%s"' % (k.upper(),v)])
+                return '("%s" (%s))' % (cd[0][0].upper(), " ".join(cdpl))
+        else:
+            return "NIL"
+    
     #######################################################################
     #
     def bodystructure(self, msg):
@@ -492,8 +605,6 @@ class FetchAtt(object):
             # o body parameters as a parenthesized list. The body parameters
             #   are key value pairs (usually things like the multi-part
             #   boundary separator string.)
-            #
-            # o MD5 - which we do not support so we send back NIL
             #
             # o body disposition: NIL or A parenthesized list, consisting of
             #   a disposition type string followed by a parenthesized list of
@@ -521,20 +632,34 @@ class FetchAtt(object):
             # Otherwise this is a real 'bodystructure' fetch and we need to
             # return the extension data as well.
             #
-            ext_data = []
-            for k,v in msg.get_params():
-                if v == '':
-                    continue
-                ext_data.append('"%s"' % k.upper())
-                ext_data.append('"%s"' % v)
-
-            # The 'nil nil nil' at the end are md5, content disposition, lang
-            # which are not set for a container.
+            # The extension data of a multipart body part are in the
+            # following order
             #
-            return '(%s "%s" (%s) NIL NIL NIL)' % \
+            # body parameter parenthesized list
+            #    A parenthesized list of attribute/value pairs [e.g., ("foo"
+            #    "bar" "baz" "rag") where "bar" is the value of "foo", and
+            #    "rag" is the value of "baz"] as defined in [MIME-IMB].
+            #
+            # body disposition
+            #    A parenthesized list, consisting of a disposition type
+            #    string, followed by a parenthesized list of disposition
+            #    attribute/value pairs as defined in [DISPOSITION].
+            #
+            # body language
+            #    A string or parenthesized list giving the body language
+            #    value as defined in [LANGUAGE-TAGS].
+            #
+            # body location
+            #    A string list giving the body content URI as defined in
+            #    [LOCATION].
+            #
+            return '(%s "%s" %s %s %s %s)' % \
                    (''.join(sub_parts),
                     msg.get_content_subtype().upper(),
-                    ' '.join(ext_data))
+                    self.body_parameters(msg),
+                    self.body_disposition(msg),
+                    self.body_languages(msg),
+                    self.body_location(msg))
 
         # Otherwise, we figure out the bodystructure of this message
         # part and return that as a string in parentheses.
@@ -552,14 +677,7 @@ class FetchAtt(object):
         # Parenthesized list of the message parameters as a list of
         # key followed by value.
         #
-        params = []
-        for k,v in msg.get_params(failobj = [("CHARSET", "US-ASCII")]):
-            if v == '':
-                continue
-            params.append('"%s"' % k.upper())
-            params.append('"%s"' % v)
-
-        result.append('(%s)' % ' '.join(params))
+        result.append(self.body_parameters(msg))
 
         # The body id (what is this? none of our message from a test
         # IMAP server ever set this.
@@ -587,8 +705,7 @@ class FetchAtt(object):
         # number of octets in the message.
         #
         payload = msg.get_payload()
-        # XXX move to fixeol's over replace?
-        result.append(str(len(payload.replace('\n','\n\r'))))
+        result.append(str(len(email.utils.fix_eols(payload))))
 
         # Now come the variable fields depending on the maintype/subtype
         # of this message.
@@ -612,45 +729,24 @@ class FetchAtt(object):
 
         # Now we have the message body extension data.
         #
-
-        # We do not do MD5..
-        result.append('NIL')
-
-        # If we have a content-disposition
+        # The MD5 of the payload
         #
-        if 'content-disposition' in msg:
-            # XXX We are hard coding what we assume will be in
-            # XXX content-disposition. This is doomed to eventual failure.
-            #
-            cd = msg.get_params(header='content-disposition')
+        result.append('"%s"' % hashlib.md5(payload).hexdigest())
 
-            # if the content disposition does not have parameters then just
-            # put 'NIL' for the parameter list, otherwise we have a list of
-            # key/value pairs for the disposition list.
-            #
-            if len(cd) == 1:
-                result.append('("%s" NIL)' % cd[0][0].upper())
-            else:
-                cdpl = []
-                for k,v in cd[1:]:
-                    cdpl.extend(['"%s" "%s"' % (k.upper(),v)])
-                result.append('("%s" (%s))' % (cd[0][0].upper(),
-                                               " ".join(cdpl)))
-        else:
-            result.append('NIL')
-
-        # And body language.. which we always set to NIL for now.
+        # body disposition
+        #    A parenthesized list, consisting of a disposition type
+        #    string, followed by a parenthesized list of disposition
+        #    attribute/value pairs as defined in [DISPOSITION].
         #
-        result.append('NIL')
+        result.append(self.body_disposition(msg))
 
-        # IMAP servers we compared with add an additional extension data, but
-        # it was always NIL. So we will add this to for the sake of returning
-        # the same output as them. Since it was always NIL and clients MUST
-        # accept additional data this should cause no problems. Eventually I
-        # will find out which RFC defines this and what it should actually
-        # be.
+        # And body language..
         #
-        result.append('NIL')
+        result.append(self.body_languages(msg))
+
+        # and body location..
+        # 
+        result.append(self.body_location(msg))
 
         # Convert our result in to a parentheses list.
         #
