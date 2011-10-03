@@ -36,7 +36,7 @@ from asimap.auth import AUTH_SYSTEMS
 log      = logging.getLogger("%s" % __name__)
 
 BACKLOG  = 5
-RE_LITERAL_STRING_START = re.compile(r'\{(\d+)\}$')
+RE_LITERAL_STRING_START = re.compile(r'\{(\d+)\}\+?$')
 
 # This dict is all of the subprocesses that we have created. One for each
 # authenticated user with at least one active connection.
@@ -320,15 +320,17 @@ class IMAPClientHandler(asynchat.async_chat):
             self.set_terminator(int(m.group(1)))
             self.reading_string_literal = True
 
+            # If the literal ended with "}+" then this is a non-synchronizing
+            # literal and we do not tell the client it can send more data.. it
+            # will already be on its way.
+            #
+            if self.ibuffer[-1][-1] != "+":
+                self.push("+ Ready for more input\r\n")
+
             # We also tack on a \r\n to the ibuffer so that whatever parses
             # the message knows how to parse the literal string corrctly.
             #
             self.ibuffer.append("\r\n")
-
-            # Tell the IMAP client that we are ready to receive more data from
-            # them.
-            #
-            self.push("+ Ready for more input\r\n")
             return
 
         # Pass the full IMAP message on to the server IMAP message processor to
