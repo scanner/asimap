@@ -181,6 +181,18 @@ def initial_migration(c):
     c.execute("create index seq_mbox_id on sequences (mailbox_id)")
     return
 
+####################################################################
+#
+def add_uids_to_mbox(c):
+    """
+    Adds a uids text column to the mailbox.
+    
+    Arguments:
+    - `c`: sqlite3 db connection
+    """
+    c.execute("alter table mailboxes add column uids text default ''")
+
+
 # The list of migrations we have so far. These are executed in order. They are
 # executed only once. They are executed when the database is opened. We track
 # which ones have been executed and new ones are executed when the database is
@@ -188,4 +200,5 @@ def initial_migration(c):
 #
 MIGRATIONS = [
     initial_migration,
+    add_uids_to_mbox,
     ]

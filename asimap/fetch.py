@@ -626,7 +626,7 @@ class FetchAtt(object):
             # everything we need to return a result.
             #
             if not self.ext_data:
-                return '(%s "%s")' % (''.join(sub_parts),
+                return '(%s "%s")' % (' '.join(sub_parts),
                                       msg.get_content_subtype().upper())
 
             # Otherwise this is a real 'bodystructure' fetch and we need to
@@ -654,7 +654,7 @@ class FetchAtt(object):
             #    [LOCATION].
             #
             return '(%s "%s" %s %s %s %s)' % \
-                   (''.join(sub_parts),
+                   (' '.join(sub_parts),
                     msg.get_content_subtype().upper(),
                     self.body_parameters(msg),
                     self.body_disposition(msg),

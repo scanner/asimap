@@ -446,8 +446,9 @@ class Authenticated(BaseClientHandler):
         self.pending_expunges = []
         if self.state == "selected":
             self.state = "authenticated"
-            self.mbox.unselected(self)
-            self.mbox = None
+            if self.mbox:
+                self.mbox.unselected(self)
+                self.mbox = None
 
         # Note the 'selected()' method may fail with an exception and
         # we should not set our state or the mailbox we have selected
@@ -467,19 +468,20 @@ class Authenticated(BaseClientHandler):
     def do_unselect(self, cmd):
         """
         Unselect a mailbox. Similar to close, except it does not do an expunge.
-        
+
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        if self.state != "selected" or self.mbox is None:
+        if self.state != "selected":
             raise No("Client must be in the selected state")
 
-        self.mbox.unselected(self)
+        if self.mbox:
+            self.mbox.unselected(self)
+            self.mbox = None
         self.pending_expunges = []
-        self.mbox = None
         self.state = "authenticated"
         return
-    
+
     #########################################################################
     #
     def do_examine(self, cmd):
@@ -662,14 +664,13 @@ class Authenticated(BaseClientHandler):
         self.send_pending_expunges()
         try:
             mbox = self.server.get_mailbox(cmd.mailbox_name, expiry = 0)
+            mbox.append(cmd.message, cmd.flag_list, cmd.date_time)
         except asimap.mbox.NoSuchMailbox:
             # For APPEND and COPY if the mailbox does not exist we
             # MUST supply the TRYCREATE flag so we catch the generic
             # exception and return the appropriate NO result.
             #
             raise No("[TRYCREATE] No such mailbox: '%s'" % cmd.mailbox_name)
-
-        mbox.append(cmd.message, cmd.flag_list, cmd.date_time)
         return
 
     ##################################################################
@@ -688,9 +689,19 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        if self.state != "selected" or self.mbox is None:
-            raise No("Client must be in the selected state")
         self.send_pending_expunges()
+        if self.state != "selected":
+            raise No("Client must be in the selected state")
+
+        # If self.mbox is None then this mailbox was deleted while this user
+        # had it selected. In that case we disconnect the user and let them
+        # reconnect and relearn mailbox state.
+        #
+        if self.mbox is None:
+            self.client.push("* BYE Your selected mailbox no longer exists\r\n")
+            self.client.close()
+            return
+
         self.mbox.resync()
         return
 
@@ -711,14 +722,19 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        if self.state != "selected" or self.mbox is None:
+        if self.state != "selected":
             raise No("Client must be in the selected state")
 
-        self.mbox.unselected(self)
+        # We allow for the mailbox to be deleted.. it has no effect on this
+        # operation.
+        #
         self.pending_expunges = []
-        mbox = self.mbox
-        self.mbox = None
         self.state = "authenticated"
+        mbox = None
+        if self.mbox:
+            self.mbox.unselected(self)
+            mbox = self.mbox
+            self.mbox = None
 
         # If the mailbox was selected via 'examine' then closing the mailbox
         # does NOT do a purge of all messages marked with '\Delete'
@@ -731,7 +747,8 @@ class Authenticated(BaseClientHandler):
         # this client.) We pass no client parameter so the expunge does its
         # work 'silently.'
         #
-        mbox.expunge()
+        if mbox:
+            mbox.expunge()
         return
 
     ##################################################################
@@ -744,10 +761,18 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        if self.state != "selected" or self.mbox is None:
+        self.send_pending_expunges()
+        if self.state != "selected":
             raise No("Client must be in the selected state")
 
-        self.send_pending_expunges()
+        # If self.mbox is None then this mailbox was deleted while this user
+        # had it selected. In that case we disconnect the user and let them
+        # reconnect and relearn mailbox state.
+        #
+        if self.mbox is None:
+            self.client.push("* BYE Your selected mailbox no longer exists\r\n")
+            self.client.close()
+            return
 
         # If we selected the mailbox via 'examine' then we can not make any
         # changes anyways...
@@ -767,8 +792,17 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        if self.state != "selected" or self.mbox is None:
+        if self.state != "selected":
             raise No("Client must be in the selected state")
+
+        # If self.mbox is None then this mailbox was deleted while this user
+        # had it selected. In that case we disconnect the user and let them
+        # reconnect and relearn mailbox state.
+        #
+        if self.mbox is None:
+            self.client.push("* BYE Your selected mailbox no longer exists\r\n")
+            self.client.close()
+            return
 
         # If this client has pending EXPUNGE messages then we return a tagged
         # No response.. the client should see this and do a NOOP or such and
@@ -777,7 +811,7 @@ class Authenticated(BaseClientHandler):
         if len(self.pending_expunges) > 0:
             raise No("There are pending EXPUNGEs.")
 
-        results = self.mbox.search(cmd.search_key)
+        results = self.mbox.search(cmd.search_key, cmd.uid_command)
         if len(results) > 0:
             self.client.push("* SEARCH %s\r\n" % \
                                  ' '.join([str(x) for x in results]))
@@ -792,8 +826,17 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        if self.state != "selected" or self.mbox is None:
+        if self.state != "selected":
             raise No("Client must be in the selected state")
+
+        # If self.mbox is None then this mailbox was deleted while this user
+        # had it selected. In that case we disconnect the user and let them
+        # reconnect and relearn mailbox state.
+        #
+        if self.mbox is None:
+            self.client.push("* BYE Your selected mailbox no longer exists\r\n")
+            self.client.close()
+            return
 
         # If this client has pending EXPUNGE messages then we return a tagged
         # No response.. the client should see this and do a NOOP or such and
@@ -802,7 +845,7 @@ class Authenticated(BaseClientHandler):
         if len(self.pending_expunges) > 0:
             raise No("There are pending EXPUNGEs.")
 
-        results = self.mbox.fetch(cmd.msg_set, cmd.fetch_atts)
+        results = self.mbox.fetch(cmd.msg_set, cmd.fetch_atts, cmd.uid_command)
         for r in results:
             idx, iter_results = r
             self.client.push("* FETCH %d (%s)\r\n" % \
@@ -826,8 +869,17 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        if self.state != "selected" or self.mbox is None:
+        if self.state != "selected":
             raise No("Client must be in the selected state")
+
+        # If self.mbox is None then this mailbox was deleted while this user
+        # had it selected. In that case we disconnect the user and let them
+        # reconnect and relearn mailbox state.
+        #
+        if self.mbox is None:
+            self.client.push("* BYE Your selected mailbox no longer exists\r\n")
+            self.client.close()
+            return
 
         # If this client has pending EXPUNGE messages then we return a tagged
         # No response.. the client should see this and do a NOOP or such and
@@ -845,9 +897,53 @@ class Authenticated(BaseClientHandler):
         # Unless 'SILENT' was set in which case we still notify all other
         # clients listening to this mailbox, but not this client.
         #
-        self.mbox.store(cmd.msg_set, cmd.store_action, cmd.flag_list)
+        self.mbox.store(cmd.msg_set, cmd.store_action, cmd.flag_list,
+                        cmd.uid_command)
         if cmd.silent:
             self.mbox.resync(notify = False, dont_notify = self)
         else:
             self.mbox.resync(notify = False)
         return
+
+    ##################################################################
+    #
+    def do_copy(self, cmd):
+        """
+        Copy the given set of messages to the destination mailbox.
+
+        NOTE: Causes a resync of the destination mailbox.
+
+        Arguments:
+        - `cmd`: The IMAP command we are executing
+        """
+        self.send_pending_expunges()
+        if self.state != "selected":
+            raise No("Client must be in the selected state")
+
+        # If self.mbox is None then this mailbox was deleted while this user
+        # had it selected. In that case we disconnect the user and let them
+        # reconnect and relearn mailbox state.
+        #
+        if self.mbox is None:
+            self.client.push("* BYE Your selected mailbox no longer exists\r\n")
+            self.client.close()
+            return
+
+        try:
+            dest_mbox = self.server.get_mailbox(cmd.mailbox_name, expiry = 0)
+            try:
+                dest_mbox.mailbox.lock()
+                mbox.copy(cmd.msg_set, dest_mbox, cmd.uid_command)
+                dest_mbox.resync()
+            finally:
+                dest_mbox.mailbox.unlock()
+        except asimap.mbox.NoSuchMailbox:
+            # For APPEND and COPY if the mailbox does not exist we
+            # MUST supply the TRYCREATE flag so we catch the generic
+            # exception and return the appropriate NO result.
+            #
+            raise No("[TRYCREATE] No such mailbox: '%s'" % cmd.mailbox_name)
+        return
+
+
+

@@ -210,7 +210,7 @@ class IMAPClientCommand(object):
         """
         self.log = logging.getLogger("%s.IMAPClientCommand" % __name__)
         self.input = imap_command
-        self.return_uids = False
+        self.uid_command = False
         self.tag = None
         self.command = None
         return
@@ -643,11 +643,11 @@ class IMAPClientCommand(object):
         interpreted the same way. The difference is that the result passed back
         to the client is in UIDs, not message sequence numbers.
         '''
-        self.return_uids = True
+        self.uid_command = True
         self._p_simple_string(' ')
 
         # Basically we re-interpret a UID command as a regular command. The
-        # 'return_uids' flag will tell the interpreter how to interpret the
+        # 'uid_command' flag will tell the interpreter how to interpret the
         # command.
         #
         command = self._p_re(_atom_re).lower()
