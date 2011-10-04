@@ -297,7 +297,8 @@ class Mailbox(object):
             # initial data problem and does not require rewriting every
             # message.
             #
-            if len(uids) == 0 and len(msgs) > 0:
+            if len(self.uids) == 0 and len(msgs) > 0:
+                self.log.debug("resync: len uids: %d, len msgs: %d, forcing resync" % (len(self.uids), len(msgs)))
                 force = True
 
             # Loop through all messages getting their mtime. If a message's
@@ -402,7 +403,7 @@ class Mailbox(object):
                             # We have fewer messages than entries in self.uids
                             # so truncate self.uids down to be the same length.
                             self.log.debug("resync: truncating self.uids "
-                                           "down t %d elements" % len(msgs))
+                                           "down to %d elements" % len(msgs))
                             self.uids = self.uids[:len(msgs)]
                         self.log.debug("rescanning from %d to %d" % \
                                            (start, msgs[-1]))
@@ -470,6 +471,7 @@ class Mailbox(object):
         #
         self.mtime = int(os.path.getmtime(self.mailbox._path))
         self.commit_to_db()
+        self.log.debug("resync: Complete.")
         return
 
     ##################################################################
@@ -785,7 +787,7 @@ class Mailbox(object):
                                        (msg, uid_vv,uid))
                 else:
                     prev_uid = uid
-                    self.uids[start_idx + i] = uid
+                    self.uids[start_index + i] = uid
 
             # at this point we MAY be redoing this message (and the rest of the
             # folder) so we check again.. if we are not then skip to the next
@@ -801,7 +803,7 @@ class Mailbox(object):
                 # Remove the old header if it exists and add the new one
                 #
                 new_uid = "%010d.%010d" % (self.uid_vv, self.next_uid)
-                self.uids[start_idx + ] = self.next_uid
+                self.uids[start_index + i] = self.next_uid
                 self.next_uid +=1
                 del full_msg['X-asimapd-uid']
                 full_msg['X-asimapd-uid'] = new_uid
@@ -896,7 +898,10 @@ class Mailbox(object):
             #
             self.id,self.uid_vv,attributes,self.mtime,self.next_uid,self.num_msgs,self.num_recent,uids = results
             self.attributes = set(attributes.split(","))
-            self.uids = [int(x) for x in uids.split(",")]
+            if len(uids) == 0:
+                self.uids = []
+            else:
+                self.uids = [int(x) for x in uids.split(",")]
 
             # And fill in the sequences we find for this mailbox.
             #
@@ -916,8 +921,8 @@ class Mailbox(object):
         storage.
         """
         values = (self.uid_vv,",".join(self.attributes),self.next_uid,
-                  self.mtime,self.num_msgs,self.num_recent,self.id,
-                  ",".join([str(x) for x in uids)]))
+                  self.mtime,self.num_msgs,self.num_recent,
+                  ",".join([str(x) for x in self.uids]),self.id)
         c = self.server.db.cursor()
         c.execute("update mailboxes set uid_vv=?, attributes=?, next_uid=?,"
                   "mtime=?, num_msgs=?, num_recent=?,uids=? where id=?",values)
