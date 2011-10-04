@@ -382,7 +382,7 @@ class Mailbox(object):
                         # messages we are going to rescan.
                         #
                         start_idx = msgs.index(start)
-                        if start_idx + 2 > len(self.uuids):
+                        if start_idx + 2 > len(self.uids):
                             self.log.warn("resync: start_idx: %d, length "
                                           "of self.uids: %s. Doing full "
                                           "resync" % (start_idx,
@@ -1221,7 +1221,14 @@ class Mailbox(object):
                     c.client.push("* %d EXPUNGE\r\n" % which)
                 for c in clients_to_pend:
                     c.pending_expunges.append("* %d EXPUNGE\r\n" % which)
+
+                # Remove the message from the folder.. and also remove it from
+                # our uids to message index mapping. (NOTE: 'which' is in IMAP
+                # message sequence order, so its actual position in the array
+                # is one less.
+                #
                 msgs.remove(msg)
+                self.uids.remove(self.uids[which-1])
         finally:
             self.mailbox.unlock()
 
@@ -1526,7 +1533,7 @@ class Mailbox(object):
           we have to return not message sequence numbers but message UID's.
         """
         if uid_command:
-            self.log.debug("fetch: Doing UID COPY")
+            self.log.debug("copy: Doing UID COPY")
 
         try:
             self.mailbox.lock()
@@ -1543,11 +1550,11 @@ class Mailbox(object):
             # the folder we have to return a No. The cilent is trying to access
             # messages that do not exist.
             #
-            if msg_idxs[-1] > len(msgs):
+            if msg_idxs[-1] > len(msgs) and not uid_command:
                 raise No("The message index %d is not in this mailbox" % \
                              msg_idx[-1])
             for idx in msg_idxs:
-                key = msg_idxs[idx-1] # NOTE: imap messages start from 1.
+                key = msgs[idx-1] # NOTE: imap messages start from 1.
 
                 # XXX We copy this message the easy way. This may be
                 #     unacceptably slow if you are copying hundreds of

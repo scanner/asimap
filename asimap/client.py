@@ -933,7 +933,7 @@ class Authenticated(BaseClientHandler):
             dest_mbox = self.server.get_mailbox(cmd.mailbox_name, expiry = 0)
             try:
                 dest_mbox.mailbox.lock()
-                mbox.copy(cmd.msg_set, dest_mbox, cmd.uid_command)
+                self.mbox.copy(cmd.msg_set, dest_mbox, cmd.uid_command)
                 dest_mbox.resync()
             finally:
                 dest_mbox.mailbox.unlock()
