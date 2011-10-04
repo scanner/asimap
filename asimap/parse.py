@@ -310,12 +310,6 @@ class IMAPClientCommand(object):
 
     #######################################################################
     #
-    def _p_idle(self):
-        """The idle command has no arguments to parse"""
-        pass
-
-    #######################################################################
-    #
     def _p_noop(self):
         """The noop command has no arguments to parse"""
         pass
@@ -366,6 +360,12 @@ class IMAPClientCommand(object):
         """select  ::= 'SELECT' SPACE mailbox"""
         self._p_simple_string(' ')
         self.mailbox_name = self._p_mailbox()
+
+    #######################################################################
+    #
+    def _p_unselect(self):
+        """The unselect has no arguments to parse"""
+        pass
 
     #######################################################################
     #
