@@ -900,9 +900,10 @@ class Authenticated(BaseClientHandler):
         self.mbox.store(cmd.msg_set, cmd.store_action, cmd.flag_list,
                         cmd.uid_command)
         if cmd.silent:
-            self.mbox.resync(notify = False, dont_notify = self)
+            self.mbox.resync(notify = False, dont_notify = self,
+                             publish_uids = cmd.uid_command)
         else:
-            self.mbox.resync(notify = False)
+            self.mbox.resync(notify = False, publish_uids = cmd.uid_command)
         return
 
     ##################################################################

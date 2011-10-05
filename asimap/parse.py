@@ -24,7 +24,6 @@ import asimap.utils
 from asimap.search import IMAPSearch
 from asimap.fetch import FetchAtt
 
-
 #######################################################################
 #
 class BadCommand(Exception):

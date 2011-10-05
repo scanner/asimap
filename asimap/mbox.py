@@ -206,7 +206,7 @@ class Mailbox(object):
     ##################################################################
     #
     def resync(self, force = False, notify = True, only_notify = None,
-               dont_notify = None):
+               dont_notify = None, publish_uids = False):
         """
         This will go through the mailbox on disk and make sure all of the
         messages have proper uuid's, make sure we have a .mh_sequences file
@@ -261,6 +261,11 @@ class Mailbox(object):
         - `dont_notify`: A client. If this is set then if we issue and
           FETCH messages we will NOT include this client.
 
+        - `publish_uids`: If True when we issue FETCH messages for messages
+          with changed flags then we also include the message's UID. This is
+          likely triggered by a UID STORE command in which we must include the
+          UID. It is okay to send this to all clients because even if they did
+          not ask for the UID's they should be okay with getting that info.
         """
         self.log.debug("Starting resync")
         # If only_notify is not None then notify is forced to False.
@@ -457,7 +462,8 @@ class Mailbox(object):
             # (FLAG (..)) to all of our active clients. This does not suffer
             # the same restriction as EXISTS, RECENT, and EXPUNGE.
             #
-            self._compute_and_publish_fetches(msgs, seq, dont_notify)
+            self._compute_and_publish_fetches(msgs, seq, dont_notify,
+                                              publish_uids = publish_uids)
 
             # And see if the folder is getting kinda 'gappy' with spaces
             # between message keys. If it is, pack it.
@@ -477,7 +483,8 @@ class Mailbox(object):
 
     ##################################################################
     #
-    def _compute_and_publish_fetches(self, msgs, seqs, dont_notify = None):
+    def _compute_and_publish_fetches(self, msgs, seqs, dont_notify = None,
+                                     publish_uids = False):
         """
         A helper function for resync()
 
@@ -496,6 +503,8 @@ class Mailbox(object):
         - `msgs`: A list of all of the message keys in this folder
         - `seqs`: The latest representation of what the on disk sequences are
         - `dont_notify`: The client to NOT send "FETCH" notices to
+        - `publish_uids`: If this is true then ALSO include the messages UID in
+          the FETCH response
         """
         # We build up the set of messages that have changed flags
         #
@@ -555,8 +564,18 @@ class Mailbox(object):
                 if dont_notify and \
                         client.client.port == dont_notify.client.port:
                     continue
-                client.client.push("* FETCH %d (FLAGS (%s))\r\n" % (msg_idx,
-                                                                   flags))
+                uidstr = ""
+                if publish_uids:
+                    try:
+                        uidstr = " UID %d" % self.uids[msg_idx-1]
+                    except IndexError:
+                        self.log.error("compute_and_publish: UID command but "
+                                       "message index: %d is not inside list "
+                                       "of UIDs, whose length is: %d" % \
+                                           (msg_idx-1, len(self.uids)))
+                client.client.push("* FETCH %d (FLAGS (%s)%s)\r\n" % (msg_idx,
+                                                                      flags,
+                                                                      uidstr))
         return
 
     ##################################################################
@@ -1392,8 +1411,8 @@ class Mailbox(object):
                 msg_sequences = ctx.msg.get_sequences()
                 iter_results = []
                 for elt in msg_data_items:
-                    self.log.debug("fetch: %s on %d (key: %d)" % \
-                                       (str(elt), idx, msgs[idx-1]))
+                    # self.log.debug("fetch: %s on %d (key: %d)" % \
+                    #                    (str(elt), idx, msgs[idx-1]))
                     iter_results.append(elt.fetch(ctx))
 
                 results.append((idx, iter_results))
@@ -1499,11 +1518,16 @@ class Mailbox(object):
                         del seqs[flag]
             return
 
+        #
+        ##############################################################
+        #
+        # store() logic begins here:
+        #
         if '\\Recent' in flags:
             raise No("You can not add or remove the '\\Recent' flag")
 
         if uid_command:
-            self.log.debug("fetch: Doing UID FETCH")
+            self.log.debug("fetch: Doing UID STORE")
 
         try:
             self.mailbox.lock()
@@ -1512,7 +1536,31 @@ class Mailbox(object):
             #
             msg_keys = self.mailbox.keys()
             seq_max = len(msg_keys)
-            msg_idxs = asimap.utils.sequence_set_to_list(msg_set, seq_max)
+
+            if uid_command:
+                # If we are doing a 'UID FETCH' command we need to use the max
+                # uid for the sequence max.
+                #
+                uid_vv, uid_max = self.get_uid_from_msg(msg_keys[-1])
+                uid_list = asimap.utils.sequence_set_to_list(msg_set, uid_max,
+                                                             uid_command)
+
+                # We want to convert this list of UID's in to message indices
+                # So for every uid we we got out of the msg_set we look up its
+                # index in self.uids and from that construct the msg_idxs
+                # list. Missing UID's are fine. They just do not get added to
+                # the list.
+                #
+                msg_idxs = []
+                for uid in uid_list:
+                    if uid in self.uids:
+                        msg_idxs.append(self.uids.index(uid) + 1)
+            else:
+                msg_idxs = asimap.utils.sequence_set_to_list(msg_set, seq_max)
+
+            # Build a set of msg keys that are just the messages we want to
+            # operate on.
+            #
             msgs = [msg_keys[x-1] for x in msg_idxs]
 
             # Convert the flags to MH sequence names..
