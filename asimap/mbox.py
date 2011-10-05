@@ -1625,15 +1625,26 @@ class Mailbox(object):
             msgs = self.mailbox.keys()
             uid_vv, uid_max = self.get_uid_from_msg(msgs[-1])
             seq_max = len(self.mailbox)
-            msg_idxs = asimap.utils.sequence_set_to_list(msg_set, seq_max)
+            if uid_command:
+                # If we are doing a 'UID FETCH' command we need to use the max
+                # uid for the sequence max.
+                #
+                uid_list = asimap.utils.sequence_set_to_list(msg_set, uid_max,
+                                                             uid_command)
 
-            # If the message index is greater than the number of messages in
-            # the folder we have to return a No. The cilent is trying to access
-            # messages that do not exist.
-            #
-            if msg_idxs[-1] > len(msgs) and not uid_command:
-                raise No("The message index %d is not in this mailbox" % \
-                             msg_idx[-1])
+                # We want to convert this list of UID's in to message indices
+                # So for every uid we we got out of the msg_set we look up its
+                # index in self.uids and from that construct the msg_idxs
+                # list. Missing UID's are fine. They just do not get added to
+                # the list.
+                #
+                msg_idxs = []
+                for uid in uid_list:
+                    if uid in self.uids:
+                        msg_idxs.append(self.uids.index(uid) + 1)
+            else:
+                msg_idxs = asimap.utils.sequence_set_to_list(msg_set, seq_max)
+
             for idx in msg_idxs:
                 key = msgs[idx-1] # NOTE: imap messages start from 1.
 

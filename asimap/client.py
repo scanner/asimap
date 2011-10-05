@@ -806,10 +806,14 @@ class Authenticated(BaseClientHandler):
 
         # If this client has pending EXPUNGE messages then we return a tagged
         # No response.. the client should see this and do a NOOP or such and
-        # receive the pending expunges.
+        # receive the pending expunges. Unless this is a UID command. It is
+        # okay to send pending expunges during the operations of a UID SEARCH.
         #
         if len(self.pending_expunges) > 0:
-            raise No("There are pending EXPUNGEs.")
+            if cmd.uid_command:
+                self.send_pending_expunges()
+            else:
+                raise No("There are pending EXPUNGEs.")
 
         results = self.mbox.search(cmd.search_key, cmd.uid_command)
         if len(results) > 0:
@@ -840,10 +844,14 @@ class Authenticated(BaseClientHandler):
 
         # If this client has pending EXPUNGE messages then we return a tagged
         # No response.. the client should see this and do a NOOP or such and
-        # receive the pending expunges.
+        # receive the pending expunges. Unless this is a UID command. It is
+        # okay to send pending expunges during the operations of a UID FETCH.
         #
         if len(self.pending_expunges) > 0:
-            raise No("There are pending EXPUNGEs.")
+            if cmd.uid_command:
+                self.send_pending_expunges()
+            else:
+                raise No("There are pending EXPUNGEs.")
 
         results = self.mbox.fetch(cmd.msg_set, cmd.fetch_atts, cmd.uid_command)
         for r in results:
@@ -883,10 +891,14 @@ class Authenticated(BaseClientHandler):
 
         # If this client has pending EXPUNGE messages then we return a tagged
         # No response.. the client should see this and do a NOOP or such and
-        # receive the pending expunges.
+        # receive the pending expunges.  Unless this is a UID command. It is
+        # okay to send pending expunges during the operations of a UID FETCH.
         #
         if len(self.pending_expunges) > 0:
-            raise No("There are pending EXPUNGEs.")
+            if cmd.uid_command:
+                self.send_pending_expunges()
+            else:
+                raise No("There are pending EXPUNGEs.")
 
         # We do not issue any messages to the client here. This is done
         # automatically when 'resync' is called because resync will examine the
