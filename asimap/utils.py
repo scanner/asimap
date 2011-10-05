@@ -50,7 +50,7 @@ def formatdate(datetime, localtime = False, usegmt = False):
 
 ####################################################################
 #
-def sequence_set_to_list(seq_set, seq_max):
+def sequence_set_to_list(seq_set, seq_max, uid_cmd = False):
     """
     Convert a squence set in to a list of numbers.
 
@@ -62,18 +62,22 @@ def sequence_set_to_list(seq_set, seq_max):
 
     Arguments:
     - `seq_set`: The sequence set we want to convert to a list of numbers.
+    - `seq_max`: The largest possible number in the sequence. We
+      replace '*' with this value.
+    - `uid_cmd`: This is a UID command sequence and it can include
+      numbers larger than seq_max.
     """
     result = []
     for elt in seq_set:
         # Any occurences of '*' we can just swap in the sequence max value.
         #
         if str(elt) == "*":
-            if seq_max == 0:
+            if seq_max == 0 and not uid_cmd:
                 raise Bad("Message index '*' is greater than the size of "
                           "the mailbox")
             result.append(seq_max)
         elif isinstance(elt, int):
-            if elt > seq_max:
+            if elt > seq_max and not uid_cmd:
                 raise Bad("Message index '%d' is greater than the size of "
                           "the mailbox" % elt)
             result.append(elt)
@@ -83,8 +87,8 @@ def sequence_set_to_list(seq_set, seq_max):
                 start = seq_max
             if str(end) == "*":
                 end = seq_max
-                
-            if start == 0 or end == 0 or start > seq_max or end > seq_max:
+            if (start == 0 or end == 0 or start > seq_max or end > seq_max) \
+                    and not uid_cmd:
                 raise Bad("Message sequence '%s' is greater than the size of "
                           "the mailbox" % str(elt))
             if start > end:

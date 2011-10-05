@@ -27,6 +27,7 @@ from asimap.exceptions import No, Bad
 from asimap.constants import SYSTEM_FLAGS, PERMANENT_FLAGS, SYSTEM_FLAG_MAP
 from asimap.constants import REVERSE_SYSTEM_FLAG_MAP, seq_to_flag, flag_to_seq
 from asimap.parse import REPLACE_FLAGS, ADD_FLAGS, REMOVE_FLAGS
+from asimap.fetch import FetchAtt
 
 # RE used to see if a mailbox being created is just digits.
 #
@@ -1332,7 +1333,10 @@ class Mailbox(object):
         # conflicting messages to this client (other clients that are idling do
         # get any updates though.)
         #
-        self.resync(notify = False)
+        # NOTE: If we are doing a UID FETCH then we are allowed to notify the
+        #       client of possible mailbox changs.
+        #
+        self.resync(notify = uid_command)
 
         if uid_command:
             self.log.debug("fetch: Doing UID FETCH")
@@ -1347,7 +1351,36 @@ class Mailbox(object):
             msgs = self.mailbox.keys()
             uid_vv, uid_max = self.get_uid_from_msg(msgs[-1])
             seq_max = len(self.mailbox)
-            msg_idxs = asimap.utils.sequence_set_to_list(msg_set, seq_max)
+
+            if uid_command:
+                # If we are doing a 'UID FETCH' command we need to use the max
+                # uid for the sequence max.
+                #
+                uid_list = asimap.utils.sequence_set_to_list(msg_set, uid_max,
+                                                             uid_command)
+
+                # We want to convert this list of UID's in to message indices
+                # So for every uid we we got out of the msg_set we look up its
+                # index in self.uids and from that construct the msg_idxs
+                # list. Missing UID's are fine. They just do not get added to
+                # the list.
+                #
+                msg_idxs = []
+                for uid in uid_list:
+                    if uid in self.uids:
+                        msg_idxs.append(self.uids.index(uid) + 1)
+
+                # Also, if this is a UID FETCH then we MUST make sure UID is
+                # one of the fields being fetched, and if it is not add it.
+                #
+                fetch_found = False
+                for mdi in msg_data_items:
+                    if mdi.attribute.lower() == "uid":
+                        fetch_found = True
+                if not fetch_found:
+                    msg_data_items.append(FetchAtt("uid"))
+            else:
+                msg_idxs = asimap.utils.sequence_set_to_list(msg_set, seq_max)
 
             # Go through each message and apply the msg_data_items.fetch() to
             # it building up a set of data to respond to the client with.
