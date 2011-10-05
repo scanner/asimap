@@ -297,6 +297,7 @@ class FetchAtt(object):
             # least one element in the section list when they are called.
             #
             msg_text = email.utils.fix_eols(msg.as_string())
+            # msg_text = msg.as_string()
         else:
             if len(section) == 1:
                 fp = StringIO()
@@ -626,7 +627,7 @@ class FetchAtt(object):
             # everything we need to return a result.
             #
             if not self.ext_data:
-                return '(%s "%s")' % (' '.join(sub_parts),
+                return '(%s "%s")' % (''.join(sub_parts),
                                       msg.get_content_subtype().upper())
 
             # Otherwise this is a real 'bodystructure' fetch and we need to
@@ -654,7 +655,7 @@ class FetchAtt(object):
             #    [LOCATION].
             #
             return '(%s "%s" %s %s %s %s)' % \
-                   (' '.join(sub_parts),
+                   (''.join(sub_parts),
                     msg.get_content_subtype().upper(),
                     self.body_parameters(msg),
                     self.body_disposition(msg),
@@ -706,6 +707,7 @@ class FetchAtt(object):
         #
         payload = msg.get_payload()
         result.append(str(len(email.utils.fix_eols(payload))))
+        # result.append(str(len(payload)))
 
         # Now come the variable fields depending on the maintype/subtype
         # of this message.

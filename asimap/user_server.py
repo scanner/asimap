@@ -415,6 +415,11 @@ class IMAPUserServer(asyncore.dispatcher):
           and do not take up excess memory in the server. Defaults to 15
           minutes.
         """
+        # The INBOX is case-insensitive but it is stored in our file system in
+        # a case sensitive lower case fashion..
+        #
+        if name.lower() == "inbox":
+            name = "inbox"
         if name in self.active_mailboxes:
             return self.active_mailboxes[name]
 

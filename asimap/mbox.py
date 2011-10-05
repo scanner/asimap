@@ -573,7 +573,7 @@ class Mailbox(object):
                                        "message index: %d is not inside list "
                                        "of UIDs, whose length is: %d" % \
                                            (msg_idx-1, len(self.uids)))
-                client.client.push("* FETCH %d (FLAGS (%s)%s)\r\n" % (msg_idx,
+                client.client.push("* %d FETCH (FLAGS (%s)%s)\r\n" % (msg_idx,
                                                                       flags,
                                                                       uidstr))
         return

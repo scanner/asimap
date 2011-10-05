@@ -534,7 +534,6 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
         We have received data from the subprocess handling the IMAP client's
         messages.
         """
-        self.log.debug("collected data: %s" % str(data))
         if self.client_connection is not None:
             self.client_connection.push(data)
         return

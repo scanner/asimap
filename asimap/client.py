@@ -55,7 +55,7 @@ class BaseClientHandler(object):
                     client we are handling. This lets us send messages to that
                     IMAP client.
         """
-        self.log = logging.getLogger("%s.BaseClientHandler" % __name__)
+        self.log = logging.getLogger("%s.%s" % (__name__, self.__class__.__name__))
         self.client = client
         self.state = None
 
@@ -113,16 +113,22 @@ class BaseClientHandler(object):
         try:
             result = getattr(self, 'do_%s' % imap_command.command)(imap_command)
         except No, e:
-            self.client.push("%s NO %s\r\n" % (imap_command.tag, str(e)))
+            result = "%s NO %s\r\n" % (imap_command.tag, str(e))
+            self.client.push(result)
+            self.log.debug(result)
             return
         except Bad, e:
-            self.client.push("%s BAD %s\r\n" % (imap_command.tag, str(e)))
+            result = "%s BAD %s\r\n" % (imap_command.tag, str(e))
+            self.client.push(result)
+            self.log.debug(result)
             return
         except KeyboardInterrupt:
             sys.exit(0)
         except Exception, e:
-            self.client.push("%s BAD Unhandled exception: %s\r\n" % \
-                                 (imap_command.tag, str(e)))
+            result = "%s BAD Unhandled exception: %s\r\n" % (imap_command.tag,
+                                                             str(e))
+            self.client.push(result)
+            self.log.debug(result)
             raise
 
         # If there was no result from running this command then everything went
@@ -130,9 +136,10 @@ class BaseClientHandler(object):
         # command.
         #
         if result is None:
-            self.client.push("%s OK %s completed\r\n" % \
-                                 (imap_command.tag,
-                                  imap_command.command.upper()))
+            result = "%s OK %s completed\r\n" % (imap_command.tag,
+                                                 imap_command.command.upper())
+            self.client.push(result)
+            self.log.debug(result)
         elif result is False:
             # Some commands do NOT send an OK response immediately.. aka the
             # IDLE command. If result is false then we just return.
@@ -142,9 +149,11 @@ class BaseClientHandler(object):
             # The command has some specific response it wants to send back as
             # part of the tagged OK response.
             #
-            self.client.push("%s OK %s %s completed\r\n" % \
-                                 (imap_command.tag, result,
-                                  imap_command.command.upper()))
+            result = "%s OK %s %s completed\r\n" % \
+                     (imap_command.tag, result,
+                      imap_command.command.upper())
+            self.client.push(result)
+            self.log.debug(result)
         return
 
     ##################################################################
@@ -379,7 +388,7 @@ class Authenticated(BaseClientHandler):
                          handle to our sqlite3 db, etc.
         """
         BaseClientHandler.__init__(self, client)
-        self.log = logging.getLogger("%s.Authenticated" % __name__)
+        self.log = logging.getLogger("%s.%s.%d" % (__name__, self.__class__.__name__, client.port))
         self.server = user_server
         self.db = user_server.db
         self.mbox = user_server.mailbox
@@ -599,6 +608,8 @@ class Authenticated(BaseClientHandler):
         results = asimap.mbox.Mailbox.list(cmd.mailbox_name, cmd.list_mailbox,
                                            self.server)
         for mbox_name, attributes in results:
+            if mbox_name.lower() == "inbox":
+                mbox_name = "INBOX"
             self.client.push(str('* LIST (%s) "/" %s\r\n' % \
                                  (' '.join(attributes), mbox_name)))
         return
@@ -841,7 +852,6 @@ class Authenticated(BaseClientHandler):
             self.client.push("* BYE Your selected mailbox no longer exists\r\n")
             self.client.close()
             return
-
         # If this client has pending EXPUNGE messages then we return a tagged
         # No response.. the client should see this and do a NOOP or such and
         # receive the pending expunges. Unless this is a UID command. It is
@@ -856,7 +866,7 @@ class Authenticated(BaseClientHandler):
         results = self.mbox.fetch(cmd.msg_set, cmd.fetch_atts, cmd.uid_command)
         for r in results:
             idx, iter_results = r
-            self.client.push("* FETCH %d (%s)\r\n" % \
+            self.client.push("* %d FETCH (%s)\r\n" % \
                                  (idx, " ".join(iter_results)))
         self.mbox.resync()
         return None
