@@ -391,6 +391,7 @@ class Mailbox(object):
                 if force == True:
                     self.log.debug("rescanning all %d messages" % len(msgs))
                     self.uids = [None for x in range(len(msgs))]
+                    self.server.msg_cache.clear_mbox(self.name)
                     self._check_update_msg_uids(msgs, 0, seq)
                 else:
                     first_new_msg = self._find_first_new_message(msgs,
@@ -408,6 +409,7 @@ class Mailbox(object):
                         #
                         start_idx = msgs.index(start)
                         if start_idx + 2 > len(self.uids):
+                            self.server.msg_cache.clear_mbox(self.name)
                             self.log.warn("resync: start_idx: %d, length "
                                           "of self.uids: %s. Doing full "
                                           "resync" % (start_idx,
@@ -427,6 +429,7 @@ class Mailbox(object):
                         elif len(msgs) < len(self.uids):
                             # We have fewer messages than entries in self.uids
                             # so truncate self.uids down to be the same length.
+                            self.server.msg_cache.clear_mbox(self.name)
                             self.log.debug("resync: truncating self.uids "
                                            "down to %d elements" % len(msgs))
                             self.uids = self.uids[:len(msgs)]
@@ -438,6 +441,7 @@ class Mailbox(object):
                 # number of messages in the mailbox is zero.. make sure our
                 # list of uid's for this mailbox is also empty.
                 #
+                self.server.msg_cache.clear_mbox(self.name)
                 if len(self.uids) != 0:
                     self.log.warn("resync: Huh, list of msgs is empty, but "
                                   "list of uid's was not. Emptying.")
@@ -1006,11 +1010,11 @@ class Mailbox(object):
         - `msg_key`: message key to look up the message by
         """
         msg = self.server.msg_cache.get(self.name, msg_key)
-        if msg = None:
-            self.mailbox.get_message(msg_key)
+        if msg is None:
+            msg = self.mailbox.get_message(msg_key)
             self.server.msg_cache.add(self.name, msg_key, msg)
-            self.debug("add %d to msg cache: %s" % (msg_key,
-                                                    str(self.server.msg_cache)))
+            # self.log.debug("add %d to msg cache: %s" % \
+            #                    (msg_key,str(self.server.msg_cache)))
         return msg
 
     ##################################################################

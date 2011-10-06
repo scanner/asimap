@@ -22,6 +22,7 @@ can tell us to clear all the entries for that mailbox.
 # system imports
 #
 import logging
+import time
 
 ##################################################################
 ##################################################################
@@ -65,10 +66,10 @@ class MessageCache(object):
         """
         For string return the object and some stats about it.
         """
-        num_msgs = reduce(lamba x, y: x+y, [len(z) for z in self.msgs_by_mailbox.itervalues()])
-        return "<%s.%s: size: %d, number of mboxes: %s, number of " \
-            "messages: %d" % (__name__, self.__class__.name, self.cur_size,
-                              len(self.msgs_by_mailbox),)
+        num_msgs = reduce(lambda x, y: x+y, [len(z) for z in self.msgs_by_mailbox.itervalues()])
+        return "<%s.%s: size: %d, number of mboxes: %d, number of " \
+            "messages: %d" % (__name__, self.__class__.__name__, self.cur_size,
+                              len(self.msgs_by_mailbox),num_msgs)
 
     ##################################################################
     #
@@ -97,7 +98,9 @@ class MessageCache(object):
         while self.cur_size > self.max_size:
             oldest = None
             for mbox_name in self.msgs_by_mailbox.iterkeys():
-                if oldest == None:
+                if len(self.msgs_by_mailbox[mbox_name]) == 0:
+                    continue
+                if oldest is None:
                     oldest = (mbox_name, self.msgs_by_mailbox[mbox_name][0])
                 elif oldest[1][3] > self.msgs_by_mailbox[mbox_name][0][3]:
                     oldest = (mbox_name, self.msgs_by_mailbox[mbox_name][0])
@@ -106,7 +109,9 @@ class MessageCache(object):
                                   (self.cur_size, self.max_size))
                 return
             self.msgs_by_mailbox[oldest[0]].pop(0)
-            self.log.debug("removing from cache: %s" % str(oldest))
+            if len(self.msgs_by_mailbox[oldest[0]]) == 0:
+                del self.msgs_by_mailbox[oldest[0]]
+            # self.log.debug("removing from cache: %s" % str(oldest))
             self.cur_size -= oldest[1][1]
         return
 
@@ -141,10 +146,10 @@ class MessageCache(object):
         # If we did find our message then we remove it from the list and
         # append it to the end of the list, resetting its time.
         #
-        self.msgs_by_mailbox.remove(result)
+        self.msgs_by_mailbox[mbox].remove(result)
         if not remove:
-            result[3] = time.time()
-            self.msgs_by_mailbox.append(result)
+            result = (result[0], result[1], result[2], time.time())
+            self.msgs_by_mailbox[mbox].append(result)
         else:
             self.cur_size -= result[1]
         return result[2]
@@ -179,6 +184,8 @@ class MessageCache(object):
         for msg_item in self.msgs_by_mbox[mbox]:
             self.cur_size -= msg_item[1]
         del self.msgs_by_mbox[mbox]
+        self.log.debug("Clear mbox %s from the message cache, "
+                       "new size: %d" % (mbox, self.cur_size))
         return
 
     ##################################################################
