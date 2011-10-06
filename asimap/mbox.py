@@ -422,10 +422,11 @@ class Mailbox(object):
                             # extend self.uids by the right amount so that they
                             # have the same number of elements.
                             #
+                            self.log.debug("len msgs: %d, len uids: %d" % (len(msgs), len(self.uids)))
+                            extend_by = len(msgs)-len(self.uids)
                             self.log.debug("resync: Extending self.uids "
-                                           "by %d elements" % \
-                                               len(msgs)-len(self.uids))
-                            self.uids.extend([None for x in range(len(msgs)-len(self.uids))])
+                                           "by %d elements" % extend_by)
+                            self.uids.extend([None for x in range(extend_by)])
                         elif len(msgs) < len(self.uids):
                             # We have fewer messages than entries in self.uids
                             # so truncate self.uids down to be the same length.
@@ -467,13 +468,23 @@ class Mailbox(object):
                 # Notify all listening clients that the number of messages and
                 # number of recent messages has changed.
                 #
+                to_notify = []
                 for client in self.clients.itervalues():
                     if notify or \
                        client.idling or \
                        (only_notify is not None and \
                         only_notify.client.port == client.client.port):
-                        client.client.push("* %d EXISTS\r\n" % len(msgs))
-                        client.client.push("* %d RECENT\r\n" % num_recent)
+                        to_notify.append(client.client)
+
+                # NOTE: We separate the generating which clients to notify from
+                #       actually pushing messages out to those clients because
+                #       if it disconnects due to us sending it we do not want
+                #       to raise an exception because the self.clients
+                #       dictionary changed.
+                #
+                for client in to_notify:
+                    client.push("* %d EXISTS\r\n" % len(msgs))
+                    client.push("* %d RECENT\r\n" % num_recent)
 
             # Make sure to update our mailbox object with the new counts.
             #
@@ -658,11 +669,22 @@ class Mailbox(object):
             # encounter a blank line then we have reached the end of the
             # header.
             #
+            count = 0
+            found_header_end = False
             for line in fp:
                 if len(line.strip()) == 0:
-                    return (None, None)
+                    found_header_end = True
+                    count = 0
                 if line[0:15].lower() == 'x-asimapd-uid: ':
+                    if found_header_end:
+                        self.log.warn("message %d had broken headers" % msg)
                     break
+                if found_header_end:
+                    if count > 5:
+                        self.log.warn("%d extra lines, no uid found.. " % count)
+                        return (None, None)
+                    else:
+                        count += 1
 
             # We only get here if we encountered the 'x-asimapde-uid'
             # header. Take the value part of the heade and split it around "."
@@ -1418,6 +1440,7 @@ class Mailbox(object):
         #       client of possible mailbox changs.
         #
         self.resync(notify = uid_command)
+        seq_changed = False
 
         if uid_command:
             self.log.debug("fetch: Doing UID FETCH")
@@ -1449,7 +1472,12 @@ class Mailbox(object):
                 msg_idxs = []
                 for uid in uid_list:
                     if uid in self.uids:
-                        msg_idxs.append(self.uids.index(uid) + 1)
+                        mi = self.uids.index(uid) + 1
+                        msg_idxs.append(mi)
+                        muid_vv, muid = self.get_uid_from_msg(msgs[mi-1])
+                        if muid != uid:
+                            self.log.error("store: at index: %d, msg: %d, uid: %d, doees not match actual message uid: %d" % (mi, msgs[mi-1],uid, muid))
+                            self.resync(force = True, optional = False)
 
                 # Also, if this is a UID FETCH then we MUST make sure UID is
                 # one of the fields being fetched, and if it is not add it.
@@ -1626,7 +1654,12 @@ class Mailbox(object):
                 msg_idxs = []
                 for uid in uid_list:
                     if uid in self.uids:
-                        msg_idxs.append(self.uids.index(uid) + 1)
+                        mi = self.uids.index(uid) + 1
+                        msg_idxs.append(mi)
+                        muid_vv, muid = self.get_uid_from_msg(msg_keys[mi-1])
+                        if muid != uid:
+                            self.log.error("store: at index: %d, msg: %d, uid: %d, doees not match actual message uid: %d" % (mi, msg_keys[mi-1],uid, muid))
+                            self.resync(force = True, optional = False)
             else:
                 msg_idxs = asimap.utils.sequence_set_to_list(msg_set, seq_max)
 
@@ -1714,7 +1747,12 @@ class Mailbox(object):
                 msg_idxs = []
                 for uid in uid_list:
                     if uid in self.uids:
-                        msg_idxs.append(self.uids.index(uid) + 1)
+                        mi = self.uids.index(uid) + 1
+                        msg_idxs.append(mi)
+                        muid_vv, muid = self.get_uid_from_msg(msgs[mi-1])
+                        if muid != uid:
+                            self.log.error("store: at index: %d, msg: %d, uid: %d, doees not match actual message uid: %d" % (mi, msgs[mi-1],uid, muid))
+                            self.resync(force = True, optional = False)
             else:
                 msg_idxs = asimap.utils.sequence_set_to_list(msg_set, seq_max)
 
