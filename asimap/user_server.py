@@ -27,6 +27,7 @@ import time
 import asimap
 import asimap.parse
 import asimap.mbox
+import asimap.message_cache
 
 from asimap.client import Authenticated
 from asimap.db import Database
@@ -92,7 +93,7 @@ class IMAPUserClientHandler(asynchat.async_chat):
         # it when our connection to the main server is shutdown.
         #
         self.port = port
-        
+
         # A handle on the server process and its database connection.
         #
         self.server = server
@@ -123,7 +124,7 @@ class IMAPUserClientHandler(asynchat.async_chat):
                 self.log.debug(message)
             else:
                 self.log.info(message)
-    
+
     ############################################################################
     #
     def collect_incoming_data(self, data):
@@ -299,7 +300,7 @@ class IMAPUserServer(asyncore.dispatcher):
         self.listen(BACKLOG)
         self.maildir = maildir
         self.mailbox = mailbox.MH(self.maildir, create = True)
-        
+
         # A global counter for the next available uid_vv is stored in the user
         # server object. Mailboxes will get this value and increment it when
         # they need a new uid_vv.
@@ -327,6 +328,10 @@ class IMAPUserServer(asyncore.dispatcher):
         # The key is the port number of the attached client.
         #
         self.clients = { }
+
+        # There is a single message cache per user server instance.
+        #
+        self.msg_cache = asimap.message_cache.MessageCache()
 
         # When we have any connected clients this time gets set to
         # None. Otherwise use it to determine when we have hung around long
@@ -373,7 +378,7 @@ class IMAPUserServer(asyncore.dispatcher):
         c.close()
         self.db.commit()
         return self.uid_vv
-    
+
     ##################################################################
     #
     def log_info(self, message, type = "info"):
@@ -428,7 +433,7 @@ class IMAPUserServer(asyncore.dispatcher):
         mbox = asimap.mbox.Mailbox(name, self, expiry = expiry)
         self.active_mailboxes[name] = mbox
         return mbox
-    
+
     ##################################################################
     #
     def check_all_folders(self, ):
@@ -489,7 +494,7 @@ class IMAPUserServer(asyncore.dispatcher):
             path = os.path.join(self.mailbox._path, mbox_name)
             if int(os.path.getmtime(path)) != mtime:
                 # The mtime differs.. force the mailbox to resync.
-                # 
+                #
                 m = self.get_mailbox(mbox_name, 60)
                 m.resync()
 
@@ -509,7 +514,7 @@ class IMAPUserServer(asyncore.dispatcher):
             del self.active_mailboxes[mbox_name]
 
         return
-    
+
     ##################################################################
     #
     def handle_accept(self):
@@ -525,4 +530,4 @@ class IMAPUserServer(asyncore.dispatcher):
             self.expiry = None
             handler = IMAPUserClientHandler(sock, addr[1], self, self.options)
             self.clients[addr[1]] = handler
-        
+

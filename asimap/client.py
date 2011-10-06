@@ -863,12 +863,19 @@ class Authenticated(BaseClientHandler):
             else:
                 raise No("There are pending EXPUNGEs.")
 
-        results = self.mbox.fetch(cmd.msg_set, cmd.fetch_atts, cmd.uid_command)
+        results,seq_changed = self.mbox.fetch(cmd.msg_set, cmd.fetch_atts,
+                                              cmd.uid_command)
         for r in results:
             idx, iter_results = r
             self.client.push("* %d FETCH (%s)\r\n" % \
                                  (idx, " ".join(iter_results)))
-        self.mbox.resync()
+
+        # If the fetch caused sequences to change then we need to make the
+        # resync non-optional so that we will send FETCH messages to the other
+        # clients listening to this mailbox.
+        #
+        if seq_changed:
+            self.mbox.resync(optional = False)
         return None
 
     ##################################################################

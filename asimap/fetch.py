@@ -210,8 +210,8 @@ class FetchAtt(object):
     def __str__(self):
         result = self.actual_command
         if result == "BODY":
-            if self.peek:
-                result += ".PEEK"
+            # if self.peek:
+            #     result = "BODY.PEEK"
             if self.section is not None:
                 # we need to be careful how we convert HEADER.FIELDS and
                 # HEADER.FIELDS.NOT back in to a string.
@@ -225,7 +225,8 @@ class FetchAtt(object):
                     if isinstance(s,(list,tuple)):
                         sects.append("%s (%s)" % \
                                          (str(s[0]).upper(),
-                                          ' '.join(x.upper() for x in s[1])))
+                                          ' '.join(x for x in s[1])))
+                    #                                          ' '.join(x.upper() for x in s[1])))
                     else:
                         sects.append(str(s).upper())
                 result += '[%s]' % '.'.join(sects)
@@ -269,7 +270,8 @@ class FetchAtt(object):
         elif self.attribute == "flags":
             result = '(%s)' % ' '.join([asimap.constants.seq_to_flag(x) for x in self.ctx.sequences])
         elif self.attribute == "internaldate":
-            result = '"%s"' % asimap.utils.formatdate(self.ctx.internal_date)
+#            result = '"%s"' % asimap.utils.formatdate(self.ctx.internal_date)
+            result = '"%s"' % self.ctx.internal_date.strftime("%d-%b-%Y %H:%m:%S %z")
         elif self.attribute == "rfc822.size":
             result = str(len(self.ctx.mailbox.mailbox.get_string(self.ctx.msg_key)))
         elif self.attribute == "uid":
@@ -402,7 +404,7 @@ class FetchAtt(object):
         # We return all of these body sections as a length prefixed IMAP
         # string.
         #
-        return "{%d}\r\n%s" % (len(msg_text), msg_text)
+        return "{%d}\r\n%s" % (len(msg_text), str(msg_text))
 
     #######################################################################
     #
@@ -507,7 +509,7 @@ class FetchAtt(object):
         """
         Suss if the message part has a 'content-location' header or not
         and return it if it does (or NIL if it does not.)
-        
+
         Arguments:
         - `msg`: the message (message part) we are looking at
         """
@@ -519,7 +521,7 @@ class FetchAtt(object):
     #
     def body_parameters(self, msg):
         """
-        
+
          body parameter parenthesized list
             A parenthesized list of attribute/value pairs [e.g., (`foo`
             `bar` `baz` `rag`) where `bar` is the value of `foo` and
@@ -530,7 +532,7 @@ class FetchAtt(object):
         """
         if msg.get_params() is None:
             return "NIL"
-        
+
         msg_params = []
         for k,v in msg.get_params():
             if v == '':
@@ -541,7 +543,7 @@ class FetchAtt(object):
             return "(%s)" % " ".join(msg_params)
         else:
             return "NIL"
-    
+
     #######################################################################
     #
     def body_disposition(self, msg):
@@ -555,7 +557,7 @@ class FetchAtt(object):
             attribute/value pairs as defined in [DISPOSITION].
 
         This is the 'content-disposition' of the message.
-        
+
         Arguments:
         - `msg`: The message (or message sub-part) we are looking at
         """
@@ -580,7 +582,7 @@ class FetchAtt(object):
                 return '("%s" (%s))' % (cd[0][0].upper(), " ".join(cdpl))
         else:
             return "NIL"
-    
+
     #######################################################################
     #
     def bodystructure(self, msg):
@@ -628,7 +630,8 @@ class FetchAtt(object):
             #
             if not self.ext_data:
                 return '(%s "%s")' % (''.join(sub_parts),
-                                      msg.get_content_subtype().upper())
+                                      msg.get_content_subtype())
+#                                      msg.get_content_subtype().upper())
 
             # Otherwise this is a real 'bodystructure' fetch and we need to
             # return the extension data as well.
@@ -656,7 +659,8 @@ class FetchAtt(object):
             #
             return '(%s "%s" %s %s %s %s)' % \
                    (''.join(sub_parts),
-                    msg.get_content_subtype().upper(),
+#                    msg.get_content_subtype().upper(),
+                    msg.get_content_subtype(),
                     self.body_parameters(msg),
                     self.body_disposition(msg),
                     self.body_languages(msg),
@@ -672,8 +676,10 @@ class FetchAtt(object):
 
         # Body type and sub-type
         #
-        result.append('"%s"' % msg.get_content_maintype().upper())
-        result.append('"%s"' % msg.get_content_subtype().upper())
+        # result.append('"%s"' % msg.get_content_maintype().upper())
+        # result.append('"%s"' % msg.get_content_subtype().upper())
+        result.append('"%s"' % msg.get_content_maintype())
+        result.append('"%s"' % msg.get_content_subtype())
 
         # Parenthesized list of the message parameters as a list of
         # key followed by value.
@@ -695,7 +701,8 @@ class FetchAtt(object):
         if 'content-transfer-encoding' in msg:
             result.append('"%s"' % msg['content-transfer-encoding'].upper())
         else:
-            result.append('"7BIT"')
+            result.append('"7bit"')
+#            result.append('"7BIT"')
 
         # Body size.. length of the payload string.
         #
@@ -732,8 +739,10 @@ class FetchAtt(object):
         # Now we have the message body extension data.
         #
         # The MD5 of the payload
+        # XXX Dovecot does not supply this so we will skip this too.
+        # result.append('"%s"' % hashlib.md5(payload).hexdigest())
         #
-        result.append('"%s"' % hashlib.md5(payload).hexdigest())
+        result.append('NIL')
 
         # body disposition
         #    A parenthesized list, consisting of a disposition type
@@ -747,7 +756,7 @@ class FetchAtt(object):
         result.append(self.body_languages(msg))
 
         # and body location..
-        # 
+        #
         result.append(self.body_location(msg))
 
         # Convert our result in to a parentheses list.

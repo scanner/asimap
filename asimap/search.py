@@ -89,7 +89,7 @@ class SearchContext(object):
 
         # We have not actually loaded the message yet..
         #
-        self._msg = self.mailbox.mailbox.get_message(self.msg_key)
+        self._msg = self.mailbox.get_and_cache_msg(self.msg_key)
 
         # If the uid is not set, then set it also at the same time.
         #

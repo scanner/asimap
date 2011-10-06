@@ -178,7 +178,7 @@ class Mailbox(object):
         #     operating on it causing back to back resyncs.. should we skip
         #     this one?
         #
-        self.resync(force = not force_resync)
+        self.resync(force = not force_resync, optional = False)
         return
 
     ##################################################################
@@ -206,7 +206,7 @@ class Mailbox(object):
     ##################################################################
     #
     def resync(self, force = False, notify = True, only_notify = None,
-               dont_notify = None, publish_uids = False):
+               dont_notify = None, publish_uids = False, optional = True):
         """
         This will go through the mailbox on disk and make sure all of the
         messages have proper uuid's, make sure we have a .mh_sequences file
@@ -266,18 +266,37 @@ class Mailbox(object):
           likely triggered by a UID STORE command in which we must include the
           UID. It is okay to send this to all clients because even if they did
           not ask for the UID's they should be okay with getting that info.
+
+        - `optional`: If this is True then this entire resync will be skipped
+          as a no-op if the mtime on the folder is NOT different than the mtime
+          in self.mtime. Watching the server do its thing almost all of the
+          resyncs could be skipped because the state on the folder had not
+          changed. This is made to be a flag because there are times when we
+          want a resync to happen even if the mtime has not changed. The result
+          of a STORE command that changes flags on a message and us needing to
+          send FETCH's to clients listening to this mailbox is an example of
+          this.
         """
-        self.log.debug("Starting resync")
-        # If only_notify is not None then notify is forced to False.
-        #
-        if only_notify is not None:
-            notify = False
 
         # Get the mtime of the folder at the start so when we need to check to
         # see if we need to do a full scan we have this value before anything
         # we have done in this routine has a chance to modify it.
         #
         start_mtime = int(os.path.getmtime(self.mailbox._path))
+        seq_mtime =  int(os.path.getmtime(os.path.join(self.mailbox._path,
+                                                          ".mh_sequences")))
+        # If `optional` is set and the mtime is the same as what is on disk
+        # then we can totally skip this resync run.
+        #
+        if optional and start_mtime == self.mtime and seq_mtime == self.mtime:
+            self.log.debug("Skipping resync")
+            return
+
+        self.log.debug("Starting resync")
+        # If only_notify is not None then notify is forced to False.
+        #
+        if only_notify is not None:
+            notify = False
 
         try:
             self.mailbox.lock()
@@ -977,6 +996,25 @@ class Mailbox(object):
 
     ##################################################################
     #
+    def get_and_cache_msg(self, msg_key):
+        """
+        Get the message associated with the given message key in our mailbox.
+        We check the cache first to see if it is there.
+        If it is not we retrieve it from the MH folder and add it to the cache.
+
+        Arguments:
+        - `msg_key`: message key to look up the message by
+        """
+        msg = self.server.msg_cache.get(self.name, msg_key)
+        if msg = None:
+            self.mailbox.get_message(msg_key)
+            self.server.msg_cache.add(self.name, msg_key, msg)
+            self.debug("add %d to msg cache: %s" % (msg_key,
+                                                    str(self.server.msg_cache)))
+        return msg
+
+    ##################################################################
+    #
     def selected(self, client):
         """
         This mailbox is being selected by a client.
@@ -1208,6 +1246,13 @@ class Mailbox(object):
             if 'Deleted' not in seq:
                 return
 
+            # Because there was a 'Deleted' sequence we know that there are
+            # messages to delete from the folder. This will mess up the index
+            # of the message keys in this mailbox's message cache so we are
+            # just going to toss the entire message cache for this mailbox.
+            #
+            self.server.msg_cache.clear_mbox(self.name)
+
             # See if there any other clients other than the one passed in the
             # arguments and any NOT in IDLE that have this mailbox selected.
             # This tells us whether we need to keep track of these expunges to
@@ -1346,7 +1391,7 @@ class Mailbox(object):
         - `uid_command`: True if this is for a UID SEARCH command, which means
           we have to return not message sequence numbers but message UID's.
         """
-        # Before we do a search we do a resync to make sure that we have
+        # Before we do a fetch we do a resync to make sure that we have
         # attached uid's to all of our messages and various counts are up to
         # sync. But we do it with notify turned off because we can not send any
         # conflicting messages to this client (other clients that are idling do
@@ -1397,7 +1442,7 @@ class Mailbox(object):
                     if mdi.attribute.lower() == "uid":
                         fetch_found = True
                 if not fetch_found:
-                    msg_data_items.append(FetchAtt("uid"))
+                    msg_data_items.insert(0, FetchAtt("uid"))
             else:
                 msg_idxs = asimap.utils.sequence_set_to_list(msg_set, seq_max)
 
@@ -1422,11 +1467,13 @@ class Mailbox(object):
                 # will send out any necessary FETCH responses related to
                 # changed flags.
                 #
+                seq_changed = False
                 if sorted(msg_sequences) != sorted(ctx.msg.get_sequences()):
+                    seq_changed = True
                     self.mailbox._dump_sequences(ctx.msg, msgs[idx-1])
         finally:
             self.mailbox.unlock()
-        return results
+        return (results, seq_changed)
 
     ##################################################################
     #
@@ -1463,6 +1510,13 @@ class Mailbox(object):
                 for msg in msgs:
                     if msg not in seqs[flag]:
                         seqs[flag].append(msg)
+
+                        # If the message exists in the message cache remove it.
+                        # XXX we should be smarter and update the message if it
+                        #     exists in the message cache.
+                        #
+                        self.server.msg_cache.remove(self.name, msg)
+
                     # When we add a message to the Seen sequence make sure
                     # that message is not in the unseen sequence anymore.
                     #
@@ -1663,10 +1717,12 @@ class Mailbox(object):
                 p = os.path.join(self.mailbox._path, str(key))
                 mtime = os.path.getmtime(p)
 
-                msg = self.mailbox.get_message(key)
+                msg = self.get_and_cache_msg(key)
+                # msg = self.mailbox.get_message(key)
                 new_key = dest_mbox.mailbox.add(msg)
 
-                new_msg = dest_mbox.mailbox.get_message(new_key)
+                # new_msg = dest_mbox.mailbox.get_message(new_key)
+                dest_mbox.get_and_cache_msg(new_key)
                 new_msg.add_sequence('Recent')
                 dest_mbox.mailbox[new_key] = new_msg
 
@@ -1770,6 +1826,10 @@ class Mailbox(object):
             raise InvalidMailbox("You are not allowed to delete the inbox")
 
         mailbox = server.get_mailbox(name, expiry = 0)
+
+        # Remember to delete this mailbox from the message cache..
+        #
+        self.server.msg_cache.clear_mbox(name)
 
         do_delete = False
         try:
