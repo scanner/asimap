@@ -179,11 +179,11 @@ class MessageCache(object):
         Arguments:
         - `mbox`: name of the nailbox cache to clear
         """
-        if mbox not in msgs_by_mbox:
+        if mbox not in self.msgs_by_mailbox:
             return
-        for msg_item in self.msgs_by_mbox[mbox]:
+        for msg_item in self.msgs_by_mailbox[mbox]:
             self.cur_size -= msg_item[1]
-        del self.msgs_by_mbox[mbox]
+        del self.msgs_by_mailbox[mbox]
         self.log.debug("Clear mbox %s from the message cache, "
                        "new size: %d" % (mbox, self.cur_size))
         return
@@ -194,6 +194,6 @@ class MessageCache(object):
         """
         Clear the entire cache.
         """
-        self.msgs_by_mbox = { }
+        self.msgs_by_mailbox = { }
         self.cur_size = 0
         return

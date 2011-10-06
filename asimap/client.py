@@ -391,7 +391,7 @@ class Authenticated(BaseClientHandler):
         self.log = logging.getLogger("%s.%s.%d" % (__name__, self.__class__.__name__, client.port))
         self.server = user_server
         self.db = user_server.db
-        self.mbox = user_server.mailbox
+        self.mbox = None
         self.state = "authenticated"
         self.examine = False # If a mailbox is selected in 'examine' mode
 
@@ -521,14 +521,7 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        # IF we are deleting the mailbox we currently have selected then we pop
-        # back to the authenticated state.
-        #
-        if self.mbox is not None and self.mbox.name == cmd.mailbox_name:
-            self.mbox = None
-            self.state = "authenticated"
-        else:
-            self.notifies()
+        self.notifies()
         asimap.mbox.Mailbox.delete(cmd.mailbox_name, self.server)
         return
 
@@ -962,7 +955,7 @@ class Authenticated(BaseClientHandler):
         try:
             dest_mbox = self.server.get_mailbox(cmd.mailbox_name, expiry = 0)
             try:
-                dest_mbox.mailbox.lock()
+                # dest_mbox.mailbox.lock()
                 self.mbox.copy(cmd.msg_set, dest_mbox, cmd.uid_command)
                 dest_mbox.resync()
             finally:

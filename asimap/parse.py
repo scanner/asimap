@@ -1168,7 +1168,7 @@ class IMAPClientCommand(object):
         self._p_simple_string(' ')
         header_fld_name = self._p_astring().lower()
         self._p_simple_string(' ')
-        return IMAPSearch('header', header = hdr_fld_name,
+        return IMAPSearch('header', header = header_fld_name,
                           string = self._p_astring().lower())
 
     #######################################################################

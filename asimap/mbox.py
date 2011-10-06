@@ -282,9 +282,9 @@ class Mailbox(object):
         # see if we need to do a full scan we have this value before anything
         # we have done in this routine has a chance to modify it.
         #
+        seq_path = os.path.join(self.mailbox._path, ".mh_sequences")
         start_mtime = int(os.path.getmtime(self.mailbox._path))
-        seq_mtime =  int(os.path.getmtime(os.path.join(self.mailbox._path,
-                                                          ".mh_sequences")))
+        seq_mtime =  int(os.path.getmtime(seq_path))
         # If `optional` is set and the mtime is the same as what is on disk
         # then we can totally skip this resync run.
         #
@@ -299,7 +299,7 @@ class Mailbox(object):
             notify = False
 
         try:
-            self.mailbox.lock()
+            # self.mailbox.lock()
             # Whenever we resync the mailbox we update the sequence for 'seen'
             # based on 'seen' are all the messages that are NOT in the
             # 'unseen' sequence.
@@ -495,11 +495,17 @@ class Mailbox(object):
             self._pack_if_necessary(msgs)
 
         finally:
-            self.mailbox.unlock()
-
+            # self.mailbox.unlock()
+            pass
         # And update the mtime before we leave..
         #
-        self.mtime = int(os.path.getmtime(self.mailbox._path))
+        self.mtime = max(int(os.path.getmtime(self.mailbox._path)),
+                         int(os.path.getmtime(seq_path)))
+        # Set the mtime for the folder and the sequences file to be the same.
+        #
+        os.utime(self.mailbox._path, (self.mtime,self.mtime))
+        os.utime(seq_path, (self.mtime,self.mtime))
+        
         self.commit_to_db()
         self.log.debug("resync: Complete.")
         return
@@ -815,6 +821,9 @@ class Mailbox(object):
             # If we are not redoing the rest of the folder check to see if
             # this messages uid_vv / uid is what we expect.
             #
+            if i % 200 == 0:
+                self.log.debug("check/update uids, at index %d, msg: %d" % \
+                                   (i, msg))
             if not redoing_rest_of_folder:
                 uid_vv, uid = self.get_uid_from_msg(msg)
 
@@ -1080,7 +1089,7 @@ class Mailbox(object):
         self.expiry = None
 
         try:
-            self.mailbox.lock()
+            # self.mailbox.lock()
             # When a client selects a mailbox we do a resync to make sure we
             # give it up to date information.
             #
@@ -1130,7 +1139,8 @@ class Mailbox(object):
             client.client.push("* OK [PERMANENTFLAGS (%s)]\r\n" % \
                                         " ".join(PERMANENT_FLAGS))
         finally:
-            self.mailbox.unlock()
+            # self.mailbox.unlock()
+            pass
 
         return
 
@@ -1188,7 +1198,7 @@ class Mailbox(object):
         #
         msg.add_sequence("Recent")
         try:
-            self.mailbox.lock()
+            # self.mailbox.lock()
             key = self.mailbox.add(msg)
             self.log.debug("append: message: %d, sequences: %s" % \
                                (key,", ".join(msg.get_sequences())))
@@ -1200,7 +1210,8 @@ class Mailbox(object):
                 c = time.mktime(date_time.timetuple())
                 os.utime(os.path.join(self.mailbox._path, str(key)),(c,c))
         finally:
-            self.mailbox.unlock()
+            # self.mailbox.unlock()
+            pass
         self.resync()
         return
 
@@ -1242,7 +1253,7 @@ class Mailbox(object):
         """
 
         try:
-            self.mailbox.lock()
+            # self.mailbox.lock()
             # If there are no messages in the 'Deleted' sequence then we have
             # nothing to do.
             #
@@ -1282,9 +1293,9 @@ class Mailbox(object):
                 # XXX Work around a bug in mailbox.MH() that tries to unlock a
                 #     closed file handle after deleting the file if the folder
                 #     is locked.
-                self.mailbox.unlock()
+                # self.mailbox.unlock()
                 self.mailbox.discard(msg)
-                self.mailbox.lock()
+                # self.mailbox.lock()
                 which = msgs.index(msg) + 1
                 for c in clients_to_notify.itervalues():
                     c.client.push("* %d EXPUNGE\r\n" % which)
@@ -1299,7 +1310,8 @@ class Mailbox(object):
                 msgs.remove(msg)
                 self.uids.remove(self.uids[which-1])
         finally:
-            self.mailbox.unlock()
+            # self.mailbox.unlock()
+            pass
 
         # Resync the mailbox, but send NO exists messages because the mailbox
         # has shrunk: 5.2.: "it is NOT permitted to send an EXISTS response
@@ -1339,7 +1351,7 @@ class Mailbox(object):
 
         results = []
         try:
-            self.mailbox.lock()
+            # self.mailbox.lock()
 
             # We get the full list of keys instead of using an iterator because
             # we need the max id and max uuid.
@@ -1370,7 +1382,8 @@ class Mailbox(object):
                     else:
                         results.append(i)
         finally:
-            self.mailbox.unlock()
+            # self.mailbox.unlock()
+            pass
         return results
 
     #########################################################################
@@ -1411,7 +1424,7 @@ class Mailbox(object):
 
         results = []
         try:
-            self.mailbox.lock()
+            # self.mailbox.lock()
 
             # We get the full list of keys instead of using an iterator because
             # we need the max id and max uuid.
@@ -1476,7 +1489,8 @@ class Mailbox(object):
                     seq_changed = True
                     self.mailbox._dump_sequences(ctx.msg, msgs[idx-1])
         finally:
-            self.mailbox.unlock()
+            # self.mailbox.unlock()
+            pass
         return (results, seq_changed)
 
     ##################################################################
@@ -1588,7 +1602,7 @@ class Mailbox(object):
             self.log.debug("fetch: Doing UID STORE")
 
         try:
-            self.mailbox.lock()
+            # self.mailbox.lock()
 
             # Get the list of message keys that msg_set indicates.
             #
@@ -1655,7 +1669,8 @@ class Mailbox(object):
             #
             self.mailbox.set_sequences(seqs)
         finally:
-            self.mailbox.unlock()
+            # self.mailbox.unlock()
+            pass
         return
 
     ##################################################################
@@ -1675,7 +1690,7 @@ class Mailbox(object):
             self.log.debug("copy: Doing UID COPY")
 
         try:
-            self.mailbox.lock()
+            # self.mailbox.lock()
 
             # We get the full list of keys instead of using an iterator because
             # we need the max id and max uuid.
@@ -1726,7 +1741,7 @@ class Mailbox(object):
                 new_key = dest_mbox.mailbox.add(msg)
 
                 # new_msg = dest_mbox.mailbox.get_message(new_key)
-                dest_mbox.get_and_cache_msg(new_key)
+                new_msg = dest_mbox.get_and_cache_msg(new_key)
                 new_msg.add_sequence('Recent')
                 dest_mbox.mailbox[new_key] = new_msg
 
@@ -1736,7 +1751,8 @@ class Mailbox(object):
                 self.log.debug("copy: Copied message %d(%d) to %d" % \
                                    (idx, key, new_key))
         finally:
-            self.mailbox.unlock()
+            # self.mailbox.unlock()
+            pass
         return
 
     #########################################################################
@@ -1833,11 +1849,11 @@ class Mailbox(object):
 
         # Remember to delete this mailbox from the message cache..
         #
-        self.server.msg_cache.clear_mbox(name)
+        server.msg_cache.clear_mbox(name)
 
         do_delete = False
         try:
-            mailbox.mailbox.lock()
+            # mailbox.mailbox.lock()
             inferior_mailboxes = mailbox.mailbox.list_folders()
 
             # You can not delete a mailbox that has the '\Noselect' attribute.
@@ -1885,7 +1901,7 @@ class Mailbox(object):
                 c = server.db.cursor()
                 c.execute("delete from mailboxes where id = ?", (mailbox.id,))
                 c.execute("delete from sequences where mailbox_id = ?",
-                          (mailbox_id,))
+                          (mailbox.id,))
                 c.close()
                 server.db.commit()
 
@@ -1967,6 +1983,11 @@ class Mailbox(object):
         else:
             raise MailboxExists("Destination mailbox '%s' exists" % new_name)
 
+        # Easiest just to flush the message cache for this mailbox when
+        # renaming it.
+        #
+        server.msg_cache.clear_mbox(old_name)
+
         # Inbox is handled specially.
         #
         if mbox.name.lower() != "inbox":
@@ -2006,8 +2027,8 @@ class Mailbox(object):
             #
             new_mbox = server.get_mailbox(new_name, expiry = 0)
             try:
-                mbox.mailbox.lock()
-                new_mbox.mailbox.lock()
+                # mbox.mailbox.lock()
+                # new_mbox.mailbox.lock()
                 for key in mbox.mailbox.iterkeys():
                     try:
                         fp = mbox.mailbox.get_file(key)
@@ -2025,8 +2046,10 @@ class Mailbox(object):
                 mbox.resync()
                 new_mbox.resync()
             finally:
-                mbox.mailbox.unlock()
-                new_mbox.mailbox.unlock()
+                # mbox.mailbox.unlock()
+                # new_mbox.mailbox.unlock()
+                pass
+                
         return
 
     ####################################################################
