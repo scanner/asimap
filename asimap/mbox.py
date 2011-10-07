@@ -16,6 +16,7 @@ import time
 import logging
 import mailbox
 import re
+import itertools
 from email.parser import HeaderParser
 from datetime import datetime
 
@@ -306,6 +307,7 @@ class Mailbox(object):
             #
             msgs = self.mailbox.keys()
             seq = self.mailbox.get_sequences()
+
             if 'unseen' in seq:
                 # Create the 'Seen' sequence by the difference between all the
                 # messages in the mailbox and the unseen ones.
@@ -317,30 +319,6 @@ class Mailbox(object):
                 #
                 seq['Seen'] = msgs
 
-            # If the list of uids is empty but the list of messages is not then
-            # force a full resync of the mailbox.. likely this is just an
-            # initial data problem and does not require rewriting every
-            # message.
-            #
-            if len(self.uids) == 0 and len(msgs) > 0:
-                self.log.debug("resync: len uids: %d, len msgs: %d, forcing resync" % (len(self.uids), len(msgs)))
-                force = True
-
-            # Loop through all messages getting their mtime. If a message's
-            # mtime is no more than one hour before the mtime of the folder
-            # then it gets added to the recent sequence.
-            #
-            recent = []
-            horizon = start_mtime - 3600
-            for msg in msgs:
-                if os.path.getmtime(os.path.join(self.mailbox._path,
-                                                 str(msg))) > horizon:
-                    recent.append(msg)
-            if len(recent) > 0:
-                seq['Recent'] = recent
-            elif 'Recent' in seq:
-                del seq['Recent']
-
             # A mailbox gets '\Marked' if it has any unseen messages or
             # '\Recent' messages.
             #
@@ -351,14 +329,29 @@ class Mailbox(object):
 
             self.mailbox.set_sequences(seq)
 
-            check_all_start = time.time()
-
-            # NOTE: We handle a special case where the db was reset.. if the
-            #       last message in the folder has a uid greater than what is
-            #       stored in the folder then set that plus to be the next_uid,
-            #       and force a resync of the folder.
+            # If the list of uids is empty but the list of messages is not then
+            # force a full resync of the mailbox.. likely this is just an
+            # initial data problem and does not require rewriting every
+            # message.
             #
+            if len(self.uids) == 0 and len(msgs) > 0:
+                self.log.debug("resync: len uids: %d, len msgs: %d, forcing "
+                               "resync" % (len(self.uids), len(msgs)))
+                force = True
+
+            # If the folder is NOT empty scan for messages that have been added
+            # to it by a third party and do not have UID's or the case where
+            # the folder's contents have been re-bobbled and the UID's are no
+            # longer in strictly ascending order.
+            #
+
             if len(msgs) > 0:
+
+                # NOTE: We handle a special case where the db was reset.. if
+                #       the last message in the folder has a uid greater than
+                #       what is stored in the folder then set that plus to be
+                #       the next_uid, and force a resync of the folder.
+                #
                 uid_vv, uid = self.get_uid_from_msg(msgs[-1])
                 if uid is not None and uid_vv is not None and \
                         uid_vv == self.uid_vv and uid >= self.next_uid:
@@ -368,73 +361,85 @@ class Mailbox(object):
                     self.next_uid = uid+1
                     force = True
 
-                # Now comes the task that can take an obscene amount of time to
-                # accomplish thus we apply a few tricks to reduce when we do
-                # it, and if we do it, account for the most common case which
-                # is considerably cheaper to do.
+                # If the list of cached UID's is longer than the list of
+                # messages in the folder then something else besides us has
+                # removed messages from this folder (expunge properly keeps
+                # msgs and self.uid's in sync). In this case we do not know
+                # what messages have been removed so we force a full resync of
+                # the folder.
                 #
-                # Usually we ONLY need to rescan the new messages that have
-                # been added to the folder.
+                # What is more this means our client must no longer be in sync
+                # with us. This calls for drastic measures and we force a
+                # chance of the uid_vv on this folder. This will cause all
+                # messages to have their uid's re-written and also tell the
+                # mail client that it is no longer in sync with us.
                 #
-                # Scan forward through the mailbox to find the first message
-                # with an mtime > the folder's mtime - 30sec. This makes sure
-                # we check all messages that would have been added to this
-                # folder since our last automatic resync check.
-                #
-                # Scan back from the end of the mailbox until we find the first
-                # message that has a uid_vv that matches the uid_vv of our
-                # folder.
-                #
-                # Given these two references to a message choose the lower of
-                # the two and scan from that point forward.
-                #
+                if len(msgs) < len(self.uids):
+                    self.log.warn("resync: number of messages in folder (%d) "
+                                  "is less than list of cached uids: %d. "
+                                  "Forcing new uid_vv and resync." % \
+                                      (len(msgs), len(self.uids)))
+                    force = True
+                    self.uid_vv = self.server.get_next_uid_vv()
+                    clients = [x.client for x in self.clients.itervalues()]
+                    for c in clients:
+                        c.push("* BYE mailbox uid_vv has changed\r\n")
+                        c.close()
+                    self.clients = { }
+
                 if force == True:
-                    self.log.debug("rescanning all %d messages" % len(msgs))
+                    # If force is True then we scan every message in the folder.
+                    # This also clears the cached messages for this folder and
+                    # insures that the self.uid's array is properly filled.
+                    #
+                    self.log.debug("resync: Forced rescanning all %d "
+                                   "messages" % len(msgs))
                     self.uids = [None for x in range(len(msgs))]
                     self.server.msg_cache.clear_mbox(self.name)
                     self._check_update_msg_uids(msgs, 0, seq)
+
                 else:
+                    # Usually we ONLY need to rescan the new messages that have
+                    # been added to the folder.
+                    #
+                    # Scan forward through the mailbox to find the first
+                    # message with an mtime > the folder's mtime - 30sec. This
+                    # makes sure we check all messages that would have been
+                    # added to this folder since our last automatic resync
+                    # check.
+                    #
+                    # Scan back from the end of the mailbox until we find the
+                    # first message that has a uid_vv that matches the uid_vv
+                    # of our folder.
+                    #
+                    # Given these two references to a message choose the lower
+                    # of the two and scan from that point forward.
+                    #
                     first_new_msg = self._find_first_new_message(msgs,
                                                                  horizon=30)
                     first_msg_wo_uid = self._find_msg_without_uidvv(msgs)
+
+                    # If either of these is NOT None then we have some subset
+                    # of messages we need to scan. If both of these ARE None
+                    # then we have determined that there are no new messages to
+                    # deal with in the mailbox.
+                    #
                     if first_new_msg or first_msg_wo_uid:
+
+                        # Start at the lower of these two message keys.
+                        # 'start' is they MH message key. 'start_idx' index in
+                        # to the list of message keys for 'start'
+                        #
                         start = min(x for x in [first_new_msg,first_msg_wo_uid] if x is not None)
-                        # If the start_idx is more than one beyond the end of
-                        # self.uids then we have a problem in that there seems
-                        # to be a gap that should not be in self.uids, so we
-                        # will for a total resync.
-                        #
-                        # Otherwise we extend self.uids by the number of
-                        # messages we are going to rescan.
-                        #
                         start_idx = msgs.index(start)
-                        if start_idx + 2 > len(self.uids):
-                            self.server.msg_cache.clear_mbox(self.name)
-                            self.log.warn("resync: start_idx: %d, length "
-                                          "of self.uids: %s. Doing full "
-                                          "resync" % (start_idx,
-                                                      len(self.uids)))
-                            start_idx = 0
-                            self.uids = [None for x in range(len(msgs))]
-                        elif len(msgs) > len(self.uids):
-                            # If the number of messages in the folder is larger
-                            # than the number of entries in self.uids then
-                            # extend self.uids by the right amount so that they
-                            # have the same number of elements.
-                            #
-                            self.log.debug("len msgs: %d, len uids: %d" % (len(msgs), len(self.uids)))
-                            extend_by = len(msgs)-len(self.uids)
-                            self.log.debug("resync: Extending self.uids "
-                                           "by %d elements" % extend_by)
-                            self.uids.extend([None for x in range(extend_by)])
-                        elif len(msgs) < len(self.uids):
-                            # We have fewer messages than entries in self.uids
-                            # so truncate self.uids down to be the same length.
-                            self.server.msg_cache.clear_mbox(self.name)
-                            self.log.debug("resync: truncating self.uids "
-                                           "down to %d elements" % len(msgs))
-                            self.uids = self.uids[:len(msgs)]
-                        self.log.debug("rescanning from %d to %d" % \
+
+                        # If there are more messages than entries in the
+                        # self.uids's list (which should be the common case)
+                        # then we need to extend the self.uid's list to handle
+                        # the new UID's that will be found/added during the
+                        # scan.
+                        self.uids.extend(None for x in range(len(msgs) - len(self.uids)))
+                        self.log.debug("resync: rescanning from %d to %d" % \
                                            (start, msgs[-1]))
                         self._check_update_msg_uids(msgs[start_idx:],
                                                     start_idx, seq)
@@ -672,13 +677,13 @@ class Mailbox(object):
             count = 0
             found_header_end = False
             for line in fp:
-                if len(line.strip()) == 0:
-                    found_header_end = True
-                    count = 0
                 if line[0:15].lower() == 'x-asimapd-uid: ':
                     if found_header_end:
                         self.log.warn("message %d had broken headers" % msg)
                     break
+                if len(line.strip()) == 0:
+                    found_header_end = True
+                    count = 0
                 if found_header_end:
                     if count > 5:
                         self.log.warn("%d extra lines, no uid found.. " % count)
@@ -873,6 +878,25 @@ class Mailbox(object):
                     full_msg = mailbox.MHMessage(HeaderParser().parse(fp))
                 finally:
                     fp.close()
+
+                # If the message already has a UID header, check to see if
+                # the uid_vv is the same as this folder's. If it is NOT
+                # then this message is recently added to this mailbox so we
+                # to make sure it is added to the 'Recent' sequence.
+                #
+                # Likewise if the message does NOT have a UID header then it is
+                # also recently added to this folder.
+                #
+                recent = False
+                if 'X-asimapd-uid' in full_msg:
+                    try:
+                        muid_vv, muid = [int(x) for x in full_msg['x-asimapd-uid'].strip().split('.')]
+                    except ValueError:
+                        muid_vv, muid = (None, None)
+                    if muid_vv != self.uid_vv:
+                        full_msg.add_sequence('Recent')
+                else:
+                    full_msg.add_sequence('Recent')
 
                 # Remove the old header if it exists and add the new one
                 #
@@ -1312,25 +1336,34 @@ class Mailbox(object):
             #
             msgs = self.mailbox.keys()
             for msg in seq['Deleted']:
-                # XXX Work around a bug in mailbox.MH() that tries to unlock a
-                #     closed file handle after deleting the file if the folder
-                #     is locked.
-                # self.mailbox.unlock()
-                self.mailbox.discard(msg)
-                # self.mailbox.lock()
-                which = msgs.index(msg) + 1
-                for c in clients_to_notify.itervalues():
-                    c.client.push("* %d EXPUNGE\r\n" % which)
-                for c in clients_to_pend:
-                    c.pending_expunges.append("* %d EXPUNGE\r\n" % which)
 
                 # Remove the message from the folder.. and also remove it from
                 # our uids to message index mapping. (NOTE: 'which' is in IMAP
                 # message sequence order, so its actual position in the array
                 # is one less.
                 #
+                which = msgs.index(msg) + 1          # Convert msg_key to IMAP
+                                                     # seq num
                 msgs.remove(msg)
-                self.uids.remove(self.uids[which-1])
+                self.uids.remove(self.uids[which-1]) # Remove UID from list of
+                                                     # UID's in this
+                                                     # folder. IMAP sequence
+                                                     # numbers start at 1.
+                self.mailbox.discard(msg)
+
+                # Send EXPUNGE's to the clients we are allowed to notify
+                # immediately.
+                #
+                for c in clients_to_notify.itervalues():
+                    c.client.push("* %d EXPUNGE\r\n" % which)
+
+                # All other clients listening to this mailbox get the expunge
+                # messages added to a list that will be checked before we
+                # accept any other commands from them.
+                #
+                for c in clients_to_pend:
+                    c.pending_expunges.append("* %d EXPUNGE\r\n" % which)
+
         finally:
             # self.mailbox.unlock()
             pass
@@ -1410,22 +1443,22 @@ class Mailbox(object):
 
     #########################################################################
     #
-    def fetch(self, msg_set, msg_data_items, uid_command = False):
+    def fetch(self, msg_set, fetch_ops, uid_command = False):
         """
         Go through the messages in the mailbox. For the messages that are
         within the indicated message set parse them and pull out the data
-        indicated by 'msg_data_items'
+        indicated by 'fetch_ops'
 
         Return a list of tuples where the first element is the IMAP message
         sequence number and the second is the requested data.
 
         The requested data itself is a list of tuples. The first element is the
-        name of the data item from 'msg_data_items' and the second is the
+        name of the data item from 'fetch_ops' and the second is the
         requested data.
 
         Arguments:
         - `msg_set`: The set of messages we want to
-        - `msg_data_items`: The things to fetch for the messags indiated in
+        - `fetch_ops`: The things to fetch for the messags indiated in
           msg_set
         - `uid_command`: True if this is for a UID SEARCH command, which means
           we have to return not message sequence numbers but message UID's.
@@ -1439,11 +1472,9 @@ class Mailbox(object):
         # NOTE: If we are doing a UID FETCH then we are allowed to notify the
         #       client of possible mailbox changs.
         #
+        start_time = time.time()
         self.resync(notify = uid_command)
         seq_changed = False
-
-        if uid_command:
-            self.log.debug("fetch: Doing UID FETCH")
 
         results = []
         try:
@@ -1476,49 +1507,90 @@ class Mailbox(object):
                         msg_idxs.append(mi)
                         muid_vv, muid = self.get_uid_from_msg(msgs[mi-1])
                         if muid != uid:
-                            self.log.error("store: at index: %d, msg: %d, uid: %d, doees not match actual message uid: %d" % (mi, msgs[mi-1],uid, muid))
+                            self.log.error("store: at index: %d, msg: %d, "
+                                           "uid: %d, doees not match actual "
+                                           "message uid: %d" % \
+                                               (mi, msgs[mi-1],uid, muid))
                             self.resync(force = True, optional = False)
 
                 # Also, if this is a UID FETCH then we MUST make sure UID is
                 # one of the fields being fetched, and if it is not add it.
                 #
-                fetch_found = False
-                for mdi in msg_data_items:
-                    if mdi.attribute.lower() == "uid":
-                        fetch_found = True
-                if not fetch_found:
-                    msg_data_items.insert(0, FetchAtt("uid"))
+                if not any([x.attribute == 'uid' for x in fetch_ops]):
+                    fetch_ops.insert(0, FetchAtt("uid"))
+                    
             else:
                 msg_idxs = asimap.utils.sequence_set_to_list(msg_set, seq_max)
 
-            # Go through each message and apply the msg_data_items.fetch() to
+            # Get a set of the fetch ops we are going to perform. This is
+            # intended to let us optimize the fetch loop.
+            #
+            # fetch_ops = set([x.attribute for x in fetch_ops])
+
+            # Go through each message and apply the fetch_ops.fetch() to
             # it building up a set of data to respond to the client with.
             #
+            seq_changed = False
             for idx in msg_idxs:
-                ctx = asimap.search.SearchContext(self, msgs[idx-1], idx,
+                msg_key = msgs[idx-1]
+                ctx = asimap.search.SearchContext(self, msg_key, idx,
                                                   seq_max, uid_max,
                                                   self.sequences)
-                msg_sequences = ctx.msg.get_sequences()
+                fetched_flags = False
+                fetched_body = False
                 iter_results = []
-                for elt in msg_data_items:
-                    # self.log.debug("fetch: %s on %d (key: %d)" % \
-                    #                    (str(elt), idx, msgs[idx-1]))
+
+                for elt in fetch_ops:
                     iter_results.append(elt.fetch(ctx))
+                    # If one of the FETCH ops gets the FLAGS we want to know
+                    # and likewise if one of the FETCH ops gets the BODY (but
+                    # NOT BODY.PEEK) we want to know. Both of these operations
+                    # can potentially change the flags of the message.
+                    #
+                    if elt.attribute == "body" and elt.peek is False:
+                        fetched_body = True
+                    if elt.attribute == "flags":
+                        fetched_flags = True
 
                 results.append((idx, iter_results))
 
-                # If the message's sequences has changed from before we did the
-                # fetch, rewrite the sequences on disk. A later resync() call
-                # will send out any necessary FETCH responses related to
-                # changed flags.
+                # If we did a FETCH FLAGS and the message was in the 'Recent'
+                # sequence then remove it from the 'Recent' sequence. Only one
+                # client gets to actually see that a message is 'Recent.'
                 #
-                seq_changed = False
-                if sorted(msg_sequences) != sorted(ctx.msg.get_sequences()):
+                if fetched_flags and 'Recent' in self.sequences and \
+                        msg_key in self.sequences['Recent']:
+                    self.sequences['Recent'].remove(msg_key)
                     seq_changed = True
-                    self.mailbox._dump_sequences(ctx.msg, msgs[idx-1])
+                
+                # If we dif a FETCH BODY (but NOT a BODY.PEEK) then the message
+                # is removed from the 'unseen' sequence (if it was in it) and
+                # added to the 'seen' sequence (if it was not in it.)
+                #
+                if fetched_body:
+                    if 'unseen' in self.sequences and \
+                            msg_key in self.sequences['unseen']:
+                        self.sequences['unseen'].remove(msg_key)
+                        seq_changed = True
+                    if 'Seen' in self.sequences:
+                        if msg_key not in  self.sequences['Seen']:
+                            self.sequences['Seen'].append(msg_key)
+                            seq_changed = True
+                    else:
+                        self.sequences['Seen'] = [msg_key]
+                        seq_changed = True
+
+            # Done applying FETCH to all of the indicated messages.
+            # If the sequences changed we need to write them back out to disk.
+            #
+            if seq_changed:
+                self.log.debug("FETCH: sequences were modified, saving")
+                self.mailbox.set_sequences(self.sequences)
         finally:
             # self.mailbox.unlock()
             pass
+        self.log.debug("FETCH finished, duration: %f, num results: %d" % \
+                           (time.time() - start_time,len(results)))
         return (results, seq_changed)
 
     ##################################################################

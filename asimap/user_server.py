@@ -373,6 +373,7 @@ class IMAPUserServer(asyncore.dispatcher):
         so that its uid_vv state remains up to date.
         """
         self.uid_vv += 1
+        self.log.debug("get_next_uid_vv: Increment uid_vv to %d" % self.uid_vv)
         c = self.db.cursor()
         c.execute("update user_server set uid_vv = ?", (str(self.uid_vv),))
         c.close()
@@ -492,7 +493,9 @@ class IMAPUserServer(asyncore.dispatcher):
         #
         for mbox_name,mtime in extant_mboxes.iteritems():
             path = os.path.join(self.mailbox._path, mbox_name)
-            if int(os.path.getmtime(path)) != mtime:
+            seq_path = os.path.join(path, ".mh_sequences")
+            fmtime = int(max(os.path.getmtime(path),os.path.getmtime(seq_path)))
+            if fmtime != mtime:
                 # The mtime differs.. force the mailbox to resync.
                 #
                 m = self.get_mailbox(mbox_name, 60)

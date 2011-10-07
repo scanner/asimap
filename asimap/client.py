@@ -12,6 +12,7 @@ single connected IMAP client.
 import sys
 import logging
 import os.path
+import time
 
 # asimapd imports
 #
@@ -110,6 +111,7 @@ class BaseClientHandler(object):
         # except the "OK" response and any exceptional errors which are handled
         # by this method.
         #
+        start_time = time.time()
         try:
             result = getattr(self, 'do_%s' % imap_command.command)(imap_command)
         except No, e:

@@ -249,15 +249,6 @@ class FetchAtt(object):
         """
         self.ctx = ctx
 
-        # We can easily tell if this is going to change a message's flags.
-        # The operation is 'body' and peek is False.
-        #
-        if self.attribute == self.OP_BODY and self.peek is False:
-            if 'unseen' in self.ctx.sequences or \
-                    'Seen' not in self.ctx.sequences:
-                self.ctx.msg.remove_sequence('unseen')
-                self.ctx.msg.add_sequence('Seen')
-
         # Based on the operation figure out what subroutine does the rest
         # of the work.
         #
@@ -270,7 +261,6 @@ class FetchAtt(object):
         elif self.attribute == "flags":
             result = '(%s)' % ' '.join([asimap.constants.seq_to_flag(x) for x in self.ctx.sequences])
         elif self.attribute == "internaldate":
-#            result = '"%s"' % asimap.utils.formatdate(self.ctx.internal_date)
             result = '"%s"' % self.ctx.internal_date.strftime("%d-%b-%Y %H:%m:%S %z")
         elif self.attribute == "rfc822.size":
             result = str(len(self.ctx.mailbox.mailbox.get_string(self.ctx.msg_key)))
@@ -315,13 +305,19 @@ class FetchAtt(object):
                         # The logic is simpler to read this way.. if
                         # they want section 1 and this message is NOT
                         # a multipart message, then do the same as
-                        # 'TEXT'
+                        # 'TEXT' ie: We will fall through to the end of this
+                        # function where we will take the generator
+                        # already created above and use it.
                         #
                         pass
                     else:
                         # Otherwise, get the sub-part they are after
                         # as the message to pass to the generator.
                         #
+                        if section[0] != 1 and not msg.is_multipart():
+                            raise BadSection("Trying to retrieve section %d "
+                                             "and this message is not "
+                                             "multipart" % section[0])
                         try:
                             msg = msg.get_payload(section[0]-1)
                         except IndexError:

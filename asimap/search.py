@@ -55,6 +55,10 @@ class SearchContext(object):
         - `sequences`: The sequences for the mailbox. Passed in to save us from
           having to load and parse it separately for every message.
         """
+        self.log = logging.getLogger("%s.%s.%d" % (__name__,
+                                                   self.__class__.__name__,
+                                                   msg_key))
+        
         self.mailbox = mailbox
         self.msg_key = msg_key
         self.seq_max = seq_max
@@ -107,9 +111,13 @@ class SearchContext(object):
         if self._uid:
             return self._uid
 
-        # Use the fast method of getting the uid/uidvv.
+        # Check the uids cache in the mailbox first.
         #
-        self._uid_vv,self._uid = self.mailbox.get_uid_from_msg(self.msg_key)
+        try:
+            self._uid = self.mailbox.uids[self.msg_number]
+        except IndexError:
+            self.log.debug("uid: Reaching in to msg for uid")
+            self._uid_vv,self._uid = self.mailbox.get_uid_from_msg(self.msg_key)
         return self._uid
 
     ##################################################################
@@ -273,8 +281,19 @@ class IMAPSearch(object):
         # the IMAP system flag map to the flags we use in our sequences
         # (because '\' is not valid in a sequence
         #
-        return asimap.constants.flag_to_seq(self.args['keyword']) in \
-               self.ctx.sequences
+        # NOTE: If the keyword being looked for is '\Recent' and this message
+        #       did indeed have '\Recent' set then we set the 'matched_recent'
+        #       attribute on our ctx. This is so the entity calling us can make
+        #       a decision on whether or not the message is removed from the
+        #       recent sequence or not.
+        #
+        result = asimap.constants.flag_to_seq(self.args['keyword']) in \
+            self.ctx.sequences
+        # XXX Decided that I am not going to reset the \Recent flag on a search
+        #     match.
+        # if result and self.args['keyword'] == '\\Recent':
+        #     self.ctx.matched_recent = True
+        return result
 
     #########################################################################
     #
