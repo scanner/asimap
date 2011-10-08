@@ -1092,8 +1092,8 @@ class IMAPClientCommand(object):
         '''
         if val.isdigit():
             num = int(val)
-            if num < 1:
-                raise SyntaxError(value = "message sequence numbers " \
+            if num < 0: # 0 is a valid uid...
+                raise SyntaxError("message sequence numbers " \
                                   "must be greater then 0: %d" % num)
             return num
 
