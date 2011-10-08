@@ -344,7 +344,8 @@ class Mailbox(object):
             # the folder's contents have been re-bobbled and the UID's are no
             # longer in strictly ascending order.
             #
-
+            found_uids = self.uids
+            start_idx = 0
             if len(msgs) > 0:
 
                 # NOTE: We handle a special case where the db was reset.. if
@@ -366,26 +367,17 @@ class Mailbox(object):
                 # removed messages from this folder (expunge properly keeps
                 # msgs and self.uid's in sync). In this case we do not know
                 # what messages have been removed so we force a full resync of
-                # the folder.
-                #
-                # What is more this means our client must no longer be in sync
-                # with us. This calls for drastic measures and we force a
-                # chance of the uid_vv on this folder. This will cause all
-                # messages to have their uid's re-written and also tell the
-                # mail client that it is no longer in sync with us.
+                # the folder. This will get us the list of UIDs that are still
+                # in the folder and we can then diff this against the list of
+                # UIDs that _were_ in the folder and generate the appropriate
+                # EXPUNGE messages.
                 #
                 if len(msgs) < len(self.uids):
                     self.log.warn("resync: number of messages in folder (%d) "
                                   "is less than list of cached uids: %d. "
-                                  "Forcing new uid_vv and resync." % \
+                                  "Forcing resync." % \
                                       (len(msgs), len(self.uids)))
                     force = True
-                    self.uid_vv = self.server.get_next_uid_vv()
-                    clients = [x.client for x in self.clients.itervalues()]
-                    for c in clients:
-                        c.push("* BYE mailbox uid_vv has changed\r\n")
-                        c.close()
-                    self.clients = { }
 
                 if force == True:
                     # If force is True then we scan every message in the folder.
@@ -394,10 +386,15 @@ class Mailbox(object):
                     #
                     self.log.debug("resync: Forced rescanning all %d "
                                    "messages" % len(msgs))
-                    self.uids = [None for x in range(len(msgs))]
                     self.server.msg_cache.clear_mbox(self.name)
-                    self._check_update_msg_uids(msgs, 0, seq)
+                    found_uids = self._update_msg_uids(msgs, seq)
 
+                    # Calculate what UID's were deleted and what order they
+                    # were deleted in and send expunges as necessary to all
+                    # connected clients.
+                    #
+                    self.send_expunges(found_uids)
+                    self.uids = found_uids
                 else:
                     # Usually we ONLY need to rescan the new messages that have
                     # been added to the folder.
@@ -432,17 +429,23 @@ class Mailbox(object):
                         #
                         start = min(x for x in [first_new_msg,first_msg_wo_uid] if x is not None)
                         start_idx = msgs.index(start)
-
-                        # If there are more messages than entries in the
-                        # self.uids's list (which should be the common case)
-                        # then we need to extend the self.uid's list to handle
-                        # the new UID's that will be found/added during the
-                        # scan.
-                        self.uids.extend(None for x in range(len(msgs) - len(self.uids)))
                         self.log.debug("resync: rescanning from %d to %d" % \
                                            (start, msgs[-1]))
-                        self._check_update_msg_uids(msgs[start_idx:],
-                                                    start_idx, seq)
+
+                        # Now make 'found_uids' be all the assumed known uid's
+                        # _before_ start_index, and all the now newly
+                        # discovered uid's at start_index to the end of the
+                        # list of messages.
+                        #
+                        found_uids = self._update_msg_uids(msgs[start_idx:],
+                                                           seq)
+                        found_uids = self.uids[:start_idx].extend(found_uids)
+                        # Calculate what UID's were deleted and what order they
+                        # were deleted in and send expunges as necessary to all
+                        # connected clients.
+                        #
+                        self.send_expunges(found_uids)
+                        self.uids = found_uids
             else:
                 # number of messages in the mailbox is zero.. make sure our
                 # list of uid's for this mailbox is also empty.
@@ -451,6 +454,12 @@ class Mailbox(object):
                 if len(self.uids) != 0:
                     self.log.warn("resync: Huh, list of msgs is empty, but "
                                   "list of uid's was not. Emptying.")
+
+                    # Calculate what UID's were deleted and what order they
+                    # were deleted in and send expunges as necessary to all
+                    # connected clients.
+                    #
+                    self.send_expunges([])
                     self.uids = []
 
             # Before we finish if the number of messages in the folder or the
@@ -521,7 +530,7 @@ class Mailbox(object):
         #
         os.utime(self.mailbox._path, (self.mtime,self.mtime))
         os.utime(seq_path, (self.mtime,self.mtime))
-        
+
         self.commit_to_db()
         self.log.debug("resync: Complete.")
         return
@@ -654,6 +663,62 @@ class Mailbox(object):
 
     ##################################################################
     #
+    def send_expunges(self, uids):
+        """
+        This is called as part of resync()
+
+        We are given the list of UID's that we know to be in the folder. This
+        list may be different than the UID's we have from the last time we did
+        a run through resync, stored in self.uids
+
+        Our job is to see what uid's used to exist in this folder but no longer
+        do. We then issue an EXPUNGE message for every UID that is missing,
+        takin in to account its position in self.uids.
+
+        Without this the IMAP client will get hopefully confused when the
+        contents of the folder changes by having messages removed by some
+        external force.
+
+        Arguments:
+        - `uids`: The list of uids, in order that are currently in the mailbox.
+        """
+        missing_uids = set(self.uids) - set(uids)
+
+        # If none are missing then nothing to do.. return.
+        if len(missing_uids) == 0:
+            self.log.debug("send_expunges: No UID's missing.")
+            return
+
+        self.log.debug("send_expunges: %d UID's missing. Sending EXPUNGEs." % \
+                           len(missing_uids))
+
+        # Construct the set of clients we can send EXPUNGE's to immediately
+        # and the set of clients we need to queue up EXPUNGE's for.
+        #
+        clients_to_notify = []
+        clients_to_pend = []
+        for c in self.clients.itervalues():
+            if c.idling:
+                clients_to_notify.append(c)
+            else:
+                clients_to_pend.append(c)
+
+        # Go through the UID's that are missing and send an expunge for each
+        # one taking into account its position in the folder as we delete them.
+        #
+        for uid in missing_uids:
+            which = self.uids.index(uid) + 1
+            self.uids.remove(uid)
+            exp = "* %d EXPUNGE\r\n" % which
+            self.log.debug(msg)
+            for c in clients_to_notify:
+                c.client.push(msg)
+            for c in clients_to_pend:
+                c.pending_expunges.append(msg)
+        return
+    
+    ##################################################################
+    #
     def get_uid_from_msg(self, msg):
         """
         Get the uid from the given message (where msg is the integer key into
@@ -667,45 +732,118 @@ class Mailbox(object):
         Arguments:
         - `msg`: the message key in the folder we want the uid_vv/uid for.
         """
-
         try:
             fp = self.mailbox.get_file(msg)
             # Look through the header for the 'x-asimapd-uid' header. If we
             # encounter a blank line then we have reached the end of the
             # header.
             #
-            count = 0
-            found_header_end = False
             for line in fp:
                 if line[0:15].lower() == 'x-asimapd-uid: ':
-                    if found_header_end:
-                        self.log.warn("message %d had broken headers" % msg)
-                    break
-                if len(line.strip()) == 0:
-                    found_header_end = True
-                    count = 0
-                if found_header_end:
-                    if count > 5:
-                        self.log.warn("%d extra lines, no uid found.. " % count)
+                    try:
+                        # Convert the strings we parse out of the header to
+                        # ints.
+                        #
+                        uid_vv,uid = [int(x) for x in (line[15:].strip().split('.'))]
+                        return (uid_vv, uid)
+                    except ValueError:
+                        self.log.info("get_uid_from_msg: msg %s had malformed "
+                                      "uid header: %s" % (msg, line))
                         return (None, None)
-                    else:
-                        count += 1
-
-            # We only get here if we encountered the 'x-asimapde-uid'
-            # header. Take the value part of the heade and split it around "."
-            #
-            uid_vv = None
-            uid = None
-            try:
-                # Convert the strings we parse out of the header to ints.
-                #
-                uid_vv,uid = [int(x) for x in (line[15:].strip().split('.'))]
-            except ValueError:
-                self.log.info("get_uid_from_msg: msg %s had malformed uid "
-                              "header: %s" % (msg, line))
+                elif len(line.strip()) == 0:
+                    return (None, None)
         finally:
             fp.close()
-        return uid_vv, uid
+        return (None, None)
+
+    ##################################################################
+    #
+    def set_uid_in_msg(self, msg, uid):
+        """
+        A faster method of setting the uid header in a message than using
+        the message parsing routines from mailbox.MHMessage
+
+        Arguments:
+        - `msg`: The message key
+        - `uid`: The uid we are going to write in to this message.
+        """
+        try:
+            old_name = os.path.join(self.mailbox._path, str(msg))
+            new_name = msg_name + ".tmp"
+
+            old = open(old_name, "rb")
+            new = open(new_name, "wb")
+
+            # We are fast because we do no header or message parsing. We know
+            # this:
+            # o the header ends when we hit our first blank line.
+            # o if we encounter an existing uid header we skip it.
+            # o when we hit the blank line we write out our new uid header
+            #   before writing the blank line.
+            #
+            # So we read a line. If it is an empty line and we have NOT written
+            # our UID header yet, write our UID header, and then write the
+            # empty line. Set that we have written our UID header.
+            #
+            # If we read a line and it is the UID header then instead of
+            # writing the line out, write a line with the new UID header. Set
+            # that we have written our UID header.
+            #
+            uid = None
+            uid_vv = None
+            wrote_header = False
+            for line in old.readline():
+                if len(line.strip()) == 0:
+                    new.write("X-asimapd-uid: %010d.%010d\n" % (self.uid_vv,
+                                                                uid))
+                    new.write(line)
+                    wrote_header = True
+                    break
+                elif line[0:15].lower() == 'x-asimapd-uid: ':
+                    try:
+                        # Convert the strings we parse out of the header to
+                        # ints.
+                        #
+                        uid_vv,uid = [int(x) for x in (line[15:].strip().split('.'))]
+                    except ValueError:
+                        self.log.info("set_uid_in_msg: msg %s had "
+                                      "malformed uid header: %s" % \
+                                          (msg, line))
+
+                    new.write("X-asimapd-uid: %010d.%010d\n" % (self.uid_vv,
+                                                                uid))
+                    wrote_header = True
+                else:
+                    new.write(line)
+
+            # If we have reached the end of the file and we did NOT hit a
+            # newline then we curiously have an email that is ONLY
+            # header. Which is okay. We write our uid header.
+            #
+            if not wrote_header:
+                new.write("X-asimapd-uid: %010d.%010d\n" % (self.uid_vv, uid))
+
+            # Read whatever there is left to read of the old file in one gulp
+            # (not going to be bigger than 10mb or so at most, no?) and write
+            # it all out. This should be more efficient.
+            #
+            old.write(new.read())
+        finally:
+            new.close()
+            old.close()
+
+        # Get the mtime of the old message. We need to preserve this
+        # because we use the mtime of the file as our IMAP 'internal-date'
+        # value.
+        #
+        mtime = os.path.getmtime(old_name)
+
+        # And rename the new file over the old one, set its mtime to the
+        # mtime of the old file.
+        #
+        os.rename(new_name, old_name)
+        os.utime(new_name, (mtime,mtime))
+        return (uid_vv, uid)
 
     ##################################################################
     #
@@ -784,7 +922,7 @@ class Mailbox(object):
 
     ##################################################################
     #
-    def _check_update_msg_uids(self, msgs, start_index, seq):
+    def _update_msg_uids(self, msgs, seq):
         """
         This will loop through all of the msgs whose keys were passed in the
         msgs list. We assume these keys are in order. We see if they have
@@ -815,14 +953,16 @@ class Mailbox(object):
         - `msgs`: A list of the message keys that we need to check. NOTE: This
           will frequently be a subset of all messages in the folder.
 
-        - `start_index` - where in the list of all messages in this folder
-          'msgs' starts. We need this so when we are discovering new UID's we
-          can update the self.uids list properly.
-
         - `seq`: The existing sequences for this folder (may not be in sync
           with self.sequences for differencing purposes, and is passed in to
           save us from having to load them from disk again.
         """
+
+        # We may need to re-write the .mh_sequences file if we need to tag
+        # messages with 'Recent'. If we do that then we need a flag to let us
+        # know the write the sequences back out to disk.
+        #
+        seq_changed = False
 
         # As we go through messages we need to know if the current UID we are
         # looking at is proper (ie: greater than the one of the previous
@@ -833,6 +973,13 @@ class Mailbox(object):
         #
         redoing_rest_of_folder = False
         prev_uid = 0
+
+        # We keep track of all of the UID's we find and any new ones we set.
+        # This will allow us to compare with the UID's that were already in
+        # our list of messages and lets us see if we need to issue any
+        # 'EXPUNGE's for messages that have been removed.
+        #
+        uids_found = []
 
         # Loop through all of the messages in this mailbox.
         #
@@ -845,19 +992,16 @@ class Mailbox(object):
         # successive message adding a proper uid_vv/uid header.
         #
         for i, msg in enumerate(msgs):
-            # If we are not redoing the rest of the folder check to see if
-            # this messages uid_vv / uid is what we expect.
-            #
             if i % 200 == 0:
-                self.log.debug("check/update uids, at index %d, msg: %d" % \
-                                   (i, msg))
-            if not redoing_rest_of_folder:
-                uid_vv, uid = self.get_uid_from_msg(msg)
+                self.log.debug("check/update uids, at index %d, msg: %d out "
+                               "of %d" % (i, msg, len))
 
+            if not redoing_rest_of_folder:
                 # If the uid_vv is different or the uid is NOT
                 # monotonically increasing from the previous uid then
                 # we have to redo the rest of the folder.
                 #
+                uid_vv, uid = self.get_uid_from_msg(msg)
                 if uid_vv != self.uid_vv or uid <= prev_uid or \
                         uid_vv == None or uid == None:
                     redoing_rest_of_folder = True
@@ -865,64 +1009,33 @@ class Mailbox(object):
                                    "sequence. Redoing rest of folder." % \
                                        (msg, uid_vv,uid))
                 else:
+                    uids_found.append(uid)
                     prev_uid = uid
-                    self.uids[start_index + i] = uid
 
-            # at this point we MAY be redoing this message (and the rest of the
-            # folder) so we check again.. if we are not then skip to the next
-            # iteration of this loop.
-            #
             if redoing_rest_of_folder:
-                try:
-                    fp = self.mailbox.get_file(msg)
-                    full_msg = mailbox.MHMessage(HeaderParser().parse(fp))
-                finally:
-                    fp.close()
+                # We are either replacing or adding a new UID header to this
+                # message no matter what so do that.
+                #
+                uid_vv, uid = self.set_uid_in_msg(msg, self.next_uid)
+                uids_found.append(self.next_uid)
+                self.next_uid += 1
 
-                # If the message already has a UID header, check to see if
-                # the uid_vv is the same as this folder's. If it is NOT
-                # then this message is recently added to this mailbox so we
-                # to make sure it is added to the 'Recent' sequence.
+                # If the uid_vv we previously retrieved from the message is
+                # different thant he uid_vv of this folder then this message is
+                # new to this folder and needed to be added to the Recent
+                # sequence.
                 #
-                # Likewise if the message does NOT have a UID header then it is
-                # also recently added to this folder.
-                #
-                recent = False
-                if 'X-asimapd-uid' in full_msg:
-                    try:
-                        muid_vv, muid = [int(x) for x in full_msg['x-asimapd-uid'].strip().split('.')]
-                    except ValueError:
-                        muid_vv, muid = (None, None)
-                    if muid_vv != self.uid_vv:
-                        full_msg.add_sequence('Recent')
-                else:
-                    full_msg.add_sequence('Recent')
+                if uid_vv != self.uid_vv:
+                    # Make sure that seq has a 'Recent' sequence
+                    #
+                    if 'Recent' not in seq:
+                        seq['Recent'] = []
 
-                # Remove the old header if it exists and add the new one
-                #
-                new_uid = "%010d.%010d" % (self.uid_vv, self.next_uid)
-                self.uids[start_index + i] = self.next_uid
-                self.next_uid +=1
-                del full_msg['X-asimapd-uid']
-                full_msg['X-asimapd-uid'] = new_uid
-
-                # Make sure any sequences that the message is in are handled
-                # properly
-                #
-                for name, key_list in seq.iteritems():
-                    if msg in key_list:
-                        full_msg.add_sequence(name)
-
-                # Save the updated message back to disk. We get the mtime
-                # before we do this so that we can set the mtime back to this
-                # AFTER we write the message file. We do not want adding uid's
-                # to messges to mess up their mtime (which we use for IMAP
-                # 'internal-date' value of a message)
-                #
-                p = os.path.join(self.mailbox._path, str(msg))
-                mtime = os.path.getmtime(p)
-                self.mailbox[msg] = full_msg
-                os.utime(p, (mtime,mtime))
+                    # IF the msg is not already in the Recent sequence add it.
+                    #
+                    if msg not in seq['Recent']:
+                        seq['Recent'].append(msg)
+                        seq_changed = True
 
         # If we had to redo the folder then we believe it is indeed now
         # interesting so set the \Marked attribute on it.
@@ -930,9 +1043,17 @@ class Mailbox(object):
         if redoing_rest_of_folder:
             self.marked(True)
 
-        # And we are done..
+            # If seq_changed is True then we modified the sequencees too
+            # so we need to re-write the sequences file.
+            #
+            if seq_changed is True:
+                self.mailbox.set_sequences(seq)
+
+        # And we are done.. we return the list of the uid's of all of the
+        # messages we looked at or re-wrote (in order in which we encountered
+        # them.)
         #
-        return
+        return uids_found
 
     ##################################################################
     #
@@ -1518,7 +1639,7 @@ class Mailbox(object):
                 #
                 if not any([x.attribute == 'uid' for x in fetch_ops]):
                     fetch_ops.insert(0, FetchAtt("uid"))
-                    
+
             else:
                 msg_idxs = asimap.utils.sequence_set_to_list(msg_set, seq_max)
 
@@ -1562,7 +1683,7 @@ class Mailbox(object):
                         msg_key in self.sequences['Recent']:
                     self.sequences['Recent'].remove(msg_key)
                     seq_changed = True
-                
+
                 # If we dif a FETCH BODY (but NOT a BODY.PEEK) then the message
                 # is removed from the 'unseen' sequence (if it was in it) and
                 # added to the 'seen' sequence (if it was not in it.)
@@ -2159,7 +2280,7 @@ class Mailbox(object):
                 # mbox.mailbox.unlock()
                 # new_mbox.mailbox.unlock()
                 pass
-                
+
         return
 
     ####################################################################
