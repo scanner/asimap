@@ -164,7 +164,7 @@ class IMAPSubprocessHandle(object):
 
         self.subprocess = None
         if self.rc != 0:
-            self.log.error("Subprocess had non-zero return code: %d" % rc) 
+            self.log.error("Subprocess had non-zero return code: %d" % self.rc) 
         return False
     
     

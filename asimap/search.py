@@ -114,7 +114,7 @@ class SearchContext(object):
         # Check the uids cache in the mailbox first.
         #
         try:
-            self._uid = self.mailbox.uids[self.msg_number]
+            self._uid = self.mailbox.uids[self.msg_number - 1]
         except IndexError:
             self.log.debug("uid: Reaching in to msg for uid")
             self._uid_vv,self._uid = self.mailbox.get_uid_from_msg(self.msg_key)
