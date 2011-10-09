@@ -10,10 +10,14 @@ server.
 
 # system imports
 #
-import sqlite3
 import os.path
 import logging
 import re
+try:
+    import sqlite3
+except ImportError:
+    import pysqlite2.dbapi2 as sqlite3
+
 
 # We compile regexps as we use them and store the compiled object in this dict
 # to save us from having to recompile popular regular expressions.
@@ -191,7 +195,26 @@ def add_uids_to_mbox(c):
     - `c`: sqlite3 db connection
     """
     c.execute("alter table mailboxes add column uids text default ''")
+    return
 
+####################################################################
+#
+def add_last_check_time_to_mbox(c):
+    """
+    Adds a 'last checked' timestamp to the mailbox so we can know how long it
+    has been since we last did a resync for a mailbox.
+
+    This field is used to do a better way of 'checking all mailboxes' every
+    five minutes. Instead we will queue up checks for mailboxes that have not
+    had a resync in five minutes and spread out the load a bit.
+
+    The value is stored as integer seconds since the unix epoch.
+
+    Arguments:
+    - `c`: sqlite3 db connection
+    """
+    c.execute("alter table mailboxes add column last_check integer default 0")
+    return
 
 # The list of migrations we have so far. These are executed in order. They are
 # executed only once. They are executed when the database is opened. We track
@@ -201,4 +224,5 @@ def add_uids_to_mbox(c):
 MIGRATIONS = [
     initial_migration,
     add_uids_to_mbox,
+    add_last_check_time_to_mbox,
     ]
