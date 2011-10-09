@@ -174,6 +174,26 @@ class BaseClientHandler(object):
             self.client.push(p)
         self.pending_expunges = []
 
+    ##################################################################
+    #
+    def unceremonious_bye(self, msg):
+        """
+        Sometimes we hit a state where we can not easily recover while a client
+        is connected. Frequently for clients that are in 'select' on a
+        mailbox. In those cases we punt by forcibly disconnecting the client.
+
+        With this we can usually restart whatever had problems (like a resync)
+        and come out with things being proper.
+
+        This method handles the basics of disconnecting a client.
+
+        Arguments:
+        - `msg`: The message to send to the client in the BYE.
+        """
+        self.client.push("* BYE %s\r\n" % msg)
+        self.client.close()
+        return
+
     ## The following commands are supported in any state.
     ##
 
@@ -704,8 +724,7 @@ class Authenticated(BaseClientHandler):
         # reconnect and relearn mailbox state.
         #
         if self.mbox is None:
-            self.client.push("* BYE Your selected mailbox no longer exists\r\n")
-            self.client.close()
+            self.unceremonious_bye("Your selected mailbox no longer exists")
             return
 
         self.mbox.resync()
@@ -778,8 +797,7 @@ class Authenticated(BaseClientHandler):
         # reconnect and relearn mailbox state.
         #
         if self.mbox is None:
-            self.client.push("* BYE Your selected mailbox no longer exists\r\n")
-            self.client.close()
+            self.unceremonious_bye("Your selected mailbox no longer exists")
             return
 
         # If we selected the mailbox via 'examine' then we can not make any
@@ -808,8 +826,7 @@ class Authenticated(BaseClientHandler):
         # reconnect and relearn mailbox state.
         #
         if self.mbox is None:
-            self.client.push("* BYE Your selected mailbox no longer exists\r\n")
-            self.client.close()
+            self.unceremonious_bye("Your selected mailbox no longer exists")
             return
 
         # If this client has pending EXPUNGE messages then we return a tagged
@@ -847,8 +864,7 @@ class Authenticated(BaseClientHandler):
         # reconnect and relearn mailbox state.
         #
         if self.mbox is None:
-            self.client.push("* BYE Your selected mailbox no longer exists\r\n")
-            self.client.close()
+            self.unceremonious_bye("Your selected mailbox no longer exists")
             return
         # If this client has pending EXPUNGE messages then we return a tagged
         # No response.. the client should see this and do a NOOP or such and
@@ -901,8 +917,7 @@ class Authenticated(BaseClientHandler):
         # reconnect and relearn mailbox state.
         #
         if self.mbox is None:
-            self.client.push("* BYE Your selected mailbox no longer exists\r\n")
-            self.client.close()
+            self.unceremonious_bye("Your selected mailbox no longer exists")
             return
 
         # If this client has pending EXPUNGE messages then we return a tagged
@@ -955,8 +970,7 @@ class Authenticated(BaseClientHandler):
         # reconnect and relearn mailbox state.
         #
         if self.mbox is None:
-            self.client.push("* BYE Your selected mailbox no longer exists\r\n")
-            self.client.close()
+            self.unceremonious_bye("Your selected mailbox no longer exists")
             return
 
         self.mbox.resync()
