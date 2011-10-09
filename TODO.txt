@@ -1,0 +1,17 @@
+Now that the basic server is working it is time to establish specific
+things I need to do.
+
+o add continuing and queued work support per mailbox
+o break up resync all in to:
+  o find new folders
+  o resync on folders that have not been resync'd in <n> (five?) minutes
+  o expire active folders that are around past their expiry
+o add 'MailboxInconsistency' exception and handlers at the client.py
+  that when they get this have a better idea what to do (things like
+  'send a BAD to the client, 'be silent and retry command',
+  'disconnect client')
+o write tool to split huge mailboxes in to mailbox + sub-mailbox by
+  year, keeping the last 1,000 messages in the current folder.
+o add SSL support
+o add proper unix account authentication support
+  o it must support no more than three bad auths in 90 seconds
