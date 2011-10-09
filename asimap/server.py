@@ -560,7 +560,6 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
         # And initiate a connection to the subprocess.
         #
         self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.log.debug('connecting to localhost:%d' % self.subprocess.port)
         self.connect(('127.0.0.1', self.subprocess.port))
         return
 
@@ -571,7 +570,6 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
         We have established a connection to the subprocess for this user.
         Yay.
         """
-        self.log.debug("handle_connect()")
         return
 
     ##################################################################

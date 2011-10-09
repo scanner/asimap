@@ -373,7 +373,6 @@ class IMAPUserServer(asyncore.dispatcher):
         so that its uid_vv state remains up to date.
         """
         self.uid_vv += 1
-        self.log.debug("get_next_uid_vv: Increment uid_vv to %d" % self.uid_vv)
         c = self.db.cursor()
         c.execute("update user_server set uid_vv = ?", (str(self.uid_vv),))
         c.close()
@@ -437,6 +436,19 @@ class IMAPUserServer(asyncore.dispatcher):
 
     ##################################################################
     #
+    def check_all_active_folders(self):
+        """
+        Like 'check_all_folders' except this only checks folders that are
+        active and have clients in IDLE listening to them.
+        """
+        for name,mbox in self.active_mailboxes.iteritems():
+            if any(x.idling for x in mbox.clients.itervalues()):
+                self.log.debug("check_all_active: resync'ing '%s'" % name)
+                mbox.resync()
+        return
+    
+    ##################################################################
+    #
     def check_all_folders(self, ):
         """
         This goes through all of the folders and makes sure we have db records
@@ -464,6 +476,8 @@ class IMAPUserServer(asyncore.dispatcher):
                     mboxes_to_create.append(name)
                 find_subfolders(mbox.get_folder(sub_mbox_name), name)
 
+        start_time = time.time()
+        self.log.debug("check_all_folders begun")
         # Get all of the folders and mtimes we know about from the sqlite db at
         # the beginning. This takes more memory (not _that_ much really in the
         # grand scheme of things) but it gives the answers in one go-round to
@@ -515,7 +529,10 @@ class IMAPUserServer(asyncore.dispatcher):
             self.log.debug("Expiring mailbox '%s'" % mbox_name)
             self.active_mailboxes[mbox_name].commit_to_db()
             del self.active_mailboxes[mbox_name]
+            self.msg_cache.clear_mbox(mbox_name)
 
+        self.log.debug("check_all_folders finished, Took %f seconds" % \
+                           (time.time() - start_time))
         return
 
     ##################################################################

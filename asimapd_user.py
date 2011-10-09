@@ -105,12 +105,14 @@ def main():
     # db with all of the folders that we can find.)
     #
     server.check_all_folders()
+    last_full_check = time.time()
     
     # And now loop forever.. breaking out of the loop every now and then to
     # see if we have had no active clients for awhile (and if we do not then
     # we exit.)
     #
     log.info("Starting main loop.")
+    last_active_check = 0
     while True:
         asyncore.loop(count = 1)
 
@@ -121,10 +123,20 @@ def main():
                server.expiry < time.time():
             break
 
-        # Otherwise we do a run through all of our folders and see if any of
-        # them have changed.
+        now = time.time()
+        # Check all active folders that have clients in IDLE and do a
+        # resync on them, every 30 seconds.
         #
-        server.check_all_folders()
+        if now - last_active_check > 30: 
+            server.check_all_active_folders()
+            last_active_check = time.time()
+
+        # Do a run through all of our folders and see if any of
+        # them have changed. But we only do this once every 5 minutes.
+        #
+        if now - last_full_check > 300:
+            server.check_all_folders()
+            last_full_check = time.time()
 
     # Exiting!
     #

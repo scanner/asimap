@@ -406,9 +406,9 @@ class Authenticated(BaseClientHandler):
         Handles the common case of sending pending expunges and a resync where
         we only notify this client of exists/recent.
         """
-        self.send_pending_expunges()
         if self.state == "selected" and self.mbox is not None:
             self.mbox.resync(only_notify = self)
+        self.send_pending_expunges()
         return
 
     #########################################################################
@@ -670,6 +670,7 @@ class Authenticated(BaseClientHandler):
         self.send_pending_expunges()
         try:
             mbox = self.server.get_mailbox(cmd.mailbox_name, expiry = 0)
+            mbox.resync()
             mbox.append(cmd.message, cmd.flag_list, cmd.date_time)
         except asimap.mbox.NoSuchMailbox:
             # For APPEND and COPY if the mailbox does not exist we
@@ -695,7 +696,6 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        self.send_pending_expunges()
         if self.state != "selected":
             raise No("Client must be in the selected state")
 
@@ -709,6 +709,7 @@ class Authenticated(BaseClientHandler):
             return
 
         self.mbox.resync()
+        self.send_pending_expunges()
         return
 
     ##################################################################
@@ -754,6 +755,7 @@ class Authenticated(BaseClientHandler):
         # work 'silently.'
         #
         if mbox:
+            mbox.resync()
             mbox.expunge()
         return
 
@@ -815,6 +817,7 @@ class Authenticated(BaseClientHandler):
         # receive the pending expunges. Unless this is a UID command. It is
         # okay to send pending expunges during the operations of a UID SEARCH.
         #
+        self.mbox.resync(notify = cmd.uid_command)
         if len(self.pending_expunges) > 0:
             if cmd.uid_command:
                 self.send_pending_expunges()
@@ -852,6 +855,7 @@ class Authenticated(BaseClientHandler):
         # receive the pending expunges. Unless this is a UID command. It is
         # okay to send pending expunges during the operations of a UID FETCH.
         #
+        self.mbox.resync(notify = cmd.uid_command)
         if len(self.pending_expunges) > 0:
             if cmd.uid_command:
                 self.send_pending_expunges()
@@ -906,6 +910,7 @@ class Authenticated(BaseClientHandler):
         # receive the pending expunges.  Unless this is a UID command. It is
         # okay to send pending expunges during the operations of a UID FETCH.
         #
+        self.mbox.resync(notify = cmd.uid_command)
         if len(self.pending_expunges) > 0:
             if cmd.uid_command:
                 self.send_pending_expunges()
@@ -954,6 +959,7 @@ class Authenticated(BaseClientHandler):
             self.client.close()
             return
 
+        self.mbox.resync()
         try:
             dest_mbox = self.server.get_mailbox(cmd.mailbox_name, expiry = 0)
             try:

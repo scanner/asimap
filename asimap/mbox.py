@@ -290,10 +290,8 @@ class Mailbox(object):
         # then we can totally skip this resync run.
         #
         if optional and start_mtime == self.mtime and seq_mtime == self.mtime:
-            self.log.debug("Skipping resync")
             return
 
-        self.log.debug("Starting resync")
         # If only_notify is not None then notify is forced to False.
         #
         if only_notify is not None:
@@ -530,7 +528,6 @@ class Mailbox(object):
         os.utime(seq_path, (self.mtime,self.mtime))
 
         self.commit_to_db()
-        self.log.debug("resync: Complete.")
         return
 
     ##################################################################
@@ -654,7 +651,7 @@ class Mailbox(object):
 
         if float(len(msgs)) / float(msgs[-1]) > 0.8:
             return
-
+        self.log.debug("Packing folder")
         self.mailbox.pack()
         self.sequences = self.mailbox.get_sequences()
         return
@@ -709,7 +706,6 @@ class Mailbox(object):
             which = self.uids.index(uid) + 1
             self.uids.remove(uid)
             exp = "* %d EXPUNGE\r\n" % which
-            self.log.debug("send_expunges: %s" % exp)
             for c in clients_to_notify:
                 c.client.push(exp)
             for c in clients_to_pend:
@@ -1591,17 +1587,7 @@ class Mailbox(object):
         - `uid_command`: True if this is for a UID SEARCH command, which means
           we have to return not message sequence numbers but message UID's.
         """
-        # Before we do a fetch we do a resync to make sure that we have
-        # attached uid's to all of our messages and various counts are up to
-        # sync. But we do it with notify turned off because we can not send any
-        # conflicting messages to this client (other clients that are idling do
-        # get any updates though.)
-        #
-        # NOTE: If we are doing a UID FETCH then we are allowed to notify the
-        #       client of possible mailbox changes.
-        #
         start_time = time.time()
-        self.resync(notify = uid_command)
         seq_changed = False
 
         results = []
