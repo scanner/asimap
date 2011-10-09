@@ -19,7 +19,6 @@ import asynchat
 import logging
 import os
 import pwd
-import sqlite3
 import mailbox
 import time
 # asimap imports
