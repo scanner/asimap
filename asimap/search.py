@@ -97,7 +97,7 @@ class SearchContext(object):
 
         # If the uid is not set, then set it also at the same time.
         #
-        if self._uid is None:
+        if self._uid is None and 'x-asimapd-uid' in self.msg:
             self._uid_vv, self._uid = [int(x) for x in self.msg['x-asimapd-uid'].strip().split('.')]
         return self._msg
 
