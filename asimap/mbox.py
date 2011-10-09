@@ -17,6 +17,7 @@ import logging
 import mailbox
 import re
 import itertools
+import errno
 from email.parser import HeaderParser
 from datetime import datetime
 
@@ -514,7 +515,17 @@ class Mailbox(object):
             #
             self.sequences = seq
             self._pack_if_necessary(msgs)
-
+        except OSError, e:
+            # handle cases where a file was missing by logging a message and
+            # returning immediately. A retry should make everything better.
+            #
+            # XXX Maybe we should disconnect or send BAD to connected clients
+            #     when this happens?
+            #
+            if e.errno == errno.ENOENT:
+                self.log.error("missing file during resync: %s" % str(e))
+                return
+            raise e
         finally:
             # self.mailbox.unlock()
             pass
@@ -609,10 +620,14 @@ class Mailbox(object):
             #
             flags = " ".join(flags)
             msg_idx = msgs.index(msg) + 1
+            clients = []
             for client in self.clients.itervalues():
                 if dont_notify and \
                         client.client.port == dont_notify.client.port:
                     continue
+                clients.append(client)
+
+            for client in clients:
                 uidstr = ""
                 if publish_uids:
                     try:
@@ -882,9 +897,15 @@ class Mailbox(object):
         for msg in msgs:
             # XXX Ug, hate having to get the path this way..
             #
-            if int(os.path.getmtime(os.path.join(self.mailbox._path,str(msg)))) > horizon_mtime:
-                found = msg
-                break
+            try:
+                if int(os.path.getmtime(os.path.join(self.mailbox._path,str(msg)))) > horizon_mtime:
+                    found = msg
+                    break
+            except OSError, e:
+                if e.errno == errno.ENOENT:
+                    self.log.error("find_first_new_msg: Message %d no longer "
+                                   "exists, errno: %s" % (msg, str(e)))
+                raise
         return found
 
     ##################################################################
