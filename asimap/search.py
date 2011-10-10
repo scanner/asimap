@@ -18,7 +18,7 @@ from datetime import datetime
 #
 import asimap.utils
 import asimap.constants
-from asimap.exceptions import MailboxInconsistencey
+from asimap.exceptions import MailboxInconsistency
 
 ############################################################################
 #
@@ -300,8 +300,8 @@ class IMAPSearch(object):
         #       a decision on whether or not the message is removed from the
         #       recent sequence or not.
         #
-        result = asimap.constants.flag_to_seq(self.args['keyword']) in \
-            self.ctx.sequences
+        keyword = asimap.constants.flag_to_seq(self.args['keyword'])
+        result = keyword in self.ctx.sequences
         # XXX Decided that I am not going to reset the \Recent flag on a search
         #     match.
         # if result and self.args['keyword'] == '\\Recent':

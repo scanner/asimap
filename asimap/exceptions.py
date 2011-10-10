@@ -32,7 +32,7 @@ class Bad(ProtocolException):
     def __str__(self):
         return self.value
 
-class MailboxInconsistencey(ProtocolException):
+class MailboxInconsistency(ProtocolException):
     """
     When processing commands on a mailbox it is possible to hit a
     state where what is on disk is not what we expected it to be.
