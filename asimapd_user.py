@@ -158,7 +158,7 @@ def main():
             server.expire_inactive_folders()
             last_active_check = time.time()
 
-        # Every n (30?) minutes look for new folders. This should not need to
+        # Every n (60?) minutes look for new folders. This should not need to
         # be run often, and it is expensive.
         #
         # XXX how often is this going to happen? Maybe we can check once an
@@ -167,7 +167,7 @@ def main():
         # XXX I bet we could move this to a subprocess that returns a list of
         #     the folders to create?
         #
-        if now - last_find_all_folders > 1800:
+        if now - last_find_all_folders > 3600:
             server.find_all_folders()
             last_find_all_folders = now
             
