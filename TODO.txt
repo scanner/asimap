@@ -20,3 +20,10 @@ o add SSL support
 
 o add proper unix account authentication support
   o it must support no more than three bad auths in 90 seconds
+
+o add command/response tracing facility and hook it into the ability
+  to run regression tests against a running server.
+
+o write a unit test suite for the components we can test separately
+  (like IMAP message parsing, search & fetch over a set of test
+  messages.)
