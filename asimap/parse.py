@@ -207,11 +207,26 @@ class IMAPClientCommand(object):
         Create the IMAPClientCommand object. This does NOT parse the string we
         were given, though. You need to call the 'parse()' method for that.
         """
-        self.log = logging.getLogger("%s.IMAPClientCommand" % __name__)
+        self.log = logging.getLogger("%s.aIMAPClientCommand" % __name__)
         self.input = imap_command
         self.uid_command = False
         self.tag = None
         self.command = None
+
+        # If this is a command which we had to stop processing part way through
+        # due to it taking too long 'needs_continuation' will be set to true so
+        # that that the command process will know how to handle this unfinished
+        # command.
+        #
+        self.needs_continuation = False
+
+        # Frequently (always?) a command that needed continuation needed it
+        # because it had too many messages to process (fetch, search, store) in
+        # a short time. In those cases we keep track of the messages we still
+        # need to process as a list in 'message_squence'. This way following
+        # processing of this command will be able to pick up where it left off.
+        #
+        self.message_sequence = None
         return
 
     ##################################################################

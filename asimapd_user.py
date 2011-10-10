@@ -104,8 +104,12 @@ def main():
     # their \Marked and \Unmarked attributes (and at least populating our
     # db with all of the folders that we can find.)
     #
+    server.find_all_folders()
+    last_find_all_folders = time.time()
+
     server.check_all_folders()
     last_full_check = time.time()
+
     
     # And now loop forever.. breaking out of the loop every now and then to
     # see if we have had no active clients for awhile (and if we do not then
@@ -114,23 +118,59 @@ def main():
     log.info("Starting main loop.")
     last_active_check = 0
     while True:
-        asyncore.loop(count = 1)
+
+        # If any folders have queued commands then set the timeout waiting for
+        # data from clients to 0 so we can process the command queues.
+        #
+        timeout = 30
+        if server.has_queued_commands():
+            log.debug("server has queued commands. Timeout == 0")
+            timeout = 0
+            
+        asyncore.loop(count = 1, timeout = timeout)
 
         # At the end of each loop if we have had no clients for <n> minutes
         # then we should exit to save resources because no one is using us.
         #
         if server.expiry is not None and \
-               server.expiry < time.time():
+               server.expiry < now:
             break
 
+        # If any mailboxes have queued commands in process then run those.
+        #
+        server.process_queued_commands()
+
+        # Now handle any other house cleaning tasks we need, all of which are
+        # dependent on running after certain time delays.
+        #
         now = time.time()
+
         # Check all active folders that have clients in IDLE and do a
         # resync on them, every 30 seconds.
         #
+        # XXX Since we now store the last time we checked a folder maybe we
+        #     should skip checking active folders that have actually been
+        #     checked in the last 30 seconds? Not sure we will get any real
+        #     savings from this.
+        #
         if now - last_active_check > 30: 
             server.check_all_active_folders()
+            server.expire_inactive_folders()
             last_active_check = time.time()
 
+        # Every n (30?) minutes look for new folders. This should not need to
+        # be run often, and it is expensive.
+        #
+        # XXX how often is this going to happen? Maybe we can check once an
+        #     hour?
+        #
+        # XXX I bet we could move this to a subprocess that returns a list of
+        #     the folders to create?
+        #
+        if now - last_find_all_folders > 1800:
+            server.find_all_folders()
+            last_find_all_folders = now
+            
         # Do a run through all of our folders and see if any of
         # them have changed. But we only do this once every 5 minutes.
         #

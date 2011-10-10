@@ -213,7 +213,7 @@ def add_last_check_time_to_mbox(c):
     Arguments:
     - `c`: sqlite3 db connection
     """
-    c.execute("alter table mailboxes add column last_check integer default 0")
+    c.execute("alter table mailboxes add column last_resync integer default 0")
     return
 
 # The list of migrations we have so far. These are executed in order. They are

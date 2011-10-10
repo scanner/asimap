@@ -107,6 +107,40 @@ class Mailbox(object):
         self.num_recent = 0
         self.uids = []
 
+        # Some commands can take a significant amount of time to run.  Like
+        # when some client asks for detailed information from message headers
+        # for _every_ message in a folder of 15,000 messages..
+        #
+        # Since we want to maintain our single threaded nature of this program
+        # we will have to be able to break up work we are doing so that other
+        # commands running on other folders get a chance to run while such long
+        # running operations progress as rapidly as they can.
+        #
+        # For this purpose we establish a command queue. If the queue is empty
+        # we attempt to run the complete command in one go. However if while
+        # processing this command we find that it is going to take a long time
+        # and we have a way of breaking up the work between multiple runs, then
+        # we do what we can. We mark our progress in the command and put the
+        # command in to this queue.
+        #
+        # If the command queue is not empty when a new command for this folder
+        # comes in then that command is appended to the end of this folder.
+        #
+        # If there are any folders with a non-empty command queue the main user
+        # srever aynchat loop will not block waiting for input letting us
+        # process existing queued commands without pause while still checking
+        # for input from clients.
+        #
+        # The contents of the command queue are tuples of:
+        #  (client, imap_command) because we need to excute command within
+        # the context of a client.
+        #
+        self.command_queue = []
+        
+        # Time in seconds since the unix epoch when a resync was last tried.
+        #
+        self.last_resync = 0
+
         # It is important to note that self.sequences is the value of the
         # sequences we stored in the db from the end of the last resync. As
         # such they are useful for measuring what has changed in various
@@ -284,6 +318,7 @@ class Mailbox(object):
         # see if we need to do a full scan we have this value before anything
         # we have done in this routine has a chance to modify it.
         #
+        self.last_resync = int(time.time())
         seq_path = os.path.join(self.mailbox._path, ".mh_sequences")
         start_mtime = int(os.path.getmtime(self.mailbox._path))
         seq_mtime =  int(os.path.getmtime(seq_path))
@@ -1094,7 +1129,8 @@ class Mailbox(object):
         """
         c = self.server.db.cursor()
         c.execute("select id, uid_vv,attributes,mtime,next_uid,num_msgs,"
-                  "num_recent,uids from mailboxes where name=?", (self.name,))
+                  "num_recent,uids,last_resync from mailboxes "
+                  "where name=?", (self.name,))
         results = c.fetchone()
 
         # If we got back no results than this mailbox does not exist in the
@@ -1139,7 +1175,7 @@ class Mailbox(object):
 
             # We got back an actual result. Fill in the values in the mailbox.
             #
-            self.id,self.uid_vv,attributes,self.mtime,self.next_uid,self.num_msgs,self.num_recent,uids = results
+            self.id,self.uid_vv,attributes,self.mtime,self.next_uid,self.num_msgs,self.num_recent,uids,self.last_resync = results
             self.attributes = set(attributes.split(","))
             if len(uids) == 0:
                 self.uids = []
@@ -1164,11 +1200,13 @@ class Mailbox(object):
         storage.
         """
         values = (self.uid_vv,",".join(self.attributes),self.next_uid,
-                  self.mtime,self.num_msgs,self.num_recent,
-                  ",".join([str(x) for x in self.uids]),self.id)
+                  self.mtime, self.num_msgs, self.num_recent,
+                  ",".join([str(x) for x in self.uids]),self.last_resync,
+                  self.id)
         c = self.server.db.cursor()
         c.execute("update mailboxes set uid_vv=?, attributes=?, next_uid=?,"
-                  "mtime=?, num_msgs=?, num_recent=?,uids=? where id=?",values)
+                  "mtime=?, num_msgs=?, num_recent=?, uids=?, last_resync=? "
+                  "where id=?",values)
         # For the sequences we have to do a fetch before a store because we
         # need to delete the sequence entries from the db for sequences that
         # are no longer in this mailbox's list of sequences.

@@ -18,6 +18,7 @@ import asyncore
 import asynchat
 import logging
 import os
+import os.path
 import pwd
 import mailbox
 import time
@@ -366,6 +367,46 @@ class IMAPUserServer(asyncore.dispatcher):
 
     ##################################################################
     #
+    def has_queued_commands(self):
+        """
+        Returns True if any active mailbox has queued commands.
+        """
+        return any(len(x.command_queue) > 0 \
+                       for x in self.active_mailboxes.itervalues())
+    
+    ##################################################################
+    #
+    def process_queued_commands(self, ):
+        """
+        See if any active mailboxes have queued commands that still need to be
+        processed and let them run if they do.
+        """
+        for mbox in self.active_mailboxes.itervalues():
+            if len(mbox.command_queue) > 0:
+                client, imap_cmd = mbox.command_queue.pop(0)
+
+                # If the client's network connectionis closed then we do not
+                # bother processing this command.. there is no one to receive
+                # the results.
+                #
+                if not client.client.connected:
+                    continue
+                
+                try:
+                    self.log.debug("processing queued command %s for %s" % \
+                                       (str(imap_cmd), str(client)))
+                    client.command(imap_cmd)
+                except Exception, e:
+                    # We catch all exceptions and log them similar to what
+                    # asynchat does when processing a message.
+                    #
+                    nil, t, v, tbinfo = asyncore.compact_traceback()
+                    self.log.error("Exception handling queued command: "
+                                   "%s:%s %s" % (t,v,tbinfo))
+        return
+    
+    ##################################################################
+    #
     def get_next_uid_vv(self):
         """
         Return the next uid_vv. Also update the underlying database
@@ -445,75 +486,14 @@ class IMAPUserServer(asyncore.dispatcher):
                 self.log.debug("check_all_active: resync'ing '%s'" % name)
                 mbox.resync()
         return
-    
+
     ##################################################################
     #
-    def check_all_folders(self, ):
+    def expire_inactive_folders(self):
         """
-        This goes through all of the folders and makes sure we have db records
-        for all of them.
-
-        It then sees if any of the mtimes we have on disk disagree with the
-        mtimes we have in the database.
-
-        If they do we then do a resync of that folder.
-
-        If the folder is an active folder it may cause messages to be generated
-        and sent to clients that are watching it in some way.
-
-        The folder's \Marked and \Unmarked attributes maybe set in the process
-        of this run.
+        Go through the list of active mailboxes and if any of them are around
+        past their expiry time, expire time.
         """
-        def find_subfolders(mbox, path):
-            """
-            Find all subfolders and if they are not in our dict of extant
-            mboxes, add it to the list of mboxes to instantiate.
-            """
-            for sub_mbox_name in mbox.list_folders():
-                name = os.path.join(path, sub_mbox_name)
-                if name not in extant_mboxes:
-                    mboxes_to_create.append(name)
-                find_subfolders(mbox.get_folder(sub_mbox_name), name)
-
-        start_time = time.time()
-        self.log.debug("check_all_folders begun")
-        # Get all of the folders and mtimes we know about from the sqlite db at
-        # the beginning. This takes more memory (not _that_ much really in the
-        # grand scheme of things) but it gives the answers in one go-round to
-        # the db and we get to deal with the data in an easier format.
-        #
-        extant_mboxes = { }
-        mboxes_to_create = []
-        c = self.db.cursor()
-        c.execute("select name, mtime from mailboxes order by name")
-        for row in c:
-            name, mtime = row
-            extant_mboxes[name] = mtime
-
-        find_subfolders(self.mailbox, "")
-
-        # Now 'mboxes_to_create' is a list of full mailbox names that were in
-        # the file system but not in the database. Instantiate these (with the
-        # create flag set so that we will not get any nasty surpises about
-        # missing .mh_sequence files)
-        #
-        for mbox_name in mboxes_to_create:
-            self.log.debug("Creating mailbox %s" % mbox_name)
-            asimap.mbox.Mailbox(mbox_name, self, expiry = 45)
-
-        # Now go through all the previously extant mailboxes and see
-        # if their mtimes have changed warranting us to force them to resync.
-        #
-        for mbox_name,mtime in extant_mboxes.iteritems():
-            path = os.path.join(self.mailbox._path, mbox_name)
-            seq_path = os.path.join(path, ".mh_sequences")
-            fmtime = int(max(os.path.getmtime(path),os.path.getmtime(seq_path)))
-            if fmtime != mtime:
-                # The mtime differs.. force the mailbox to resync.
-                #
-                m = self.get_mailbox(mbox_name, 60)
-                m.resync()
-
         # And finally check all active mailboxes to see if they have no clients
         # and are beyond their expiry time.
         #
@@ -529,6 +509,107 @@ class IMAPUserServer(asyncore.dispatcher):
             self.active_mailboxes[mbox_name].commit_to_db()
             del self.active_mailboxes[mbox_name]
             self.msg_cache.clear_mbox(mbox_name)
+
+        
+    
+    ##################################################################
+    #
+    def find_all_folders(self, ):
+        """
+        compare the list of folders on disk with the list of known folders in
+        our database.
+
+        For every folder found on disk that does not exist in the database
+        create an entry for it.
+        """
+        self.log.debug("fina_all_folders: STARTING")
+        extant_mboxes = { }
+        mboxes_to_create = []
+        c = self.db.cursor()
+        c.execute("select name, mtime from mailboxes order by name")
+        for row in c:
+            name, mtime = row
+            extant_mboxes[name] = mtime
+        c.close()
+
+        # The user_server's CWD is the root of our mailboxes.
+        #
+        for root, dirs, files in os.walk('.', followlinks = True):
+            for d in dirs:
+                dirname = os.path.normpath(os.path.join(root, d))
+                if dirname not in extant_mboxes:
+                    mboxes_to_create.append(dirname)
+
+        # Now 'mboxes_to_create' is a list of full mailbox names that were in
+        # the file system but not in the database. Instantiate these (with the
+        # create flag set so that we will not get any nasty surpises about
+        # missing .mh_sequence files)
+        #
+        for mbox_name in mboxes_to_create:
+            self.log.debug("Creating mailbox %s" % mbox_name)
+            asimap.mbox.Mailbox(mbox_name, self, expiry = 45)
+        self.log.debug("fina_all_folders: FINISHED")
+    
+    ##################################################################
+    #
+    def check_all_folders(self, ):
+        """
+        This goes through all of the folders and sees if any of the mtimes we
+        have on disk disagree with the mtimes we have in the database.
+
+        If they do we then do a resync of that folder.
+
+        If the folder is an active folder it may cause messages to be generated
+        and sent to clients that are watching it in some way.
+
+        The folder's \Marked and \Unmarked attributes maybe set in the process
+        of this run.
+        """
+        start_time = time.time()
+        self.log.debug("check_all_folders begun")
+
+        # Get all of the folders and mtimes we know about from the sqlite db at
+        # the beginning. This takes more memory (not _that_ much really in the
+        # grand scheme of things) but it gives the answers in one go-round to
+        # the db and we get to deal with the data in an easier format.
+        #
+        extant_mboxes = { }
+        c = self.db.cursor()
+        c.execute("select name, mtime from mailboxes order by name")
+        for row in c:
+            name, mtime = row
+            extant_mboxes[name] = mtime
+        c.close()
+
+        # Now go through all of the extant mailboxes and see
+        # if their mtimes have changed warranting us to force them to resync.
+        #
+        # XXX We should probably skip folders that are active and have been
+        #     resync'd in the last 30 seconds because those are already checked
+        #     by another process.
+        #
+        for mbox_name,mtime in extant_mboxes.iteritems():
+            # If this mailbox is active and has a client idling on it then we
+            # can skip doing a resync here. It has being handled already.
+            #
+            if mbox_name in self.active_mailboxes and \
+                    any(x.idling for x in self.active_mailboxes[mbox_name].clients.itervalues()):
+                continue
+
+            path = os.path.join(self.mailbox._path, mbox_name)
+            seq_path = os.path.join(path, ".mh_sequences")
+            try: 
+                fmtime = int(max(os.path.getmtime(path),
+                                 os.path.getmtime(seq_path)))
+                if fmtime != mtime:
+                    # The mtime differs.. force the mailbox to resync.
+                    #
+                    m = self.get_mailbox(mbox_name, 60)
+                    m.resync()
+            except OSError, e:
+                if e.errno == errno.ENOENT:
+                    self.log.error("check_folders: One of %s or %s does not "
+                                   "exist for mtime check" % (path, seq_path))
 
         self.log.debug("check_all_folders finished, Took %f seconds" % \
                            (time.time() - start_time))

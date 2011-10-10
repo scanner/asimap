@@ -32,3 +32,22 @@ class Bad(ProtocolException):
     def __str__(self):
         return self.value
 
+class MailboxInconsistencey(ProtocolException):
+    """
+    When processing commands on a mailbox it is possible to hit a
+    state where what is on disk is not what we expected it to be.
+
+    Frequently the base action in these cases is to punt (because we
+    are usually in a place where we can not regain consistency and
+    maintain state).
+
+    The upper layer is expected to catch this, initiate actions to
+    regain consistent state, and then likely try the command again.
+    """
+    def __init__(self, value = "mailbox inconsistencey", mbox = None):
+        self.value = value
+        self.mbox = mbox
+    def __str__(self):
+        return self.value
+    
+
