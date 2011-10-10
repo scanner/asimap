@@ -44,10 +44,11 @@ class MailboxInconsistency(ProtocolException):
     The upper layer is expected to catch this, initiate actions to
     regain consistent state, and then likely try the command again.
     """
-    def __init__(self, value = "mailbox inconsistencey", mbox = None):
+    def __init__(self, value = "mailbox inconsistencey", mbox_name = None,
+                 msg_key = None):
         self.value = value
-        self.mbox = mbox
+        self.mbox_name = mbox_name
+        self.msg_key = msg_key
     def __str__(self):
-        return self.value
-    
-
+        return "%s in mailbox '%s', msg key: %d" % \
+            (self.value, self.mbox_name, self.msg_key)

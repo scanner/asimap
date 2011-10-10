@@ -24,6 +24,10 @@ can tell us to clear all the entries for that mailbox.
 import logging
 import time
 
+# asimap imports
+#
+from asimap.exceptions import MailboxInconsistency
+
 ##################################################################
 ##################################################################
 #
@@ -85,6 +89,17 @@ class MessageCache(object):
         - `msg_key`: The key for this message (in the MH folder)
         - `msg`: message to be added to mailbox
         """
+        # If you try to add a message to the cache without a UID header
+        # we are going to raise a MailboxInconsistency exception.
+        #
+        # Somewhere up the call stack it will see this and trigger a
+        # resync of the mailbox and then re-try the failed command.
+        #
+        if 'x-asimapd-uid' not in msg:
+            self.log.error("add: mailbox '%s' inconsistency msg key %d has no"
+                           " UID header" % (mbox, msg_key))
+            raise MailboxInconsistency(mbox_name = mbox, msg_key = msg_key)
+
         if mbox not in self.msgs_by_mailbox:
             self.msgs_by_mailbox[mbox] = []
 

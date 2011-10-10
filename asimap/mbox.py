@@ -1251,8 +1251,6 @@ class Mailbox(object):
         if msg is None:
             msg = self.mailbox.get_message(msg_key)
             self.server.msg_cache.add(self.name, msg_key, msg)
-            # self.log.debug("add %d to msg cache: %s" % \
-            #                    (msg_key,str(self.server.msg_cache)))
         return msg
 
     ##################################################################

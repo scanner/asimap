@@ -976,7 +976,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    def _fetch_internal(self, cmd):
+    def _fetch_internal(self, cmd, count):
         """
         The internal part of the 'do_fetch' command that can fail with a
         MailboxInconsistency exception such that if we hit that except we try
@@ -984,8 +984,11 @@ class Authenticated(BaseClientHandler):
 
         Arguments:
         - `cmd`: The IMAP command being processed
+        - `count`: Number of times we have been called. If more than 1 we force
+          the resync.
+
         """
-        self.mbox.resync(notify = cmd.uid_command)
+        self.mbox.resync(notify = cmd.uid_command, force = (count > 1))
 
         results,seq_changed = self.mbox.fetch(cmd.msg_set, cmd.fetch_atts,
                                               cmd.uid_command)
@@ -1039,7 +1042,7 @@ class Authenticated(BaseClientHandler):
         while not success:
             try:
                 count += 1
-                seq_changed = self._fetch_internal(cmd)
+                seq_changed = self._fetch_internal(cmd, count)
                 success = True
             except MailboxInconsistency:
                 self.log.warn("do_fetch: got mailbox inconsistency. "

@@ -96,18 +96,6 @@ class SearchContext(object):
         #
         self._msg = self.mailbox.get_and_cache_msg(self.msg_key)
 
-        # If this message does NOT have a UID header then we have a message
-        # that was not properly resyncd and assigned a UID. In this case we
-        # raise the 'MailboxInconsistency' exception. Somehwere up our call
-        # chain they should figure out how to properly handle this.
-        #
-        if 'x-asimapd-uid' not in self.msg:
-            self.log.error("msg: mailbox '%s' inconsistency msg key %d "
-                           "(sequence number %d) has no UID header" % \
-                               (self.mailbox.name, self.msg_key,
-                                self.msg_number))
-            raise MailboxInconsistency
-
         # If the uid is not set, then set it also at the same time.
         #
         if self._uid is None:
