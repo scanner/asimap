@@ -976,6 +976,29 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
+    def _fetch_internal(self, cmd):
+        """
+        The internal part of the 'do_fetch' command that can fail with a
+        MailboxInconsistency exception such that if we hit that except we try
+        this command again after a resync.
+
+        Arguments:
+        - `cmd`: The IMAP command being processed
+        """
+        self.mbox.resync(notify = cmd.uid_command)
+
+        results,seq_changed = self.mbox.fetch(cmd.msg_set, cmd.fetch_atts,
+                                              cmd.uid_command)
+
+        for r in results:
+            idx, iter_results = r
+            self.client.push("* %d FETCH (%s)\r\n" % \
+                                 (idx, " ".join(iter_results)))
+
+        return seq_changed
+    
+    ##################################################################
+    #
     def do_fetch(self, cmd):
         """
         Fetch data from the messages indicated in the command.
@@ -1011,14 +1034,16 @@ class Authenticated(BaseClientHandler):
             else:
                 raise No("There are pending EXPUNGEs.")
 
-        self.mbox.resync(notify = cmd.uid_command)
-
-        results,seq_changed = self.mbox.fetch(cmd.msg_set, cmd.fetch_atts,
-                                              cmd.uid_command)
-        for r in results:
-            idx, iter_results = r
-            self.client.push("* %d FETCH (%s)\r\n" % \
-                                 (idx, " ".join(iter_results)))
+        success = False
+        count = 0
+        while not success:
+            try:
+                count += 1
+                seq_changed = self._fetch_internal(cmd)
+                success = True
+            except MailboxInconsistency:
+                self.log.warn("do_fetch: got mailbox inconsistency. "
+                              "Try %d" % count)
 
         # If the fetch caused sequences to change then we need to make the
         # resync non-optional so that we will send FETCH messages to the other
