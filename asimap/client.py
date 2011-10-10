@@ -18,7 +18,7 @@ import time
 #
 import asimap.mbox
 import asimap.auth
-from asimap.exceptions import No, Bad
+from asimap.exceptions import No, Bad, MailboxInconsistency
 
 # Local constants
 #
