@@ -207,8 +207,7 @@ class IMAPUserClientHandler(asynchat.async_chat):
                 self.push("* BAD %s\r\n" % str(e))
             return
 
-        # Message parsed successfully. Hand it off to the message processor to
-        # respond to.
+        # Pass the command on to the command processor to handle. 
         #
         self.cmd_processor.command(imap_cmd)
 
@@ -589,11 +588,16 @@ class IMAPUserServer(asyncore.dispatcher):
         #     by another process.
         #
         for mbox_name,mtime in extant_mboxes.iteritems():
-            # If this mailbox is active and has a client idling on it then we
-            # can skip doing a resync here. It has being handled already.
+            # If this mailbox is active and has a client idling on it OR if it
+            # has queued commands then we can skip doing a resync here. It has
+            # being handled already. It is especially important not to do
+            # random resyncs on folders that are in the middle of processing a
+            # queued command. It might cause messages to be generated and reset
+            # various bits of state that are important to the queued command.
             #
             if mbox_name in self.active_mailboxes and \
-                    any(x.idling for x in self.active_mailboxes[mbox_name].clients.itervalues()):
+                    (any(x.idling for x in self.active_mailboxes[mbox_name].clients.itervalues()) or \
+                         len(self.active_mailboxes[mbox_name].command_queue) > 0):
                 continue
 
             path = os.path.join(self.mailbox._path, mbox_name)

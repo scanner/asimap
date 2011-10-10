@@ -144,7 +144,9 @@ class BaseClientHandler(object):
             self.log.debug(result)
         elif result is False:
             # Some commands do NOT send an OK response immediately.. aka the
-            # IDLE command. If result is false then we just return.
+            # IDLE command and commands that are being processed in multiple
+            # runs (see 'command_queue' on the mailbox). If result is false
+            # then we just return. We do not send a message back to our client.
             #
             return
         else:
@@ -421,6 +423,47 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
+    def process_or_queue(self, imap_cmd, queue = True):
+        """
+        When we have a mailbox selected we may be in a state where we can not
+        process the command we have been handed. This happens when we have a
+        non-zero command queue on the mailbox. In these cases the imap command
+        is NOT processed and is instead added to the end of the mailbox's
+        command queue for later processing.
+
+        If that is the case we will return False.
+
+        Otherwise we return True letting our caller know they can just continue
+        with processing this command.
+
+        Arguments:
+        - `imap_cmd`: IMAP command about to be processed.
+        - `queue`: If this is True then we _queue this command_ we are handed
+          for later processing. It is the case that some commands can be
+          immediately processed even if we are in the middle of processing
+          another command and our caller knows this and tells us not to queue
+          the command.
+        """
+        # If this imap command has 'needs_continuation' set then we are going
+        # to assume that is the continuation of the command currently being
+        # processed.
+        #
+        # If this imap coammnd DOES NOT have 'needs_continuation' set AND the
+        # mailbox has a non-zero command_queue then we push this command on to
+        # the end of the queue and return.
+        #
+        if imap_cmd.needs_continuation:
+            return True
+        if self.mbox is None:
+            return True
+        if len(self.mbox.command_queue) == 0:
+            return True
+        if queue:
+            self.mbox.command_queue.append((self, imap_cmd))
+        return False
+    
+    ##################################################################
+    #
     def notifies(self):
         """
         Handles the common case of sending pending expunges and a resync where
@@ -443,7 +486,12 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `imap_command`: The full IMAP command object.
         """
-        self.notifies()
+
+        # If we have a mailbox and we have commands in the command queue of
+        # that mailbox then we can not do the notifies or expunges.
+        #
+        if self.mbox and not self.mbox.has_queued_commands(self):
+            self.notifies()
         return None
 
     #########################################################################
@@ -471,6 +519,12 @@ class Authenticated(BaseClientHandler):
         self.log.debug("do_select(): mailbox: '%s', examine: %s" % \
                            (cmd.mailbox_name, examine))
 
+        # NOTE: If this client currently has messages being processed in the
+        # command queue for this mailbox then they are all tossed when they
+        # pre-emptively select another mailbox (this could cause the client
+        # some heartburn as commands they issues will never get their final
+        # message.. but that is their problem.)
+        #
         # Selecting a mailbox, even if the attempt fails, automatically
         # deselects any already selected mailbox.
         #
@@ -503,6 +557,12 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
+        # NOTE: If this client currently has messages being processed in the
+        # command queue for this mailbox then they are all tossed when they
+        # pre-emptively select another mailbox (this could cause the client
+        # some heartburn as commands they issues will never get their final
+        # message.. but that is their problem.)
+        #
         if self.state != "selected":
             raise No("Client must be in the selected state")
 
@@ -530,7 +590,11 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        self.notifies()
+        # You can create a mailbox while you have commands in the command
+        # queue, but no notifies are sent in that case.
+        #
+        if self.process_or_queue(cmd, queue = False):
+            self.notifies()
         asimap.mbox.Mailbox.create(cmd.mailbox_name, self.server)
         return
 
@@ -543,7 +607,11 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        self.notifies()
+        # You can delete a mailbox while you have commands in the command
+        # queue, but no notifies are sent in that case.
+        #
+        if self.process_or_queue(cmd, queue = False):
+            self.notifies()
         asimap.mbox.Mailbox.delete(cmd.mailbox_name, self.server)
         return
 
@@ -556,7 +624,11 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        self.notifies()
+        # You can delete a mailbox while you have commands in the command
+        # queue, but no notifies are sent in that case.
+        #
+        if self.process_or_queue(cmd, queue = False):
+            self.notifies()
         asimap.mbox.Mailbox.rename(cmd.mailbox_src_name,cmd.mailbox_dst_name,
                                    self.server)
         return
@@ -576,7 +648,11 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        self.notifies()
+        # You can subscribe while you have commands in the command
+        # queue, but no notifies are sent in that case.
+        #
+        if self.process_or_queue(cmd, queue = False):
+            self.notifies()
         raise No("Can not subscribe to the mailbox %s" % cmd.mailbox_name)
 
     ##################################################################
@@ -595,7 +671,11 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        self.notifies()
+        # You can unsubscribe while you have commands in the command
+        # queue, but no notifies are sent in that case.
+        #
+        if self.process_or_queue(cmd, queue = False):
+            self.notifies()
         raise No("Can not unsubscribe to the mailbox %s" % cmd.mailbox_name)
 
     ##################################################################
@@ -611,10 +691,14 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
+        # You can list while you have commands in the command
+        # queue, but no notifies are sent in that case.
+        #
+        if self.process_or_queue(cmd, queue = False):
+            self.notifies()
         # Handle the special case where the client is basically just probing
         # for the hierarchy sepration character.
         #
-        self.notifies()
         if cmd.mailbox_name == "" and \
            cmd.list_mailbox == "":
             self.client.push('* LIST (\Noselect) "/" ""\r\n')
@@ -640,7 +724,11 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        self.notifies()
+        # You can lsub while you have commands in the command
+        # queue, but no notifies are sent in that case.
+        #
+        if self.process_or_queue(cmd, queue = False):
+            self.notifies()
         return None
 
     ##################################################################
@@ -653,9 +741,19 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        self.notifies()
+        # You can lsub while you have commands in the command
+        # queue, but no notifies are sent in that case.
+        #
+        if self.process_or_queue(cmd, queue = False):
+            self.notifies()
         mbox = self.server.get_mailbox(cmd.mailbox_name, expiry = 45)
-        mbox.resync()
+
+        # We can only call resync on this mbox if it has an empty
+        # command queue.
+        #
+        if len(mbox.command_queue) == 0:
+            mbox.resync()
+
         result = []
         for att in cmd.status_att_list:
             if att == "messages":
@@ -687,10 +785,19 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        self.send_pending_expunges()
+        # You can append while you have commands in the command
+        # queue, but no notifies are sent in that case.
+        #
+        if self.process_or_queue(cmd, queue = False):
+            self.notifies()
+
         try:
             mbox = self.server.get_mailbox(cmd.mailbox_name, expiry = 0)
-            mbox.resync()
+            # We can only call resync on this mbox if it has an empty
+            # command queue.
+            #
+            if len(mbox.command_queue) == 0:
+                mbox.resync()
             mbox.append(cmd.message, cmd.flag_list, cmd.date_time)
         except asimap.mbox.NoSuchMailbox:
             # For APPEND and COPY if the mailbox does not exist we
@@ -727,8 +834,15 @@ class Authenticated(BaseClientHandler):
             self.unceremonious_bye("Your selected mailbox no longer exists")
             return
 
-        self.mbox.resync()
-        self.send_pending_expunges()
+        # We can only do a resync if there are no commands in the command
+        # queue. We can only send expunges to our client if it does not have
+        # commands in the mailbox's command queue.
+        #
+        if self.process_or_queue(cmd, queue = False):
+            self.mbox.resync()
+
+        if not self.mbox.has_queued_commands(self):
+            self.send_pending_expunges()
         return
 
     ##################################################################
@@ -788,7 +902,12 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        self.send_pending_expunges()
+        # If there are commands pending in the queue this gets put on the queue
+        # waiting for those to be finished before processing.
+        #
+        if not self.process_or_queue(cmd):
+            return False
+
         if self.state != "selected":
             raise No("Client must be in the selected state")
 
@@ -799,6 +918,8 @@ class Authenticated(BaseClientHandler):
         if self.mbox is None:
             self.unceremonious_bye("Your selected mailbox no longer exists")
             return
+
+        self.send_pending_expunges()
 
         # If we selected the mailbox via 'examine' then we can not make any
         # changes anyways...
@@ -820,6 +941,12 @@ class Authenticated(BaseClientHandler):
         """
         if self.state != "selected":
             raise No("Client must be in the selected state")
+
+        # If there are commands pending in the queue this gets put on the queue
+        # waiting for those to be finished before processing.
+        #
+        if not self.process_or_queue(cmd):
+            return False
 
         # If self.mbox is None then this mailbox was deleted while this user
         # had it selected. In that case we disconnect the user and let them
@@ -866,17 +993,25 @@ class Authenticated(BaseClientHandler):
         if self.mbox is None:
             self.unceremonious_bye("Your selected mailbox no longer exists")
             return
+
+        # If there are commands pending in the queue this gets put on the queue
+        # waiting for those to be finished before processing.
+        #
+        if not self.process_or_queue(cmd):
+            return False
+
         # If this client has pending EXPUNGE messages then we return a tagged
         # No response.. the client should see this and do a NOOP or such and
         # receive the pending expunges. Unless this is a UID command. It is
         # okay to send pending expunges during the operations of a UID FETCH.
         #
-        self.mbox.resync(notify = cmd.uid_command)
         if len(self.pending_expunges) > 0:
             if cmd.uid_command:
                 self.send_pending_expunges()
             else:
                 raise No("There are pending EXPUNGEs.")
+
+        self.mbox.resync(notify = cmd.uid_command)
 
         results,seq_changed = self.mbox.fetch(cmd.msg_set, cmd.fetch_atts,
                                               cmd.uid_command)
@@ -920,17 +1055,24 @@ class Authenticated(BaseClientHandler):
             self.unceremonious_bye("Your selected mailbox no longer exists")
             return
 
+        # If there are commands pending in the queue this gets put on the queue
+        # waiting for those to be finished before processing.
+        #
+        if not self.process_or_queue(cmd):
+            return False
+
         # If this client has pending EXPUNGE messages then we return a tagged
         # No response.. the client should see this and do a NOOP or such and
         # receive the pending expunges.  Unless this is a UID command. It is
         # okay to send pending expunges during the operations of a UID FETCH.
         #
-        self.mbox.resync(notify = cmd.uid_command)
         if len(self.pending_expunges) > 0:
             if cmd.uid_command:
                 self.send_pending_expunges()
             else:
                 raise No("There are pending EXPUNGEs.")
+
+        self.mbox.resync(notify = cmd.uid_command)
 
         # We do not issue any messages to the client here. This is done
         # automatically when 'resync' is called because resync will examine the
@@ -961,7 +1103,6 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        self.send_pending_expunges()
         if self.state != "selected":
             raise No("Client must be in the selected state")
 
@@ -973,7 +1114,12 @@ class Authenticated(BaseClientHandler):
             self.unceremonious_bye("Your selected mailbox no longer exists")
             return
 
-        self.mbox.resync()
+        # The copy can be done immediately. However, we can not send pending
+        # expunges if this client has queued commands.
+        #
+        if not self.mbox.has_queued_commands(self):
+            self.send_pending_expunges()
+
         try:
             dest_mbox = self.server.get_mailbox(cmd.mailbox_name, expiry = 0)
             try:

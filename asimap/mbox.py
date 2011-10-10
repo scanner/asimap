@@ -1375,6 +1375,18 @@ class Mailbox(object):
 
     ##################################################################
     #
+    def has_queued_commands(self, client):
+        """
+        Returns True if this client currently has commands in the command
+        queue.
+
+        Arguments:
+        - `client`: The client we are checking for in the command queue.
+        """
+        return any(x.client.port == client.client.port for x in self.command_queue)
+    
+    ##################################################################
+    #
     def unselected(self, client):
         """
         When the client is no longer selecting/examining this mailbox.
@@ -1395,6 +1407,14 @@ class Mailbox(object):
             return
 
         del self.clients[client.client.port]
+
+        # Also if this client currently has any pending commands for this
+        # folder they are tossed since the client is no longer associatd with
+        # this folder.
+        #
+        if len(self.command_queue) > 0:
+            self.command_queue = [x for x in self.command_queue if x[0].client.port == client.client.port]
+ 
         if len(self.clients) == 0:
             self.log.debug("unselected(): No clients, starting expiry timer")
             self.expiry = time.time() + 900 # Expires in 15 minutes
