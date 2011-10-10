@@ -25,9 +25,9 @@ from asimap.exceptions import No, Bad, MailboxInconsistency
 #CAPABILITIES = ('IMAP4rev1', 'IDLE', 'NAMESPACE', 'ID', 'UIDPLUS')
 CAPABILITIES = ('IMAP4rev1', 'IDLE', 'ID', 'UNSELECT', 'LITERAL+')
 SERVER_ID = { 'name'        : 'asimapd',
-              'version'     : '0.1',
+              'version'     : '0.2',
               'vendor'      : 'Apricot Systematic',
-              # 'support-url' : 'http://trac.apricot.com/py-mh-imap',
+              'support-url' : 'https://github.com/scanner/asimap/issues',
               'command'     : sys.argv[0],
               'os'          : sys.platform,
               }
