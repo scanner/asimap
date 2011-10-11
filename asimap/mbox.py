@@ -106,6 +106,7 @@ class Mailbox(object):
         self.num_msgs = 0
         self.num_recent = 0
         self.uids = []
+        self.subscribed = False
 
         # Some commands can take a significant amount of time to run.  Like
         # when some client asks for detailed information from message headers
@@ -1137,7 +1138,7 @@ class Mailbox(object):
         """
         c = self.server.db.cursor()
         c.execute("select id, uid_vv,attributes,mtime,next_uid,num_msgs,"
-                  "num_recent,uids,last_resync from mailboxes "
+                  "num_recent,uids,last_resync,subscribed from mailboxes "
                   "where name=?", (self.name,))
         results = c.fetchone()
 
@@ -1184,7 +1185,7 @@ class Mailbox(object):
 
             # We got back an actual result. Fill in the values in the mailbox.
             #
-            self.id,self.uid_vv,attributes,self.mtime,self.next_uid,self.num_msgs,self.num_recent,uids,self.last_resync = results
+            self.id,self.uid_vv,attributes,self.mtime,self.next_uid,self.num_msgs,self.num_recent,uids,self.last_resync,self.subscribed = results
             self.attributes = set(attributes.split(","))
             if len(uids) == 0:
                 self.uids = []
@@ -1211,11 +1212,11 @@ class Mailbox(object):
         values = (self.uid_vv,",".join(self.attributes),self.next_uid,
                   self.mtime, self.num_msgs, self.num_recent,
                   ",".join([str(x) for x in self.uids]),self.last_resync,
-                  self.id)
+                  self.subscribed, self.id)
         c = self.server.db.cursor()
         c.execute("update mailboxes set uid_vv=?, attributes=?, next_uid=?,"
-                  "mtime=?, num_msgs=?, num_recent=?, uids=?, last_resync=? "
-                  "where id=?",values)
+                  "mtime=?, num_msgs=?, num_recent=?, uids=?, last_resync=?, "
+                  "subscribed=? where id=?",values)
         # For the sequences we have to do a fetch before a store because we
         # need to delete the sequence entries from the db for sequences that
         # are no longer in this mailbox's list of sequences.
@@ -2171,6 +2172,9 @@ class Mailbox(object):
         You can NOT delete a mailbox that has the '\Noselect' flag AND
         contains sub-mailboxes.
 
+        You can NOT delete a folder that is subscribed. It will get the
+        '\Noselect' flag just like deleting a folder that has sub-folders.
+
         If the mailbox is selected by any client then what happens is the same
         as if the mailbox had an inferior mailbox: all the messages are empty
         and the mailbox gains the '\Noselect' flag.
@@ -2223,7 +2227,7 @@ class Mailbox(object):
             # from the db no imap client will confuse it with the existing
             # mailbox.
             #
-            if len(inferior_mailboxes) > 0:
+            if len(inferior_mailboxes) > 0 or mailbox.subcribed:
                 mailbox.attributes.add("\\Noselect")
                 mailbox.uid_vv = server.get_next_uid_vv()
                 mailbox.commit_to_db()
@@ -2394,7 +2398,7 @@ class Mailbox(object):
     ####################################################################
     #
     @classmethod
-    def list(cls, ref_mbox_name, mbox_match, server):
+    def list(cls, ref_mbox_name, mbox_match, server, lsub = False):
         """
         This returns a list of tuples of mailbox names and that mailboxes
         attributes. The list is generated from the mailboxes db shelf. The
@@ -2424,6 +2428,8 @@ class Mailbox(object):
         - `ref_mbox_name`: The reference mailbox name
         - `mbox_match`: The pattern of mailboxes to match under the reference
           mailbox name.
+        - `lsub`: If True this will only match folders that have their
+          subscribed bit set.
         """
 
         log = logging.getLogger("%s.%s.list()" % (__name__,cls.__name__))
@@ -2456,8 +2462,14 @@ class Mailbox(object):
         mbox_match = mbox_match.replace(r'\*', r'.*').replace(r'\%', r'[^\/]*')
         results = []
         c = server.db.cursor()
-        r = c.execute("select name,attributes from mailboxes where name "
-                      "regexp ? order by name", (mbox_match,))
+        if lsub:
+            r = c.execute("select name,attributes from mailboxes where name "
+                          "regexp ? and subscribed=1 order by name",
+                          (mbox_match,))
+        else:
+            r = c.execute("select name,attributes from mailboxes where name "
+                          "regexp ? order by name", (mbox_match,))
+
         for row in r:
             mbox_name, attributes = row
             attributes = set(attributes.split(","))

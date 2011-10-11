@@ -216,6 +216,19 @@ def add_last_check_time_to_mbox(c):
     c.execute("alter table mailboxes add column last_resync integer default 0")
     return
 
+####################################################################
+#
+def folders_can_be_subscribed(c):
+    """
+    Folders can be subscribed to. When they are subscribed to this bit gets set
+    to true.
+
+    Arguments:
+    - `c`: sqlite3 db connection
+    """
+    c.execute("alter table mailboxes add column subscribed integer default 0")
+    return
+
 # The list of migrations we have so far. These are executed in order. They are
 # executed only once. They are executed when the database is opened. We track
 # which ones have been executed and new ones are executed when the database is
@@ -225,4 +238,5 @@ MIGRATIONS = [
     initial_migration,
     add_uids_to_mbox,
     add_last_check_time_to_mbox,
+    folders_can_be_subscribed,
     ]

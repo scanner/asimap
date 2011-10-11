@@ -642,9 +642,6 @@ class Authenticated(BaseClientHandler):
         the LSUB command.  This command returns a tagged OK response only
         if the subscription is successful.
 
-        XXX we do not have any mailboxes that we support SUBSCRIBE for
-            (as I understand the purpose of this mailbox.)
-
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
@@ -653,7 +650,11 @@ class Authenticated(BaseClientHandler):
         #
         if self.process_or_queue(cmd, queue = False):
             self.notifies()
-        raise No("Can not subscribe to the mailbox %s" % cmd.mailbox_name)
+
+        mbox = self.server.get_mailbox(cmd.mailbox_name)
+        mbox.subscribed = True
+        mbox.commit_to_db()
+        return None
 
     ##################################################################
     #
@@ -664,10 +665,6 @@ class Authenticated(BaseClientHandler):
         returned by the LSUB command.  This command returns a tagged
         OK response only if the unsubscription is successful.
 
-        XXX we do not have any mailboxes that we support SUBSCRIBE or
-            UNSUBSCRIBE for (as I understand the purpose of this
-            mailbox.)
-
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
@@ -676,11 +673,14 @@ class Authenticated(BaseClientHandler):
         #
         if self.process_or_queue(cmd, queue = False):
             self.notifies()
-        raise No("Can not unsubscribe to the mailbox %s" % cmd.mailbox_name)
+        mbox = self.server.get_mailbox(cmd.mailbox_name)
+        mbox.subscribed = False
+        mbox.commit_to_db()
+        return None
 
     ##################################################################
     #
-    def do_list(self, cmd):
+    def do_list(self, cmd, lsub = False):
         """
         The LIST command returns a subset of names from the complete
         set of all names available to the client.  Zero or more
@@ -690,6 +690,8 @@ class Authenticated(BaseClientHandler):
 
         Arguments:
         - `cmd`: The IMAP command we are executing
+        - `lsub`: If True this will only match folders that have their
+          subscribed bit set.
         """
         # You can list while you have commands in the command
         # queue, but no notifies are sent in that case.
@@ -705,13 +707,17 @@ class Authenticated(BaseClientHandler):
             return
 
         results = asimap.mbox.Mailbox.list(cmd.mailbox_name, cmd.list_mailbox,
-                                           self.server)
+                                           self.server, lsub)
+        res = "LIST"
+        if lsub:
+            res = "LSUB"
+
         for mbox_name, attributes in results:
             if mbox_name.lower() == "inbox":
                 mbox_name = "INBOX"
-            self.client.push(str('* LIST (%s) "/" %s\r\n' % \
-                                 (' '.join(attributes), mbox_name)))
-        return
+            self.client.push(str('* %s (%s) "/" %s\r\n' % \
+                                 (res, ' '.join(attributes), mbox_name)))
+        return None
 
     ####################################################################
     #
@@ -724,12 +730,7 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        # You can lsub while you have commands in the command
-        # queue, but no notifies are sent in that case.
-        #
-        if self.process_or_queue(cmd, queue = False):
-            self.notifies()
-        return None
+        return self.do_list(cmd, lsub = True)
 
     ##################################################################
     #
