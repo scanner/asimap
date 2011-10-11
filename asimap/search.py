@@ -18,7 +18,6 @@ from datetime import datetime
 #
 import asimap.utils
 import asimap.constants
-from asimap.exceptions import MailboxInconsistency
 
 ############################################################################
 #

@@ -136,7 +136,7 @@ class Mailbox(object):
         # the context of a client.
         #
         self.command_queue = []
-        
+
         # Time in seconds since the unix epoch when a resync was last tried.
         #
         self.last_resync = 0
@@ -319,13 +319,13 @@ class Mailbox(object):
         # we have done in this routine has a chance to modify it.
         #
         self.last_resync = int(time.time())
-        seq_path = os.path.join(self.mailbox._path, ".mh_sequences")
-        start_mtime = int(os.path.getmtime(self.mailbox._path))
-        seq_mtime =  int(os.path.getmtime(seq_path))
+        start_mtime = asimap.mbox.Mailbox.get_actual_mtime(self.server.mailbox,
+                                                           self.name)
+
         # If `optional` is set and the mtime is the same as what is on disk
         # then we can totally skip this resync run.
         #
-        if optional and start_mtime == self.mtime and seq_mtime == self.mtime:
+        if optional and start_mtime <= self.mtime:
             return
 
         # If only_notify is not None then notify is forced to False.
@@ -472,7 +472,7 @@ class Mailbox(object):
                         #
                         found_uids = self._update_msg_uids(msgs[start_idx:],
                                                            seq)
-                        
+
                         found_uids = self.uids[:start_idx] + found_uids
                         # Calculate what UID's were deleted and what order they
                         # were deleted in and send expunges as necessary to all
@@ -566,13 +566,8 @@ class Mailbox(object):
             pass
         # And update the mtime before we leave..
         #
-        self.mtime = max(int(os.path.getmtime(self.mailbox._path)),
-                         int(os.path.getmtime(seq_path)))
-        # Set the mtime for the folder and the sequences file to be the same.
-        #
-        os.utime(self.mailbox._path, (self.mtime,self.mtime))
-        os.utime(seq_path, (self.mtime,self.mtime))
-
+        self.mtime = asimap.mbox.Mailbox.get_actual_mtime(self.server.mailbox,
+                                                          self.name)
         self.commit_to_db()
         return
 
@@ -729,9 +724,11 @@ class Mailbox(object):
         """
         missing_uids = set(self.uids) - set(uids)
 
-        # If none are missing then nothing to do.. return.
+        # If none are missing then update the list of all uid's with what was
+        # passed in and return. No EXPUNGE's need to be sent. At most we only
+        # have new UID's added to our list.
+        #
         if len(missing_uids) == 0:
-            self.log.debug("send_expunges: No UID's missing.")
             self.uids = uids
             return
 
@@ -766,7 +763,7 @@ class Mailbox(object):
         #
         self.uids = uids
         return
-    
+
     ##################################################################
     #
     def get_uid_from_msg(self, msg):
@@ -1052,7 +1049,7 @@ class Mailbox(object):
         #
         for i, msg in enumerate(msgs):
             if i % 200 == 0:
-                self.log.debug("check/update uids, at index %d, msg: %d out "
+                self.log.debug("check/update uids, at count %d, msg: %d out "
                                "of %d" % (i, msg, len(msgs)))
 
             if not redoing_rest_of_folder:
@@ -1140,7 +1137,8 @@ class Mailbox(object):
             # Upon create the entry in the db reflects what is on the disk as
             # far as we know.
             #
-            self.mtime = int(os.path.getmtime(self.mailbox._path))
+            self.mtime = asimap.mbox.Mailbox.get_actual_mtime(self.server.mailbox,
+                                                              self.name)
             self.uid_vv = self.server.get_next_uid_vv()
             c.execute("insert into mailboxes (id, name, uid_vv, attributes, "
                       "mtime, next_uid, num_msgs, num_recent) "
@@ -1382,7 +1380,7 @@ class Mailbox(object):
         - `client`: The client we are checking for in the command queue.
         """
         return any(x.client.port == client.client.port for x in self.command_queue)
-    
+
     ##################################################################
     #
     def unselected(self, client):
@@ -1412,7 +1410,7 @@ class Mailbox(object):
         #
         if len(self.command_queue) > 0:
             self.command_queue = [x for x in self.command_queue if x[0].client.port == client.client.port]
- 
+
         if len(self.clients) == 0:
             self.log.debug("unselected(): No clients, starting expiry timer")
             self.expiry = time.time() + 900 # Expires in 15 minutes
@@ -2056,6 +2054,35 @@ class Mailbox(object):
             pass
         return
 
+    ##################################################################
+    #
+    @classmethod
+    def get_actual_mtime(cls, mh, name):
+        """
+        Get the max of the mtimes of the actual folder directory and its
+        .mh_sequences file.
+
+        If the .mh_sequences file does not exist create it.
+
+        There were enough times we needed to check the mtime of the folder and
+        the code is not a single line so I figured it was a place that started
+        to needed to be DRY'.d
+
+        Arguments:
+        - `mh`: The top mailbox.MH folder.
+        - `name`: The name of the mbox we are checking
+        """
+        path = os.path.join(mh._path, name)
+        seq_path = os.path.join(path, ".mh_sequences")
+
+        if not os.path.exists(seq_path):
+            # XXX We should set the mode bits on the file after this.
+            #
+            open(seq_path, "w+").close()
+
+        return max(int(os.path.getmtime(path)),
+                   int(os.path.getmtime(seq_path)))
+
     #########################################################################
     #
     @classmethod
@@ -2418,7 +2445,8 @@ class Mailbox(object):
         mbox_match = mbox_match.replace(r'\*', r'.*').replace(r'\%', r'[^\/]*')
         results = []
         c = server.db.cursor()
-        r = c.execute("select name,attributes from mailboxes where name regexp ?", (mbox_match,))
+        r = c.execute("select name,attributes from mailboxes where name "
+                      "regexp ? order by name", (mbox_match,))
         for row in r:
             mbox_name, attributes = row
             attributes = set(attributes.split(","))

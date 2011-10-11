@@ -461,7 +461,7 @@ class Authenticated(BaseClientHandler):
         if queue:
             self.mbox.command_queue.append((self, imap_cmd))
         return False
-    
+
     ##################################################################
     #
     def notifies(self):
@@ -988,8 +988,14 @@ class Authenticated(BaseClientHandler):
           the resync.
 
         """
-        self.mbox.resync(notify = cmd.uid_command, force = (count > 1))
+        force = False
+        optional = True
+        if count > 1:
+            # force = True
+            optional = False
 
+        self.mbox.resync(notify = cmd.uid_command, force = force,
+                         optional = optional)
         results,seq_changed = self.mbox.fetch(cmd.msg_set, cmd.fetch_atts,
                                               cmd.uid_command)
 
@@ -999,7 +1005,7 @@ class Authenticated(BaseClientHandler):
                                  (idx, " ".join(iter_results)))
 
         return seq_changed
-    
+
     ##################################################################
     #
     def do_fetch(self, cmd):

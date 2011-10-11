@@ -37,7 +37,7 @@ def setup_option_parser():
                                    version = asimap.__version__)
 
     parser.set_defaults(port = 993, interface = "0.0.0.0", debug = False,
-                        tls = True)
+                        ssl = True, ssl_certificate = None)
 
     parser.add_option("--port", action="store", type="int", dest="port",
                       help = "What port to listen on.")
@@ -45,9 +45,12 @@ def setup_option_parser():
                       dest="interface", help = "The IP address to bind to.")
     parser.add_option("--debug", action="store_true", dest="debug",
                       help="Emit debugging statements. Do NOT daemonize.")
-    parser.add_option("--no_tls", action="store_false", dest="tls",
-                      help="Turn off TLS/SSL for the incoming IMAP4 "
+    parser.add_option("--no_ssl", action="store_false", dest="ssl",
+                      help="Turn off SSL for the incoming IMAP4 "
                       "connections.")
+    parser.add_option("--ssl_certificate", action="store", type="string",
+                      dest="ssl_certificate", help="Path to your SSL "
+                      "certificate.")
     return parser
 
 #############################################################################
@@ -73,6 +76,11 @@ def main():
                         format="%(asctime)s %(created)s %(process)d "
                         "%(levelname)s %(name)s %(message)s")
     log = logging.getLogger("asimapd")
+
+    if options.ssl and options.ssl_certificate is None:
+        log.error("If SSL is enabled you need to provide a SSL certificate "
+                  "via the --ssl_certificate option")
+        exit(-1)
 
     # Using the location of the server program determine the location of
     # the user_server program (if it was not set via a command line option.)

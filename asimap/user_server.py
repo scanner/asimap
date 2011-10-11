@@ -22,6 +22,7 @@ import os.path
 import pwd
 import mailbox
 import time
+import errno
 # asimap imports
 #
 import asimap
@@ -207,7 +208,7 @@ class IMAPUserClientHandler(asynchat.async_chat):
                 self.push("* BAD %s\r\n" % str(e))
             return
 
-        # Pass the command on to the command processor to handle. 
+        # Pass the command on to the command processor to handle.
         #
         self.cmd_processor.command(imap_cmd)
 
@@ -372,7 +373,7 @@ class IMAPUserServer(asyncore.dispatcher):
         """
         return any(len(x.command_queue) > 0 \
                        for x in self.active_mailboxes.itervalues())
-    
+
     ##################################################################
     #
     def process_queued_commands(self, ):
@@ -390,7 +391,7 @@ class IMAPUserServer(asyncore.dispatcher):
                 #
                 if not client.client.connected:
                     continue
-                
+
                 try:
                     self.log.debug("processing queued command %s for %s" % \
                                        (str(imap_cmd), str(client)))
@@ -403,7 +404,7 @@ class IMAPUserServer(asyncore.dispatcher):
                     self.log.error("Exception handling queued command: "
                                    "%s:%s %s" % (t,v,tbinfo))
         return
-    
+
     ##################################################################
     #
     def get_next_uid_vv(self):
@@ -482,7 +483,7 @@ class IMAPUserServer(asyncore.dispatcher):
         """
         for name,mbox in self.active_mailboxes.iteritems():
             if any(x.idling for x in mbox.clients.itervalues()):
-                self.log.debug("check_all_active: resync'ing '%s'" % name)
+                self.log.debug("check_all_active: checking '%s'" % name)
                 mbox.resync()
         return
 
@@ -504,16 +505,17 @@ class IMAPUserServer(asyncore.dispatcher):
                 expired.append(mbox_name)
 
         for mbox_name in expired:
-            self.log.debug("Expiring mailbox '%s'" % mbox_name)
             self.active_mailboxes[mbox_name].commit_to_db()
             del self.active_mailboxes[mbox_name]
             self.msg_cache.clear_mbox(mbox_name)
+        if len(expired) > 0:
+            self.log.debug("expire_inactive_folders: Expired %d folders" % \
+                               len(expired))
+        return
 
-        
-    
     ##################################################################
     #
-    def find_all_folders(self, ):
+    def find_all_folders(self):
         """
         compare the list of folders on disk with the list of known folders in
         our database.
@@ -521,7 +523,7 @@ class IMAPUserServer(asyncore.dispatcher):
         For every folder found on disk that does not exist in the database
         create an entry for it.
         """
-        self.log.debug("fina_all_folders: STARTING")
+        self.log.debug("find_all_folders: STARTING")
         extant_mboxes = { }
         mboxes_to_create = []
         c = self.db.cursor()
@@ -547,11 +549,11 @@ class IMAPUserServer(asyncore.dispatcher):
         for mbox_name in mboxes_to_create:
             self.log.debug("Creating mailbox %s" % mbox_name)
             asimap.mbox.Mailbox(mbox_name, self, expiry = 45)
-        self.log.debug("fina_all_folders: FINISHED")
-    
+        self.log.debug("find_all_folders: FINISHED")
+
     ##################################################################
     #
-    def check_all_folders(self, ):
+    def check_all_folders(self):
         """
         This goes through all of the folders and sees if any of the mtimes we
         have on disk disagree with the mtimes we have in the database.
@@ -572,12 +574,11 @@ class IMAPUserServer(asyncore.dispatcher):
         # grand scheme of things) but it gives the answers in one go-round to
         # the db and we get to deal with the data in an easier format.
         #
-        extant_mboxes = { }
+        mboxes = []
         c = self.db.cursor()
         c.execute("select name, mtime from mailboxes order by name")
         for row in c:
-            name, mtime = row
-            extant_mboxes[name] = mtime
+            mboxes.append(row)
         c.close()
 
         # Now go through all of the extant mailboxes and see
@@ -587,7 +588,7 @@ class IMAPUserServer(asyncore.dispatcher):
         #     resync'd in the last 30 seconds because those are already checked
         #     by another process.
         #
-        for mbox_name,mtime in extant_mboxes.iteritems():
+        for mbox_name,mtime in mboxes:
             # If this mailbox is active and has a client idling on it OR if it
             # has queued commands then we can skip doing a resync here. It has
             # being handled already. It is especially important not to do
@@ -602,14 +603,26 @@ class IMAPUserServer(asyncore.dispatcher):
 
             path = os.path.join(self.mailbox._path, mbox_name)
             seq_path = os.path.join(path, ".mh_sequences")
-            try: 
-                fmtime = int(max(os.path.getmtime(path),
-                                 os.path.getmtime(seq_path)))
-                if fmtime != mtime:
+            try:
+                fmtime = asimap.mbox.Mailbox.get_actual_mtime(self.mailbox,
+                                                              mbox_name)
+                if fmtime > mtime:
                     # The mtime differs.. force the mailbox to resync.
                     #
-                    m = self.get_mailbox(mbox_name, 60)
-                    m.resync()
+                    self.log.debug("check_all_folders: doing resync on '%s' "
+                                   "stored mtime: %d, actual mtime: %d" % \
+                                       (mbox_name, mtime, fmtime))
+                    m = self.get_mailbox(mbox_name, 30)
+                    if m.mtime >= fmtime:
+                        # Looking at the actual mailbox its mtime is NOT
+                        # earlier than the mtime of the actual folder so we can
+                        # skip this resync. But commit the mailbox data to the
+                        # db so that the actual mtime value is stored.
+                        #
+                        m.commit_to_db()
+                    else:
+                        # Yup, we need to resync this folder.
+                        m.resync()
             except OSError, e:
                 if e.errno == errno.ENOENT:
                     self.log.error("check_folders: One of %s or %s does not "

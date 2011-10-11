@@ -15,6 +15,7 @@ import asynchat
 import logging
 import shlex
 import socket
+import select
 import ssl
 import os
 import pwd
@@ -76,7 +77,7 @@ class IMAPSubprocessHandle(object):
     #
     def __init__(self, user):
         """
-        
+
         Arguments:
         - `user`: The user that has authenticated to us and thus represents
                   the unique identifier for the subprocess we handle. The user
@@ -157,17 +158,17 @@ class IMAPSubprocessHandle(object):
         """
         if self.subprocess is None:
             return False
-        
+
         self.rc = self.subprocess.poll()
         if self.rc is None:
             return True
 
         self.subprocess = None
         if self.rc != 0:
-            self.log.error("Subprocess had non-zero return code: %d" % self.rc) 
+            self.log.error("Subprocess had non-zero return code: %d" % self.rc)
         return False
-    
-    
+
+
 ##################################################################
 ##################################################################
 #
@@ -189,7 +190,7 @@ class IMAPServer(asyncore.dispatcher):
         - `options` : The options set on the command line
         """
         self.log = logging.getLogger("%s.IMAPServer" % __name__)
-        
+
         asyncore.dispatcher.__init__(self)
 
         self.options = options
@@ -212,8 +213,13 @@ class IMAPServer(asyncore.dispatcher):
         pair = self.accept()
         if pair is not None:
             sock,addr = pair
-            print "Incoming connection from %s" % repr(pair)
-            handler = IMAPClientHandler(sock, self.options)
+            print "Incoming connection from %s:%s" % addr
+            try:
+                handler = IMAPClientHandler(sock, self.options)
+            except ssl.SSLError, e:
+                self.log.error("Error accepting connection from %s: %s" % \
+                                   (addr, str(e)))
+        return
 
 ##################################################################
 ##################################################################
@@ -246,6 +252,7 @@ class IMAPClientHandler(asynchat.async_chat):
         """
         """
         self.log = logging.getLogger("%s.IMAPClientHandler" % __name__)
+        self.options = options
 
         asynchat.async_chat.__init__(self, sock = sock)
 
@@ -253,8 +260,42 @@ class IMAPClientHandler(asynchat.async_chat):
         self.ibuffer = []
         self.set_terminator(self.LINE_TERMINATOR)
         self.msg_processor = ServerIMAPMessageProcessor(self)
+
+        if self.options.ssl:
+            self.socket = ssl.wrap_socket(sock, server_side=True,
+                                          certfile=self.options.ssl_certificate,
+                                          do_handshake_on_connect=False)
+
+            # XXX We need to investigate the proper way to do this. For now we
+            #     are going to handle the full handshake here before
+            #     continuing with the rest of our initialization. Why? Because
+            #     having ssl.wrap_socket() handle the hand shake fails.
+            #
+            #     Yes this is a busy wait but we should only need to do this
+            #     during initial connection establishment.
+            #
+            while True:
+                try:
+                    self.socket.do_handshake()
+                    break
+                except ssl.SSLError, err:
+                    if err.args[0] == ssl.SSL_ERROR_WANT_READ:
+                        select.select([self.socket], [], [])
+                    elif err.args[0] == ssl.SSL_ERROR_WANT_WRITE:
+                        select.select([], [self.socket], [])
+                    else:
+                        raise
+
         self.push("* OK IMAP4rev1 Service Ready\r\n")
         return
+
+    ############################################################################
+    #
+    def readable(self):
+        if isinstance(self.socket, ssl.SSLSocket):
+            while self.socket.pending() > 0:
+                self.handle_read_event()
+        return True
 
     ############################################################################
     #
@@ -264,7 +305,7 @@ class IMAPClientHandler(asynchat.async_chat):
         """
         self.ibuffer.append(data)
         return
-    
+
     ##################################################################
     #
     def found_terminator(self):
@@ -390,8 +431,8 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
 
     Once a client has successfully authenticated with the server we connect to
     a subprocess that is running as that user and send all further messages
-    from the client to that subprocess to handle. 
-   
+    from the client to that subprocess to handle.
+
     When that subprocess disconnects we move back in to the
     'before-authentication' state (or if the subprocess crashed, we disconnect
     from the client.)
@@ -402,7 +443,7 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
     #
     def __init__(self, client_connection):
         """
-        
+
         Arguments:
         - `client_connection`: An async_chat object that is a connect to the
                                IMAP client. We can use its 'push()' method to
@@ -483,7 +524,7 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
             self.client_handler.command(imap_cmd)
         except Exception, e:
             # We catch all exceptions because we do not want the server
-            # unceremoniously exiting. 
+            # unceremoniously exiting.
             #
             # XXX However an exception making it to this level probably means
             #     we should disconnect the client?
@@ -526,7 +567,7 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
                 self.close()
             self.client_connection.close()
         return
-    
+
     ##################################################################
     #
     def collect_incoming_data(self, data):
@@ -537,7 +578,7 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
         if self.client_connection is not None:
             self.client_connection.push(data)
         return
-    
+
     ##################################################################
     #
     def get_and_connect_subprocess(self, user):
@@ -553,7 +594,7 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
         else:
             self.subprocess = IMAPSubprocessHandle(user)
             user_imap_subprocesses[user.imap_username] = self.subprocess
-            
+
         if not self.subprocess.is_alive():
             self.subprocess.start()
 
@@ -642,4 +683,4 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
         if self.socket is not None:
             self.close()
         return
-    
+
