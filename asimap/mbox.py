@@ -1685,6 +1685,14 @@ class Mailbox(object):
             # we need the max id and max uuid.
             #
             msgs = self.mailbox.keys()
+
+            # IF there are no messages in the mailbox there are no results.
+            # XXX Should we return No in this case if the command is NOT a UID
+            #     command?
+            #
+            if len(msgs) == 0:
+                return ([], False)
+
             uid_vv, uid_max = self.get_uid_from_msg(msgs[-1])
             seq_max = len(self.mailbox)
 
