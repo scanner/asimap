@@ -863,6 +863,17 @@ class Mailbox(object):
                     new.write("X-asimapd-uid: %010d.%010d\n" % (self.uid_vv,
                                                                 new_uid))
                     wrote_header = True
+
+                elif '\r' in line:
+                    # Sometimes junk mail will come in with \r's in the headers
+                    # Since our files stored on disk never have \r\n's as their
+                    # line ends, if we get a message with a \r in the header
+                    # then this is garbage (and will cause MHMessage to fail to
+                    # parse the whole message) sooo.... we remove the '\r's and
+                    # write out a fixed line instead. But we ONLY do this
+                    # in the header.
+                    #
+                    new.write(line.replace('\r', ''))
                 else:
                     new.write(line)
 
