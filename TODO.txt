@@ -30,6 +30,11 @@ things I need to do.
       I should be handling it at a lower level. Too much repeating
       myself in code.
 
+o Watching Mail.app if a folder has pending expunges we send back
+  No's, but it keeps trying to do fetch's.. I wonder if we should do
+  an unceremonious close on a client if it asks for FETCH's like 10
+  times in a row while there are pending expunges.
+
 o write tool to split huge mailboxes in to mailbox + sub-mailbox by
   year, keeping the last 1,000 messages in the current folder.
 
