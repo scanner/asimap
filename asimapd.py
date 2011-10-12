@@ -36,11 +36,17 @@ def setup_option_parser():
     parser = optparse.OptionParser(usage = "%prog [options]",
                                    version = asimap.__version__)
 
-    parser.set_defaults(port = 993, interface = "0.0.0.0", debug = False,
+    parser.set_defaults(port = None, ssl_port = 993,
+                        interface = "0.0.0.0", debug = False,
                         ssl = True, ssl_certificate = None)
 
     parser.add_option("--port", action="store", type="int", dest="port",
-                      help = "What port to listen on.")
+                      help = "What port to listen on for NON-SSL connections. "
+                      "Note that is --port is NOT specified we will NOT "
+                      "on it. This is how to disable non-encrypted "
+                      "connections for this server.")
+    parser.add_option("--ssl_port", action="store", type="int", dest="port",
+                      help = "What port to listen on for SSL connections")
     parser.add_option("--interface", action="store", type="string",
                       dest="interface", help = "The IP address to bind to.")
     parser.add_option("--debug", action="store_true", dest="debug",
@@ -102,7 +108,13 @@ def main():
     asimap.user_server.set_user_server_program(user_server_program)
 
     try:
-        server = asimap.server.IMAPServer(options)
+        if options.port:
+            non_ssl_server = asimap.server.IMAPServer(options.interface,
+                                                      options.port)
+        if options.ssl:
+            ssl_server =  asimap.server.IMAPServer(options.interface,
+                                                   options.port,
+                                                   options.ssl_certificate)
     except socket.error, e:
         log.error("Unable to create server object on %s:%d: socket " \
                   "error: %s" % (options.interface, options.port, e))

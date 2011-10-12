@@ -50,5 +50,34 @@ class MailboxInconsistency(ProtocolException):
         self.mbox_name = mbox_name
         self.msg_key = msg_key
     def __str__(self):
-        return "%s in mailbox '%s', msg key: %d" % \
-            (self.value, self.mbox_name, self.msg_key)
+        return "%s in mailbox '%s', msg key: %s" % \
+            (self.value, self.mbox_name, str(self.msg_key))
+
+##################################################################
+##################################################################
+#
+class MailboxLock(ProtocolException):
+    """
+    Raised when we are unable to get a lock on a mailbox
+    """
+
+    ##################################################################
+    #
+    def __init__(self, value = "Mailbox lock", mbox = None):
+        """
+        Arguments:
+        - `value`:
+        - `mbox`: the mbox.Mailbox object we had a problem getting a lock on
+        """
+        self.value = value
+        self.mbox = mbox
+    
+    ##################################################################
+    #
+    def __str__(self):
+        if mbox is None:
+            return value
+        else:
+            return "%s on mailbox %s" % (value, mbox.name)
+        
+    

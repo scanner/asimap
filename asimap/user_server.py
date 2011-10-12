@@ -23,6 +23,8 @@ import pwd
 import mailbox
 import time
 import errno
+import random
+
 # asimap imports
 #
 import asimap
@@ -80,7 +82,7 @@ class IMAPUserClientHandler(asynchat.async_chat):
 
     ##################################################################
     #
-    def __init__(self, sock, port, server, options):
+    def __init__(self, sock, rem_address, port, server, options):
         """
         """
         asynchat.async_chat.__init__(self, sock = sock)
@@ -94,6 +96,7 @@ class IMAPUserClientHandler(asynchat.async_chat):
         # it when our connection to the main server is shutdown.
         #
         self.port = port
+        self.rem_addr = rem_address
 
         # A handle on the server process and its database connection.
         #
@@ -101,6 +104,14 @@ class IMAPUserClientHandler(asynchat.async_chat):
         self.options = options
         self.cmd_processor = Authenticated(self, self.server)
         return
+
+    ##################################################################
+    #
+    def log_string(self):
+        """
+        A bit of DRY: format the username/remote address/port as a string
+        """
+        return "from %s:%d" % (self.rem_addr, self.port)
 
     ##################################################################
     #
@@ -166,8 +177,9 @@ class IMAPUserClientHandler(asynchat.async_chat):
                 self.reading_message = True
                 self.set_terminator(msg_length)
             except ValueError,e:
-                self.log.error("found_terminator(): expected an int, got: "
-                               "'%s'" % "".join(self.ibuffer))
+                self.log.error("found_terminator(): %s expected an int, got: "
+                               "'%s'" % \
+                               (self.log_string(),"".join(self.ibuffer)))
             return
 
         # If we were reading a full IMAP message, then we switch back to
@@ -217,7 +229,8 @@ class IMAPUserClientHandler(asynchat.async_chat):
         # our connection to the main server process.
         #
         if self.cmd_processor.state == "logged_out":
-            self.log.info("Client has logged out of the subprocess")
+            self.log.info("Client %s has logged out of the subprocess" % \
+                          self.log_string())
             self.cleanup()
             if self.socket is not None:
                 self.close()
@@ -381,28 +394,79 @@ class IMAPUserServer(asyncore.dispatcher):
         See if any active mailboxes have queued commands that still need to be
         processed and let them run if they do.
         """
-        for mbox in self.active_mailboxes.itervalues():
-            if len(mbox.command_queue) > 0:
-                client, imap_cmd = mbox.command_queue.pop(0)
+        # Some IMAP clients can be nasty with the number of commands they have
+        # running in parallel. Also you may have gobs of IMAP clients. In these
+        # cases we want to make sure we still pull messages off of the network
+        # socket without blocking for too long (5 seconds to actually read a
+        # message is probably too long.)
+        #
+        # When we are processing queued messages they are popped off the front
+        # of the command queue, and then if they need to be continued, pushed
+        # on to the back of the command queue.
+        #
+        # What we do is generate a randomized list of mailboxes that have
+        # queued commands. We then run through that list of mailboxes once,
+        # doing one queued command from each mailbox or until a maximum of <n>
+        # (5?) seconds has passed.
+        #
+        # Since the list of mailboxes is randomized each time we are called and
+        # each time we run a queued command we stick it back on to the _end_ of
+        # the command queue this should generally work through the queued
+        # commands in a fair fashion.
+        #
+        mboxes = [x for x in self.active_mailboxes.values() if x.has_queued_commands()]
+        if len(mboxes) == 0:
+            return
+        start_time = time.time()
+        
+        num_queued_cmds = sum(len(x.command_queue) for x in mboxes)
+        self.log.debug("process_queued_command: ** START Number of queued "
+                       "commands: %d" % num_queued_cmds)
 
-                # If the client's network connectionis closed then we do not
-                # bother processing this command.. there is no one to receive
-                # the results.
+        random.shuffle(mboxes)
+        
+        for mbox in mboxes:
+            if len(mbox.command_queue) == 0:
+                continue
+            self.log.debug("process_queued_command:    mbox: %s - commands in "
+                           "queue: %d" % (mbox.name,len(mbox.command_queue)))
+            client, imap_cmd = mbox.command_queue.pop(0)
+
+            # If the client's network connectionis closed then we do not
+            # bother processing this command.. there is no one to receive
+            # the results.
+            #
+            if not client.client.connected:
+                continue
+
+            try:
+                self.log.debug("process_queued_command mbox: %s, client: "
+                               "%s, cmd: %s" % (mbox.name, client.name,
+                                                str(imap_cmd)))
+                client.command(imap_cmd)
+            except Exception, e:
+                # We catch all exceptions and log them similar to what
+                # asynchat does when processing a message.
                 #
-                if not client.client.connected:
-                    continue
+                nil, t, v, tbinfo = asyncore.compact_traceback()
+                self.log.error("Exception handling queued command: "
+                               "%s:%s %s" % (t,v,tbinfo))
 
-                try:
-                    self.log.debug("processing queued command %s for %s" % \
-                                       (str(imap_cmd), str(client)))
-                    client.command(imap_cmd)
-                except Exception, e:
-                    # We catch all exceptions and log them similar to what
-                    # asynchat does when processing a message.
-                    #
-                    nil, t, v, tbinfo = asyncore.compact_traceback()
-                    self.log.error("Exception handling queued command: "
-                                   "%s:%s %s" % (t,v,tbinfo))
+            # If we have been processing queued commands for more than n (5?)
+            # seconds that is enough. Return to let the main loop read more
+            # stuff from clients.
+            #
+            now = time.time()
+            if now - start_time > 5:
+                self.log.debug("process_queued_command: ** Running for %f "
+                               "seconds. Will run more commands later" % \
+                               (now - start_time))
+                return
+
+        now = time.time()
+        self.log.debug("process_queued_command: ** Finished all queued "
+                       "commands. Took %f seconds" % (now - start_time))
+
         return
 
     ##################################################################
@@ -643,8 +707,9 @@ class IMAPUserServer(asyncore.dispatcher):
         pair = self.accept()
         if pair is not None:
             sock,addr = pair
-            self.log.info("Incoming connection from %s" % repr(pair))
+            self.log.info("Incoming connection from %s:%d" % addr)
             self.expiry = None
-            handler = IMAPUserClientHandler(sock, addr[1], self, self.options)
+            handler = IMAPUserClientHandler(sock, addr[0], addr[1], self,
+                                            self.options)
             self.clients[addr[1]] = handler
 

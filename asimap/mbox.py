@@ -25,7 +25,7 @@ from datetime import datetime
 #
 import asimap.utils
 import asimap.search
-from asimap.exceptions import No, Bad
+from asimap.exceptions import No, Bad, MailboxLock
 from asimap.constants import SYSTEM_FLAGS, PERMANENT_FLAGS, SYSTEM_FLAG_MAP
 from asimap.constants import REVERSE_SYSTEM_FLAG_MAP, seq_to_flag, flag_to_seq
 from asimap.parse import REPLACE_FLAGS, ADD_FLAGS, REMOVE_FLAGS
@@ -335,7 +335,12 @@ class Mailbox(object):
             notify = False
 
         try:
-            # self.mailbox.lock()
+            count = 0
+            try:
+                self.mailbox.lock()
+            except mailbox.ExternalClashError:
+                self.log.warn("unable to get mailbox lock")
+                raise MailboxLock(mbox = self)
             # Whenever we resync the mailbox we update the sequence for 'seen'
             # based on 'seen' are all the messages that are NOT in the
             # 'unseen' sequence.
@@ -563,8 +568,8 @@ class Mailbox(object):
                 return
             raise e
         finally:
-            # self.mailbox.unlock()
-            pass
+            self.mailbox.unlock()
+
         # And update the mtime before we leave..
         #
         self.mtime = asimap.mbox.Mailbox.get_actual_mtime(self.server.mailbox,
@@ -1383,15 +1388,20 @@ class Mailbox(object):
 
     ##################################################################
     #
-    def has_queued_commands(self, client):
+    def has_queued_commands(self, client = None):
         """
         Returns True if this client currently has commands in the command
-        queue.
+        queue. Or if there are any queued commands if client is None
 
         Arguments:
-        - `client`: The client we are checking for in the command queue.
+        - `client`: The client we are checking for in the command queue.  If
+                    client is None then we return True if there are any queued
+                    commands.
         """
-        return any(x.client.port == client.client.port for x in self.command_queue)
+        if client:
+            return any(x.client.port == client.client.port for x in self.command_queue)
+        else:
+            return len(self.command_queue) > 0
 
     ##################################################################
     #
@@ -1592,7 +1602,7 @@ class Mailbox(object):
 
     ##################################################################
     #
-    def search(self, search, uid_command = False):
+    def search(self, search, cmd):
         """
         Take the given IMAP search object and apply it to all of the messages
         in the mailbox.
@@ -1602,8 +1612,9 @@ class Mailbox(object):
 
         Arguments:
         - `search`: An IMAPSearch object instance
-        - `uid_command`: True if this is for a UID SEARCH command, which means
-          we have to return not message sequence numbers but message UID's.
+        - `cmd`: The IMAP command. We need this in case this is a continuation
+          command and this contains our continuation state, as well as whether
+          or not this is a UID command.
         """
         # Before we do a search we do a resync to make sure that we have
         # attached uid's to all of our messages and various counts are up to
@@ -1612,7 +1623,7 @@ class Mailbox(object):
         # get any updates though.)
         #
         self.resync(notify = False)
-        if uid_command:
+        if cmd.uid_command:
             self.log.debug("search(): Doing a UID SEARCH")
 
         results = []
@@ -1630,10 +1641,20 @@ class Mailbox(object):
             if uid_vv is None or uid_max is None:
                 self.resync(notify = False)
 
+            # If this is a continuation command than we skip over the number of
+            # messages that we have alread processed.
+            #
+            if cmd.needs_continuation:
+                # In the case of a search cmd.msg_idxs is an integer that
+                # tells us how many messages to skip over.
+                #
+                msgs = msgs[cmd.msg_idxs:]
+
             # Go through the messages one by one and pass them to the search
             # object to see if they are or are not in the result set..
             #
             self.log.debug("Applying search to messages: %s" % str(search))
+            search_started = time.time()
             for idx, msg in enumerate(msgs):
                 # IMAP messages are numbered starting from 1.
                 #
@@ -1643,10 +1664,31 @@ class Mailbox(object):
                 if search.match(ctx):
                     # The UID SEARCH command returns uid's of messages
                     #
-                    if uid_command:
+                    if cmd.uid_command:
                         results.append(ctx.uid)
                     else:
                         results.append(i)
+
+                # If after processing that message we have exceeded how much
+                # time we may spend in a fetch we store how far we have gotten
+                # and set the 'needs_continuation' flag and break out of the
+                # loop. We will be invoked again and we will need to recognize
+                # this and pick up where we left off.
+                #
+                # XXX Going to say... 1.5 seconds.
+                #
+                # now = time.time()
+                # if now - search_started > 1 and cmd.msg_idxs > 0:
+                #     self.log.debug("search: command took too long (%f), %d "
+                #                    "messages left to process. Marking as "
+                #                    "continuation and returning." % \
+                #                        (now, len(cmd.msg_idxs)))
+                #     cmd.needs_continuation = True
+                #     cmd.msg_idxs = i
+                #     break
+                # else:
+                #     cmd.needs_continuation = False
+                
         finally:
             # self.mailbox.unlock()
             pass
@@ -1654,7 +1696,7 @@ class Mailbox(object):
 
     #########################################################################
     #
-    def fetch(self, msg_set, fetch_ops, uid_command = False):
+    def fetch(self, msg_set, fetch_ops, cmd):
         """
         Go through the messages in the mailbox. For the messages that are
         within the indicated message set parse them and pull out the data
@@ -1671,8 +1713,9 @@ class Mailbox(object):
         - `msg_set`: The set of messages we want to
         - `fetch_ops`: The things to fetch for the messags indiated in
           msg_set
-        - `uid_command`: True if this is for a UID SEARCH command, which means
-          we have to return not message sequence numbers but message UID's.
+        - `cmd`: The IMAP command. We need this in case this is a continuation
+          command and this contains our continuation state, as well as whether
+          or not this is a UID command.
         """
         start_time = time.time()
         seq_changed = False
@@ -1696,12 +1739,24 @@ class Mailbox(object):
             uid_vv, uid_max = self.get_uid_from_msg(msgs[-1])
             seq_max = len(self.mailbox)
 
-            if uid_command:
+            # Generate the set of indices in to our folder for this command
+            #
+            if cmd.needs_continuation:
+                # If this command is a continuation then the list of indices
+                # was already generated and we just need to know where in it we
+                # were. Luckly this is stored cmd.msg_idxs.
+                #
+                # NOTE: We make a copy of the message sequence list because
+                #       cmd.msg_idxs is modified as we process through
+                #       them, removing indices that have been processed.
+                #
+                msg_idxs = cmd.msg_idxs[:]
+            elif cmd.uid_command:
                 # If we are doing a 'UID FETCH' command we need to use the max
                 # uid for the sequence max.
                 #
                 uid_list = asimap.utils.sequence_set_to_list(msg_set, uid_max,
-                                                             uid_command)
+                                                             cmd.uid_command)
 
                 # We want to convert this list of UID's in to message indices
                 # So for every uid we we got out of the msg_set we look up its
@@ -1714,13 +1769,13 @@ class Mailbox(object):
                     if uid in self.uids:
                         mi = self.uids.index(uid) + 1
                         msg_idxs.append(mi)
-                        muid_vv, muid = self.get_uid_from_msg(msgs[mi-1])
-                        if muid != uid:
-                            self.log.error("store: at index: %d, msg: %d, "
-                                           "uid: %d, doees not match actual "
-                                           "message uid: %d" % \
-                                               (mi, msgs[mi-1],uid, muid))
-                            self.resync(force = True, optional = False)
+                        # muid_vv, muid = self.get_uid_from_msg(msgs[mi-1])
+                        # if muid != uid:
+                        #     self.log.error("store: at index: %d, msg: %d, "
+                        #                    "uid: %d, doees not match actual "
+                        #                    "message uid: %d" % \
+                        #                        (mi, msgs[mi-1],uid, muid))
+                        #     self.resync(force = True, optional = False)
 
                 # Also, if this is a UID FETCH then we MUST make sure UID is
                 # one of the fields being fetched, and if it is not add it.
@@ -1728,8 +1783,18 @@ class Mailbox(object):
                 if not any([x.attribute == 'uid' for x in fetch_ops]):
                     fetch_ops.insert(0, FetchAtt("uid"))
 
+                # Store the set of mesage indices in the IMAP command in case
+                # this becomes a continuation.
+                #
+                cmd.msg_idxs = msg_idxs[:]
+
             else:
                 msg_idxs = asimap.utils.sequence_set_to_list(msg_set, seq_max)
+
+                # Store the set of mesage indices in the IMAP command in case
+                # this becomes a continuation.
+                #
+                cmd.msg_idxs = msg_idxs[:]
 
             # Get a set of the fetch ops we are going to perform. This is
             # intended to let us optimize the fetch loop.
@@ -1740,6 +1805,7 @@ class Mailbox(object):
             # it building up a set of data to respond to the client with.
             #
             seq_changed = False
+            fetch_started = time.time()
             for idx in msg_idxs:
                 msg_key = msgs[idx-1]
                 ctx = asimap.search.SearchContext(self, msg_key, idx,
@@ -1789,6 +1855,32 @@ class Mailbox(object):
                         self.sequences['Seen'] = [msg_key]
                         seq_changed = True
 
+                # Once we have processed a message, we pop one element off the
+                # front of the imap command's 'message_sequence.' This way this
+                # always remains up to date with respect to what message
+                # indices are still left to be processed.
+                #
+                ign = cmd.msg_idxs.pop(0)
+
+                # If after processing that message we have exceeded how much
+                # time we may spend in a fetch we store how far we have gotten
+                # and set the 'needs_continuation' flag and break out of the
+                # loop. We will be invoked again and we will need to recognize
+                # this and pick up where we left off.
+                #
+                # XXX Going to say... 1.5 seconds.
+                #
+                now = time.time()
+                if now - fetch_started > 1 and len(cmd.msg_idxs) > 0:
+                    self.log.debug("fetch: command took too long (%f), %d "
+                                   "messages left to process. Marking as "
+                                   "continuation and returning." % \
+                                       (now - fetch_started, len(cmd.msg_idxs)))
+                    cmd.needs_continuation = True
+                    break
+                else:
+                    cmd.needs_continuation = False
+
             # Done applying FETCH to all of the indicated messages.
             # If the sequences changed we need to write them back out to disk.
             #
@@ -1804,7 +1896,7 @@ class Mailbox(object):
 
     ##################################################################
     #
-    def store(self, msg_set, action, flags, uid_command = False):
+    def store(self, msg_set, action, flags, cmd):
         """
         Update the flags (sequences) of the messages in msg_set.
 
@@ -1814,12 +1906,14 @@ class Mailbox(object):
         - `msg_set`: The set of messages to modify the flags on
         - `action`: one of REMOVE_FLAGS, ADD_FLAGS, or REPLACE_FLAGS
         - `flags`: The flags to add/remove/replace
-        - `uid_command`: True if this is for a UID SEARCH command, which means
-          we have to return not message sequence numbers but message UID's.
+        - `cmd`: The IMAP command for this store. Used to determine if this is
+          a uid command or not, and if this is a continuation or not (and if it
+          is a continuation what the remaining message sequence is.)  we have
+          to return not message sequence numbers but message UID's.
         """
         ####################################################################
         #
-        def add_flags(flags, msgs, seqs):
+        def add_flags(flags, msgs, seqs, cmd):
             """
             Helpe function to add a flag to a sequence.
 
@@ -1830,6 +1924,7 @@ class Mailbox(object):
             - `flags`: The flags being added
             - `msgs`: The messages it is being added to
             - `seqs`: The dict of sequeneces
+            - `cmd`: The IMAP command (for continuation purposes)
             """
             for flag in flags:
                 if flag not in seqs:
@@ -1860,7 +1955,7 @@ class Mailbox(object):
             return
         ####################################################################
         #
-        def remove_flags(flags, msgs, sequs):
+        def remove_flags(flags, msgs, seqs, cmd):
             """
             Helper function to move a flag from a list of messages.
 
@@ -1871,6 +1966,7 @@ class Mailbox(object):
             - `flags`: The flag being added
             - `msgs`: The messages it is being added to
             - `seqs`: The dict of sequeneces
+            - `cmd`: The IMAP command (for continuation purposes)
             """
             for flag in flags:
                 if flag in seqs:
@@ -1907,8 +2003,8 @@ class Mailbox(object):
         if '\\Recent' in flags:
             raise No("You can not add or remove the '\\Recent' flag")
 
-        if uid_command:
-            self.log.debug("fetch: Doing UID STORE")
+        if cmd.uid_command:
+            self.log.debug("store: Doing UID STORE")
 
         try:
             # self.mailbox.lock()
@@ -1918,13 +2014,25 @@ class Mailbox(object):
             msg_keys = self.mailbox.keys()
             seq_max = len(msg_keys)
 
-            if uid_command:
+            # Generate the set of indices in to our folder for this command
+            #
+            if cmd.needs_continuation:
+                # If this command is a continuation then the list of indices
+                # was already generated and we just need to know where in it we
+                # were. Luckly this is stored cmd.msg_idxs.
+                #
+                # NOTE: We make a copy of the message sequence list because
+                #       cmd.msg_idxs is modified as we process through
+                #       them, removing indices that have been processed.
+                #
+                msg_idxs = cmd.msg_idxs[:]
+            elif cmd.uid_command:
                 # If we are doing a 'UID FETCH' command we need to use the max
                 # uid for the sequence max.
                 #
                 uid_vv, uid_max = self.get_uid_from_msg(msg_keys[-1])
                 uid_list = asimap.utils.sequence_set_to_list(msg_set, uid_max,
-                                                             uid_command)
+                                                             cmd.uid_command)
 
                 # We want to convert this list of UID's in to message indices
                 # So for every uid we we got out of the msg_set we look up its
@@ -1937,12 +2045,34 @@ class Mailbox(object):
                     if uid in self.uids:
                         mi = self.uids.index(uid) + 1
                         msg_idxs.append(mi)
-                        muid_vv, muid = self.get_uid_from_msg(msg_keys[mi-1])
-                        if muid != uid:
-                            self.log.error("store: at index: %d, msg: %d, uid: %d, doees not match actual message uid: %d" % (mi, msg_keys[mi-1],uid, muid))
-                            self.resync(force = True, optional = False)
+                        # muid_vv, muid = self.get_uid_from_msg(msg_keys[mi-1])
+                        # if muid != uid:
+                        #     self.log.error("store: at index: %d, msg: %d, uid: %d, doees not match actual message uid: %d" % (mi, msg_keys[mi-1],uid, muid))
+                        #     self.resync(force = True, optional = False)
+                # Store the set of mesage indices in the IMAP command in case
+                # this becomes a continuation.
+                #
+                cmd.msg_idxs = msg_idxs[:]
             else:
                 msg_idxs = asimap.utils.sequence_set_to_list(msg_set, seq_max)
+                # Store the set of mesage indices in the IMAP command in case
+                # this becomes a continuation.
+                #
+                cmd.msg_idxs = msg_idxs[:]
+
+            # we are going to be primitive here for continuation commands. If
+            # we are doing more than 100 messages we will only do 100 now and
+            # make the rest a continuation.
+            #
+            if len(msg_idxs) > 100:
+                cmd.needs_continuation = True
+                msg_idxs = msg_idxs[:100]
+                cmd.msg_idxs = cmd.msg_idxs[100:]
+                self.log.debug("store: needs continuation. Process now: %d, process later: %d" % (len(msg_idxs), len(cmd.msg_idxs)))
+                if len(cmd.msg_idxs) == 0:
+                    cmd.needs_continuation = False
+            else:
+                cmd.needs_continuation = False
 
             # Build a set of msg keys that are just the messages we want to
             # operate on.
@@ -1953,28 +2083,28 @@ class Mailbox(object):
             #
             flags = [flag_to_seq(x) for x in flags]
             seqs = self.mailbox.get_sequences()
-
+            store_start = time.time()
             # Now for the type of operation involved do the necessasry
             #
             if action == ADD_FLAGS:
                 # For every message add it to every sequence in the list.
                 #
-                add_flags(flags,msgs, seqs)
+                add_flags(flags,msgs, seqs, cmd)
             elif action == REMOVE_FLAGS:
                 # For every message remove it from every seq in flags.
                 #
-                remove_flags(flags, msgs, seqs)
+                remove_flags(flags, msgs, seqs, cmd)
             elif action == REPLACE_FLAGS:
                 seqs_to_remove = set(seqs.keys()) - set(flags)
                 seqs_to_remove.discard('Recent')
 
                 # Add new flags to messages.
                 #
-                add_flags(flags, msgs, seqs)
+                add_flags(flags, msgs, seqs, cmd)
 
                 # Remove computed flags from messages...
                 #
-                remove_flags(seqs_to_remove, msgs, seqs)
+                remove_flags(seqs_to_remove, msgs, seqs, cmd)
             else:
                 raise Bad("'%s' is an invalid STORE option" % action)
 
@@ -1982,6 +2112,8 @@ class Mailbox(object):
             # to .mh_sequences
             #
             self.mailbox.set_sequences(seqs)
+            self.log.debug("store(): Completed, took %f seconds" % \
+                               (time.time() - store_start))
         finally:
             # self.mailbox.unlock()
             pass
@@ -2030,10 +2162,10 @@ class Mailbox(object):
                     if uid in self.uids:
                         mi = self.uids.index(uid) + 1
                         msg_idxs.append(mi)
-                        muid_vv, muid = self.get_uid_from_msg(msgs[mi-1])
-                        if muid != uid:
-                            self.log.error("store: at index: %d, msg: %d, uid: %d, doees not match actual message uid: %d" % (mi, msgs[mi-1],uid, muid))
-                            self.resync(force = True, optional = False)
+                        # muid_vv, muid = self.get_uid_from_msg(msgs[mi-1])
+                        # if muid != uid:
+                        #     self.log.error("store: at index: %d, msg: %d, uid: %d, doees not match actual message uid: %d" % (mi, msgs[mi-1],uid, muid))
+                        #     self.resync(force = True, optional = False)
             else:
                 msg_idxs = asimap.utils.sequence_set_to_list(msg_set, seq_max)
 

@@ -124,7 +124,6 @@ def main():
         #
         timeout = 30
         if server.has_queued_commands():
-            log.debug("server has queued commands. Timeout == 0")
             timeout = 0
             
         asyncore.loop(count = 1, timeout = timeout)

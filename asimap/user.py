@@ -49,8 +49,5 @@ class User(object):
     ##################################################################
     #
     def __str__(self):
-        if self.imap_username != self.local_username:
-            return "imap: %s, local: %s" % (self.imap_username,
-                                            self.local_username)
-        else:
-            return self.imap_username
+        return "IMAP username: '%s', local username: '%s'" % \
+            (self.imap_username, self.local_username)

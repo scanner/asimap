@@ -6,17 +6,39 @@ things I need to do.
   * resync on folders that have not been resync'd in <n> (five?) minutes
   * expire active folders that are around past their expiry
 
-o add continuing and queued work support per mailbox
+* add continuing and queued work support per mailbox
+  XXX Still needs tweaking but it basically works now.
+  o we still need to add proper support for this with 'search'
+  o we need to look at our STORE support and see if it needs any tweaking.
 
-o add 'MailboxInconsistency' exception and handlers at the client.py
+* add 'MailboxInconsistency' exception and handlers at the client.py
   that when they get this have a better idea what to do (things like
   'send a BAD to the client, 'be silent and retry command',
   'disconnect client')
 
+  XXX 1/4 implemented. We have the exception and some commands grok it
+      and restart.
+
+* Handle mailbox.MH and mailbox.MHMessage exceptions like 'malformed
+  sequence' and such.. like MailboxInconsistency.. mostly we just need
+  to retry since the problem wil be fixed by the time we get to it
+  again.. usually it is because we and some MH command were fighting
+  over things liek the .sequences file.
+
+  XXX I think I have this.. but really it needs to be tested and I am
+      not quite happy how I am handling the exception. I almost think
+      I should be handling it at a lower level. Too much repeating
+      myself in code.
+
 o write tool to split huge mailboxes in to mailbox + sub-mailbox by
   year, keeping the last 1,000 messages in the current folder.
 
-o add SSL support
+o add mulitple port (ssl/non-ssl) support
+
+o fix logging so each subprocess output goes to its own logfile (named
+  with local and imap user names) o add SSL support
+
+o fix literal+ support
 
 o add proper unix account authentication support
   o it must support no more than three bad auths in 90 seconds

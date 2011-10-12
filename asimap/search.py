@@ -18,6 +18,7 @@ from datetime import datetime
 #
 import asimap.utils
 import asimap.constants
+from asimap.exceptions import MailboxInconsistency
 
 ############################################################################
 #
@@ -99,6 +100,16 @@ class SearchContext(object):
         #
         if self._uid is None:
             self._uid_vv, self._uid = [int(x) for x in self.msg['x-asimapd-uid'].strip().split('.')]
+        else:
+            # If, after we get the message and if the UID is defined and if the
+            # UID in the message does NOT match the UID we have then raise a
+            # mailboxinconsistency error.
+            #
+            uid_vv,uid = [int(x) for x in self.msg['x-asimapd-uid'].strip().split('.')]
+            if self._uid != uid:
+                raise MailboxInconsistency(mbox_name = self.mailbox.name,
+                                           msg_key = self.msg_key)
+
         return self._msg
 
     ##################################################################

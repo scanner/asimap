@@ -226,7 +226,7 @@ class IMAPClientCommand(object):
         # need to process as a list in 'message_squence'. This way following
         # processing of this command will be able to pick up where it left off.
         #
-        self.message_sequence = None
+        self.msg_idxs = None
         return
 
     ##################################################################
@@ -243,6 +243,21 @@ class IMAPClientCommand(object):
     #######################################################################
     #
     def __str__(self):
+        result = []
+        if self.tag is not None:
+            result.append(self.tag)
+        else:
+            result.append("*")
+        if self.command is not None:
+            result.append(self.command.upper())
+            if self.command == 'fetch':
+                result.append(",".join(self.msg_set))
+                result.extend(str(x) for x in self.fetch_atts)
+        return " ".join(result)
+
+    #######################################################################
+    #
+    def __repr__(self):
         result = "<IMAPClientCommand "
         if self.tag is not None:
             result += "tag: '%s'" % self.tag
