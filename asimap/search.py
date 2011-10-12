@@ -127,7 +127,6 @@ class SearchContext(object):
         try:
             self._uid = self.mailbox.uids[self.msg_number - 1]
         except IndexError:
-            self.log.debug("uid: Reaching in to msg for uid")
             self._uid_vv,self._uid = self.mailbox.get_uid_from_msg(self.msg_key)
         return self._uid
 
@@ -468,8 +467,6 @@ class IMAPSearch(object):
         Messages whose internal date is within or later than the
         specified date.
         """
-        self.log.debug("since: is %s > %s" % (str(self.ctx.internal_date),
-                                              str(self.args["date"])))
         return self.ctx.internal_date > self.args["date"] or \
                    self.ctx.internal_date.date() == self.args["date"].date()
 
