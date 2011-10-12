@@ -251,7 +251,7 @@ class IMAPClientCommand(object):
         if self.command is not None:
             result.append(self.command.upper())
             if self.command == 'fetch':
-                result.append(",".join(self.msg_set))
+                result.append(",".join(str(x) for x in self.msg_set))
                 result.extend(str(x) for x in self.fetch_atts)
         return " ".join(result)
 
