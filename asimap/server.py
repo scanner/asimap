@@ -28,7 +28,7 @@ import subprocess
 import asimap.parse
 import asimap.user_server
 
-from asimap.client import PreAuthenticated
+from asimap.client import PreAuthenticated, CAPABILITIES
 from asimap.auth import AUTH_SYSTEMS
 
 # By default every file is its own logging module. Kind of simplistic
@@ -201,7 +201,7 @@ class IMAPServer(asyncore.dispatcher):
         self.bind((interface, port))
         self.listen(BACKLOG)
         self.log.info("IMAP Server listening on %s:%d" % \
-                          (options.interface,options.port))
+                          (self.interface,self.port))
         return
 
     ##################################################################
@@ -290,7 +290,8 @@ class IMAPClientHandler(asynchat.async_chat):
                     else:
                         raise
 
-        self.push("* OK IMAP4rev1 Service Ready\r\n")
+        self.push("* OK [%s] IMAP4rev1 Service Ready\r\n" % \
+                      ' '.join(CAPABILITIES))
         return
 
     ##################################################################
