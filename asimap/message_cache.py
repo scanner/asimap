@@ -21,6 +21,7 @@ can tell us to clear all the entries for that mailbox.
 
 # system imports
 #
+from __future__ import division
 import logging
 import time
 
@@ -200,7 +201,10 @@ class MessageCache(object):
             self.cur_size -= msg_item[1]
         del self.msgs_by_mailbox[mbox]
         self.log.debug("Clear mbox %s from the message cache, "
-                       "new size: %d" % (mbox, self.cur_size))
+                       "new size: %d (%.1f full, %.1fMib)" % \
+                           (mbox, self.cur_size,
+                            (self.cur_size / self.max_size)*100,
+                            (self.cur_size / 1048576)))
         return
 
     ##################################################################

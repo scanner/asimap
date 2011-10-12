@@ -38,7 +38,8 @@ def setup_option_parser():
 
     parser.set_defaults(port = None, ssl_port = 993,
                         interface = "0.0.0.0", debug = False,
-                        ssl = True, ssl_certificate = None)
+                        ssl = True, ssl_certificate = None,
+                        logdir = "/var/log/asimapd")
 
     parser.add_option("--port", action="store", type="int", dest="port",
                       help = "What port to listen on for NON-SSL connections. "
@@ -50,13 +51,24 @@ def setup_option_parser():
     parser.add_option("--interface", action="store", type="string",
                       dest="interface", help = "The IP address to bind to.")
     parser.add_option("--debug", action="store_true", dest="debug",
-                      help="Emit debugging statements. Do NOT daemonize.")
+                      help="Emit debugging statements. Do NOT daemonize. "
+                      "All logging is sent to stderr, NOT the logdir.")
     parser.add_option("--no_ssl", action="store_false", dest="ssl",
                       help="Turn off SSL for the incoming IMAP4 "
                       "connections.")
     parser.add_option("--ssl_certificate", action="store", type="string",
                       dest="ssl_certificate", help="Path to your SSL "
                       "certificate.")
+    parser.add_option("--logdir", action="store", type="string",
+                      dest="logdir", help="Path to the directory where log "
+                      "files are stored. Since this is a multiprocess server "
+                      "which each sub-process running as a different user "
+                      "we have a log file for the main server and then "
+                      "a separate log file for each sub-process. "
+                      "One sub-process per account. The main logfile "
+                      "will be called 'asimapd.log'. Each sub-process's "
+                      "logfile will be called '<imap user>-<local user>-"
+                      "asimapd.log'.")
     return parser
 
 #############################################################################
@@ -76,7 +88,7 @@ def main():
     if options.debug:
         level = logging.DEBUG
     else:
-        level = logging.WARNING
+        level = logging.INFO
 
     logging.basicConfig(level=level,
                         format="%(asctime)s %(created)s %(process)d "

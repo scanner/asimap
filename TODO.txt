@@ -30,23 +30,29 @@ things I need to do.
       I should be handling it at a lower level. Too much repeating
       myself in code.
 
-o Watching Mail.app if a folder has pending expunges we send back
+* Watching Mail.app if a folder has pending expunges we send back
   No's, but it keeps trying to do fetch's.. I wonder if we should do
   an unceremonious close on a client if it asks for FETCH's like 10
   times in a row while there are pending expunges.
 
-o write tool to split huge mailboxes in to mailbox + sub-mailbox by
-  year, keeping the last 1,000 messages in the current folder.
+  XXX Yet to see if this actually works.
 
-o add mulitple port (ssl/non-ssl) support
+* add mulitple port (ssl/non-ssl) support
+
+  XXX have not tested this yet, but then SSL support is there but does
+      not work properly when Mail.app is talking to us (but 'openssl
+      s_client' works fine)
 
 o fix logging so each subprocess output goes to its own logfile (named
   with local and imap user names) o add SSL support
 
-o fix literal+ support
-
 o add proper unix account authentication support
   o it must support no more than three bad auths in 90 seconds
+
+o write tool to split huge mailboxes in to mailbox + sub-mailbox by
+  year, keeping the last 1,000 messages in the current folder.
+
+o fix literal+ support
 
 o add command/response tracing facility and hook it into the ability
   to run regression tests against a running server.
