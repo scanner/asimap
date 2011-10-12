@@ -435,6 +435,14 @@ class Authenticated(BaseClientHandler):
         self.state = "authenticated"
         self.examine = False # If a mailbox is selected in 'examine' mode
 
+        # How many times has this client done a FETCH when there are pending
+        # expunges? We track this so that when a client gets in a snit about
+        # this instead of sending No's we will just disconnect them. They
+        # should reconnect and when they do they should be able to fix the
+        # state of the mailbox.
+        #
+        self.fetch_while_pending_count = 0
+
         return
 
     ##################################################################
@@ -1123,8 +1131,21 @@ class Authenticated(BaseClientHandler):
             if cmd.uid_command:
                 self.send_pending_expunges()
             else:
-                raise No("There are pending EXPUNGEs.")
-
+                # If a client continues to pound us asking for FETCH's when
+                # there are pending EXPUNGE's give them the finger by forcing
+                # them to disconnect. It is obvious watching Mail.app that it
+                # will not give up when given a No so we punt this connection
+                # of theirs. They should reconnect and learn the error of their
+                # ways.
+                #
+                self.fetch_while_pending_count += 1
+                if self.fetch_while_pending_count > 10:
+                    self.unceremonious_bye("You have pending EXPUNGEs.")
+                    return
+                else:
+                    raise No("There are pending EXPUNGEs.")
+                
+        self.fetch_while_pending_count = 0
         success = False
         count = 0
         while not success:
