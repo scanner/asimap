@@ -567,6 +567,9 @@ class Mailbox(object):
             #
             self.sequences = seq
             self._pack_if_necessary(msgs)
+        except mailbox.FormatError, e:
+            self.log.error("Had problem reading mailbox on disk: %s" % str(e))
+            raise MailboxInconsistency
         except OSError, e:
             # handle cases where a file was missing by logging a message and
             # returning immediately. A retry should make everything better.
@@ -1491,7 +1494,7 @@ class Mailbox(object):
         # We need to resync this mailbox so that we can get the UID of the
         # newly added message. This should be quick.
         #
-        self.mailbox.resync(optional = False)
+        self.resync(optional = False)
         uid_vv, uid = self.get_uid_from_msg(key)
         self.log.debug("append: message: %d, uid: %d, sequences: %s" % \
                            (key, uid, ", ".join(msg.get_sequences())))

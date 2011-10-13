@@ -17,6 +17,26 @@ import mailbox
 import email.utils
 import os
 
+############################################################################
+#
+def setup_option_parser():
+    """
+    This function uses the python OptionParser module to define an option
+    parser for parsing the command line options for this script. This does not
+    actually parse the command line options. It returns the parser object that
+    can be used for parsing them.
+    """
+    parser = optparse.OptionParser(usage = "%prog [options]",
+                                   version = asimap.__version__)
+
+    parser.set_defaults(src_folder = None, dry_run = False)
+    parser.add_option("--folder", action="store", type="string",
+                      dest="src_folder", help = "The MH folder to operate on")
+    parser.add_option("--dry_run", action="store_true", dest="dry_run",
+                      help="Do a dry run - ie: do not create any folders, "
+                      "do not move any messages")
+    return parser
+
 #############################################################################
 #
 def main():

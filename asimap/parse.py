@@ -227,6 +227,15 @@ class IMAPClientCommand(object):
         # processing of this command will be able to pick up where it left off.
         #
         self.msg_idxs = None
+
+        # The 'SEARCH' command does not return its results in a series of
+        # responses but in a single SEARCH response. Thus when doing
+        # continuations we need to collect the results inside the IMAP command
+        # and then when it is done we send it back to our caller. Our caller
+        # knows now to use the search results it gets from the search command
+        # until the imap command comes back 'needs_continuation == False'
+        #
+        self.search_results = []
         return
 
     ##################################################################

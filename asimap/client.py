@@ -864,7 +864,7 @@ class Authenticated(BaseClientHandler):
             # exception and return the appropriate NO result.
             #
             raise No("[TRYCREATE] No such mailbox: '%s'" % cmd.mailbox_name)
-        return "APPENDUID %d %d" % (mbox.uid_vv, uid)
+        return "[APPENDUID %d %d]" % (mbox.uid_vv, uid)
 
     ##################################################################
     #

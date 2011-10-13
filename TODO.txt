@@ -8,7 +8,7 @@ things I need to do.
 
 * add continuing and queued work support per mailbox
   XXX Still needs tweaking but it basically works now.
-  o we still need to add proper support for this with 'search'
+  o we still need to add proper support for this with 'search' !! Definitely!
   o we need to look at our STORE support and see if it needs any tweaking.
 
 * add 'MailboxInconsistency' exception and handlers at the client.py
