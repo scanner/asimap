@@ -13,6 +13,7 @@ import sys
 import logging
 import os.path
 import time
+from itertools import count, groupby
 
 # asimapd imports
 #
@@ -23,7 +24,7 @@ from asimap.exceptions import No, Bad, MailboxInconsistency, MailboxLock
 # Local constants
 #
 #CAPABILITIES = ('IMAP4rev1', 'IDLE', 'NAMESPACE', 'ID', 'LITERAL+', 'UIDPLUS')
-CAPABILITIES = ('IMAP4rev1', 'IDLE', 'ID', 'UNSELECT')
+CAPABILITIES = ('IMAP4rev1', 'IDLE', 'ID', 'UNSELECT', 'UIDPLUS')
 SERVER_ID = { 'name'        : 'asimapd',
               'version'     : '0.2',
               'vendor'      : 'Apricot Systematic',
@@ -856,19 +857,14 @@ class Authenticated(BaseClientHandler):
 
         try:
             mbox = self.server.get_mailbox(cmd.mailbox_name, expiry = 0)
-            # We can only call resync on this mbox if it has an empty
-            # command queue.
-            #
-            if len(mbox.command_queue) == 0:
-                mbox.resync()
-            mbox.append(cmd.message, cmd.flag_list, cmd.date_time)
+            uid = mbox.append(cmd.message, cmd.flag_list, cmd.date_time)
         except asimap.mbox.NoSuchMailbox:
             # For APPEND and COPY if the mailbox does not exist we
             # MUST supply the TRYCREATE flag so we catch the generic
             # exception and return the appropriate NO result.
             #
             raise No("[TRYCREATE] No such mailbox: '%s'" % cmd.mailbox_name)
-        return
+        return "APPENDUID %d %d" % (mbox.uid_vv, uid)
 
     ##################################################################
     #
@@ -1144,7 +1140,7 @@ class Authenticated(BaseClientHandler):
                     return
                 else:
                     raise No("There are pending EXPUNGEs.")
-                
+
         self.fetch_while_pending_count = 0
         success = False
         count = 0
@@ -1284,13 +1280,8 @@ class Authenticated(BaseClientHandler):
 
         try:
             dest_mbox = self.server.get_mailbox(cmd.mailbox_name, expiry = 0)
-            try:
-                # dest_mbox.mailbox.lock()
-                self.mbox.copy(cmd.msg_set, dest_mbox, cmd.uid_command)
-                dest_mbox.resync()
-            finally:
-                # dest_mbox.mailbox.unlock()
-                pass
+            src_uids, dst_uids = self.mbox.copy(cmd.msg_set,
+                                                dest_mbox, cmd.uid_command)
         except asimap.mbox.NoSuchMailbox:
             # For APPEND and COPY if the mailbox does not exist we
             # MUST supply the TRYCREATE flag so we catch the generic
@@ -1307,8 +1298,12 @@ class Authenticated(BaseClientHandler):
             if cmd.needs_continuation:
                 self.mbox.command_queue.append((self, cmd))
                 return False
-                
-        return
 
+        # NOTE: I tip my hat to: http://stackoverflow.com/questions/3429510/pythonic-way-to-convert-a-list-of-integers-into-a-string-of-comma-separated-range/3430231#3430231
+        #
+        src_uids = (list(x) for _,x in groupby(src_uids, lambda x,c=count(): next(c)-x))
+        src_uids = ",".join(":".join(map(str,(g[0],g[-1])[:len(g)])) for g in src_uids)
+        dst_uids = (list(x) for _,x in groupby(dst_uids, lambda x,c=count(): next(c)-x))
+        dst_uids = ",".join(":".join(map(str,(g[0],g[-1])[:len(g)])) for g in dst_uids)
 
-
+        return "[COPYUID %d %s %s]" % (dest_mbox.uid_vv, src_uids, dst_uids)

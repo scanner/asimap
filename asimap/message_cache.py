@@ -201,7 +201,7 @@ class MessageCache(object):
             self.cur_size -= msg_item[1]
         del self.msgs_by_mailbox[mbox]
         self.log.debug("Clear mbox %s from the message cache, "
-                       "new size: %d (%.1f full, %.1fMib)" % \
+                       "new size: %d (%.1f%% full, %.1fMib)" % \
                            (mbox, self.cur_size,
                             (self.cur_size / self.max_size)*100,
                             (self.cur_size / 1048576)))

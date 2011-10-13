@@ -87,7 +87,7 @@ system_flags = ["\\answered", "\\flagged", "\\deleted", "\\seen", "\\draft",
 
 # The list of commands that can be called via 'UID'
 #
-uid_commands = ('copy', 'fetch', 'search', 'store')
+uid_commands = ('copy', 'fetch', 'search', 'store', 'expunge')
 
 _month = { 'jan' : 1, 'feb' : 2, 'mar' : 3, 'apr' : 4, 'may' : 5,
            'jun' : 6, 'jul' : 7, 'aug' : 8, 'sep' : 9, 'oct' : 10,
@@ -660,7 +660,7 @@ class IMAPClientCommand(object):
     #######################################################################
     #
     def _p_uid(self):
-        '''uid ::= "UID" SPACE (copy / fetch / search / store)
+        '''uid ::= "UID" SPACE (copy / fetch / search / store / expunge)
 
         a "UID" command is basically a copy, fetch, search, or store command.
         It is parsed the same way for each of those possibilities. The main
@@ -671,6 +671,8 @@ class IMAPClientCommand(object):
         For "search" not only is the message parsed the same way, but it is
         interpreted the same way. The difference is that the result passed back
         to the client is in UIDs, not message sequence numbers.
+
+        NOTE: 'UID EXPUNGE' is part of UIDPLUS (rfc4315) support
         '''
         self.uid_command = True
         self._p_simple_string(' ')

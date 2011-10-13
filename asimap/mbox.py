@@ -315,11 +315,22 @@ class Mailbox(object):
           this.
         """
 
-        # Get the mtime of the folder at the start so when we need to check to
         # see if we need to do a full scan we have this value before anything
         # we have done in this routine has a chance to modify it.
         #
         self.last_resync = int(time.time())
+
+        # We do NOT resync mailboxes marked '\Noselect'. These mailboxes
+        # essentially do not exist as far as any IMAP client can really tell.
+        #
+        if '\\Noselect' in self.attributes:
+            self.mtime = asimap.mbox.Mailbox.get_actual_mtime(self.server.mailbox,
+                                                              self.name)
+            self.commit_to_db()
+            return
+
+        # Get the mtime of the folder at the start so when we need to check to
+        #
         start_mtime = asimap.mbox.Mailbox.get_actual_mtime(self.server.mailbox,
                                                            self.name)
 
@@ -1399,7 +1410,7 @@ class Mailbox(object):
                     commands.
         """
         if client:
-            return any(x.client.port == client.client.port for x in self.command_queue)
+            return any(x[0].client.port == client.client.port for x in self.command_queue)
         else:
             return len(self.command_queue) > 0
 
@@ -1465,10 +1476,8 @@ class Mailbox(object):
         #
         msg.add_sequence("Recent")
         try:
-            # self.mailbox.lock()
+            self.mailbox.lock()
             key = self.mailbox.add(msg)
-            self.log.debug("append: message: %d, sequences: %s" % \
-                               (key,", ".join(msg.get_sequences())))
 
             # if a date_time was supplied then set the mtime on the file to
             # that. We use mtime as our 'internal date' on messages.
@@ -1477,10 +1486,16 @@ class Mailbox(object):
                 c = time.mktime(date_time.timetuple())
                 os.utime(os.path.join(self.mailbox._path, str(key)),(c,c))
         finally:
-            # self.mailbox.unlock()
-            pass
-        self.resync()
-        return
+            self.mailbox.unlock()
+
+        # We need to resync this mailbox so that we can get the UID of the
+        # newly added message. This should be quick.
+        #
+        self.mailbox.resync(optional = False)
+        uid_vv, uid = self.get_uid_from_msg(key)
+        self.log.debug("append: message: %d, uid: %d, sequences: %s" % \
+                           (key, uid, ", ".join(msg.get_sequences())))
+        return uid
 
     ##################################################################
     #
@@ -1688,7 +1703,7 @@ class Mailbox(object):
                 #     break
                 # else:
                 #     cmd.needs_continuation = False
-                
+
         finally:
             # self.mailbox.unlock()
             pass
@@ -2136,7 +2151,8 @@ class Mailbox(object):
             self.log.debug("copy: Doing UID COPY")
 
         try:
-            # self.mailbox.lock()
+            self.mailbox.lock() # XXX This causes the mtime of the mailbox to
+                                #     change!
 
             # We get the full list of keys instead of using an iterator because
             # we need the max id and max uuid.
@@ -2169,6 +2185,8 @@ class Mailbox(object):
             else:
                 msg_idxs = asimap.utils.sequence_set_to_list(msg_set, seq_max)
 
+            src_uids = []
+            dst_keys = []
             for idx in msg_idxs:
                 key = msgs[idx-1] # NOTE: imap messages start from 1.
 
@@ -2188,11 +2206,16 @@ class Mailbox(object):
                 mtime = os.path.getmtime(p)
 
                 msg = self.get_and_cache_msg(key)
-                # msg = self.mailbox.get_message(key)
+                uid_vv,uid = self.get_uid_from_msg(key)
+                src_uids.append(uid)
                 new_key = dest_mbox.mailbox.add(msg)
+                dst_keys.append(new_key)
 
-                # new_msg = dest_mbox.mailbox.get_message(new_key)
-                new_msg = dest_mbox.get_and_cache_msg(new_key)
+                # NOTE: We do NOT get and cache this new message. It has the
+                #       uid_vv/uid from the source mailbox. It will need to
+                #       re-written by resync() first.
+                #
+                new_msg = dest_mbox.mailbox.get_message(new_key)
                 new_msg.add_sequence('Recent')
                 dest_mbox.mailbox[new_key] = new_msg
 
@@ -2202,9 +2225,19 @@ class Mailbox(object):
                 self.log.debug("copy: Copied message %d(%d) to %d" % \
                                    (idx, key, new_key))
         finally:
-            # self.mailbox.unlock()
-            pass
-        return
+            self.mailbox.unlock()  # XXX This causes the mtime of the mailbox to
+                                   #     change!
+
+        # Now we do a resync on the dest mailbox to assign all the new messages
+        # UID's. Get all of the new UID's for the messages we copied to the dest
+        # mailbox so we can return it for the COPYUID response code.
+        #
+        dest_mbox.resync(optional = False)
+        dst_uids = []
+        for k in dst_keys:
+            uid_vv,uid = dest_mbox.get_uid_from_msg(k)
+            dst_uids.append(uid)
+        return src_uids, dst_uids
 
     ##################################################################
     #
@@ -2603,12 +2636,16 @@ class Mailbox(object):
         results = []
         c = server.db.cursor()
         if lsub:
-            r = c.execute("select name,attributes from mailboxes where name "
-                          "regexp ? and subscribed=1 order by name",
-                          (mbox_match,))
+            subscribed = 'and subscribed=1'
         else:
-            r = c.execute("select name,attributes from mailboxes where name "
-                          "regexp ? order by name", (mbox_match,))
+            subscribed = ''
+
+        # NOTE: We do not present to the IMAP client any folders that
+        #       have the flag 'ignore' set on them.
+        r = c.execute("select name,attributes from mailboxes where name "
+                      "regexp ? %s and attributes not like '%%ignored%%' "
+                      "order by name" % subscribed,
+                      (mbox_match,))
 
         for row in r:
             mbox_name, attributes = row
