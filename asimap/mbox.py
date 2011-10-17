@@ -1652,6 +1652,7 @@ class Mailbox(object):
             # we need the max id and max uuid.
             #
             msgs = self.mailbox.keys()
+            original_len = len(msgs)
             if len(msgs) == 0:
                 return results
             seq_max = len(msgs)
@@ -1693,23 +1694,34 @@ class Mailbox(object):
                 # loop. We will be invoked again and we will need to recognize
                 # this and pick up where we left off.
                 #
-                # XXX Going to say... 1.5 seconds.
+                # XXX Going to say... 1 second.
                 #
-                # now = time.time()
-                # if now - search_started > 1 and cmd.msg_idxs > 0:
-                #     self.log.debug("search: command took too long (%f), %d "
-                #                    "messages left to process. Marking as "
-                #                    "continuation and returning." % \
-                #                        (now, len(cmd.msg_idxs)))
+                now = time.time()
+                # if now - search_started > 1:
                 #     cmd.needs_continuation = True
                 #     cmd.msg_idxs = i
-                #     break
+                #     cmd.search_results.extend(results)
+                #     self.log.debug("search: command took too long (%f), %d "
+                #                    "processed out of %d. %d processed this "
+                #                    "run. Marking as continuation and "
+                #                    "returning." % (now, len(cmd.search_results),
+                #                                    original_len, len(results)))
+                #     return None
                 # else:
                 #     cmd.needs_continuation = False
 
         finally:
             # self.mailbox.unlock()
             pass
+
+        # If our command has a non-empty list of search_results
+        # then it was previously a continued command (and it is now
+        # down..) Extend our results with what we have stashed in
+        # the command.
+        #
+        if len(cmd.search_results) > 0:
+            results.extend(cmd.search_results)
+
         return results
 
     #########################################################################

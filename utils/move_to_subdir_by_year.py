@@ -16,6 +16,8 @@ import sys
 import mailbox
 import email.utils
 import os
+import optparse
+import time
 
 ############################################################################
 #
@@ -27,14 +29,15 @@ def setup_option_parser():
     can be used for parsing them.
     """
     parser = optparse.OptionParser(usage = "%prog [options]",
-                                   version = asimap.__version__)
+                                   version = "1.0")
 
-    parser.set_defaults(src_folder = None, dry_run = False)
-    parser.add_option("--folder", action="store", type="string",
-                      dest="src_folder", help = "The MH folder to operate on")
+    parser.set_defaults(dry_run = False, keep = 1000)
     parser.add_option("--dry_run", action="store_true", dest="dry_run",
                       help="Do a dry run - ie: do not create any folders, "
                       "do not move any messages")
+    parser.add_option("--keep", action="store", dest="keep", type="int"
+                      help-"How many messages to keep in the folder and "
+                      "not move to subfolders")
     return parser
 
 #############################################################################
@@ -43,7 +46,20 @@ def main():
     """
 
     """
-    source_folder = sys.argv[1]
+    parser = setup_option_parser()
+    (options, args) = parser.parse_args()
+    if len(args) != 1:
+        print "need to supply a MH folder to operation on"
+        return
+
+    source_folder = args[0]
+
+    # Trim off any trailing "/" because basename will trim it not how
+    # we want if the path ends in a "/"
+    #
+    if source_folder[-1] == "/":
+        source_folder = source_folder[:-1]
+
     mbox = mailbox.MH(source_folder)
     mbox.lock()
 
@@ -51,8 +67,9 @@ def main():
         msg_array = []
         msgs = mbox.keys()
 
-        if len(msgs) < 1000:
-            print "Less than 1000 messages in folder. Nothing to do."
+        if len(msgs) < options.keep:
+            print "Less than %s messages in folder. Nothing to do." % \
+                options.keep
             return
 
         # Find the dates of all the messages and sort them so we know
@@ -60,15 +77,33 @@ def main():
         #
         for msg_key in msgs:
             msg = mbox[msg_key]
-            if 'delivery-date' in msg:
-                tt = email.utils.parsedate_tz(msg['delivery-date'])
-                date = email.utils.mktime_tz(tt)
-                year = tt[0]
-            elif 'date' in msg:
-                tt = email.utils.parsedate_tz(msg['date'])
-                date = email.utils.mktime_tz(tt)
-                year = tt[0]
-            else:
+
+            tt = None
+            try:
+                if 'delivery-date' in msg:
+                    tt = email.utils.parsedate_tz(msg['delivery-date'])
+                    # print "For message %d, delivery-date: %s, parsed: %s" % \
+                    #     (msg_key, msg['delivery-date'], str(tt))
+                    date = email.utils.mktime_tz(tt)
+                    year = tt[0]
+                    if year < 100:
+                        year += 1900
+            except (ValueError, TypeError):
+                pass
+
+            try:
+                if tt is None and 'date' in msg:
+                    tt = email.utils.parsedate_tz(msg['date'])
+                    # print "For message %d, date: %s, parsed: %s" % \
+                    #     (msg_key, msg['date'], str(tt))
+                    date = email.utils.mktime_tz(tt)
+                    year = tt[0]
+                    if year < 100:
+                        year += 1900
+            except (ValueError, TypeError):
+                pass
+
+            if tt is None:
                 date = os.path.getmtime(os.path.join(source_folder,
                                                      str(msg_key)))
                 tt = time.gmtime(date)
@@ -76,32 +111,40 @@ def main():
 
             msg_array.append((date,year,msg_key))
 
-        msg_array.sort(lambda x,y: x[0] < y[0])
+        msg_array.sort(lambda x,y: x[0] > y[0])
 
-        msg_array = msg_array[-1000:]
+        print "Total number of messages: %d" % len(msg_array)
+        print "Spanning from year %d, to year %d" % (msg_array[0][1],
+                                                     msg_array[-1][1])
+        msg_array = msg_array[:-options.keep]
+        print "Goign to move %d messages" % len(msg_array)
+        print "And these will span from year %d, to year %d" % (msg_array[0][1],
+                                                                msg_array[-1][1])
         subfolder = None
         subfolder_year = None
 
+        print "Doing a dry run! So nothing is actually being done.."
+
+        cur_year = 0
         for date, year, msg_key in msg_array:
             msg = mbox[msg_key]
-            if subfolder is None:
-                subfolder_year = year
-                folder_name = "%s-%04d" % \
+
+            if cur_year != year:
+                cur_year = year
+                folder_name = "%s_%04d" % \
                     (os.path.basename(source_folder), year)
-                print "making folder: %s" % folder_name
-                #subfolder = folder_name
-                subfolder = mailbox.MH(os.path.join(source_folder,folder_name),
-                                       create = True)
-            if subfolder and subfolder_year != year:
-                subfolder_year = year
-                folder_name = "%s-%04d" % \
-                    (os.path.basename(source_folder), year)
-                print "making folder: %s" % folder_name
-                # subfolder = folder_name
-                subfolder = mailbox.MH(os.path.join(source_folder,folder_name),
-                                       create = True)
-            subfolder.add(msg)
-            mbox.remove(msg)
+                folder_path = os.path.join(source_folder, folder_name)
+                print "making folder: %s" % folder_path
+                if not options.dry_run:
+                    subfolder = mailbox.MH(os.path.join(folder_path),
+                                           create = True)
+
+
+            if not options.dry_run:
+                mtime = os.path.getmtime(os.path.join(source_folder,str(msg_key)))
+                subfolder.add(msg)
+                os.utime(os.path.join(folder_path, str(msg_key)),(mtime,mtime))
+                mbox.remove(msg)
 
     finally:
         mbox.unlock()

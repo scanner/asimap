@@ -207,11 +207,24 @@ class FetchAtt(object):
         return "FetchAtt(%s[%s]<%s>)" % (self.attribute, str(self.section),
                                          str(self.partial))
 
+    ##################################################################
+    #
     def __str__(self):
+        return self.dbg(show_peek = False)
+    
+    ##################################################################
+    #
+    def dbg(self, show_peek = False):
+        """
+        Arguments:
+        - `show_peek`: Show if this is a .PEEK or not. This is
+          improtant because a FETCH reply does NOT include the peek
+          information, but we want it for when we dump debug strings.
+        """
         result = self.actual_command
         if result == "BODY":
-            # if self.peek:
-            #     result = "BODY.PEEK"
+            if show_peek and self.peek:
+                result = "BODY.PEEK"
             if self.section is not None:
                 # we need to be careful how we convert HEADER.FIELDS and
                 # HEADER.FIELDS.NOT back in to a string.

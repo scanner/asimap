@@ -640,7 +640,8 @@ class IMAPUserServer(asyncore.dispatcher):
         #
         mboxes = []
         c = self.db.cursor()
-        c.execute("select name, mtime from mailboxes order by name")
+        c.execute("select name, mtime from mailboxes where attributes "
+                  "not like '%%ignored%%' order by name")
         for row in c:
             mboxes.append(row)
         c.close()

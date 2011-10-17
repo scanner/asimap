@@ -72,6 +72,12 @@ REPLACE_FLAGS = 0
 ADD_FLAGS     = 1
 REMOVE_FLAGS  = 2
 
+# For debugging messages.. mapping the flags back to strings.
+#
+flag_to_str = { REPLACE_FLAGS : 'FLAGS',
+                ADD_FLAGS     : '+FLAGS',
+                REMOVE_FLAGS  : '-FLAGS'}
+
 # Attributes of a fetch command. Note that the order is important. We need to
 # match the longest strings with the common prefix first to insure that we
 # fully match the proper keyword (ie: if we look for 'rfc822' first we will
@@ -258,10 +264,36 @@ class IMAPClientCommand(object):
         else:
             result.append("*")
         if self.command is not None:
+            if self.uid_command:
+                result.append("UID")
             result.append(self.command.upper())
             if self.command == 'fetch':
-                result.append(",".join(str(x) for x in self.msg_set))
-                result.extend(str(x) for x in self.fetch_atts)
+                result.append(",".join(map(str, self.msg_set)))
+                result.append("(%s)" % " ".join(x.dbg(show_peek = True) for x in self.fetch_atts))
+            elif self.command == 'status':
+                result.append(self.mailbox_name)
+                result.append("(%s)" % " ".join(self.status_att_list))
+            elif self.command in ('create', 'select', 'create', 'delete',
+                                  'examine', 'subscribe', 'unsubscribe',
+                                  'append'):
+                result.append(self.mailbox_name)
+            elif self.command in ('list', 'lsub'):
+                result.append('"%s"' % self.mailbox_name)
+                result.append('"%s"' % self.list_mailbox)
+            elif self.command == 'search':
+                result.append(str(self.search_key))
+            elif self.command == "store":
+                result.append(",".join(map(str, self.msg_set)))
+                if self.silent:
+                    result.append("%s.SILENT" % flag_to_str[self.store_action])
+                else:
+                    result.append(flag_to_str[self.store_action])
+                result.append("(%s)" % ",".join(self.flag_list))
+            elif self.command == 'login':
+                result.append(self.user_name)
+            elif self.command == "id":
+                result.append("(%s)" % ", ".join("%s:%s" % (x,y) for x,y in self.id_dict.iteritems()))
+
         return " ".join(result)
 
     #######################################################################
@@ -303,7 +335,7 @@ class IMAPClientCommand(object):
         tag SPACE command command_arguments* CRLF
         """
 
-        self.log.debug("Parsing IMAP message: '%s'" % self.input)
+        # self.log.debug("Parsing IMAP message: '%s'" % self.input)
 
         # We must always begin with a tag. Pull it off. If this fails it will
         # raise an exception that is caught by our caller.
