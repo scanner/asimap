@@ -2032,10 +2032,6 @@ class Mailbox(object):
         #
         if '\\Recent' in flags:
             raise No("You can not add or remove the '\\Recent' flag")
-
-        if cmd.uid_command:
-            self.log.debug("store: Doing UID STORE")
-
         try:
             # self.mailbox.lock()
 
@@ -2162,9 +2158,6 @@ class Mailbox(object):
         - `uid_command`: True if this is for a UID SEARCH command, which means
           we have to return not message sequence numbers but message UID's.
         """
-        if uid_command:
-            self.log.debug("copy: Doing UID COPY")
-
         try:
             self.mailbox.lock() # XXX This causes the mtime of the mailbox to
                                 #     change!
