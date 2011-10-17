@@ -18,6 +18,7 @@ import email.utils
 import os
 import optparse
 import time
+from datetime import datetime
 
 ############################################################################
 #
@@ -35,8 +36,8 @@ def setup_option_parser():
     parser.add_option("--dry_run", action="store_true", dest="dry_run",
                       help="Do a dry run - ie: do not create any folders, "
                       "do not move any messages")
-    parser.add_option("--keep", action="store", dest="keep", type="int"
-                      help-"How many messages to keep in the folder and "
+    parser.add_option("--keep", action="store", dest="keep", type="int",
+                      help="How many messages to keep in the folder and "
                       "not move to subfolders")
     return parser
 
@@ -82,40 +83,29 @@ def main():
             try:
                 if 'delivery-date' in msg:
                     tt = email.utils.parsedate_tz(msg['delivery-date'])
-                    # print "For message %d, delivery-date: %s, parsed: %s" % \
-                    #     (msg_key, msg['delivery-date'], str(tt))
                     date = email.utils.mktime_tz(tt)
-                    year = tt[0]
-                    if year < 100:
-                        year += 1900
             except (ValueError, TypeError):
                 pass
 
             try:
                 if tt is None and 'date' in msg:
                     tt = email.utils.parsedate_tz(msg['date'])
-                    # print "For message %d, date: %s, parsed: %s" % \
-                    #     (msg_key, msg['date'], str(tt))
                     date = email.utils.mktime_tz(tt)
-                    year = tt[0]
-                    if year < 100:
-                        year += 1900
             except (ValueError, TypeError):
                 pass
 
             if tt is None:
                 date = os.path.getmtime(os.path.join(source_folder,
                                                      str(msg_key)))
-                tt = time.gmtime(date)
-                year = tt[0]
 
-            msg_array.append((date,year,msg_key))
+            msg_array.append((date,msg_key))
 
-        msg_array.sort(lambda x,y: x[0] > y[0])
+        msg_array.sort(key = lambda x: x[0])
 
         print "Total number of messages: %d" % len(msg_array)
-        print "Spanning from year %d, to year %d" % (msg_array[0][1],
-                                                     msg_array[-1][1])
+        print "Spanning from %s, to %s" % \
+              (time.ctime(msg_array[0][0]), time.ctime(msg_array[-1][0]))
+
         msg_array = msg_array[:-options.keep]
         print "Goign to move %d messages" % len(msg_array)
         print "And these will span from year %d, to year %d" % (msg_array[0][1],
@@ -123,11 +113,14 @@ def main():
         subfolder = None
         subfolder_year = None
 
-        print "Doing a dry run! So nothing is actually being done.."
+        if options.dry_run:
+            print "Doing a dry run! So nothing is actually being done.."
 
         cur_year = 0
-        for date, year, msg_key in msg_array:
+        for date, msg_key in msg_array:
             msg = mbox[msg_key]
+            tt = time.gmtime(date)
+            year = tt.tm_year
 
             if cur_year != year:
                 cur_year = year
@@ -144,7 +137,9 @@ def main():
                 mtime = os.path.getmtime(os.path.join(source_folder,str(msg_key)))
                 subfolder.add(msg)
                 os.utime(os.path.join(folder_path, str(msg_key)),(mtime,mtime))
-                mbox.remove(msg)
+                mbox.unlock()
+                mbox.remove(msg_key)
+                mbox.lock()
 
     finally:
         mbox.unlock()
