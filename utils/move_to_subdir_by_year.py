@@ -108,8 +108,7 @@ def main():
 
         msg_array = msg_array[:-options.keep]
         print "Goign to move %d messages" % len(msg_array)
-        print "And these will span from year %d, to year %d" % (msg_array[0][1],
-                                                                msg_array[-1][1])
+
         subfolder = None
         subfolder_year = None
 
@@ -135,8 +134,9 @@ def main():
 
             if not options.dry_run:
                 mtime = os.path.getmtime(os.path.join(source_folder,str(msg_key)))
-                subfolder.add(msg)
-                os.utime(os.path.join(folder_path, str(msg_key)),(mtime,mtime))
+                new_msg_key = subfolder.add(msg)
+                os.utime(os.path.join(folder_path, str(new_msg_key)),
+                         (mtime,mtime))
                 mbox.unlock()
                 mbox.remove(msg_key)
                 mbox.lock()
