@@ -85,14 +85,18 @@ def main():
                     tt = email.utils.parsedate_tz(msg['delivery-date'])
                     date = email.utils.mktime_tz(tt)
             except (ValueError, TypeError):
-                pass
+                print "Yow. Message %d's 'delivery-date'(%s) resulted in "
+                "a: %s" % (msg_key, msg['delivery-date'], str(e))
+                tt = None
 
             try:
                 if tt is None and 'date' in msg:
                     tt = email.utils.parsedate_tz(msg['date'])
                     date = email.utils.mktime_tz(tt)
-            except (ValueError, TypeError):
-                pass
+            except (ValueError, TypeError), e:
+                print "Yow. Message %d's 'date'(%s) resulted in a: %s" % \
+                    (msg_key, msg['date'], str(e))
+                tt = None
             except OverflowError, e:
                 print "Yow. Message %d's 'date'(%s) resulted in a: %s" % \
                     (msg_key, msg['date'], str(e))
