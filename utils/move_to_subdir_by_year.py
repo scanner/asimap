@@ -93,6 +93,10 @@ def main():
                     date = email.utils.mktime_tz(tt)
             except (ValueError, TypeError):
                 pass
+            except OverflowError, e:
+                print "Yow. Message %d's 'date'(%s) resulted in a: %s" % \
+                    (msg_key, msg['date'], str(e))
+                tt = None
 
             if tt is None:
                 date = os.path.getmtime(os.path.join(source_folder,
