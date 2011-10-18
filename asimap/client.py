@@ -61,6 +61,7 @@ class BaseClientHandler(object):
         self.client = client
         self.state = None
         self.name = "BaseClientHandler"
+        self.mbox = None
 
         # Idling is like a sub-state. When we are idling we expect a 'DONE'
         # completion from the IMAP client before it sends us any other
@@ -94,6 +95,8 @@ class BaseClientHandler(object):
         Arguments:
         - `imap_command`: An instance parse.IMAPClientCommand
         """
+        self.debug_log_cmd(imap_command)
+        
         # Since the imap command was properly parsed we know it is a valid
         # command. If it is one we support there will be a method
         # on this object of the format "do_%s" that will actually do the
@@ -169,6 +172,24 @@ class BaseClientHandler(object):
 
     ##################################################################
     #
+    def debug_log_cmd(self, cmd):
+        """
+        More DRY.. we were basically calling this on every IMAP command
+        so instead going to put it into the base class.
+
+        Arguments:
+        - `cmd`: The IMAP command we are executing
+        """
+        if self.mbox:
+            self.log.debug("state: %s, mbox: %s, cmd: %s" % (self.state,
+                                                             self.mbox.name,
+                                                             str(cmd)))
+        else:
+            self.log.debug("state: %s, cmd: %s" % (self.state, str(cmd)))
+        return
+    
+    ##################################################################
+    #
     def send_pending_expunges(self):
         """
         Deal with pending expunges that have built up for this client.  This
@@ -215,11 +236,6 @@ class BaseClientHandler(object):
         Arguments:
         - `cmd`: This is ignored.
         """
-        if self.mbox:
-            mbox_name = self.mbox.name
-        else:
-            mbox_name = "NO SELECTED MAILBOX"
-        self.log.debug("mbox: %s, DONE idling" % mbox_name)
         self.idling = False
         self.send_pending_expunges()
         self.client.push("%s OK IDLE terminated\r\n" % self.tag)
@@ -234,7 +250,6 @@ class BaseClientHandler(object):
         Arguments:
         - `cmd`: The full IMAP command object.
         """
-        self.log.debug("cmd: %s" % cmd)
         self.send_pending_expunges()
         self.client.push("* CAPABILITY %s\r\n" % ' '.join(CAPABILITIES))
         return None
@@ -249,7 +264,6 @@ class BaseClientHandler(object):
         Arguments:
         - `cmd`: The full IMAP command object.
         """
-        self.log.debug("cmd: %s" % cmd)
         self.send_pending_expunges()
         self.client.push('* NAMESPACE (("" "/")) NIL NIL\r\n')
         return None
@@ -263,7 +277,6 @@ class BaseClientHandler(object):
         Arguments:
         - `cmd`: The full IMAP command object.
         """
-        self.log.debug("cmd: %s" % cmd)
         self.send_pending_expunges()
         self.client_id = cmd.id_dict
         self.log.info("Client at %s:%d identified itself with: %s" % \
@@ -287,11 +300,6 @@ class BaseClientHandler(object):
         Arguments:
         - `cmd`: The full IMAP command object.
         """
-        if self.mbox:
-            mbox_name = self.mbox.name
-        else:
-            mbox_name = "NO SELECTED MAILBOX"
-        self.log.debug("mbox: %s, cmd: %s" % (self.mbox.name, str(cmd)))
         # Because this is a blocking command the main server read-loop
         # for this connection is not going to hit the read() again
         # until this thread exits. In here we send a "+\r\n" to the client
@@ -315,7 +323,6 @@ class BaseClientHandler(object):
         Arguments:
         - `cmd`: The full IMAP command object.
         """
-        self.log.debug("cmd: %s" % cmd)
         self.pending_expunges = []
         self.client.push("* BYE Logging out of asimap server. Good bye.\r\n")
         self.state = "logged_out"
@@ -368,7 +375,6 @@ class PreAuthenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The full IMAP command object.
         """
-        self.log.debug("cmd: %s" % cmd)
         self.send_pending_expunges()
         if self.state == "authenticated":
             raise Bad("client already is in the authenticated state")
@@ -384,8 +390,6 @@ class PreAuthenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The full IMAP command object.
         """
-        self.log.debug("cmd: %s" % cmd)
-
         # XXX This should poke the authentication mechanism we were passed
         #     to see if the user authenticated properly, and if they did
         #     determine what the path to the user's mailspool is.
@@ -493,14 +497,13 @@ class Authenticated(BaseClientHandler):
         # mailbox has a non-zero command_queue then we push this command on to
         # the end of the queue and return.
         #
-        if imap_cmd.needs_continuation:
-            return True
-        if self.mbox is None:
-            return True
-        if len(self.mbox.command_queue) == 0:
+        if imap_cmd.needs_continuation or self.mbox is None or \
+               len(self.mbox.command_queue) == 0:
             return True
         if queue:
             self.mbox.command_queue.append((self, imap_cmd))
+            self.log.debug("mbox has queued commands. Pushing command on to "
+                           "queue.")
         return False
 
     ##################################################################
@@ -527,8 +530,6 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The full IMAP command object.
         """
-        self.log.debug("cmd: %s" % cmd)
-
         # If we have a mailbox and we have commands in the command queue of
         # that mailbox then we can not do the notifies or expunges.
         #
@@ -552,7 +553,6 @@ class Authenticated(BaseClientHandler):
             self.notifies()
         except MailboxLock:
             pass
-        self.log.debug("cmd: %s" % cmd)
         raise Bad("client already is in the authenticated state")
 
     ##################################################################
@@ -565,8 +565,6 @@ class Authenticated(BaseClientHandler):
         - `cmd`: The IMAP command we are executing
         - `examine`: Opens the folder in read only mode if True
         """
-        self.log.debug("cmd: %s" % cmd)
-
         # NOTE: If this client currently has messages being processed in the
         # command queue for this mailbox then they are all tossed when they
         # pre-emptively select another mailbox (this could cause the client
@@ -605,12 +603,6 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        if self.mbox:
-            mbox_name = self.mbox.name
-        else:
-            mbox_name = "NO SELECTED MAILBOX"
-        self.log.debug("mbox: %s, cmd: %s" % (self.mbox.name, str(cmd)))
-
         # NOTE: If this client currently has messages being processed in the
         # command queue for this mailbox then they are all tossed when they
         # pre-emptively select another mailbox (this could cause the client
@@ -647,7 +639,6 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        self.log.debug("cmd: %s" % cmd)
         # You can create a mailbox while you have commands in the command
         # queue, but no notifies are sent in that case.
         #
@@ -668,7 +659,6 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        self.log.debug("cmd: %s" % cmd)
         # You can delete a mailbox while you have commands in the command
         # queue, but no notifies are sent in that case.
         #
@@ -698,8 +688,6 @@ class Authenticated(BaseClientHandler):
             except MailboxLock:
                 pass
 
-        self.log.debug("cmd: %s" % cmd)
-
         try:
             asimap.mbox.Mailbox.rename(cmd.mailbox_src_name,
                                        cmd.mailbox_dst_name,
@@ -720,7 +708,6 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        self.log.debug("cmd: %s" % cmd)
         # You can subscribe while you have commands in the command
         # queue, but no notifies are sent in that case.
         #
@@ -729,7 +716,6 @@ class Authenticated(BaseClientHandler):
                 self.notifies()
             except MailboxLock:
                 pass
-
 
         mbox = self.server.get_mailbox(cmd.mailbox_name)
         mbox.subscribed = True
@@ -748,7 +734,6 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        self.log.debug("cmd: %s" % cmd)
         # You can unsubscribe while you have commands in the command
         # queue, but no notifies are sent in that case.
         #
@@ -778,7 +763,6 @@ class Authenticated(BaseClientHandler):
         - `lsub`: If True this will only match folders that have their
           subscribed bit set.
         """
-        self.log.debug("cmd: %s" % cmd)
         # You can list while you have commands in the command
         # queue, but no notifies are sent in that case.
         #
@@ -832,7 +816,6 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        self.log.debug("cmd: %s" % cmd)
         # You can lsub while you have commands in the command
         # queue, but no notifies are sent in that case.
         #
@@ -881,7 +864,6 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        self.log.debug("cmd: %s" % cmd)
         # You can append while you have commands in the command
         # queue, but no notifies are sent in that case.
         #
@@ -918,12 +900,6 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        if self.mbox:
-            mbox_name = self.mbox.name
-        else:
-            mbox_name = "NO SELECTED MAILBOX"
-        self.log.debug("mbox: %s, cmd: %s" % (self.mbox.name, str(cmd)))
-
         if self.state != "selected":
             raise No("Client must be in the selected state")
 
@@ -965,13 +941,6 @@ class Authenticated(BaseClientHandler):
         """
         if self.state != "selected":
             raise No("Client must be in the selected state")
-
-
-        if self.mbox:
-            mbox_name = self.mbox.name
-        else:
-            mbox_name = "NO SELECTED MAILBOX"
-        self.log.debug("mbox: %s, cmd: %s" % (self.mbox.name, str(cmd)))
         
         # We allow for the mailbox to be deleted.. it has no effect on this
         # operation.
@@ -1013,12 +982,6 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        if self.mbox:
-            mbox_name = self.mbox.name
-        else:
-            mbox_name = "NO SELECTED MAILBOX"
-        self.log.debug("mbox: %s, cmd: %s" % (self.mbox.name, str(cmd)))
-
         # If there are commands pending in the queue this gets put on the queue
         # waiting for those to be finished before processing.
         #
@@ -1057,12 +1020,6 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        if self.mbox:
-            mbox_name = self.mbox.name
-        else:
-            mbox_name = "NO SELECTED MAILBOX"
-        self.log.debug("mbox: %s, cmd: %s" % (self.mbox.name, str(cmd)))
-
         if self.state != "selected":
             raise No("Client must be in the selected state")
 
@@ -1167,12 +1124,6 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        if self.mbox:
-            mbox_name = self.mbox.name
-        else:
-            mbox_name = "NO SELECTED MAILBOX"
-        self.log.debug("mbox: %s, cmd: %s" % (self.mbox.name, str(cmd)))
-
         if self.state != "selected":
             raise No("Client must be in the selected state")
 
@@ -1263,12 +1214,6 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        if self.mbox:
-            mbox_name = self.mbox.name
-        else:
-            mbox_name = "NO SELECTED MAILBOX"
-        self.log.debug("mbox: %s, cmd: %s" % (self.mbox.name, str(cmd)))
-
         if self.state != "selected":
             raise No("Client must be in the selected state")
 
@@ -1379,9 +1324,13 @@ class Authenticated(BaseClientHandler):
 
         # NOTE: I tip my hat to: http://stackoverflow.com/questions/3429510/pythonic-way-to-convert-a-list-of-integers-into-a-string-of-comma-separated-range/3430231#3430231
         #
-        src_uids = (list(x) for _,x in groupby(src_uids, lambda x,c=count(): next(c)-x))
-        src_uids = ",".join(":".join(map(str,(g[0],g[-1])[:len(g)])) for g in src_uids)
-        dst_uids = (list(x) for _,x in groupby(dst_uids, lambda x,c=count(): next(c)-x))
-        dst_uids = ",".join(":".join(map(str,(g[0],g[-1])[:len(g)])) for g in dst_uids)
+        try:
+            src_uids = (list(x) for _,x in groupby(src_uids, lambda x,c=count(): next(c)-x))
+            src_uids = ",".join(":".join(map(str,(g[0],g[-1])[:len(g)])) for g in src_uids)
+            dst_uids = (list(x) for _,x in groupby(dst_uids, lambda x,c=count(): next(c)-x))
+            dst_uids = ",".join(":".join(map(str,(g[0],g[-1])[:len(g)])) for g in dst_uids)
+        except Exception, e:
+            self.log.error("do_copy: Unable to generate src and dst uid lists. Exception: %s, src_uids: %s, dst_uids: %s" % (str(e), str(src_uids), str(dst_uids)))
+            raise e
 
         return "[COPYUID %d %s %s]" % (dest_mbox.uid_vv, src_uids, dst_uids)

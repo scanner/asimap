@@ -90,7 +90,8 @@ def sequence_set_to_list(seq_set, seq_max, uid_cmd = False):
             if (start == 0 or end == 0 or start > seq_max or end > seq_max) \
                     and not uid_cmd:
                 raise Bad("Message sequence '%s' is greater than the size of "
-                          "the mailbox" % str(elt))
+                          "the mailbox, start: %d, end: %d, seq_max: %d" % \
+                              (str(elt), start, end, seq_max))
             if start > end:
                 result.extend(range(end, start + 1))
             else:

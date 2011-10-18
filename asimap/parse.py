@@ -291,8 +291,8 @@ class IMAPClientCommand(object):
                 result.append("(%s)" % ",".join(self.flag_list))
             elif self.command == 'login':
                 result.append(self.user_name)
-            elif self.command == "id":
-                result.append("(%s)" % ", ".join("%s:%s" % (x,y) for x,y in self.id_dict.iteritems()))
+            elif self.command == 'id':
+                result.append("(%s)" % ", ".join("%s:'%s'" % (x,y) for x,y in self.id_dict.iteritems()))
 
         return " ".join(result)
 

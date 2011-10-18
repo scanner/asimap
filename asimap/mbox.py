@@ -2408,7 +2408,7 @@ class Mailbox(object):
             # from the db no imap client will confuse it with the existing
             # mailbox.
             #
-            if len(inferior_mailboxes) > 0 or mailbox.subcribed:
+            if len(inferior_mailboxes) > 0 or mailbox.subscribed:
                 mailbox.attributes.add("\\Noselect")
                 mailbox.uid_vv = server.get_next_uid_vv()
                 mailbox.commit_to_db()
