@@ -1100,8 +1100,9 @@ class Authenticated(BaseClientHandler):
         force = False
         optional = True
         if count > 1:
-            # force = True
             optional = False
+        if count > 4:
+            force = True
 
         self.mbox.resync(notify = cmd.uid_command, force = force,
                          optional = optional)
