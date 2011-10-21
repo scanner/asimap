@@ -83,8 +83,11 @@ class TestAuth(object):
     #########################################################################
     #
     def authenticate(self, username, password):
+        homedir = os.path.expanduser("~")
+        maildir = os.path.join(homedir, "Mail")
+        
         if username == "test" and password == "test":
-            return User("test", "nobody", "/var/tmp/testmaildir")
+            return User("test", os.getlogin(), maildir)
         raise NoSuchUser("There is no user '%s'." % username)
 
 AUTH_SYSTEMS = { "test_auth" : TestAuth() }
