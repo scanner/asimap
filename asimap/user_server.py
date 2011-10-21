@@ -34,6 +34,7 @@ import asimap.message_cache
 
 from asimap.client import Authenticated
 from asimap.db import Database
+from asimap.exceptions import MailboxLock, MailboxInconsistency
 
 # By default every file is its own logging module. Kind of simplistic
 # but it works for now.
@@ -547,8 +548,16 @@ class IMAPUserServer(asyncore.dispatcher):
         """
         for name,mbox in self.active_mailboxes.iteritems():
             if any(x.idling for x in mbox.clients.itervalues()):
-                self.log.debug("check_all_active: checking '%s'" % name)
-                mbox.resync()
+                try:
+                    self.log.debug("check_all_active: checking '%s'" % name)
+                    mbox.resync()
+                except (MailboxLock, MailboxInconsistency), e:
+                    # If hit one of these exceptions they are usually
+                    # transient.  we will skip it. The command processor in
+                    # client.py knows how to handle these better.
+                    #
+                    self.log.warn("check-all-active: skipping '%s' due to: %s" \
+                                      (name, str(e)))
         return
 
     ##################################################################
