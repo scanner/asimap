@@ -25,7 +25,7 @@ from datetime import datetime
 #
 import asimap.utils
 import asimap.search
-from asimap.exceptions import No, Bad, MailboxLock
+from asimap.exceptions import No, Bad, MailboxLock, MailboxInconsistency
 from asimap.constants import SYSTEM_FLAGS, PERMANENT_FLAGS, SYSTEM_FLAG_MAP
 from asimap.constants import REVERSE_SYSTEM_FLAG_MAP, seq_to_flag, flag_to_seq
 from asimap.parse import REPLACE_FLAGS, ADD_FLAGS, REMOVE_FLAGS
