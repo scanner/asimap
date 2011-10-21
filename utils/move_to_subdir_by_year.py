@@ -64,6 +64,7 @@ def main():
     mbox = mailbox.MH(source_folder)
     mbox.lock()
 
+    print "Collecting timestamps for all messages.."
     try:
         msg_array = []
         msgs = mbox.keys()
@@ -76,7 +77,11 @@ def main():
         # Find the dates of all the messages and sort them so we know
         # which ones to move in to which sub-folders.
         #
-        for msg_key in msgs:
+        for i,msg_key in enumerate(msgs):
+
+            if i % 200 == 0:
+                print "%d out of %d" % (i, len(msgs) - i)
+
             msg = mbox[msg_key]
 
             tt = None
