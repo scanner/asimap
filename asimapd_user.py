@@ -29,6 +29,7 @@ import os
 import sys
 import optparse
 import logging
+import logging.handlers
 import asyncore
 import time
 
@@ -49,9 +50,20 @@ def setup_option_parser():
     parser = optparse.OptionParser(usage = "%prog [options]",
                                    version = asimap.__version__)
 
-    parser.set_defaults(debug = False)
+    parser.set_defaults(debug = False,
+                        logdir = "/var/log/asimapd")
     parser.add_option("--debug", action="store_true", dest="debug",
                       help="Emit debugging statements.")
+    parser.add_option("--logdir", action="store", type="string",
+                      dest="logdir", help="Path to the directory where log "
+                      "files are stored. Since this is a multiprocess server "
+                      "which each sub-process running as a different user "
+                      "we have a log file for the main server and then "
+                      "a separate log file for each sub-process. "
+                      "One sub-process per account. The main logfile "
+                      "will be called 'asimapd.log'. Each sub-process's "
+                      "logfile will be called '<imap user>-<local user>-"
+                      "asimapd.log'.")
     return parser
 
 #############################################################################
@@ -77,13 +89,29 @@ def main():
     if options.debug:
         level = logging.DEBUG
     else:
-        level = logging.WARNING
+        level = logging.INFO
 
-    logging.basicConfig(level=level,
-                        format="%(asctime)s %(created)s %(process)d "
-                        "%(levelname)s %(name)s %(message)s")
-    log = logging.getLogger("asimap_user")
+    log = logging.getLogger("asimap")
 
+    if options.logdir == "stderr":
+        # Do not log to a file, log to stderr.
+        #
+        h = logging.StreamHandler()
+    else:
+        # Rotate on every 10mb, keep 5 files.
+        #
+        log_file_basename = os.path.join(options.logdir,
+                                         "%s-asimapd.log" % os.getlogin())
+        h = logging.handlers.RotatingFileHandler(log_file_basename,
+                                                 maxBytes = 10485760,
+                                                 backupCount = 5)
+    # h.setLevel(level)
+    h.setLevel(logging.DEBUG)
+    formatter = logging.Formatter("%(asctime)s %(created)s %(process)d "
+                                   "%(levelname)s %(name)s %(message)s")
+    h.setFormatter(formatter)
+    log.addHandler(h)
+    
     server = asimap.user_server.IMAPUserServer(options, os.getcwd())
 
     # Print on stdout the port we are listening on so that the asimapd server

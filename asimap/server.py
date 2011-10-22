@@ -75,7 +75,7 @@ class IMAPSubprocessHandle(object):
 
     ##################################################################
     #
-    def __init__(self, user):
+    def __init__(self, user, options):
         """
 
         Arguments:
@@ -85,6 +85,7 @@ class IMAPSubprocessHandle(object):
                   user to switch to for handling that user's mailbox.
         """
         self.log = logging.getLogger("%s.IMAPSubprocessHandle" % __name__)
+        self.options = options
         self.user = user
         self.port = None
         self.subprocess = None
@@ -97,7 +98,11 @@ class IMAPSubprocessHandle(object):
         Start our subprocess. This assumes that we have no subprocess
         already. If we do then we will be basically creating an orphan process.
         """
-        cmd = shlex.split("%s --debug" % asimap.user_server.USER_SERVER_PROGRAM)
+        cmd = [asimap.user_server.USER_SERVER_PROGRAM]
+        cmd.append("--logdir=%s" % self.options.logdir)
+        if self.options.debug:
+            cmd.append("--debug")
+            
         self.log.debug("Starting user server, cmd: %s, as user: '%s', in "
                        "directory '%s'" % (repr(cmd),self.user.local_username,
                                            self.user.maildir))
@@ -180,7 +185,7 @@ class IMAPServer(asyncore.dispatcher):
 
     ##################################################################
     #
-    def __init__(self, interface, port, ssl_cert = None):
+    def __init__(self, interface, port, options, ssl_cert = None):
         """
         Setup our dispatcher.. listen on the port we are supposed to accept
         connections on. When something connects to it create an
@@ -193,6 +198,7 @@ class IMAPServer(asyncore.dispatcher):
 
         asyncore.dispatcher.__init__(self)
 
+        self.options = options
         self.interface = interface
         self.port = port
         self.ssl_cert = ssl_cert
@@ -217,7 +223,8 @@ class IMAPServer(asyncore.dispatcher):
             sock,addr = pair
             self.log.info("Incoming connection from %s:%s" % addr)
             try:
-                handler = IMAPClientHandler(sock, addr, self.ssl_cert)
+                handler = IMAPClientHandler(sock, addr, self.options,
+                                            self.ssl_cert)
             except ssl.SSLError, e:
                 self.log.error("Error accepting connection from %s: %s" % \
                                    (addr, str(e)))
@@ -250,9 +257,10 @@ class IMAPClientHandler(asynchat.async_chat):
 
     ##################################################################
     #
-    def __init__(self, sock, addr, ssl_cert = None):
+    def __init__(self, sock, addr, options, ssl_cert = None):
         """
         """
+        self.options = options
         self.log = logging.getLogger("%s.IMAPClientHandler" % __name__)
         self.ssl_cert = ssl_cert
         self.rem_addr = addr[0]
@@ -471,12 +479,14 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
         - `client_connection`: An async_chat object that is a connect to the
                                IMAP client. We can use its 'push()' method to
                                send messages to the IMAP client.
+        - `options`: The configuration options
         """
         self.log = logging.getLogger("%s.ServerIMAPMessageProcessor" % __name__)
 
         asynchat.async_chat.__init__(self)
 
         self.client_connection = client_connection
+        self.options = client_connection.options
 
         # The IMAP message processor that handles all of the IMAP commands
         # from the client when we are in the not-authenticated state.
@@ -627,7 +637,7 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
         if user.imap_username in user_imap_subprocesses:
             self.subprocess = user_imap_subprocesses[user.imap_username]
         else:
-            self.subprocess = IMAPSubprocessHandle(user)
+            self.subprocess = IMAPSubprocessHandle(user, self.options)
             user_imap_subprocesses[user.imap_username] = self.subprocess
 
         if not self.subprocess.is_alive():

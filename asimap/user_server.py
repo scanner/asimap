@@ -39,7 +39,7 @@ from asimap.exceptions import MailboxLock, MailboxInconsistency
 # By default every file is its own logging module. Kind of simplistic
 # but it works for now.
 #
-log      = logging.getLogger("asimap.%s" % __name__)
+module_logger = logging.getLogger("asimap.%s" % __name__)
 
 BACKLOG  = 5
 
@@ -88,7 +88,7 @@ class IMAPUserClientHandler(asynchat.async_chat):
         """
         asynchat.async_chat.__init__(self, sock = sock)
 
-        self.log = logging.getLogger("%s.IMAPUserClientHandler" % __name__)
+        self.log = logging.getLogger("asimap.%s.IMAPUserClientHandler" % __name__)
         self.reading_message = False
         self.ibuffer = []
         self.set_terminator(self.LINE_TERMINATOR)
@@ -305,7 +305,7 @@ class IMAPUserServer(asyncore.dispatcher):
         self.options = options
 
         asyncore.dispatcher.__init__(self)
-        self.log = logging.getLogger("%s.%s" % (__name__,self.__class__.__name__))
+        self.log = logging.getLogger("asimap.%s.%s" % (__name__,self.__class__.__name__))
 
         self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
         self.set_reuse_addr()

@@ -13,6 +13,7 @@ import sys
 import os.path
 import optparse
 import logging
+import logging.handlers
 import socket
 import asyncore
 import traceback
@@ -67,8 +68,10 @@ def setup_option_parser():
                       "a separate log file for each sub-process. "
                       "One sub-process per account. The main logfile "
                       "will be called 'asimapd.log'. Each sub-process's "
-                      "logfile will be called '<imap user>-<local user>-"
-                      "asimapd.log'.")
+                      "logfile will be called '<local user>-"
+                      "asimapd.log'. If this is set to 'stderr' then we will "
+                      "not log to a file but emit all messages for all "
+                      "processes on stderr.")
     return parser
 
 #############################################################################
@@ -90,11 +93,28 @@ def main():
     else:
         level = logging.INFO
 
-    logging.basicConfig(level=level,
-                        format="%(asctime)s %(created)s %(process)d "
-                        "%(levelname)s %(name)s %(message)s")
-    log = logging.getLogger("asimapd")
+    log = logging.getLogger("asimap")
 
+    if options.logdir == "stderr":
+        # Do not log to a file, log to stderr.
+        #
+        h = logging.StreamHandler()
+    else:
+        # Rotate on every 10mb, keep 5 files.
+        #
+        log_file_basename = os.path.join(options.logdir, "asimapd.log")
+        h = logging.handlers.RotatingFileHandler(log_file_basename,
+                                                 maxBytes = 10485760,
+                                                 backupCount = 5)
+    # h.setLevel(level)
+    h.setLevel(logging.DEBUG)
+    formatter = logging.Formatter("%(asctime)s %(created)s %(process)d "
+                                  "%(levelname)s %(name)s %(message)s")
+    h.setFormatter(formatter)
+    log.addHandler(h)
+
+    # If we are using SSL you must supply a certificate.
+    #
     if options.ssl and options.ssl_certificate is None:
         log.error("If SSL is enabled you need to provide a SSL certificate "
                   "via the --ssl_certificate option")
@@ -122,10 +142,12 @@ def main():
     try:
         if options.port:
             non_ssl_server = asimap.server.IMAPServer(options.interface,
-                                                      options.port)
+                                                      options.port,
+                                                      options)
         if options.ssl:
             ssl_server =  asimap.server.IMAPServer(options.interface,
                                                    options.port,
+                                                   options,
                                                    options.ssl_certificate)
     except socket.error, e:
         log.error("Unable to create server object on %s:%d: socket " \
