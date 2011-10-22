@@ -75,9 +75,9 @@ class MailboxLock(ProtocolException):
     ##################################################################
     #
     def __str__(self):
-        if mbox is None:
-            return value
+        if self.mbox is None:
+            return self.value
         else:
-            return "%s on mailbox %s" % (value, mbox.name)
+            return "%s on mailbox %s" % (self.value, self.mbox.name)
         
     
