@@ -556,8 +556,8 @@ class IMAPUserServer(asyncore.dispatcher):
                     # transient.  we will skip it. The command processor in
                     # client.py knows how to handle these better.
                     #
-                    self.log.warn("check-all-active: skipping '%s' due to: %s" \
-                                      (name, str(e)))
+                    self.log.warn("check-all-active: skipping '%s' due to: "
+                                  "%s" % (name, str(e)))
         return
 
     ##################################################################
