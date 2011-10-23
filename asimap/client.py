@@ -131,8 +131,7 @@ class BaseClientHandler(object):
             return
         except MailboxLock, e:
             self.log.warn("Unable to get lock on mailbox '%s', putting on to command queue" % e.mbox.name)
-            imap_command.needs_continuation = True
-            e.mbox.command_queue.append(self, imap_command)
+            e.mbox.command_queue.append((self, imap_command))
             return
         except KeyboardInterrupt:
             sys.exit(0)
