@@ -18,8 +18,8 @@ from itertools import count, groupby
 # asimapd imports
 #
 import asimap.mbox
-import asimap.auth
 from asimap.exceptions import No, Bad, MailboxInconsistency, MailboxLock
+from asimap.exceptions import AuthenticationException
 
 # Local constants
 #
@@ -416,7 +416,7 @@ class PreAuthenticated(BaseClientHandler):
             self.log.info("%s logged in from %s:%d" % (str(self.user),
                                                        self.client.rem_addr,
                                                        self.client.port))
-        except asimap.auth.AuthenticationException, e:
+        except AuthenticationException, e:
             raise No(str(e))
         return None
 

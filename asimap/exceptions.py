@@ -81,3 +81,19 @@ class MailboxLock(ProtocolException):
             return "%s on mailbox %s" % (self.value, self.mbox.name)
         
     
+############################################################################
+#
+# Our authentication system has its own set of exceptions.
+#
+class AuthenticationException(Exception):
+    def __init__(self, value = "bad!"):
+        self.value = value
+    def __str__(self):
+        return repr(self.value)
+class BadAuthentication(AuthenticationException):
+    pass
+class NoSuchUser(AuthenticationException):
+    pass
+class AuthenticationError(AuthenticationException):
+    pass
+

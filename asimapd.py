@@ -24,6 +24,7 @@ import select
 import asimap
 import asimap.server
 import asimap.user_server
+import asimap.utils
 
 ############################################################################
 #
@@ -40,8 +41,15 @@ def setup_option_parser():
     parser.set_defaults(port = None, ssl_port = 993,
                         interface = "0.0.0.0", debug = False,
                         ssl = True, ssl_certificate = None,
-                        logdir = "/var/log/asimapd")
+                        daemonize = True,
+                        logdir = "/var/log/asimapd",
+                        password_db = "/var/db/asimap_passwords.txt")
 
+    
+    parser.add_option("--password_db", action="store", type="string",
+                      dest="password_db", help = "The password database. "
+                      "NOTE: For now this is ignored. It will always be in "
+                      "the default location.")
     parser.add_option("--port", action="store", type="int", dest="port",
                       help = "What port to listen on for NON-SSL connections. "
                       "Note that is --port is NOT specified we will NOT "
@@ -52,8 +60,9 @@ def setup_option_parser():
     parser.add_option("--interface", action="store", type="string",
                       dest="interface", help = "The IP address to bind to.")
     parser.add_option("--debug", action="store_true", dest="debug",
-                      help="Emit debugging statements. Do NOT daemonize. "
-                      "All logging is sent to stderr, NOT the logdir.")
+                      help="Emit debugging statements.")
+    parser.add_option("--foreground", action="store_false", dest="daemonize",
+                      help="Do NOT run in daemon mode.")
     parser.add_option("--no_ssl", action="store_false", dest="ssl",
                       help="Turn off SSL for the incoming IMAP4 "
                       "connections.")
@@ -71,7 +80,9 @@ def setup_option_parser():
                       "logfile will be called '<local user>-"
                       "asimapd.log'. If this is set to 'stderr' then we will "
                       "not log to a file but emit all messages for all "
-                      "processes on stderr.")
+                      "processes on stderr. NOTE: If you select --daemonize, "
+                      "setting the logdir to 'stderr' makes no sense! "
+                      "When we daemonize stderr is redirected to /dev/null.")
     return parser
 
 #############################################################################
@@ -85,8 +96,16 @@ def main():
     parser = setup_option_parser()
     (options, args) = parser.parse_args()
 
-    # If 'options.debug' is true we log at the debug level. Otherwise
-    # log at warning.
+    # Enter daemon mode early on if it is selected.
+    #
+    if options.daemonize:
+        print "asimap - Entering daemon mode"
+        asimap.utils.daemonize()
+
+    # Set up the logger. We log either to files in 'options.logdir' or to
+    # stderr. NOTE: It does not make sense to log to stderr if we are running
+    # in daemon mode.. maybe we should exit with a warning before we try to
+    # enter daemon mode if logdir == 'stderr'
     #
     if options.debug:
         level = logging.DEBUG

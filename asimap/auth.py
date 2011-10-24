@@ -16,22 +16,7 @@ import os.path
 # asimapd imports
 #
 from asimap.user import User
-
-############################################################################
-#
-# Our authentication system has its own set of exceptions.
-#
-class AuthenticationException(Exception):
-    def __init__(self, value = "bad!"):
-        self.value = value
-    def __str__(self):
-        return repr(self.value)
-class BadAuthentication(AuthenticationException):
-    pass
-class NoSuchUser(AuthenticationException):
-    pass
-class AuthenticationError(AuthenticationException):
-    pass
+from asimap.exceptions import NoSuchUser, BadAuthentication
 
 ############################################################################
 #
@@ -75,7 +60,7 @@ class BaseAuth(object):
 
 ############################################################################
 #
-class TestAuth(object):
+class TestAuth(BaseAuth):
     """This is an authentication class to use in our simple test server.
     It uses a dictionary of users & passwords that is in a module
     in our tests/ module.
@@ -90,4 +75,39 @@ class TestAuth(object):
             return User("test", os.getlogin(), maildir)
         raise NoSuchUser("There is no user '%s'." % username)
 
-AUTH_SYSTEMS = { "test_auth" : TestAuth() }
+##################################################################
+##################################################################
+#
+class SimpleAuth(BaseAuth):
+    """
+    A simple authentication system that uses a plain text password
+    database with hashed and salted passwords.
+    """
+
+    ##################################################################
+    #
+    def __init__(self):
+        from asimap.password_db import password_db
+
+        self.password_db = password_db
+        return
+
+    #########################################################################
+    #
+    def authenticate(self, username, password):
+
+        # if the password does not pan out..
+        #
+        if not password_db.check_password(username, password):
+            raise BadAuthentication
+
+        # Otherwise get their homedir and their maildir and setup the
+        # user object.
+        #
+        homedir = os.path.expanduser("~%s" % username)
+        maildir = os.path.join(homedir, "Mail")
+        return User(username, username, maildir)
+
+AUTH_SYSTEMS = { "test_auth" : TestAuth(),
+                 "simple_auth" : SimpleAuth()}
+

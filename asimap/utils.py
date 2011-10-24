@@ -16,6 +16,8 @@ import email.utils
 import calendar
 import pytz
 import logging
+import random
+import hashlib
 
 # asimap imports
 #
@@ -97,3 +99,133 @@ def sequence_set_to_list(seq_set, seq_max, uid_cmd = False):
             else:
                 result.extend(range(start, end + 1))
     return sorted(set(result))
+
+############################################################################
+#
+# This was copied from django's daemonize module,
+#
+# http://www.djangoproject.org/
+#
+if os.name == 'posix':
+    def daemonize(our_home_dir='.', out_log='/dev/null', err_log='/dev/null'):
+        "Robustly turn into a UNIX daemon, running in our_home_dir."
+        # First fork
+        try:
+            if os.fork() > 0:
+                sys.exit(0)     # kill off parent
+        except OSError, e:
+            sys.stderr.write("fork #1 failed: (%d) %s\n" % (e.errno, e.strerror))
+            sys.exit(1)
+        os.setsid()
+        os.chdir(our_home_dir)
+        os.umask(0)
+
+        # Second fork
+        try:
+            if os.fork() > 0:
+                os._exit(0)
+        except OSError, e:
+            sys.stderr.write("fork #2 failed: (%d) %s\n" % (e.errno, e.strerror))
+            os._exit(1)
+
+        si = open('/dev/null', 'r')
+        so = open(out_log, 'a+', 0)
+        se = open(err_log, 'a+', 0)
+        os.dup2(si.fileno(), sys.stdin.fileno())
+        os.dup2(so.fileno(), sys.stdout.fileno())
+        os.dup2(se.fileno(), sys.stderr.fileno())
+        # Set custom file descriptors so that they get proper buffering.
+        sys.stdout, sys.stderr = so, se
+else:
+    def daemonize(our_home_dir='.', out_log=None, err_log=None):
+        """
+        If we're not running under a POSIX system, just simulate the daemon
+        mode by doing redirections and directory changing.
+        """
+        os.chdir(our_home_dir)
+        os.umask(0)
+        sys.stdin.close()
+        sys.stdout.close()
+        sys.stderr.close()
+        if err_log:
+            sys.stderr = open(err_log, 'a', 0)
+        else:
+            sys.stderr = NullDevice()
+        if out_log:
+            sys.stdout = open(out_log, 'a', 0)
+        else:
+            sys.stdout = NullDevice()
+
+    class NullDevice:
+        "A writeable object that writes to nowhere -- like /dev/null."
+        def write(self, s):
+            pass
+
+############################################################################
+#
+def become_user(user = None):
+    """
+    Change to run as the specified user. If 'None' then we just return.
+    If we are already running as the given user, also do nothing and return.
+    """
+    if user == None:
+        return
+
+    current_user = pwd.getpwuid(os.getuid())
+    if current_user[0] == user:
+        return
+
+    pwinfo = pwd.getpwnam(user)
+    os.setregid(pwinfo[3],pwinfo[3])
+    os.setreuid(pwinfo[2],pwinfo[2])
+    return
+
+
+############################################################################
+#
+def get_hexdigest(algorithm, salt, raw_password):
+    """
+    Returns a string of the hexdigest of the given plaintext password and salt
+    using the given algorithm ('md5', 'sha1' or 'crypt').
+
+    Borrowed from the django User auth model.
+    """
+    raw_password, salt = smart_str(raw_password), smart_str(salt)
+    if algorithm == 'crypt':
+        try:
+            import crypt
+        except ImportError:
+            raise ValueError('"crypt" password algorithm not supported in this environment')
+        return crypt.crypt(raw_password, salt)
+
+    if algorithm == 'md5':
+        return hashlib.md5(salt + raw_password).hexdigest()
+    elif algorithm == 'sha1':
+        return hashlib.sha1(salt + raw_password).hexdigest()
+    raise ValueError("Got unknown password algorithm type in password.")
+
+############################################################################
+#
+def check_password(raw_password, enc_password):
+    """
+    Returns a boolean of whether the raw_password was correct. Handles
+    encryption formats behind the scenes.
+    """
+    algo, salt, hsh = enc_password.split('$')
+    return hsh == get_hexdigest(algo, salt, raw_password)
+
+####################################################################
+#
+def hash_password(raw_password):
+    """
+    Convert the given raw password in to the hex digest we store.
+    
+    Arguments:
+    - `raw_password`: The plain text password
+    """
+    algo = 'sha1'
+    salt = get_hexdigest(algo, str(random.random()),
+                         str(random.random()))[:5]
+    hsh = get_hexdigest(algo, salt, raw_password)
+    return '%s$%s$%s' % (algo, salt, hsh)
+    
