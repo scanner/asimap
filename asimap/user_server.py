@@ -697,10 +697,18 @@ class IMAPUserServer(asyncore.dispatcher):
                     else:
                         # Yup, we need to resync this folder.
                         m.resync()
+            except (MailboxLock, MailboxInconsistency), e:
+                # If hit one of these exceptions they are usually
+                # transient.  we will skip it. The command processor in
+                # client.py knows how to handle these better.
+                #
+                self.log.warn("check_all_folders: skipping '%s' due to: "
+                              "%s" % (mbox_name, str(e)))
             except OSError, e:
                 if e.errno == errno.ENOENT:
-                    self.log.error("check_folders: One of %s or %s does not "
-                                   "exist for mtime check" % (path, seq_path))
+                    self.log.error("check_all_folders: One of %s or %s does "
+                                   "not exist for mtime check" % (path,
+                                                                  seq_path))
 
         self.log.debug("check_all_folders finished, Took %f seconds" % \
                            (time.time() - start_time))
