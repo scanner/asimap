@@ -356,7 +356,7 @@ class PreAuthenticated(BaseClientHandler):
         """
         BaseClientHandler.__init__(self, client)
         self.name = "PreAuthenticated"
-        self.log = logging.getLogger("%s.PreAuthenticated" % __name__)
+        self.log = logging.getLogger("%s.%s" % (__name__, self.__class__.__name__))
         self.auth_system = auth_system
         self.user = None
         return
@@ -446,7 +446,7 @@ class Authenticated(BaseClientHandler):
                          handle to our sqlite3 db, etc.
         """
         BaseClientHandler.__init__(self, client)
-        self.log = logging.getLogger("%s.%s.%d" % (__name__, self.__class__.__name__, client.port))
+        self.log = logging.getLogger("%s.%s.port-%d" % (__name__, self.__class__.__name__, client.port))
         self.server = user_server
         self.port = client.port # Used for debug messages
         self.name = "Client:%d" % client.port

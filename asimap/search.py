@@ -56,9 +56,10 @@ class SearchContext(object):
         - `sequences`: The sequences for the mailbox. Passed in to save us from
           having to load and parse it separately for every message.
         """
-        self.log = logging.getLogger("%s.%s.%d" % (__name__,
-                                                   self.__class__.__name__,
-                                                   msg_key))
+        self.log = logging.getLogger("%s.%s.%s.msg-%d" % (__name__,
+                                                          self.__class__.__name__,
+                                                          mailbox.name,
+                                                          msg_key))
         
         self.mailbox = mailbox
         self.msg_key = msg_key

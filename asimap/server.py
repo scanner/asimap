@@ -84,7 +84,7 @@ class IMAPSubprocessHandle(object):
                   is passed to the subprocess so that it can look up which unix
                   user to switch to for handling that user's mailbox.
         """
-        self.log = logging.getLogger("%s.IMAPSubprocessHandle" % __name__)
+        self.log = logging.getLogger("%s.%s" % (__name__, self.__class__.__name__))
         self.options = options
         self.user = user
         self.port = None
@@ -194,8 +194,7 @@ class IMAPServer(asyncore.dispatcher):
         Arguments:
         - `options` : The options set on the command line
         """
-        self.log = logging.getLogger("%s.IMAPServer" % __name__)
-
+        self.log = logging.getLogger("%s.%s" % (__name__, self.__class__.__name__))
         asyncore.dispatcher.__init__(self)
 
         self.options = options
@@ -261,7 +260,7 @@ class IMAPClientHandler(asynchat.async_chat):
         """
         """
         self.options = options
-        self.log = logging.getLogger("%s.IMAPClientHandler" % __name__)
+        self.log = logging.getLogger("%s.%s" % (__name__, self.__class__.__name__))
         self.ssl_cert = ssl_cert
         self.rem_addr = addr[0]
         self.port = addr[1]
@@ -481,8 +480,7 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
                                send messages to the IMAP client.
         - `options`: The configuration options
         """
-        self.log = logging.getLogger("%s.ServerIMAPMessageProcessor" % __name__)
-
+        self.log = logging.getLogger("%s.%s" % (__name__, self.__class__.__name__))
         asynchat.async_chat.__init__(self)
 
         self.client_connection = client_connection

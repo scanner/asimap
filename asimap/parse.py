@@ -213,7 +213,7 @@ class IMAPClientCommand(object):
         Create the IMAPClientCommand object. This does NOT parse the string we
         were given, though. You need to call the 'parse()' method for that.
         """
-        self.log = logging.getLogger("%s.aIMAPClientCommand" % __name__)
+        self.log = logging.getLogger("%s.%s" % (__name__, self.__class__.__name__))
         self.input = imap_command
         self.uid_command = False
         self.tag = None

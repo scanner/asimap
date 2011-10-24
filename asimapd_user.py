@@ -92,6 +92,7 @@ def main():
         level = logging.INFO
 
     log = logging.getLogger("asimap")
+    log.setLevel(level)
 
     if options.logdir == "stderr":
         # Do not log to a file, log to stderr.
@@ -105,8 +106,7 @@ def main():
         h = logging.handlers.RotatingFileHandler(log_file_basename,
                                                  maxBytes = 10485760,
                                                  backupCount = 5)
-    # h.setLevel(level)
-    h.setLevel(logging.DEBUG)
+    h.setLevel(level)
     formatter = logging.Formatter("%(asctime)s %(created)s %(process)d "
                                    "%(levelname)s %(name)s %(message)s")
     h.setFormatter(formatter)
