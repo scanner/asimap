@@ -12,11 +12,16 @@ different authentication systems.
 #
 import os
 import os.path
+import logging
 
 # asimapd imports
 #
 from asimap.user import User
 from asimap.exceptions import NoSuchUser, BadAuthentication
+
+# Our module logger..
+#
+log = logging.getLogger(__name__)
 
 ############################################################################
 #
@@ -61,16 +66,19 @@ class BaseAuth(object):
 ############################################################################
 #
 class TestAuth(BaseAuth):
-    """This is an authentication class to use in our simple test server.
-    It uses a dictionary of users & passwords that is in a module
-    in our tests/ module.
+    """
+    There is only the user 'test', its password is 'test' and the
+    'local user' is whatever 'os.getlogin()' returns.
+
+    The maildir is fixed to '/var/tmp/testmaildir'
     """
     #########################################################################
     #
     def authenticate(self, username, password):
-        homedir = os.path.expanduser("~")
-        maildir = os.path.join(homedir, "Mail")
-        
+        # homedir = os.path.expanduser("~")
+        # maildir = os.path.join(homedir, "Mail")
+        maildir = "/var/tmp/testmaildir"
+
         if username == "test" and password == "test":
             return User("test", os.getlogin(), maildir)
         raise NoSuchUser("There is no user '%s'." % username)
@@ -98,16 +106,19 @@ class SimpleAuth(BaseAuth):
 
         # if the password does not pan out..
         #
-        if not password_db.check_password(username, password):
+        if not self.password_db.check_password(username, password):
             raise BadAuthentication
 
         # Otherwise get their homedir and their maildir and setup the
         # user object.
         #
         homedir = os.path.expanduser("~%s" % username)
-        maildir = os.path.join(homedir, "Mail")
+        # maildir = os.path.join(homedir, "Mail")
+        maildir = "/var/tmp/testmaildir"
         return User(username, username, maildir)
 
-AUTH_SYSTEMS = { "test_auth" : TestAuth(),
-                 "simple_auth" : SimpleAuth()}
-
+AUTH_SYSTEMS = { "test_auth" : TestAuth() }
+try:
+    AUTH_SYSTEMS['simple_auth'] = SimpleAuth()
+except IOError, e:
+    log.warn("Unable to initialize the SimpleAuth module: %s" % str(e))

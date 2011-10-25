@@ -18,6 +18,7 @@ from itertools import count, groupby
 # asimapd imports
 #
 import asimap.mbox
+import asimap.throttle
 from asimap.exceptions import No, Bad, MailboxInconsistency, MailboxLock
 from asimap.exceptions import AuthenticationException
 
@@ -96,7 +97,7 @@ class BaseClientHandler(object):
         - `imap_command`: An instance parse.IMAPClientCommand
         """
         self.debug_log_cmd(imap_command)
-        
+
         # Since the imap command was properly parsed we know it is a valid
         # command. If it is one we support there will be a method
         # on this object of the format "do_%s" that will actually do the
@@ -186,7 +187,7 @@ class BaseClientHandler(object):
         else:
             self.log.debug("state: %s, cmd: %s" % (self.state, str(cmd)))
         return
-    
+
     ##################################################################
     #
     def send_pending_expunges(self):
@@ -389,6 +390,13 @@ class PreAuthenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The full IMAP command object.
         """
+        # If this client has been trying to log in too often with failed
+        # results then we are going to throttle them and not accept their
+        # attempt to login.
+        #
+        if not asimap.throttle.check_allow(cmd.user_name, self.client.rem_addr):
+            raise Bad("Too many authentication failures")
+
         # XXX This should poke the authentication mechanism we were passed
         #     to see if the user authenticated properly, and if they did
         #     determine what the path to the user's mailspool is.
@@ -417,6 +425,9 @@ class PreAuthenticated(BaseClientHandler):
                                                        self.client.rem_addr,
                                                        self.client.port))
         except AuthenticationException, e:
+            # Record this failed authentication attempt
+            #
+            asimap.throttle.login_failed(cmd.user_name, self.client.rem_addr)
             raise No(str(e))
         return None
 
@@ -940,7 +951,7 @@ class Authenticated(BaseClientHandler):
         """
         if self.state != "selected":
             raise No("Client must be in the selected state")
-        
+
         # We allow for the mailbox to be deleted.. it has no effect on this
         # operation.
         #

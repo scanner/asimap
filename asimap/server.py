@@ -102,7 +102,7 @@ class IMAPSubprocessHandle(object):
         cmd.append("--logdir=%s" % self.options.logdir)
         if self.options.debug:
             cmd.append("--debug")
-            
+
         self.log.debug("Starting user server, cmd: %s, as user: '%s', in "
                        "directory '%s'" % (repr(cmd),self.user.local_username,
                                            self.user.maildir))
@@ -145,11 +145,15 @@ class IMAPSubprocessHandle(object):
         """
         os.close(0)
 
-        # XXX If we are using the 'test_auth' system then we do not actually
-        #     try to setuid (it would fail anyways.)
+        # If we NOT running as root do not actually try to setuid (it would
+        # fail anyways.)
         #
-        if self.user.auth_system != AUTH_SYSTEMS["test_auth"]:
+        if os.getuid() == 0:
             os.setuid(pwd.getpwnam(self.user.local_username)[2])
+        else:
+            p = pwd.getpwuid(os.getuid())
+            self.log.info("setuid_to_user: Not setting uid, we are running as "
+                          "'%s', uid: %d" % (p[0], p[2]))
         return
 
     ##################################################################
@@ -315,7 +319,7 @@ class IMAPClientHandler(asynchat.async_chat):
                  self.port)
         else:
             return "from %s:%d" % (self.rem_addr,self.port)
-            
+
 
     ############################################################################
     #
@@ -486,11 +490,20 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
         self.client_connection = client_connection
         self.options = client_connection.options
 
+        # If we are in test-mode then use the 'simple_auth' auth system.  This
+        # basically has only one user, 'test', and its mailbox is in
+        # '/var/tmp/testmaildir'
+        #
+        if self.options.test_mode:
+            auth_system = 'test_auth'
+        else:
+            auth_system = 'simple_auth'
+
         # The IMAP message processor that handles all of the IMAP commands
         # from the client when we are in the not-authenticated state.
         #
         self.client_handler = PreAuthenticated(self.client_connection,
-                                               AUTH_SYSTEMS["test_auth"])
+                                               AUTH_SYSTEMS[auth_system])
         self.subprocess = None
 
         # We do not buffer and process data from the subprocess. As soon as we
@@ -509,7 +522,7 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
         return "%s from %s:%d" % (self.client_handler.user,
                                   self.client_connection.rem_addr,
                                   self.client_connection.port)
-    
+
     ##################################################################
     #
     def message(self, msg):

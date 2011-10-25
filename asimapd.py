@@ -42,23 +42,32 @@ def setup_option_parser():
                         interface = "0.0.0.0", debug = False,
                         ssl = True, ssl_certificate = None,
                         daemonize = True,
-                        logdir = "/var/log/asimapd",
-                        password_db = "/var/db/asimap_passwords.txt")
+                        test_mode = False,
+                        pidfile = "/var/run/asimapd.pid",
+                        logdir = "/var/log/asimapd")
 
-    
-    parser.add_option("--password_db", action="store", type="string",
-                      dest="password_db", help = "The password database. "
-                      "NOTE: For now this is ignored. It will always be in "
-                      "the default location.")
     parser.add_option("--port", action="store", type="int", dest="port",
                       help = "What port to listen on for NON-SSL connections. "
                       "Note that is --port is NOT specified we will NOT "
                       "on it. This is how to disable non-encrypted "
                       "connections for this server.")
+    parser.add_option("--test_mode",  action="store_true", dest="test_mode",
+                      help="Run the server using the test mode environment. "
+                      "The server will run as normal except it will use the "
+                      "'test_auth' authentication system and the MH mailbox it "
+                      "use will be the one in '/var/tmp/testmaildir'. It will "
+                      "NOT create this MH mailbox. You must have set it up "
+                      "previously. This mode is obviously of limited value "
+                      "and exists primarily to run a test server that does not "
+                      "attempt to muck with real MH mailboxes or need to run "
+                      "as root.")
     parser.add_option("--ssl_port", action="store", type="int", dest="port",
                       help = "What port to listen on for SSL connections")
     parser.add_option("--interface", action="store", type="string",
                       dest="interface", help = "The IP address to bind to.")
+    parser.add_option("--pidfile", action="store", type="string",
+                      dest="pidfile", help = "The file to store the server's "
+                      "pid in")
     parser.add_option("--debug", action="store_true", dest="debug",
                       help="Emit debugging statements.")
     parser.add_option("--foreground", action="store_false", dest="daemonize",
@@ -132,6 +141,16 @@ def main():
     h.setFormatter(formatter)
     log.addHandler(h)
     log.info("Starting")
+
+    try:
+        with open(options.pidfile, "w+") as f:
+            f.write("%d\n" % os.getpid())
+        log.info("Wrote pid %d in to pid file '%s'" % (os.getpid(),
+                                                       options.pidfile))
+    except Exception, e:
+        log.error("Unable to write PID file '%s': %s" % (options.pidfile,
+                                                         str(e)))
+        
 
     # If we are using SSL you must supply a certificate.
     #

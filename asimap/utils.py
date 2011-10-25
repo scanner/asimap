@@ -18,6 +18,8 @@ import pytz
 import logging
 import random
 import hashlib
+import os
+import sys
 
 # asimap imports
 #
@@ -190,7 +192,6 @@ def get_hexdigest(algorithm, salt, raw_password):
 
     Borrowed from the django User auth model.
     """
-    raw_password, salt = smart_str(raw_password), smart_str(salt)
     if algorithm == 'crypt':
         try:
             import crypt
@@ -219,7 +220,7 @@ def check_password(raw_password, enc_password):
 def hash_password(raw_password):
     """
     Convert the given raw password in to the hex digest we store.
-    
+
     Arguments:
     - `raw_password`: The plain text password
     """
@@ -228,4 +229,4 @@ def hash_password(raw_password):
                          str(random.random()))[:5]
     hsh = get_hexdigest(algo, salt, raw_password)
     return '%s$%s$%s' % (algo, salt, hsh)
-    
+
