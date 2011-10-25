@@ -12,6 +12,7 @@ different authentication systems.
 #
 import os
 import os.path
+import pwd
 import logging
 
 # asimapd imports
@@ -112,7 +113,8 @@ class SimpleAuth(BaseAuth):
         # Otherwise get their homedir and their maildir and setup the
         # user object.
         #
-        homedir = os.path.expanduser("~%s" % username)
+        p = pwd.getpwnam(username)
+        homedir = p.pw_dir
         maildir = os.path.join(homedir, "Mail")
 
         return User(username, username, maildir)

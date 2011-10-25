@@ -26,6 +26,7 @@ XXX We communicate with the server via localhost TCP sockets. We REALLY should
 # system imports
 #
 import os
+import pwd
 import sys
 import optparse
 import logging
@@ -101,8 +102,9 @@ def main():
     else:
         # Rotate on every 10mb, keep 5 files.
         #
+        p = pwd.getpwuid(os.getuid())
         log_file_basename = os.path.join(options.logdir,
-                                         "%s-asimapd.log" % os.getlogin())
+                                         "%s-asimapd.log" % p.pw_name)
         h = logging.handlers.RotatingFileHandler(log_file_basename,
                                                  maxBytes = 10485760,
                                                  backupCount = 5)

@@ -53,8 +53,8 @@ things I need to do.
 
 * daemonize properly.
 
-o add proper unix account authentication support
-  o make sure we change to the right user
+* add proper unix account authentication support
+  * make sure we change to the right user
   o it must support no more than three bad auths in 90 seconds
 
 o add SSL support
