@@ -113,8 +113,8 @@ class SimpleAuth(BaseAuth):
         # user object.
         #
         homedir = os.path.expanduser("~%s" % username)
-        # maildir = os.path.join(homedir, "Mail")
-        maildir = "/var/tmp/testmaildir"
+        maildir = os.path.join(homedir, "Mail")
+
         return User(username, username, maildir)
 
 AUTH_SYSTEMS = { "test_auth" : TestAuth() }
