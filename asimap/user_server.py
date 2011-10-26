@@ -705,7 +705,7 @@ class IMAPUserServer(asyncore.dispatcher):
                 #
                 self.log.warn("check_all_folders: skipping '%s' due to: "
                               "%s" % (mbox_name, str(e)))
-            except OSError, e:
+            except (OSError, IOError), e:
                 if e.errno == errno.ENOENT:
                     self.log.error("check_all_folders: One of %s or %s does "
                                    "not exist for mtime check" % (path,
