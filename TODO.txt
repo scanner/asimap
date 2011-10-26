@@ -57,6 +57,11 @@ things I need to do.
   * make sure we change to the right user
   o it must support no more than three bad auths in 90 seconds
 
+o fix renaming folders with subfolders
+
+o some sort of intelligent fallback for messages with malformed
+  headers such that we can not find the UID properly.
+
 o add SSL support
 
 o fix RENAME such that we do the db changes ONLY AFTER we actually
