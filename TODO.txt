@@ -55,21 +55,23 @@ things I need to do.
 
 * add proper unix account authentication support
   * make sure we change to the right user
-  o it must support no more than three bad auths in 90 seconds
+  * Must support throttling so that brute forcing causes lock outs.
+    untested! (right now it is 3 bad auths in 60 seconds locks out
+    that IP address, 4 bad auths in 60 seconds for a specific user
+    locks out that user name for 60 seconds.)
 
-o fix renaming folders with subfolders
+* fix renaming folders with subfolders
+
+* add SSL support
 
 o some sort of intelligent fallback for messages with malformed
   headers such that we can not find the UID properly.
 
-o add SSL support
-
-o fix RENAME such that we do the db changes ONLY AFTER we actually
-  manage to rename/move the directory.
+o fix literal+ support
 
 o make COPY command queue'able.
 
-o fix literal+ support
+o make SEARCH command queue'able again.
 
 o add a better test system so we can run the full server but have it
   not run as root, and not change to a user upon auth, and have the mail
