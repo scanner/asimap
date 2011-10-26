@@ -1838,7 +1838,14 @@ class Mailbox(object):
             seq_changed = False
             fetch_started = time.time()
             for idx in msg_idxs:
-                msg_key = msgs[idx-1]
+                try:
+                    msg_key = msgs[idx-1]
+                except IndexError, e:
+                    log_msg = "fetch: Attempted to look up message index " \
+                        "%d, but msgs is only of length %d" % (idx-1, len(msgs))
+                    self.log.warn(log_msg)
+                    raise MailboxIconsistency(log_msg)
+                                  
                 ctx = asimap.search.SearchContext(self, msg_key, idx,
                                                   seq_max, uid_max,
                                                   self.sequences)
@@ -2484,6 +2491,12 @@ class Mailbox(object):
             """
             affected_mailboxes.append(mbox)
             old_name = mbox.name
+
+            # Easiest just to flush the message cache for this mailbox when
+            # renaming it.
+            #
+            server.msg_cache.clear_mbox(old_name)
+
             log.debug("change_name: old name: %s, new name: %s" % (old_name,
                                                                    new_name))
             del mbox.server.active_mailboxes[old_name]
@@ -2514,10 +2527,6 @@ class Mailbox(object):
         else:
             raise MailboxExists("Destination mailbox '%s' exists" % new_name)
 
-        # Easiest just to flush the message cache for this mailbox when
-        # renaming it.
-        #
-        server.msg_cache.clear_mbox(old_name)
 
         # Inbox is handled specially.
         #
