@@ -2532,11 +2532,11 @@ class Mailbox(object):
 
             # Rename the top folder in the file system.
             #
-            old_dir = mbox.mailbox._path
-            new_dir = os.path.join(os.path.dirname(mbox.mailbox._path),
-                                   os.path.basename(new_name))
+            old_dir = os.path.join(server.mailbox._path, old_name)
+            new_dir = os.path.join(server.mailbox._path, new_name)
             log.debug("rename(): renaming dir '%s' to '%s'" % (old_dir,new_dir))
             os.rename(old_dir, new_dir)
+
             server.db.commit()
 
             # Go through all the of the mailboxes affected by this rename and

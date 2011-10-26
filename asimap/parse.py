@@ -293,7 +293,10 @@ class IMAPClientCommand(object):
                 result.append(self.user_name)
             elif self.command == 'id':
                 result.append("(%s)" % ", ".join("%s:'%s'" % (x,y) for x,y in self.id_dict.iteritems()))
-
+            elif self.command == 'rename':
+                result.append('"%s"' % self.mailbox_src_name)
+                result.append('"%s"' % self.mailbox_dst_name)
+                
         return " ".join(result)
 
     #######################################################################
