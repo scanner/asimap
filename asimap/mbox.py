@@ -18,6 +18,7 @@ import mailbox
 import re
 import itertools
 import errno
+import shutil
 from email.parser import HeaderParser
 from datetime import datetime
 
@@ -2267,7 +2268,7 @@ class Mailbox(object):
         """
         path = os.path.join(mh._path, name)
         seq_path = os.path.join(path, ".mh_sequences")
-
+        
         if not os.path.exists(seq_path):
             # XXX We should set the mode bits on the file after this.
             #
@@ -2369,7 +2370,7 @@ class Mailbox(object):
         if name == "inbox":
             raise InvalidMailbox("You are not allowed to delete the inbox")
 
-        mailbox = server.get_mailbox(name, expiry = 0)
+        mbox = server.get_mailbox(name, expiry = 0)
 
         # Remember to delete this mailbox from the message cache..
         #
@@ -2378,18 +2379,18 @@ class Mailbox(object):
         do_delete = False
         try:
             # mailbox.mailbox.lock()
-            inferior_mailboxes = mailbox.mailbox.list_folders()
+            inferior_mailboxes = mbox.mailbox.list_folders()
 
             # You can not delete a mailbox that has the '\Noselect' attribute.
             #
-            if '\\Noselect' in mailbox.attributes:
+            if '\\Noselect' in mbox.attributes:
                 raise InvalidMailbox("The mailbox '%s' is already deleted" % \
                                          name)
 
             # When deleting a mailbox it will cause to be deleted every
             # message in that mailbox to be deleted.
             #
-            mailbox.mailbox.clear()
+            mbox.mailbox.clear()
 
             # If the mailbox has any active clients we set their selected
             # mailbox to None. client.py will know if they try to do any
@@ -2398,9 +2399,9 @@ class Mailbox(object):
             #
             # A bit rude, but it is the simplest accepted action in this case.
             #
-            for client in mailbox.clients.itervalues():
+            for client in mbox.clients.itervalues():
                 client.mbox = None
-            mailbox.clients = { }
+            mbox.clients = { }
 
             # If the mailbox has inferior mailboxes then we do not actually
             # delete it. It gets the '\Noselect' flag though. It also gets a
@@ -2408,10 +2409,10 @@ class Mailbox(object):
             # from the db no imap client will confuse it with the existing
             # mailbox.
             #
-            if len(inferior_mailboxes) > 0 or mailbox.subscribed:
-                mailbox.attributes.add("\\Noselect")
-                mailbox.uid_vv = server.get_next_uid_vv()
-                mailbox.commit_to_db()
+            if len(inferior_mailboxes) > 0 or mbox.subscribed:
+                mbox.attributes.add("\\Noselect")
+                mbox.uid_vv = server.get_next_uid_vv()
+                mbox.commit_to_db()
             else:
                 # We have no inferior mailboxes. This mailbox is gone. If it
                 # is active we remove it from the list of active mailboxes
@@ -2423,9 +2424,9 @@ class Mailbox(object):
                 # Delete all traces of the mailbox from our db.
                 #
                 c = server.db.cursor()
-                c.execute("delete from mailboxes where id = ?", (mailbox.id,))
+                c.execute("delete from mailboxes where id = ?", (mbox.id,))
                 c.execute("delete from sequences where mailbox_id = ?",
-                          (mailbox.id,))
+                          (mbox.id,))
                 c.close()
                 server.db.commit()
 
@@ -2436,12 +2437,18 @@ class Mailbox(object):
                 #
                 do_delete = True
         finally:
-            mailbox.mailbox.close()
+            mbox.mailbox.close()
 
         # And remove the mailbox from the filesystem.
         #
         if do_delete:
-            server.mailbox.remove_folder(name)
+            try:
+                server.mailbox.remove_folder(name)
+            except mailbox.NotEmptyError, e:
+                log.warn("mailbox %s 'not empty', %s" % (name, str(e)))
+                path = os.path.join(server.mailbox._path, name)
+                log.info("using shutil to delete '%s'" % path)
+                shutil.rmtree(path)
         return
 
     ####################################################################
