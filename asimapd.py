@@ -185,7 +185,7 @@ def main():
                                                       options)
         if options.ssl:
             ssl_server =  asimap.server.IMAPServer(options.interface,
-                                                   options.port,
+                                                   options.ssl_port,
                                                    options,
                                                    options.ssl_certificate)
     except socket.error, e:
