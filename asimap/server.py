@@ -399,6 +399,13 @@ class IMAPClientHandler(asynchat.async_chat):
             #
             if self.ibuffer[-1][-1] != "+":
                 self.push("+ Ready for more input\r\n")
+            else:
+                # Remove the '+' from the end of our non-synchronizing
+                # literal. Our subprocess will be confused by this since we
+                # already did everything in a non-synchronizing literal
+                # fashion.
+                #
+                self.ibuffer[-1] = ibuffer[:-1]
 
             # We also tack on a \r\n to the ibuffer so that whatever parses
             # the message knows how to parse the literal string corrctly.

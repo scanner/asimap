@@ -589,6 +589,10 @@ class Mailbox(object):
         #
         self.mtime = asimap.mbox.Mailbox.get_actual_mtime(self.server.mailbox,
                                                           self.name)
+        # Update the attributes seeing if this folder has children or not.
+        #
+        self.check_set_haschildren_attr()
+
         self.commit_to_db()
         return
 
@@ -1169,6 +1173,7 @@ class Mailbox(object):
             # Upon create the entry in the db reflects what is on the disk as
             # far as we know.
             #
+            self.check_set_haschildren_attr()
             self.mtime = asimap.mbox.Mailbox.get_actual_mtime(self.server.mailbox,
                                                               self.name)
             self.uid_vv = self.server.get_next_uid_vv()
@@ -1264,6 +1269,33 @@ class Mailbox(object):
                        self.id, name))
         c.close()
         self.server.db.commit()
+        return
+
+    ##################################################################
+    #
+    def check_set_haschildren_attr(self):
+        """
+        In order to support RFC3348 we need to know if a given folder has
+        children folders or not.
+
+        I am being lazy here. Instead of just intelligentily and diligently
+        checing and updating this flag and parent folders during folder
+        instantiation, folder creation (adds flag to parent folders), and
+        folder deletion I made this helper function. You call it on a folder
+        instance and it will check to see if this folder has any children and
+        update the attributes as appropriate.
+
+        XXX The biggest downside is that we use mailbox.MH.list_folders() and I
+            have a feeling that this can be slow at times.
+        """
+        if len(self.mailbox.list_folders()) > 0:
+            self.attributes.add('\\HasChildren')
+            if '\\HasNoChildren' in self.attributes:
+                self.attributes.remove('\\HasNoChildren')
+        else:
+            self.attributes.add('\\HasNoChildren')
+            if '\\HasChildren' in self.attributes:
+                self.attributes.remove('\\HasChildren')
         return
 
     ##################################################################
@@ -1845,7 +1877,7 @@ class Mailbox(object):
                         "%d, but msgs is only of length %d" % (idx-1, len(msgs))
                     self.log.warn(log_msg)
                     raise MailboxIconsistency(log_msg)
-                                  
+
                 ctx = asimap.search.SearchContext(self, msg_key, idx,
                                                   seq_max, uid_max,
                                                   self.sequences)
@@ -2275,7 +2307,7 @@ class Mailbox(object):
         """
         path = os.path.join(mh._path, name)
         seq_path = os.path.join(path, ".mh_sequences")
-        
+
         if not os.path.exists(seq_path):
             # XXX We should set the mode bits on the file after this.
             #
@@ -2319,6 +2351,7 @@ class Mailbox(object):
         if mbox:
             if '\\Noselect' in mbox.attributes:
                 mbox.attributes.remove('\\Noselect')
+                mbox.check_set_haschildren_attr()
                 mbox.commit_to_db()
             else:
                 raise MailboxExists("Mailbox %s already exists" % name)
@@ -2336,10 +2369,20 @@ class Mailbox(object):
             mbox_chain.append(chain_name)
             chain_name = os.path.dirname(chain_name)
 
+        mboxes_created = []
         mbox_chain.reverse()
         for m in mbox_chain:
             mbox = mailbox.MH(m, create = True)
             mbox = server.get_mailbox(m, expiry = 0)
+            mboxes_created.append(mbox)
+
+        # And now go through all of those mboxes and update their children
+        # attributes and make sure the underlying db is updated with this
+        # information.
+        #
+        for m in mboxes_created:
+            m.check_set_haschildren_attr()
+            m.commit_to_db()
 
         return
 
@@ -2446,6 +2489,15 @@ class Mailbox(object):
         finally:
             mbox.mailbox.close()
 
+        # if this mailbox was the child of another mailbox than we may need to
+        # update that mailbox's 'has children' attributes.
+        #
+        parent_name = os.path.dirname(name)
+        if parent_name != "":
+            parent_mbox = server.get_mailbox(parent_name, expiry = 0)
+            parent_mbox.check_set_haschildren_attr()
+            parent_mbox.commit_to_db()
+
         # And remove the mailbox from the filesystem.
         #
         if do_delete:
@@ -2485,8 +2537,8 @@ class Mailbox(object):
             mailbox has been renamed.
 
             Arguments:
-            - `mbox`:
-            - `new_name`:
+            - `mbox`: The Mailbox object that is being renamed
+            - `new_name`: Its new name
             - `c`: open database cursor to use
             """
             affected_mailboxes.append(mbox)
@@ -2554,6 +2606,25 @@ class Mailbox(object):
             #
             for m in affected_mailboxes:
                 m.mailbox = server.mailbox.get_folder(m.name)
+
+            # See if the mailbox HAD a parent mailbox and update that parent
+            # mailbox's children flags.
+            #
+            old_p_name = os.path.dirname(old_name)
+            if old_p_name != "":
+                m = server.get_mailbox(old_p_name, expiry = 0)
+                m.check_set_haschildren_attr()
+                m.commit_to_db()
+
+            # See if the mailbox under its new name has a parent and if it does
+            # update that parent's children flags.
+            #
+            new_p_name = os.path.dirname(new_name)
+            if new_p_name != "":
+                m = server.get_mailbox(new_p_name, expiry = 0)
+                m.check_set_haschildren_attr()
+                m.commit_to_db()
+
             return
         else:
             # when you rename 'inbox' what happens is you create a new mailbox

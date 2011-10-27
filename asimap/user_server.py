@@ -420,13 +420,13 @@ class IMAPUserServer(asyncore.dispatcher):
         if len(mboxes) == 0:
             return
         start_time = time.time()
-        
+
         num_queued_cmds = sum(len(x.command_queue) for x in mboxes)
         self.log.debug("process_queued_command: ** START Number of queued "
                        "commands: %d" % num_queued_cmds)
 
         random.shuffle(mboxes)
-        
+
         for mbox in mboxes:
             if len(mbox.command_queue) == 0:
                 continue
@@ -597,6 +597,7 @@ class IMAPUserServer(asyncore.dispatcher):
         For every folder found on disk that does not exist in the database
         create an entry for it.
         """
+        start_time = time.time()
         self.log.debug("find_all_folders: STARTING")
         extant_mboxes = { }
         mboxes_to_create = []
@@ -622,8 +623,9 @@ class IMAPUserServer(asyncore.dispatcher):
         #
         for mbox_name in mboxes_to_create:
             self.log.debug("Creating mailbox %s" % mbox_name)
-            asimap.mbox.Mailbox(mbox_name, self, expiry = 45)
-        self.log.debug("find_all_folders: FINISHED")
+            m = self.get_mailbox(mbox_name, expiry = 0)
+        self.log.debug("find_all_folders: FINISHED, took %0.2f seconds" % \
+                           time.time() - start_time)
 
     ##################################################################
     #

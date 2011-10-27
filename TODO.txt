@@ -64,10 +64,12 @@ things I need to do.
 
 * add SSL support
 
+* fix literal+ support
+
+* implement rfc3348 the 'child mailbox extension'
+
 o some sort of intelligent fallback for messages with malformed
   headers such that we can not find the UID properly.
-
-o fix literal+ support
 
 o make COPY command queue'able.
 
