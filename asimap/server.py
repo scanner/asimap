@@ -320,6 +320,51 @@ class IMAPClientHandler(asynchat.async_chat):
         else:
             return "from %s:%d" % (self.rem_addr,self.port)
 
+    ##################################################################
+    #
+    def handle_read(self):
+        """
+        We have to wrap the handle_read class because the server will lock up
+        during SSL handshake if the remote end, like apple's mail client,
+        blocks asking the user to authorizing a self-signed certificate.
+        """
+        if self.in_ssl_handshake:
+            try:
+                self.socket.do_handshake()
+            except ssl.SSLError, err:
+                # If we are wanting read or wanting write then we return and
+                # wait for the next time we are called.
+                #
+                if err.args[0] in (ssl.SSL_ERROR_WANT_READ,
+                                   ssl.SSL_ERROR_WANT_WRITE):
+                    return
+                else:
+                    raise
+            return
+        asynchat.async_chat.handle_read(self)
+        return
+
+    ##################################################################
+    #
+    def handle_write(self):
+        """
+        Ditto handle_read...
+        """
+        if self.in_ssl_handshake:
+            try:
+                self.socket.do_handshake()
+            except ssl.SSLError, err:
+                # If we are wanting read or wanting write then we return and
+                # wait for the next time we are called.
+                #
+                if err.args[0] in (ssl.SSL_ERROR_WANT_READ,
+                                   ssl.SSL_ERROR_WANT_WRITE):
+                    return
+                else:
+                    raise
+            return
+        asynchat.async_chat.handle_write(self)
+        return
 
     ############################################################################
     #
