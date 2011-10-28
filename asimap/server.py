@@ -275,11 +275,13 @@ class IMAPClientHandler(asynchat.async_chat):
         self.ibuffer = []
         self.set_terminator(self.LINE_TERMINATOR)
         self.msg_processor = ServerIMAPMessageProcessor(self)
+        self.in_ssl_handshake = False
 
         if self.ssl_cert:
             self.socket = ssl.wrap_socket(sock, server_side=True,
                                           certfile=self.ssl_cert,
                                           do_handshake_on_connect=False)
+            self.in_ssl_handshake = True
 
             # XXX We need to investigate the proper way to do this. For now we
             #     are going to handle the full handshake here before
@@ -289,20 +291,20 @@ class IMAPClientHandler(asynchat.async_chat):
             #     Yes this is a busy wait but we should only need to do this
             #     during initial connection establishment.
             #
-            while True:
-                try:
-                    self.socket.do_handshake()
-                    break
-                except ssl.SSLError, err:
-                    if err.args[0] == ssl.SSL_ERROR_WANT_READ:
-                        select.select([self.socket], [], [])
-                    elif err.args[0] == ssl.SSL_ERROR_WANT_WRITE:
-                        select.select([], [self.socket], [])
-                    else:
-                        raise
+            # while True:
+            #     try:
+            #         self.socket.do_handshake()
+            #         break
+            #     except ssl.SSLError, err:
+            #         if err.args[0] == ssl.SSL_ERROR_WANT_READ:
+            #             select.select([self.socket], [], [])
+            #         elif err.args[0] == ssl.SSL_ERROR_WANT_WRITE:
+            #             select.select([], [self.socket], [])
+            #         else:
+            #             raise
 
-        self.push("* OK [CAPABILITY %s]\r\n" % \
-                      ' '.join(CAPABILITIES))
+        # self.push("* OK [CAPABILITY %s]\r\n" % \
+        #               ' '.join(CAPABILITIES))
         return
 
     ##################################################################
@@ -331,6 +333,9 @@ class IMAPClientHandler(asynchat.async_chat):
         if self.in_ssl_handshake:
             try:
                 self.socket.do_handshake()
+                self.in_ssl_handshake = False
+                self.push("* OK [CAPABILITY %s]\r\n" % \
+                              ' '.join(CAPABILITIES))
             except ssl.SSLError, err:
                 # If we are wanting read or wanting write then we return and
                 # wait for the next time we are called.
@@ -353,6 +358,9 @@ class IMAPClientHandler(asynchat.async_chat):
         if self.in_ssl_handshake:
             try:
                 self.socket.do_handshake()
+                self.in_ssl_handshake = False
+                self.push("* OK [CAPABILITY %s]\r\n" % \
+                              ' '.join(CAPABILITIES))
             except ssl.SSLError, err:
                 # If we are wanting read or wanting write then we return and
                 # wait for the next time we are called.
