@@ -344,8 +344,17 @@ class IMAPClientHandler(asynchat.async_chat):
                                    ssl.SSL_ERROR_WANT_WRITE):
                     return
                 else:
+                    self.log.error("handle_write: %s, ssl error: %s" % \
+                                       (self.log_string(), str(err)))
+                    # Maybe we should just close the connection instead of
+                    # raising the exception?
+                    #
                     raise
             return
+
+        # We are not in ssl handshake.. Just call the function we are
+        # overriding.
+        #
         asynchat.async_chat.handle_read(self)
         return
 
@@ -369,8 +378,17 @@ class IMAPClientHandler(asynchat.async_chat):
                                    ssl.SSL_ERROR_WANT_WRITE):
                     return
                 else:
+                    self.log.error("handle_write: %s, ssl error: %s" % \
+                                       (self.log_string(), str(err)))
+                    # Maybe we should just close the connection instead of
+                    # raising the exception?
+                    #
                     raise
             return
+
+        # We are not in ssl handshake.. Just call the function we are
+        # overriding.
+        #
         asynchat.async_chat.handle_write(self)
         return
 
