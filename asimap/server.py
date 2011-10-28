@@ -330,32 +330,35 @@ class IMAPClientHandler(asynchat.async_chat):
         during SSL handshake if the remote end, like apple's mail client,
         blocks asking the user to authorizing a self-signed certificate.
         """
-        if self.in_ssl_handshake:
-            try:
-                self.socket.do_handshake()
-                self.in_ssl_handshake = False
-                self.push("* OK [CAPABILITY %s]\r\n" % \
-                              ' '.join(CAPABILITIES))
-            except ssl.SSLError, err:
-                # If we are wanting read or wanting write then we return and
-                # wait for the next time we are called.
-                #
-                if err.args[0] in (ssl.SSL_ERROR_WANT_READ,
-                                   ssl.SSL_ERROR_WANT_WRITE):
-                    return
-                else:
-                    self.log.error("handle_write: %s, ssl error: %s" % \
-                                       (self.log_string(), str(err)))
-                    # Maybe we should just close the connection instead of
-                    # raising the exception?
+        try:
+            if self.in_ssl_handshake:
+                try:
+                    self.socket.do_handshake()
+                    self.in_ssl_handshake = False
+                    self.push("* OK [CAPABILITY %s]\r\n" % \
+                                  ' '.join(CAPABILITIES))
+                except ssl.SSLError, err:
+                    # If we are wanting read or wanting write then we return and
+                    # wait for the next time we are called.
                     #
-                    raise
-            return
+                    if err.args[0] in (ssl.SSL_ERROR_WANT_READ,
+                                       ssl.SSL_ERROR_WANT_WRITE):
+                        return
+                    else:
+                        raise
+                return
 
-        # We are not in ssl handshake.. Just call the function we are
-        # overriding.
-        #
-        asynchat.async_chat.handle_read(self)
+            # We are not in ssl handshake.. Just call the function we are
+            # overriding.
+            #
+            asynchat.async_chat.handle_read(self)
+        except ssl.SSLError, err:
+            self.log.error("handle_write: %s, ssl error: %s" % \
+                               (self.log_string(), str(err)))
+            # Maybe we should just close the connection instead of
+            # raising the exception?
+            #
+            raise
         return
 
     ##################################################################
@@ -364,32 +367,35 @@ class IMAPClientHandler(asynchat.async_chat):
         """
         Ditto handle_read...
         """
-        if self.in_ssl_handshake:
-            try:
-                self.socket.do_handshake()
-                self.in_ssl_handshake = False
-                self.push("* OK [CAPABILITY %s]\r\n" % \
-                              ' '.join(CAPABILITIES))
-            except ssl.SSLError, err:
-                # If we are wanting read or wanting write then we return and
-                # wait for the next time we are called.
-                #
-                if err.args[0] in (ssl.SSL_ERROR_WANT_READ,
-                                   ssl.SSL_ERROR_WANT_WRITE):
-                    return
-                else:
-                    self.log.error("handle_write: %s, ssl error: %s" % \
-                                       (self.log_string(), str(err)))
-                    # Maybe we should just close the connection instead of
-                    # raising the exception?
+        try:
+            if self.in_ssl_handshake:
+                try:
+                    self.socket.do_handshake()
+                    self.in_ssl_handshake = False
+                    self.push("* OK [CAPABILITY %s]\r\n" % \
+                                  ' '.join(CAPABILITIES))
+                except ssl.SSLError, err:
+                    # If we are wanting read or wanting write then we return and
+                    # wait for the next time we are called.
                     #
-                    raise
-            return
+                    if err.args[0] in (ssl.SSL_ERROR_WANT_READ,
+                                       ssl.SSL_ERROR_WANT_WRITE):
+                        return
+                    else:
+                        raise
+                return
 
-        # We are not in ssl handshake.. Just call the function we are
-        # overriding.
-        #
-        asynchat.async_chat.handle_write(self)
+            # We are not in ssl handshake.. Just call the function we are
+            # overriding.
+            #
+            asynchat.async_chat.handle_write(self)
+        except ssl.SSLError, err:
+            self.log.error("handle_write: %s, ssl error: %s" % \
+                               (self.log_string(), str(err)))
+            # Maybe we should just close the connection instead of
+            # raising the exception?
+            #
+            raise
         return
 
     ############################################################################
