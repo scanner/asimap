@@ -301,7 +301,7 @@ class IMAPClientHandler(asynchat.async_chat):
                     else:
                         raise
 
-        self.push("* OK [%s] IMAP4rev1 Service Ready\r\n" % \
+        self.push("* OK [CAPABILITY %s]\r\n" % \
                       ' '.join(CAPABILITIES))
         return
 

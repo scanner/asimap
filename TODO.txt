@@ -68,6 +68,44 @@ things I need to do.
 
 * implement rfc3348 the 'child mailbox extension'
 
+o There is a bug with renaming a folder to a new name that has
+  subfolders (not making it a subfolder of other folders.)
+
+  I think that although my recursion function should work it is a bit
+  too confusing and that I can replace it with a simple loop over
+  matching records in the database that will be as effecting and a
+  clearer to understand.
+
+o this is a problem when an IMAP tries to copy a message to a folder
+  that is locked by some other process and the message ends up getting
+  copied ot the destination folder multiple times.
+
+  This mostly happens when my spam marking has locked the 'junk'
+  folder and Mail.app tries to put more messages in that folder
+
+  What is supposed to happen is the COPY command gets queued for later
+  processing and nothing happens until the lock is removed. The main
+  loop may try to apply the command many times but it should basically
+  just get requeued until it can be moved (we should watch for
+  situations causing a busy loop though.)
+
+o Apparently we should not even send untagged FETCH's to client unless
+  they are in these states:
+
+   -  as the result of a client command (e.g., FETCH responses to a
+      FETCH or STORE command),
+   -  as unsolicited responses sent just before the end of a command
+      (e.g., EXISTS or EXPUNGE) as the result of changes in other
+      sessions, and
+   -  during an IDLE command.
+
+   Right now we are generating untagged FETCH's to clients when the
+   state of messages in a mailbox changes. We need to put these on to
+   things like the expunge queue.
+
+o Add support for NOTIFY (rfc5465). I think this implies I need to
+  support rfc5267 as well. We should also support rfc5258 - LIST-EXTENDED
+
 o some sort of intelligent fallback for messages with malformed
   headers such that we can not find the UID properly.
 
