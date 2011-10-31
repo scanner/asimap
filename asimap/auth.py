@@ -80,7 +80,7 @@ class TestAuth(BaseAuth):
         # maildir = os.path.join(homedir, "Mail")
         maildir = "/var/tmp/testmaildir"
 
-        if username == "test" and password == "test":
+        if username == "foobie" and password == "test":
             return User("test", os.getlogin(), maildir)
         raise NoSuchUser("There is no user '%s'." % username)
 
