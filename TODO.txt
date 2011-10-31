@@ -68,7 +68,7 @@ things I need to do.
 
 * implement rfc3348 the 'child mailbox extension'
 
-o There is a bug with renaming a folder to a new name that has
+* There is a bug with renaming a folder to a new name that has
   subfolders (not making it a subfolder of other folders.)
 
   I think that although my recursion function should work it is a bit

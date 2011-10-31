@@ -168,7 +168,7 @@ _quoted_re = re.compile(_quoted)
 # A literal string has a 'literal prefix' which is of the from {\d}?+CRLF.
 # The "+" indicates a non-synchronizing literal
 #
-_lit_ref = r'\{(\d+)\}\+?\015\012'
+_lit_ref = r'\{(\d+)\+?\}\015\012'
 _lit_ref_re = re.compile(_lit_ref)
 
 # Date regular expressions

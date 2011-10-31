@@ -624,8 +624,7 @@ class IMAPUserServer(asyncore.dispatcher):
         for mbox_name in mboxes_to_create:
             self.log.debug("Creating mailbox %s" % mbox_name)
             m = self.get_mailbox(mbox_name, expiry = 0)
-        self.log.debug("find_all_folders: FINISHED, took %0.2f seconds" % \
-                           time.time() - start_time)
+        self.log.debug("find_all_folders: FINISHED")
 
     ##################################################################
     #

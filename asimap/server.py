@@ -37,7 +37,7 @@ from asimap.auth import AUTH_SYSTEMS
 log      = logging.getLogger("%s" % __name__)
 
 BACKLOG  = 5
-RE_LITERAL_STRING_START = re.compile(r'\{(\d+)\}\+?$')
+RE_LITERAL_STRING_START = re.compile(r'\{(\d+)\+?\}$')
 
 # This dict is all of the subprocesses that we have created. One for each
 # authenticated user with at least one active connection.
@@ -282,29 +282,9 @@ class IMAPClientHandler(asynchat.async_chat):
                                           certfile=self.ssl_cert,
                                           do_handshake_on_connect=False)
             self.in_ssl_handshake = True
+        else:
+            self.push("* OK [CAPABILITY %s]\r\n" % ' '.join(CAPABILITIES))
 
-            # XXX We need to investigate the proper way to do this. For now we
-            #     are going to handle the full handshake here before
-            #     continuing with the rest of our initialization. Why? Because
-            #     having ssl.wrap_socket() handle the hand shake fails.
-            #
-            #     Yes this is a busy wait but we should only need to do this
-            #     during initial connection establishment.
-            #
-            # while True:
-            #     try:
-            #         self.socket.do_handshake()
-            #         break
-            #     except ssl.SSLError, err:
-            #         if err.args[0] == ssl.SSL_ERROR_WANT_READ:
-            #             select.select([self.socket], [], [])
-            #         elif err.args[0] == ssl.SSL_ERROR_WANT_WRITE:
-            #             select.select([], [self.socket], [])
-            #         else:
-            #             raise
-
-        # self.push("* OK [CAPABILITY %s]\r\n" % \
-        #               ' '.join(CAPABILITIES))
         return
 
     ##################################################################
@@ -470,11 +450,11 @@ class IMAPClientHandler(asynchat.async_chat):
             self.set_terminator(int(m.group(1)))
             self.reading_string_literal = True
 
-            # If the literal ended with "}+" then this is a non-synchronizing
+            # If the literal ended with "+}" then this is a non-synchronizing
             # literal and we do not tell the client it can send more data.. it
             # will already be on its way.
             #
-            if self.ibuffer[-1][-1] != "+":
+            if self.ibuffer[-1][-2:] != "+}":
                 self.push("+ Ready for more input\r\n")
             else:
                 # Remove the '+' from the end of our non-synchronizing
@@ -482,7 +462,7 @@ class IMAPClientHandler(asynchat.async_chat):
                 # already did everything in a non-synchronizing literal
                 # fashion.
                 #
-                self.ibuffer[-1] = ibuffer[:-1]
+                self.ibuffer[-1] = self.ibuffer[-1][:-2] + self.ibuffer[-1][-1:]
 
             # We also tack on a \r\n to the ibuffer so that whatever parses
             # the message knows how to parse the literal string corrctly.
