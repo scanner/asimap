@@ -77,7 +77,12 @@ def setup_option_parser():
                       "connections.")
     parser.add_option("--ssl_certificate", action="store", type="string",
                       dest="ssl_certificate", help="Path to your SSL "
-                      "certificate.")
+                      "certificate. This must be a file that contains a "
+                      "private key and certificate chain in PEM format as "
+                      "needed by the python 'ssl' module. Consult the Python "
+                      "SSL document at "
+                      "http://docs.python.org/library/ssl.html#ssl-certificates"
+                      " for more information.")
     parser.add_option("--logdir", action="store", type="string",
                       dest="logdir", help="Path to the directory where log "
                       "files are stored. Since this is a multiprocess server "
