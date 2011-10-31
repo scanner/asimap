@@ -117,7 +117,7 @@ class Database(object):
         # Apply all the migrations that have not been applied yet.
         #
         for idx,migration in enumerate(MIGRATIONS[version:], start=version):
-            self.log.debug("Applying migration version %d (%s)" % \
+            self.log.info("Applying migration version %d (%s)" % \
                                (idx, migration.__name__))
             c = self.conn.cursor()
             migration(c)
@@ -229,6 +229,23 @@ def folders_can_be_subscribed(c):
     c.execute("alter table mailboxes add column subscribed integer default 0")
     return
 
+####################################################################
+#
+def get_rid_of_root_folder(c):
+    """
+    Due to a now fixed bug in the 'find_all_folders' algorithm we were
+    counting the root of the MH mailbox as a folder with an empty
+    name.
+
+    This is now fixed but all existing user's have this mailbox laying
+    around and we want to get rid of it.
+
+    Arguments:
+    - `c`: sqlite3 database connection
+    """
+    c.execute("delete from mailboxes where name=''")
+    return
+
 # The list of migrations we have so far. These are executed in order. They are
 # executed only once. They are executed when the database is opened. We track
 # which ones have been executed and new ones are executed when the database is
@@ -239,4 +256,5 @@ MIGRATIONS = [
     add_uids_to_mbox,
     add_last_check_time_to_mbox,
     folders_can_be_subscribed,
+    get_rid_of_root_folder,
     ]
