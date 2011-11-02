@@ -351,7 +351,7 @@ class Mailbox(object):
             try:
                 self.mailbox.lock()
             except mailbox.ExternalClashError:
-                self.log.warn("unable to get mailbox lock")
+                self.log.warn("resync: unable to get mailbox lock")
                 raise MailboxLock(mbox = self)
             # Whenever we resync the mailbox we update the sequence for 'seen'
             # based on 'seen' are all the messages that are NOT in the
@@ -2209,7 +2209,7 @@ class Mailbox(object):
             uid_vv, uid_max = self.get_uid_from_msg(msgs[-1])
             seq_max = len(self.mailbox)
             if uid_command:
-                # If we are doing a 'UID FETCH' command we need to use the max
+                # If we are doing a 'UID COPY' command we need to use the max
                 # uid for the sequence max.
                 #
                 uid_list = asimap.utils.sequence_set_to_list(msg_set, uid_max,
@@ -2280,7 +2280,15 @@ class Mailbox(object):
         # UID's. Get all of the new UID's for the messages we copied to the dest
         # mailbox so we can return it for the COPYUID response code.
         #
-        dest_mbox.resync(optional = False)
+        # NOTE: If the destination mailbox can not be resync'd due to a mailbox
+        #       lock do nothing. This will be handled in the normal resync
+        #       process. We were being proactive so this is okay.
+        #
+        try:
+            dest_mbox.resync(optional = False)
+        except MailboxLock:
+            pass
+
         dst_uids = []
         for k in dst_keys:
             uid_vv,uid = dest_mbox.get_uid_from_msg(k)

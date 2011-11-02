@@ -76,18 +76,17 @@ things I need to do.
   matching records in the database that will be as effecting and a
   clearer to understand.
 
-o this is a problem when an IMAP tries to copy a message to a folder
+* this is a problem when an IMAP tries to copy a message to a folder
   that is locked by some other process and the message ends up getting
   copied ot the destination folder multiple times.
 
   This mostly happens when my spam marking has locked the 'junk'
   folder and Mail.app tries to put more messages in that folder
 
-  What is supposed to happen is the COPY command gets queued for later
-  processing and nothing happens until the lock is removed. The main
-  loop may try to apply the command many times but it should basically
-  just get requeued until it can be moved (we should watch for
-  situations causing a busy loop though.)
+  Fixed... it was not about queued commands but the resync on the
+  destination folder failing due to a mailboxlock and the upper level
+  basically re-queueing the entire command that had already been
+  executed..
 
 o Apparently we should not even send untagged FETCH's to client unless
   they are in these states:
@@ -102,6 +101,9 @@ o Apparently we should not even send untagged FETCH's to client unless
    Right now we are generating untagged FETCH's to clients when the
    state of messages in a mailbox changes. We need to put these on to
    things like the expunge queue.
+
+o Find a way to make 'check all folders' run in the background. Maybe
+  fork a subprocess for it? and we parse the results when it finishes?
 
 o Add support for NOTIFY (rfc5465). I think this implies I need to
   support rfc5267 as well. We should also support rfc5258 - LIST-EXTENDED
