@@ -191,12 +191,12 @@ def main():
         # be run often, and it is expensive.
         #
         # XXX how often is this going to happen? Maybe we can check once an
-        #     hour?
+        #     hour? How about once every 3 hours?
         #
         # XXX I bet we could move this to a subprocess that returns a list of
         #     the folders to create?
         #
-        if now - last_find_all_folders > 3600:
+        if now - last_find_all_folders > (3600 * 3):
             server.find_all_folders()
             last_find_all_folders = now
             
