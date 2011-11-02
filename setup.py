@@ -14,5 +14,7 @@ setup(
     url = 'http://github.com/scanner/asimap',
     download_url = 'http://github.com/asimap/archives/master',
     packages = ["asimap"],
-    scripts = ["asimapd.py", "asimapd_user.py"]
+    # scripts = ["asimapd.py", "asimapd_user.py"]
+    data_files = [('etc/rc.d', ['utils/asimapd.sh']),
+                  ('libexec', ['asimapd.py', 'asimapd_user.py'])]
     )
