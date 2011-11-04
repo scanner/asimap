@@ -105,6 +105,19 @@ o Apparently we should not even send untagged FETCH's to client unless
 o Find a way to make 'check all folders' run in the background. Maybe
   fork a subprocess for it? and we parse the results when it finishes?
 
+  Or instead how about we get rid of find_all_folders. WHen we resync
+  a folder we track the last time we found its sub-folders. If it has
+  been more than an hour or something we get that folder's list of
+  sub-folders. If any of those folders are NOT in our db, we add them
+  (and either call resync now or wait until the next 'check all
+  folders' runs.)
+
+o when we queue a command for later due to a mailbox lock we should
+  delay re-running it for like 0.1 seconds to prevent busy spins on
+  locks. I guess put in a 'delay' or something in the queued job and
+  'last time run' if delay is true, then delay running it until we
+  have passed the delay time.
+
 o Add support for NOTIFY (rfc5465). I think this implies I need to
   support rfc5267 as well. We should also support rfc5258 - LIST-EXTENDED
 
