@@ -113,7 +113,7 @@ def main():
                                    "%(levelname)s %(name)s %(message)s")
     h.setFormatter(formatter)
     log.addHandler(h)
-    
+
     server = asimap.user_server.IMAPUserServer(options, os.getcwd())
 
     # Print on stdout the port we are listening on so that the asimapd server
@@ -135,12 +135,9 @@ def main():
     # db with all of the folders that we can find.)
     #
     server.find_all_folders()
-    last_find_all_folders = time.time()
-
     server.check_all_folders()
     last_full_check = time.time()
 
-    
     # And now loop forever.. breaking out of the loop every now and then to
     # see if we have had no active clients for awhile (and if we do not then
     # we exit.)
@@ -155,7 +152,7 @@ def main():
         timeout = 30
         if server.has_queued_commands():
             timeout = 0
-            
+
         asyncore.loop(count = 1, timeout = timeout)
 
         # At the end of each loop if we have had no clients for <n> minutes
@@ -182,24 +179,11 @@ def main():
         #     checked in the last 30 seconds? Not sure we will get any real
         #     savings from this.
         #
-        if now - last_active_check > 30: 
+        if now - last_active_check > 30:
             server.check_all_active_folders()
             server.expire_inactive_folders()
             last_active_check = time.time()
 
-        # Every n (60?) minutes look for new folders. This should not need to
-        # be run often, and it is expensive.
-        #
-        # XXX how often is this going to happen? Maybe we can check once an
-        #     hour? How about once every 3 hours?
-        #
-        # XXX I bet we could move this to a subprocess that returns a list of
-        #     the folders to create?
-        #
-        if now - last_find_all_folders > (3600 * 3):
-            server.find_all_folders()
-            last_find_all_folders = now
-            
         # Do a run through all of our folders and see if any of
         # them have changed. But we only do this once every 5 minutes.
         #
