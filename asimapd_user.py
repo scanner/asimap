@@ -152,9 +152,9 @@ def main():
         # If any folders have queued commands then set the timeout waiting for
         # data from clients to 0 so we can process the command queues.
         #
-        timeout = 30
+        timeout = 30.0
         if server.has_queued_commands():
-            timeout = 0
+            timeout = 0.1
             
         asyncore.loop(count = 1, timeout = timeout)
 
