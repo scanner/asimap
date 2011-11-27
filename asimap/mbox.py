@@ -78,7 +78,7 @@ class Mailbox(object):
 
     ##################################################################
     #
-    def __init__(self, name, server, expiry = 900):
+    def __init__(self, name, server, expiry = 900, do_not_sync = False):
         """
         This represents an active mailbox. You can only instantiate
         this class for mailboxes that actually in the file system.
@@ -96,6 +96,13 @@ class Mailbox(object):
         - `expiry`: If not none then it specifies the number of seconds in the
                     future when we want this mailbox to be turfed out if it has
                     no active clients. Defaults to 15 minutes.
+
+        - `do_not_sync` - Even if we just created this folder do NOT do a
+          resync on it. This is because we do not want to have the server lock
+          up while discovering new folders (see check_as_haschildren_attr()).
+          The idea is that this folder may have just been discovered and it
+          will undergo a resync in 5 minutes or less during
+          'check_all_folders()' in the user server object.
         """
         self.log = logging.getLogger("%s.%s.%s" % (__name__, self.__class__.__name__,name))
         self.server = server
@@ -216,7 +223,8 @@ class Mailbox(object):
         #     operating on it causing back to back resyncs.. should we skip
         #     this one?
         #
-        self.resync(force = not force_resync, optional = False)
+        if not do_not_resync:
+            self.resync(force = not force_resync, optional = False)
         return
 
     ##################################################################
@@ -1279,16 +1287,25 @@ class Mailbox(object):
         children folders or not.
 
         I am being lazy here. Instead of just intelligentily and diligently
-        checing and updating this flag and parent folders during folder
+        checking and updating this flag and parent folders during folder
         instantiation, folder creation (adds flag to parent folders), and
         folder deletion I made this helper function. You call it on a folder
         instance and it will check to see if this folder has any children and
         update the attributes as appropriate.
 
+        Also since 'find_all_folders' is REALLY slow for users (me) with a huge
+        number of mailboxes and a huge number of messages instead of doing a
+        'find_all_folders' at regularly intervals we will basically do a check
+        opportunistically. If we find a folder that has sub-folders that are
+        not in the db, we add them to the db (with a mtime of 0.) The next time
+        we do a 'check_all_folders' we will force a resync and instantiation of
+        these newly found sub-folders.
+
         XXX The biggest downside is that we use mailbox.MH.list_folders() and I
             have a feeling that this can be slow at times.
         """
-        if len(self.mailbox.list_folders()) > 0:
+        sub_folders = self.mailbox.list_folders()
+        if len(sub_folders) > 0:
             self.attributes.add('\\HasChildren')
             if '\\HasNoChildren' in self.attributes:
                 self.attributes.remove('\\HasNoChildren')
@@ -1296,6 +1313,14 @@ class Mailbox(object):
             self.attributes.add('\\HasNoChildren')
             if '\\HasChildren' in self.attributes:
                 self.attributes.remove('\\HasChildren')
+
+        # For each sub-folder see if they are in the database.
+        #
+        for sf_name in sub_folders:
+            full_name = os.path.join(self.name, sf_name)
+            if not Mailbox.exists(full_name, self.server):
+                mbox = Mailbox(full_name, server, expiry = 0,
+                               do_not_sync = True)
         return
 
     ##################################################################
@@ -2324,6 +2349,24 @@ class Mailbox(object):
         return max(int(os.path.getmtime(path)),
                    int(os.path.getmtime(seq_path)))
 
+    ##################################################################
+    #
+    @classmethod
+    def exists(self, name, server):
+        """
+        See if mailbox exists in the db. Return True if it does.
+        """
+        c = server.db.cursor()
+        try:
+            r = c.execute("select name,id from mailboxes where name = ?",
+                          (name,))
+            if len(r) > 0:
+                return True
+            else:
+                return False
+        finally:
+            c.close()
+
     #########################################################################
     #
     @classmethod
@@ -2576,7 +2619,7 @@ class Mailbox(object):
                 #
                 if mbox_old_name in server.active_mailboxes:
                     affected_mailboxes.append((mbox_old_name, mbox_new_name))
-                    
+
             # Change all of the affected old names to their new names.
             #
             for new_mbox_name, old_mbox_name, mbox_id in to_change:
@@ -2604,7 +2647,7 @@ class Mailbox(object):
 
                 # Flush the old name from the message cache..
                 #
-                server.msg_cache.clear_mbox(mbox_old_name)                
+                server.msg_cache.clear_mbox(mbox_old_name)
 
             c.close()
             server.db.commit()
