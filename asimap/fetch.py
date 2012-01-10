@@ -211,7 +211,7 @@ class FetchAtt(object):
     #
     def __str__(self):
         return self.dbg(show_peek = False)
-    
+
     ##################################################################
     #
     def dbg(self, show_peek = False):
@@ -456,17 +456,38 @@ class FetchAtt(object):
                     continue
 
                 addr_list = []
+
+                # Parse each address in to an address structure: An address
+                # structure is a parenthesized list that describes an
+                # electronic mail address.  The fields of an address structure
+                # are in the following order: personal name, [SMTP]
+                # at-domain-list (source route), mailbox name, and host name.
+                #
                 for name, paddr in addrs:
                     one_addr = []
                     if name == "":
                         one_addr.append("NIL")
                     else:
                         one_addr.append('"%s"' % name)
+
+                    # This is the '[SMTP] at-domain-list (source route)' which
+                    # for now we do not bother with (not in any of my messages
+                    # so I am just going to punt on it.)
+                    #
                     one_addr.append("NIL")
+
+                    # Next: mailbox name, and host name. Handle the case like
+                    # 'MAILER-DAEMON' on the local host where there is no host
+                    # name.
+                    #
                     if paddr != "":
-                        mbox_name, host_name = paddr.split('@')
-                        one_addr.append('"%s"' % mbox_name)
-                        one_addr.append('"%s"' % host_name)
+                        if  '@' in paddr:
+                            mbox_name, host_name = paddr.split('@')
+                            one_addr.append('"%s"' % mbox_name)
+                            one_addr.append('"%s"' % host_name)
+                        else:
+                            one_addr.append('"%s"' % paddr)
+                            one_addr.append('"NIL"')
                     else:
                         one_addr.append("NIL")
                     addr_list.append("(%s)" % " ".join(one_addr))
