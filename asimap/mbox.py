@@ -2482,10 +2482,17 @@ class Mailbox(object):
             # mailbox.mailbox.lock()
             inferior_mailboxes = mbox.mailbox.list_folders()
 
-            # You can not delete a mailbox that has the '\Noselect' attribute.
+            # You can not delete a mailbox that has the '\Noselect' attribute
+            # and has inferior mailboxes.
             #
-            if '\\Noselect' in mbox.attributes:
+            if '\\Noselect' in mbox.attributes and len(inferior_mailboxes) > 0:
                 raise InvalidMailbox("The mailbox '%s' is already deleted" % \
+                                         name)
+            # You can not delete a mailbox that has the '\Noselect' attribute
+            # and is subscribed.
+            #
+            if '\\Noselect' in mbox.attributes and mbox.subscribed:
+                raise InvalidMailbox("The mailbox '%s' is still subscribed" % \
                                          name)
 
             # When deleting a mailbox it will cause to be deleted every
