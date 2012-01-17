@@ -799,6 +799,12 @@ class Authenticated(BaseClientHandler):
         for mbox_name, attributes in results:
             if mbox_name.lower() == "inbox":
                 mbox_name = "INBOX"
+
+            # If the mailbox name has a space in it we need to present
+            # it to the client with quotes.
+            #
+            if ' ' in mbox_name:
+                mbox_name = '"%s"' % mbox_name
             self.client.push(str('* %s (%s) "/" %s\r\n' % \
                                  (res, ' '.join(attributes), mbox_name)))
         return None
