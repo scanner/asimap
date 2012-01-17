@@ -2486,7 +2486,8 @@ class Mailbox(object):
             # and has inferior mailboxes.
             #
             if '\\Noselect' in mbox.attributes and len(inferior_mailboxes) > 0:
-                raise InvalidMailbox("The mailbox '%s' is already deleted" % \
+                raise InvalidMailbox("The mailbox '%s' is already deleted"
+                                     "and there are inferior mailboxes" % \
                                          name)
             # You can not delete a mailbox that has the '\Noselect' attribute
             # and is subscribed.
