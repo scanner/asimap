@@ -823,17 +823,16 @@ class Mailbox(object):
             #
             for line in fp:
                 if line[0:15].lower() == 'x-asimapd-uid: ':
-                    try:
-                        # Convert the strings we parse out of the header to
-                        # ints.
-                        #
-                        uid_vv,uid = [int(x) for x in (line[15:].strip().split('.'))]
-                        return (uid_vv, uid)
-                    except ValueError:
+                    uid_vv,uid = asimap.utils.get_uidvv_uid(line[15:].strip())
+                    if uid is None:
                         self.log.info("get_uid_from_msg: msg %s had malformed "
                                       "uid header: %s" % (msg, line))
                         return (None, None)
                 elif len(line.strip()) == 0:
+                    # Wait.. we should not be looking for a line with just
+                    # whitespace.. we should ONLY be accepting empty lines as
+                    # a maker for the end of the headers.
+                    #
                     return (None, None)
         finally:
             fp.close()

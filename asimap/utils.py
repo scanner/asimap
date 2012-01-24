@@ -20,12 +20,18 @@ import random
 import hashlib
 import os
 import sys
+import re
 
 # asimap imports
 #
 from exceptions import Bad
 
 LOG = logging.getLogger("%s" % (__name__,))
+
+# RE used to suss out the digits of the uid_vv/uid header in an email
+# message
+#
+uid_re = re.compile(r'(\d+)\s*\.\s*(\d+)')
 
 ############################################################################
 #
@@ -230,3 +236,27 @@ def hash_password(raw_password):
     hsh = get_hexdigest(algo, salt, raw_password)
     return '%s$%s$%s' % (algo, salt, hsh)
 
+####################################################################
+#
+def get_uidvv_uid(hdr):
+    """
+    Given a string that is supposedly the value of the 'x-asimapd-uid'
+    header from an email message return a tuple comprised of the
+    uid_vv, and uid parsed out of that header's contents.
+
+    This deals with the case where we get a malformed header that
+    actually has a continuation of the next line mangled into it. It
+    does not happen often but some historical messages look like this.
+
+    If we can not parse the uid_vv, uid then we return (None, None)
+    which is supposed to be a signal to our caller that this message
+    does not have a valid uid_vv, uid.
+
+    Arguments:
+    - `hdr`: A string that is the contents of the 'x-asimapd-uid' header from
+             an email message.
+    """
+    s = uid_re.search(hdr)
+    if s:
+        return tuple((int(x) for x in s.groups()))
+    return (None, None)

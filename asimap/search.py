@@ -60,7 +60,7 @@ class SearchContext(object):
                                                           self.__class__.__name__,
                                                           mailbox.name,
                                                           msg_key))
-        
+
         self.mailbox = mailbox
         self.msg_key = msg_key
         self.seq_max = seq_max
@@ -100,14 +100,17 @@ class SearchContext(object):
         # If the uid is not set, then set it also at the same time.
         #
         if self._uid is None:
-            self._uid_vv, self._uid = [int(x) for x in self.msg['x-asimapd-uid'].strip().split('.')]
+            self._uid_vv, self._uid = asimap.utils.get_uidvv_uid(self.msg['x-asimapd-uid'])
+            if self._uid is None:
+                raise MailboxInconsistency(mbox_name = self.mailbox.name,
+                                           msg_key = self.msg_key)
         else:
             # If, after we get the message and if the UID is defined and if the
             # UID in the message does NOT match the UID we have then raise a
             # mailboxinconsistency error.
             #
-            uid_vv,uid = [int(x) for x in self.msg['x-asimapd-uid'].strip().split('.')]
-            if self._uid != uid:
+            uid_vv,uid = asimap.utils.get_uidvv_uid(self.msg['x-asimapd-uid'])
+            if self._uid != uid or uid is None:
                 raise MailboxInconsistency(mbox_name = self.mailbox.name,
                                            msg_key = self.msg_key)
 
