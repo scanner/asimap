@@ -138,3 +138,13 @@ o add command/response tracing facility and hook it into the ability
 o write a unit test suite for the components we can test separately
   (like IMAP message parsing, search & fetch over a set of test
   messages.)
+
+=== 2012.03.23 ===
+
+o 'check_all_folders' is pretty quick... 4.8s on
+  kamidake.apricot.com for my account - but how about instead of doing
+  a sweep of folders we know about we basically queueu up a series of
+  requests to check the status for each folder. It would have the same
+  effect, but instead of blocking the server for <n> seconds, it would
+  flow normally, almost like an IMAP client doing CHECK commands
+  on every folder.
