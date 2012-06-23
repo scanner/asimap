@@ -139,6 +139,25 @@ class IMAPUserClientHandler(asynchat.async_chat):
             else:
                 self.log.info(message)
 
+    ##################################################################
+    #
+    def handle_error(self):
+        """
+        Override the aysnc_chat's error handler so that we can log the message
+        more directly in such a way that errorstack will get a full stack
+        trace.
+        """
+        t, v, tb = sys.exc_info()
+        # sometimes a user repr method will crash.
+        try:
+            self_repr = repr(self)
+        except:
+            self_repr = '<__repr__(self) failed for object at %0x>' % id(self)
+
+        self.log.error("uncaptured python exception, closing channel %s "
+                       "(%s:%s)" % (self_repr, t, v), exc_info = (t,v,tb))
+        self.close()
+
     ############################################################################
     #
     def collect_incoming_data(self, data):

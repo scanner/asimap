@@ -103,6 +103,12 @@ class IMAPSubprocessHandle(object):
         if self.options.debug:
             cmd.append("--debug")
 
+        # If we have an errorstack.com key pass it on to our client so
+        # that it can submit nasty errors to errostack.com for us.
+        #
+        if self.options.errorstack_key:
+            cmd.append("--errorstack_key=%s" % self.options.errorstack_key)
+
         self.log.debug("Starting user server, cmd: %s, as user: '%s', in "
                        "directory '%s'" % (repr(cmd),self.user.local_username,
                                            self.user.maildir))

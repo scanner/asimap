@@ -39,6 +39,29 @@ import time
 import asimap
 import asimap.user_server
 
+##################################################################
+##################################################################
+#
+class ErrorStackHandler(logging.handlers.HTTPHandler):
+    """
+    Set up a HTTP logging handler that we can use to log errors and
+    higher to errorstack.com
+    """
+
+    ##################################################################
+    #
+    def mapLogRecord(self, record):
+        """
+        Define the values submitted to ErrorStack.com.
+        """
+        keys = ['name','msg','levelname','module','pathname','funcName',
+                'lineno','args','exc_text','threadName','thread','process',
+                'asctime']
+        ErrorInfo = {}
+        for key in keys:
+            ErrorInfo[key] = record.__dict__[key]
+        return ErrorInfo
+
 ############################################################################
 #
 def setup_option_parser():
@@ -52,7 +75,8 @@ def setup_option_parser():
                                    version = asimap.__version__)
 
     parser.set_defaults(debug = False,
-                        logdir = "/var/log/asimapd")
+                        logdir = "/var/log/asimapd",
+                        errorstack_key = None)
     parser.add_option("--debug", action="store_true", dest="debug",
                       help="Emit debugging statements.")
     parser.add_option("--logdir", action="store", type="string",
@@ -65,6 +89,10 @@ def setup_option_parser():
                       "will be called 'asimapd.log'. Each sub-process's "
                       "logfile will be called '<imap user>-<local user>-"
                       "asimapd.log'.")
+    parser.add_option("--errorstack_key", action="store", type="string",
+                      dest="errorstack_key", help="If you are using "
+                      "errorstack.com to track and analyze error and above "
+                      "failures then supply the stack key here.")
     return parser
 
 #############################################################################
@@ -113,6 +141,17 @@ def main():
                                    "%(levelname)s %(name)s %(message)s")
     h.setFormatter(formatter)
     log.addHandler(h)
+
+    # If an error stack key was provided via the command line arguments then
+    # also setup a handler to shunt exceptions of error or higher to error
+    # stack.
+    #
+    if options.errorstack_key is not None:
+        ESHandler = ErrorStackHandler("www.errorstack.com",
+                                      "/submit?_s=%s&_r=json" % options.errorstack_key,
+                                      "POST")
+        ESHandler.setLevel(logging.ERROR)
+        log.addHandler(ESHandler)
 
     server = asimap.user_server.IMAPUserServer(options, os.getcwd())
 
