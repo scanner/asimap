@@ -223,7 +223,7 @@ class Mailbox(object):
         #     operating on it causing back to back resyncs.. should we skip
         #     this one?
         #
-        if not do_not_resync:
+        if not do_not_sync:
             self.resync(force = not force_resync, optional = False)
         return
 
@@ -2357,9 +2357,10 @@ class Mailbox(object):
         """
         c = server.db.cursor()
         try:
-            r = c.execute("select name,id from mailboxes where name = ?",
-                          (name,))
-            if len(r) > 0:
+            c.execute("select count(*) from mailboxes where name = ?", (name,))
+            v = c.fetchone()
+            c.close()
+            if int(v[0]) > 0:
                 return True
             else:
                 return False
