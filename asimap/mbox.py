@@ -1318,7 +1318,7 @@ class Mailbox(object):
         for sf_name in sub_folders:
             full_name = os.path.join(self.name, sf_name)
             if not Mailbox.exists(full_name, self.server):
-                mbox = Mailbox(full_name, server, expiry = 0,
+                mbox = Mailbox(full_name, self.server, expiry = 0,
                                do_not_sync = True)
         return
 
