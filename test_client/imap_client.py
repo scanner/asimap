@@ -25,7 +25,7 @@ def setup_option_parser():
     parser = optparse.OptionParser(usage = "%prog [options]",
                                    version = "0.1")
 
-    parser.set_defaults(port = 993, interface = "0.0.0.0", tls = True)
+    parser.set_defaults(port = 993, server = "127.0.0.1", tls = True)
 
     parser.add_option("--port", action="store", type="int", dest="port",
                       help = "What port to listen on.")
@@ -49,9 +49,9 @@ def main():
     username = raw_input("IMAP Username: ")
     password = getpass.getpass("IMAP Password: ")
     if options.tls:
-        c = imaplib.IMAP4_SSL("kamidake.apricot.com")
+        c = imaplib.IMAP4_SSL(options.server)
     else:
-        c = imaplib.IMAP4("kamidake.apricot.com")
+        c = imaplib.IMAP4(options.server)
 
     print "Logging in as %s" % username
     c.login(username, password)

@@ -84,7 +84,8 @@ class IMAPSubprocessHandle(object):
                   is passed to the subprocess so that it can look up which unix
                   user to switch to for handling that user's mailbox.
         """
-        self.log = logging.getLogger("%s.%s" % (__name__, self.__class__.__name__))
+        self.log = logging.getLogger("%s.%s" % (__name__,
+                                                self.__class__.__name__))
         self.options = options
         self.user = user
         self.port = None
