@@ -148,3 +148,31 @@ o 'check_all_folders' is pretty quick... 4.8s on
   effect, but instead of blocking the server for <n> seconds, it would
   flow normally, almost like an IMAP client doing CHECK commands
   on every folder.
+
+=== 2012.07.23 ===
+
+Suggestions from Bill Janssen (janssen@parc.com)
+
+Add to the readme or a how to run the server document text that better
+text that tells you what you need to bring the server up. He pointed
+out:
+
+* Install pytz first.
+
+* "sudo mkdir -p /var/log/asimapd/" first.
+
+* Use utils/asimap_auth to create logins with passwords, before firing
+ up the server for the first time.
+
+* Edit asimap/auth.py to use "~/MH-Mail" for my mail root instead of "~/Mail".
+
+A couple of suggestions:
+
+* You'd probably like Tornado (http://tornadoweb.org/).  Great
+ replacement for the buggy and poorly maintained async*. -- look in to
+ tornado to replace async*
+
+* It would be great if auth.py read ~/.mh_profile to get things like the
+ maildir.  The vars "Path" (the maildir), "MailDrop" (the mbox spool
+ file to inc from), and "Flist-Order" (an ordering for mailboxes) might
+ be useful.
