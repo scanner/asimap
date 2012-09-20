@@ -327,11 +327,15 @@ class IMAPUserServer(asyncore.dispatcher):
         asyncore.dispatcher.__init__(self)
         self.log = logging.getLogger("%s.%s" % (__name__, self.__class__.__name__))
 
-        self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.set_reuse_addr()
-        self.bind(("127.0.0.1", 0))
-        self.address = self.socket.getsockname()
-        self.listen(BACKLOG)
+        # Do NOT create our socket if we are running in standalone mode
+        #
+        if self.options.standalone_mode == False:
+            self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.set_reuse_addr()
+            self.bind(("127.0.0.1", 0))
+            self.address = self.socket.getsockname()
+            self.listen(BACKLOG)
+
         self.maildir = maildir
         self.mailbox = mailbox.MH(self.maildir, create = True)
 
@@ -643,11 +647,12 @@ class IMAPUserServer(asyncore.dispatcher):
         for mbox_name in mboxes_to_create:
             self.log.debug("Creating mailbox %s" % mbox_name)
             m = self.get_mailbox(mbox_name, expiry = 0)
-        self.log.debug("find_all_folders: FINISHED")
+        self.log.debug("find_all_folders: FINISHED. Took %f seconds" % \
+                           (time.time() - start_time))
 
     ##################################################################
     #
-    def check_all_folders(self):
+    def check_all_folders(self, force = False):
         """
         This goes through all of the folders and sees if any of the mtimes we
         have on disk disagree with the mtimes we have in the database.
@@ -659,6 +664,9 @@ class IMAPUserServer(asyncore.dispatcher):
 
         The folder's \Marked and \Unmarked attributes maybe set in the process
         of this run.
+
+        - `force` : If True this will force a full resync on all
+                    mailbox regardless of their mtimes.
         """
         start_time = time.time()
         self.log.debug("check_all_folders begun")
@@ -701,14 +709,14 @@ class IMAPUserServer(asyncore.dispatcher):
             try:
                 fmtime = asimap.mbox.Mailbox.get_actual_mtime(self.mailbox,
                                                               mbox_name)
-                if fmtime > mtime:
+                if (fmtime > mtime) or force:
                     # The mtime differs.. force the mailbox to resync.
                     #
                     self.log.debug("check_all_folders: doing resync on '%s' "
                                    "stored mtime: %d, actual mtime: %d" % \
                                        (mbox_name, mtime, fmtime))
                     m = self.get_mailbox(mbox_name, 30)
-                    if m.mtime >= fmtime:
+                    if (m.mtime >= fmtime) and not force:
                         # Looking at the actual mailbox its mtime is NOT
                         # earlier than the mtime of the actual folder so we can
                         # skip this resync. But commit the mailbox data to the
@@ -717,7 +725,7 @@ class IMAPUserServer(asyncore.dispatcher):
                         m.commit_to_db()
                     else:
                         # Yup, we need to resync this folder.
-                        m.resync()
+                        m.resync(force = force)
             except (MailboxLock, MailboxInconsistency), e:
                 # If hit one of these exceptions they are usually
                 # transient.  we will skip it. The command processor in

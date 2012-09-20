@@ -76,9 +76,19 @@ def setup_option_parser():
 
     parser.set_defaults(debug = False,
                         logdir = "/var/log/asimapd",
+                        standalone_mode = False,
                         errorstack_key = None)
     parser.add_option("--debug", action="store_true", dest="debug",
                       help="Emit debugging statements.")
+    parser.add_option("--standalone_mode", action="store_true",
+                      dest="standalone_mode",
+                      help="Indicates that the user server object is to be run "
+                      "without actually establshing an asyncore.dispatcher. "
+                      "This is used as part of the debugging and utilities "
+                      "process so that we can run a user_server without "
+                      "actually having it listen to network connections. "
+                      "Useful for running subsystems and feeding it commands "
+                      "in a test harness.")
     parser.add_option("--logdir", action="store", type="string",
                       dest="logdir", help="Path to the directory where log "
                       "files are stored. Since this is a multiprocess server "

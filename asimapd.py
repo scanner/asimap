@@ -22,7 +22,6 @@ import select
 # Application imports
 #
 import asimap
-import asimap.server
 import asimap.user_server
 import asimap.utils
 
@@ -151,6 +150,11 @@ def main():
     h.setFormatter(formatter)
     log.addHandler(h)
     log.info("Starting")
+
+    # XXXX Due to complications with how we detect/load the auth system we have
+    #      to import asimap.server _after_ we have defined our log system.
+    #
+    import asimap.server
 
     try:
         with open(options.pidfile, "w+") as f:
