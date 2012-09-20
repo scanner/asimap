@@ -5,7 +5,7 @@
 """
 This module defines classes that are used by the main server to
 authenticate users. You sub-class the BaseAuth class to support
-different authentication systems. 
+different authentication systems.
 """
 
 # system imports
@@ -122,5 +122,5 @@ class SimpleAuth(BaseAuth):
 AUTH_SYSTEMS = { "test_auth" : TestAuth() }
 try:
     AUTH_SYSTEMS['simple_auth'] = SimpleAuth()
-except IOError, e:
+except (OSError,IOError), e:
     log.warn("Unable to initialize the SimpleAuth module: %s" % str(e))
