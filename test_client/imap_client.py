@@ -43,25 +43,30 @@ def main():
     """
 
     print "Debug is: %s" % str(__debug__)
+    if __debug__:
+        imaplib.Debug = 3
     parser = setup_option_parser()
     (options, args) = parser.parse_args()
     imaplib.Debug = 1
     username = raw_input("IMAP Username: ")
     password = getpass.getpass("IMAP Password: ")
     if options.tls:
+        print "Connecting with SSL to %s" % options.server
         c = imaplib.IMAP4_SSL(options.server)
     else:
+        print "Connecting with no encryption to %s" % options.server
         c = imaplib.IMAP4(options.server)
 
     print "Logging in as %s" % username
     c.login(username, password)
     print "Getting list of mailboxes"
     mbox_list = c.list("")
+    # print "output of mbox list: %s" % str(mbox_list)
     for mbox_name in mbox_list[1]:
         print mbox_name
     # print "List: %s" % str(c.list(""))
-    # print "Select inbox: %s" % str(c.select("inbox"))
-    # print "Find unseen messages: %s" % str(c.search(None, 'unseen'))
+    print "Select inbox: %s" % str(c.select("inbox"))
+    print "Find unseen messages: %s" % str(c.search(None, 'unseen'))
     # print "LSUB: %s" % str(c.lsub("", "*"))
     # print "Fetch: %s" % str(c.fetch("1:2", "(FLAGS UID)"))
     # print "Fetch 2:"
