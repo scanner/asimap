@@ -200,7 +200,7 @@ def main():
         #
         timeout = 30.0
         if server.has_queued_commands():
-            timeout = 0.1
+            timeout = 0
 
         asyncore.loop(count = 1, timeout = timeout)
 

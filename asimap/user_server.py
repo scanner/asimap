@@ -139,24 +139,27 @@ class IMAPUserClientHandler(asynchat.async_chat):
             else:
                 self.log.info(message)
 
-    ##################################################################
+    # XXX Not sure if I want this or not.. need to see if it is useful
+    #     without using errorstack.
     #
-    def handle_error(self):
-        """
-        Override the aysnc_chat's error handler so that we can log the message
-        more directly in such a way that errorstack will get a full stack
-        trace.
-        """
-        t, v, tb = sys.exc_info()
-        # sometimes a user repr method will crash.
-        try:
-            self_repr = repr(self)
-        except:
-            self_repr = '<__repr__(self) failed for object at %0x>' % id(self)
+    # ##################################################################
+    # #
+    # def handle_error(self):
+    #     """
+    #     Override the aysnc_chat's error handler so that we can log the message
+    #     more directly in such a way that errorstack will get a full stack
+    #     trace.
+    #     """
+    #     t, v, tb = sys.exc_info()
+    #     # sometimes a user repr method will crash.
+    #     try:
+    #         self_repr = repr(self)
+    #     except:
+    #         self_repr = '<__repr__(self) failed for object at %0x>' % id(self)
 
-        self.log.error("uncaptured python exception, closing channel %s "
-                       "(%s:%s)" % (self_repr, t, v), exc_info = (t,v,tb))
-        self.close()
+    #     self.log.error("uncaptured python exception, closing channel %s "
+    #                    "(%s:%s)" % (self_repr, t, v), exc_info = (t,v,tb))
+    #     self.close()
 
     ############################################################################
     #
@@ -759,4 +762,3 @@ class IMAPUserServer(asyncore.dispatcher):
             handler = IMAPUserClientHandler(sock, addr[0], addr[1], self,
                                             self.options)
             self.clients[addr[1]] = handler
-

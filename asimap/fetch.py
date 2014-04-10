@@ -11,7 +11,6 @@ Objects and functions to fetch elements of a message.
 # System imports
 #
 import email.utils
-import os.path
 import logging
 import hashlib
 from cStringIO import StringIO
@@ -24,24 +23,27 @@ import asimap.utils
 import asimap.constants
 import asimap.exceptions
 
+
 ############################################################################
 #
 class BadSection(asimap.exceptions.Bad):
-    def __init__(self, value = "bad 'section'"):
+    def __init__(self, value="bad 'section'"):
         self.value = value
+
     def __str__(self):
         return "BadSection: %s" % self.value
+
 
 ############################################################################
 #
 class TextGenerator(Generator):
-    def __init__(self, outfp, headers = False):
+    def __init__(self, outfp, headers=False):
         """
         This is a special purpose message generator.
 
         We need a generator that can be used to represent the 'TEXT'
         fetch attribute. When used on a multipart message it does not
-        render teh headers of the message, but renders the headers of
+        render the headers of the message, but renders the headers of
         every sub-part.
 
         When used on a message that is not a multipart it just renders
@@ -59,6 +61,8 @@ class TextGenerator(Generator):
         Generator.__init__(self, outfp)
         self._headers = headers
 
+    ####################################################################
+    #
     def _write(self, msg):
         # Just like the original _write in the Generator class except
         # that we do not write the headers if self._headers is false.
@@ -68,9 +72,12 @@ class TextGenerator(Generator):
         else:
             self._dispatch(msg)
 
-    def clone(self, fp, headers = True):
+    ####################################################################
+    #
+    def clone(self, fp, headers=True):
         """Clone this generator with the exact same options."""
         return self.__class__(fp, headers)
+
 
 ############################################################################
 #
@@ -82,41 +89,50 @@ def _is8bitstring(s):
             return True
     return False
 
+
 ############################################################################
 #
 class HeaderGenerator(Generator):
+    """
+    A generator that prints out only headers. If 'skip' is true,
+    then headers in the list 'headers' are NOT included in the
+    output.
 
-    def __init__(self, outfp, headers = [], skip = True):
-        """
-        A generator that prints out only headers. If 'skip' is true,
-        then headers in the list 'headers' are NOT included in the
-        output.
+    If skip is False then only headers in the list 'headers' are
+    included in the output.
 
-        If skip is False then only headers in the list 'headers' are
-        included in the output.
+    The default of headers = [] and skip = True will cause all
+    headers to be printed.
 
-        The default of headers = [] and skip = True will cause all
-        headers to be printed.
+    NOTE: Headers are compared in a case insensitive fashion so
+    'bCc' and 'bCC' and 'bcc' are all the same.
+    """
 
-        NOTE: Headers are compared in a case insensitive fashion so
-        'bCc' and 'bCC' and 'bcc' are all the same.
-        """
-        self.log = logging.getLogger("%s.%s" % (__name__, self.__class__.__name__))
+    ####################################################################
+    #
+    def __init__(self, outfp, headers=[], skip=True):
+        self.log = logging.getLogger("%s.%s" % (__name__,
+                                                self.__class__.__name__))
         Generator.__init__(self, outfp)
         self._headers = [x.lower() for x in headers]
         self._skip = skip
 
+    ####################################################################
+    #
     def clone(self, fp):
         """Clone this generator with the exact same options."""
         return self.__class__(fp, self._headers, self._skip)
 
+    ####################################################################
+    #
     def _write(self, msg):
-        # Just like the original _write in the Generator class except
-        # that we do is write the headers.
-        #
-        # Write the headers.  First we see if the message object wants to
-        # handle that itself.  If not, we'll do it generically.
-        #
+        """
+        Just like the original _write in the Generator class except
+        that we do is write the headers.
+
+        Write the headers.  First we see if the message object wants to
+        handle that itself.  If not, we'll do it generically.
+        """
         # XXX What messages have a headers method? Note that using the
         #     message's '_write_headers' function will skip our header
         #     field exclusion/inclusion rules.
@@ -127,6 +143,8 @@ class HeaderGenerator(Generator):
         else:
             meth(self)
 
+    ####################################################################
+    #
     def _write_headers(self, msg):
         for h, v in msg.items():
             # Determine if we are supposed to skip this header or not.
@@ -160,6 +178,7 @@ class HeaderGenerator(Generator):
         # A blank line always separates headers from body
         print >> self._fp
 
+
 ############################################################################
 #
 class FetchAtt(object):
@@ -172,20 +191,20 @@ class FetchAtt(object):
     indicates.
     """
 
-    OP_BODY          = 'body'
+    OP_BODY = 'body'
     OP_BODYSTRUCTURE = 'bodystructure'
-    OP_ENVELOPE      = 'envelope'
-    OP_FLAGS         = 'flags'
-    OP_INTERNALDATE  = 'internaldate'
+    OP_ENVELOPE = 'envelope'
+    OP_FLAGS = 'flags'
+    OP_INTERNALDATE = 'internaldate'
     OP_RFC822_HEADER = 'rfc822.header'
-    OP_RFC822_SIZE   = 'rfc822.size'
-    OP_RFC822_TEXT   = 'rfc822.text'
-    OP_UID           = 'uid'
+    OP_RFC822_SIZE = 'rfc822.size'
+    OP_RFC822_TEXT = 'rfc822.text'
+    OP_UID = 'uid'
 
     #######################################################################
     #
-    def __init__(self, attribute, section = None, partial = None,
-                 peek = False, ext_data = True, actual_command = None):
+    def __init__(self, attribute, section=None, partial=None,
+                 peek=False, ext_data=True, actual_command=None):
         """
         Fill in the details of our FetchAtt object based on what we parse
         from the given attribute/section/partial.
@@ -199,7 +218,9 @@ class FetchAtt(object):
             self.actual_command = self.attribute.upper()
         else:
             self.actual_command = actual_command
-        self.log = logging.getLogger("%s.%s.%s" % (__name__, self.__class__.__name__,actual_command))
+        self.log = logging.getLogger("%s.%s.%s" % (__name__,
+                                                   self.__class__.__name__,
+                                                   actual_command))
 
     #######################################################################
     #
@@ -210,11 +231,11 @@ class FetchAtt(object):
     ##################################################################
     #
     def __str__(self):
-        return self.dbg(show_peek = False)
+        return self.dbg(show_peek=False)
 
     ##################################################################
     #
-    def dbg(self, show_peek = False):
+    def dbg(self, show_peek=False):
         """
         Arguments:
         - `show_peek`: Show if this is a .PEEK or not. This is
@@ -235,16 +256,15 @@ class FetchAtt(object):
                     # 'header.<fields<.not>> (header_list)' section and we need
                     # convert that to a proper string for our FETCH response.
                     #
-                    if isinstance(s,(list,tuple)):
-                        sects.append("%s (%s)" % \
-                                         (str(s[0]).upper(),
-                                          ' '.join(x for x in s[1])))
-                    #                                          ' '.join(x.upper() for x in s[1])))
+                    if isinstance(s, (list, tuple)):
+                        sects.append("%s (%s)" %
+                                     (str(s[0]).upper(),
+                                      ' '.join(x for x in s[1])))
                     else:
                         sects.append(str(s).upper())
                 result += '[%s]' % '.'.join(sects)
             if self.partial:
-                result += "<%d.%d>" % (self.partial[0],self.partial[1])
+                result += "<%d.%d>" % (self.partial[0], self.partial[1])
         return result
 
     #######################################################################
@@ -265,18 +285,21 @@ class FetchAtt(object):
         # Based on the operation figure out what subroutine does the rest
         # of the work.
         #
-        if self.attribute  == "body":
+        if self.attribute == "body":
             result = self.body(self.ctx.msg, self.section)
         elif self.attribute == "bodystructure":
             result = self.bodystructure(self.ctx.msg)
         elif self.attribute == "envelope":
             result = self.envelope(self.ctx.msg)
         elif self.attribute == "flags":
-            result = '(%s)' % ' '.join([asimap.constants.seq_to_flag(x) for x in self.ctx.sequences])
+            result = '(%s)' % ' '.join(
+                [asimap.constants.seq_to_flag(x) for x in self.ctx.sequences])
         elif self.attribute == "internaldate":
-            result = '"%s"' % self.ctx.internal_date.strftime("%d-%b-%Y %H:%m:%S %z")
+            result = '"%s"' % \
+                self.ctx.internal_date.strftime("%d-%b-%Y %H:%m:%S %z")
         elif self.attribute == "rfc822.size":
-            result = str(len(self.ctx.mailbox.mailbox.get_string(self.ctx.msg_key)))
+            result = str(len(self.ctx.mailbox.mailbox.get_string(
+                self.ctx.msg_key)))
         elif self.attribute == "uid":
             result = str(self.ctx.uid)
         else:
@@ -481,7 +504,7 @@ class FetchAtt(object):
                     # name.
                     #
                     if paddr != "":
-                        if  '@' in paddr:
+                        if '@' in paddr:
                             mbox_name, host_name = paddr.split('@')
                             one_addr.append('"%s"' % mbox_name)
                             one_addr.append('"%s"' % host_name)
@@ -761,7 +784,7 @@ class FetchAtt(object):
             #
             result.append(str(len(payload.splitlines())))
 
-        # If we are not supposed to return extension data then we are done here.
+        # If we are not supposed to return extension data then we are done here
         #
         if not self.ext_data:
             return '(%s)' % ' '.join(result)

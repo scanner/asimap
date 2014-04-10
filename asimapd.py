@@ -42,7 +42,6 @@ def setup_option_parser():
                         ssl = True, ssl_certificate = None,
                         daemonize = True,
                         test_mode = False,
-                        errorstack_key = None,
                         pidfile = "/var/run/asimapd.pid",
                         logdir = "/var/log/asimapd")
 
@@ -97,10 +96,6 @@ def setup_option_parser():
                       "processes on stderr. NOTE: If you select --daemonize, "
                       "setting the logdir to 'stderr' makes no sense! "
                       "When we daemonize stderr is redirected to /dev/null.")
-    parser.add_option("--errorstack_key", action="store", type="string",
-                      dest="errorstack_key", help="If you are using "
-                      "errorstack.com to track and analyze error and above "
-                      "failures then supply the stack key here.")
     return parser
 
 #############################################################################

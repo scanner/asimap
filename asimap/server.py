@@ -84,8 +84,7 @@ class IMAPSubprocessHandle(object):
                   is passed to the subprocess so that it can look up which unix
                   user to switch to for handling that user's mailbox.
         """
-        self.log = logging.getLogger("%s.%s" % (__name__,
-                                                self.__class__.__name__))
+        self.log = logging.getLogger("%s.%s" % (__name__, self.__class__.__name__))
         self.options = options
         self.user = user
         self.port = None
@@ -103,12 +102,6 @@ class IMAPSubprocessHandle(object):
         cmd.append("--logdir=%s" % self.options.logdir)
         if self.options.debug:
             cmd.append("--debug")
-
-        # If we have an errorstack.com key pass it on to our client so
-        # that it can submit nasty errors to errostack.com for us.
-        #
-        if self.options.errorstack_key:
-            cmd.append("--errorstack_key=%s" % self.options.errorstack_key)
 
         self.log.debug("Starting user server, cmd: %s, as user: '%s', in "
                        "directory '%s'" % (repr(cmd),self.user.local_username,
