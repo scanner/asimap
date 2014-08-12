@@ -41,7 +41,8 @@ from asimap.exceptions import MailboxLock, MailboxInconsistency
 #
 module_logger = logging.getLogger("asimap.%s" % __name__)
 
-BACKLOG  = 5
+BACKLOG = 5
+
 
 ####################################################################
 #
@@ -56,6 +57,7 @@ def set_user_server_program(prg):
     module = sys.modules[__name__]
     setattr(module, "USER_SERVER_PROGRAM", prg)
     return
+
 
 ##################################################################
 ##################################################################
@@ -79,17 +81,17 @@ class IMAPUserClientHandler(asynchat.async_chat):
     To send messages back to the IMAP client we follow the same protocol.
     """
 
-    LINE_TERMINATOR     = "\n"
+    LINE_TERMINATOR = "\n"
 
     ##################################################################
     #
     def __init__(self, sock, rem_address, port, server, options):
         """
         """
-        asynchat.async_chat.__init__(self, sock = sock)
+        asynchat.async_chat.__init__(self, sock=sock)
 
-        self.log = logging.getLogger("%s.%s" % (__name__, self.__class__.__name__))
-
+        self.log = logging.getLogger("%s.%s" % (__name__,
+                                                self.__class__.__name__))
         self.reading_message = False
         self.ibuffer = []
         self.set_terminator(self.LINE_TERMINATOR)
@@ -117,7 +119,7 @@ class IMAPUserClientHandler(asynchat.async_chat):
 
     ##################################################################
     #
-    def log_info(self, message, type = "info"):
+    def log_info(self, message, type="info"):
         """
         Replace the log_info method with one that uses our stderr logger
         instead of trying to write to stdout.
@@ -146,7 +148,8 @@ class IMAPUserClientHandler(asynchat.async_chat):
     # #
     # def handle_error(self):
     #     """
-    #     Override the aysnc_chat's error handler so that we can log the message
+    #     Override the aysnc_chat's error handler so that we can log the
+    #     message
     #     more directly in such a way that errorstack will get a full stack
     #     trace.
     #     """
@@ -155,13 +158,13 @@ class IMAPUserClientHandler(asynchat.async_chat):
     #     try:
     #         self_repr = repr(self)
     #     except:
-    #         self_repr = '<__repr__(self) failed for object at %0x>' % id(self)
+    #         self_repr = '<__repr__(self) failed for object at %0x>' % d(self)
 
     #     self.log.error("uncaptured python exception, closing channel %s "
     #                    "(%s:%s)" % (self_repr, t, v), exc_info = (t,v,tb))
     #     self.close()
 
-    ############################################################################
+    ###########################################################################
     #
     def collect_incoming_data(self, data):
         """
@@ -200,10 +203,10 @@ class IMAPUserClientHandler(asynchat.async_chat):
                 self.ibuffer = []
                 self.reading_message = True
                 self.set_terminator(msg_length)
-            except ValueError,e:
+            except ValueError, e:
                 self.log.error("found_terminator(): %s expected an int, got: "
-                               "'%s'" % \
-                               (self.log_string(),"".join(self.ibuffer)))
+                               "'%s'" % (self.log_string(),
+                                         "".join(self.ibuffer)))
             return
 
         # If we were reading a full IMAP message, then we switch back to
@@ -302,6 +305,7 @@ class IMAPUserClientHandler(asynchat.async_chat):
 
         return
 
+
 ##################################################################
 ##################################################################
 #
@@ -328,11 +332,12 @@ class IMAPUserServer(asyncore.dispatcher):
         self.options = options
 
         asyncore.dispatcher.__init__(self)
-        self.log = logging.getLogger("%s.%s" % (__name__, self.__class__.__name__))
+        self.log = logging.getLogger("%s.%s" % (__name__,
+                                                self.__class__.__name__))
 
         # Do NOT create our socket if we are running in standalone mode
         #
-        if self.options.standalone_mode == False:
+        if self.options.standalone_mode is False:
             self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
             self.set_reuse_addr()
             self.bind(("127.0.0.1", 0))
@@ -340,7 +345,7 @@ class IMAPUserServer(asyncore.dispatcher):
             self.listen(BACKLOG)
 
         self.maildir = maildir
-        self.mailbox = mailbox.MH(self.maildir, create = True)
+        self.mailbox = mailbox.MH(self.maildir, create=True)
 
         # A global counter for the next available uid_vv is stored in the user
         # server object. Mailboxes will get this value and increment it when
@@ -362,13 +367,13 @@ class IMAPUserServer(asyncore.dispatcher):
         #
         # The key is the mailbox name.
         #
-        self.active_mailboxes = { }
+        self.active_mailboxes = {}
 
         # A dict of the active IMAP clients that are talking to us.
         #
         # The key is the port number of the attached client.
         #
-        self.clients = { }
+        self.clients = {}
 
         # There is a single message cache per user server instance.
         #
@@ -412,8 +417,8 @@ class IMAPUserServer(asyncore.dispatcher):
         """
         Returns True if any active mailbox has queued commands.
         """
-        return any(len(x.command_queue) > 0 \
-                       for x in self.active_mailboxes.itervalues())
+        return any(len(x.command_queue) > 0
+                   for x in self.active_mailboxes.itervalues())
 
     ##################################################################
     #
@@ -442,7 +447,8 @@ class IMAPUserServer(asyncore.dispatcher):
         # the command queue this should generally work through the queued
         # commands in a fair fashion.
         #
-        mboxes = [x for x in self.active_mailboxes.values() if x.has_queued_commands()]
+        mboxes = [x for x in self.active_mailboxes.values()
+                  if x.has_queued_commands()]
         if len(mboxes) == 0:
             return
         start_time = time.time()
@@ -457,7 +463,8 @@ class IMAPUserServer(asyncore.dispatcher):
             if len(mbox.command_queue) == 0:
                 continue
             self.log.debug("process_queued_command:    mbox: %s - commands in "
-                           "queue: %d" % (mbox.name,len(mbox.command_queue)))
+                           "queue: %d" % (mbox.name,
+                                          len(mbox.command_queue)))
             client, imap_cmd = mbox.command_queue.pop(0)
 
             # If the client's network connectionis closed then we do not
@@ -472,13 +479,13 @@ class IMAPUserServer(asyncore.dispatcher):
                                "%s, cmd: %s" % (mbox.name, client.name,
                                                 str(imap_cmd)))
                 client.command(imap_cmd)
-            except Exception, e:
+            except Exception:
                 # We catch all exceptions and log them similar to what
                 # asynchat does when processing a message.
                 #
                 nil, t, v, tbinfo = asyncore.compact_traceback()
                 self.log.error("Exception handling queued command: "
-                               "%s:%s %s" % (t,v,tbinfo))
+                               "%s:%s %s" % (t, v, tbinfo))
 
             # If we have been processing queued commands for more than n (5?)
             # seconds that is enough. Return to let the main loop read more
@@ -487,7 +494,7 @@ class IMAPUserServer(asyncore.dispatcher):
             now = time.time()
             if now - start_time > 5:
                 self.log.debug("process_queued_command: ** Running for %f "
-                               "seconds. Will run more commands later" % \
+                               "seconds. Will run more commands later" %
                                (now - start_time))
                 return
 
@@ -513,7 +520,7 @@ class IMAPUserServer(asyncore.dispatcher):
 
     ##################################################################
     #
-    def log_info(self, message, type = "info"):
+    def log_info(self, message, type="info"):
         """
         Replace the log_info method with one that uses our stderr logger
         instead of trying to write to stdout.
@@ -537,7 +544,7 @@ class IMAPUserServer(asyncore.dispatcher):
 
     ##################################################################
     #
-    def get_mailbox(self, name, expiry = 900):
+    def get_mailbox(self, name, expiry=900):
         """
         A factory of sorts.. if we have an active mailbox with the given name
         return it.
@@ -562,7 +569,7 @@ class IMAPUserServer(asyncore.dispatcher):
 
         # otherwise.. make an instance of this mailbox.
         #
-        mbox = asimap.mbox.Mailbox(name, self, expiry = expiry)
+        mbox = asimap.mbox.Mailbox(name, self, expiry=expiry)
         self.active_mailboxes[name] = mbox
         return mbox
 
@@ -573,7 +580,7 @@ class IMAPUserServer(asyncore.dispatcher):
         Like 'check_all_folders' except this only checks folders that are
         active and have clients in IDLE listening to them.
         """
-        for name,mbox in self.active_mailboxes.iteritems():
+        for name, mbox in self.active_mailboxes.iteritems():
             if any(x.idling for x in mbox.clients.itervalues()):
                 try:
                     self.log.debug("check_all_active: checking '%s'" % name)
@@ -598,7 +605,7 @@ class IMAPUserServer(asyncore.dispatcher):
         # and are beyond their expiry time.
         #
         expired = []
-        for mbox_name,mbox in self.active_mailboxes.iteritems():
+        for mbox_name, mbox in self.active_mailboxes.iteritems():
             if len(mbox.clients) == 0 and \
                     mbox.expiry is not None and \
                     mbox.expiry < time.time():
@@ -609,8 +616,8 @@ class IMAPUserServer(asyncore.dispatcher):
             del self.active_mailboxes[mbox_name]
             self.msg_cache.clear_mbox(mbox_name)
         if len(expired) > 0:
-            self.log.debug("expire_inactive_folders: Expired %d folders" % \
-                               len(expired))
+            self.log.debug("expire_inactive_folders: Expired %d folders" %
+                           len(expired))
         return
 
     ##################################################################
@@ -625,7 +632,7 @@ class IMAPUserServer(asyncore.dispatcher):
         """
         start_time = time.time()
         self.log.debug("find_all_folders: STARTING")
-        extant_mboxes = { }
+        extant_mboxes = {}
         mboxes_to_create = []
         c = self.db.cursor()
         c.execute("select name, mtime from mailboxes order by name")
@@ -636,7 +643,7 @@ class IMAPUserServer(asyncore.dispatcher):
 
         # The user_server's CWD is the root of our mailboxes.
         #
-        for root, dirs, files in os.walk('.', followlinks = True):
+        for root, dirs, files in os.walk('.', followlinks=True):
             for d in dirs:
                 dirname = os.path.normpath(os.path.join(root, d))
                 if dirname not in extant_mboxes:
@@ -649,13 +656,13 @@ class IMAPUserServer(asyncore.dispatcher):
         #
         for mbox_name in mboxes_to_create:
             self.log.debug("Creating mailbox %s" % mbox_name)
-            m = self.get_mailbox(mbox_name, expiry = 0)
-        self.log.debug("find_all_folders: FINISHED. Took %f seconds" % \
-                           (time.time() - start_time))
+            self.get_mailbox(mbox_name, expiry=0)
+        self.log.debug("find_all_folders: FINISHED. Took %f seconds" %
+                       (time.time() - start_time))
 
     ##################################################################
     #
-    def check_all_folders(self, force = False):
+    def check_all_folders(self, force=False):
         """
         This goes through all of the folders and sees if any of the mtimes we
         have on disk disagree with the mtimes we have in the database.
