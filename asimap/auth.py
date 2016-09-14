@@ -122,5 +122,5 @@ class SimpleAuth(BaseAuth):
 AUTH_SYSTEMS = { "test_auth" : TestAuth() }
 try:
     AUTH_SYSTEMS['simple_auth'] = SimpleAuth()
-except (OSError,IOError), e:
+except (OSError,IOError) as e:
     log.warn("Unable to initialize the SimpleAuth module: %s" % str(e))
