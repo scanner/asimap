@@ -16,9 +16,11 @@ import time
 import logging
 import mailbox
 import re
+import itertools
 import errno
 import shutil
 from email.parser import HeaderParser
+from datetime import datetime
 
 # asimap import
 #
@@ -34,26 +36,18 @@ from asimap.fetch import FetchAtt
 #
 digits_re = re.compile(r'^[0-9]+$')
 
-
 ##################################################################
 ##################################################################
 #
 class MailboxException(No):
-    def __init__(self, value="no"):
+    def __init__(self, value = "no"):
         self.value = value
-
-
 class MailboxExists(MailboxException):
     pass
-
-
 class NoSuchMailbox(MailboxException):
     pass
-
-
 class InvalidMailbox(MailboxException):
     pass
-
 
 ##################################################################
 ##################################################################
@@ -84,7 +78,7 @@ class Mailbox(object):
 
     ##################################################################
     #
-    def __init__(self, name, server, expiry=900, do_not_sync=False):
+    def __init__(self, name, server, expiry = 900):
         """
         This represents an active mailbox. You can only instantiate
         this class for mailboxes that actually in the file system.
@@ -102,17 +96,8 @@ class Mailbox(object):
         - `expiry`: If not none then it specifies the number of seconds in the
                     future when we want this mailbox to be turfed out if it has
                     no active clients. Defaults to 15 minutes.
-
-        - `do_not_sync` - Even if we just created this folder do NOT do a
-          resync on it. This is because we do not want to have the server lock
-          up while discovering new folders (see check_as_haschildren_attr()).
-          The idea is that this folder may have just been discovered and it
-          will undergo a resync in 5 minutes or less during
-          'check_all_folders()' in the user server object.
         """
-        self.log = logging.getLogger("%s.%s.%s" % (__name__,
-                                                   self.__class__.__name__,
-                                                   name))
+        self.log = logging.getLogger("%s.%s.%s" % (__name__, self.__class__.__name__,name))
         self.server = server
         self.name = name
         self.id = None
@@ -173,7 +158,7 @@ class Mailbox(object):
         #
         try:
             self.mailbox = server.mailbox.get_folder(name)
-        except mailbox.NoSuchMailboxError:
+        except mailbox.NoSuchMailboxError, e:
             raise NoSuchMailbox("No such mailbox: '%s'" % name)
 
         # If the .mh_sequence file does not exist create it.
@@ -181,8 +166,7 @@ class Mailbox(object):
         # XXX Bad that we are reaching in to the mailbox.MH object to
         #     find thepath to the sequences file.
         #
-        if not os.path.exists(os.path.join(self.mailbox._path,
-                                           '.mh_sequences')):
+        if not os.path.exists(os.path.join(self.mailbox._path,'.mh_sequences')):
             os.close(os.open(os.path.join(self.mailbox._path, '.mh_sequences'),
                              os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0600))
 
@@ -213,7 +197,7 @@ class Mailbox(object):
         # The dict of clients that currently have this mailbox selected.
         # This includes clients that used 'EXAMINE' instead of 'SELECT'
         #
-        self.clients = {}
+        self.clients = { }
 
         # After initial setup fill in any persistent values from the database
         # (and if there are no, then create an entry in the db for this
@@ -232,8 +216,7 @@ class Mailbox(object):
         #     operating on it causing back to back resyncs.. should we skip
         #     this one?
         #
-        if not do_not_sync:
-            self.resync(force=not force_resync, optional=False)
+        self.resync(force = not force_resync, optional = False)
         return
 
     ##################################################################
@@ -832,16 +815,17 @@ class Mailbox(object):
             #
             for line in fp:
                 if line[0:15].lower() == 'x-asimapd-uid: ':
-                    uid_vv,uid = asimap.utils.get_uidvv_uid(line[15:].strip())
-                    if uid is None:
+                    try:
+                        # Convert the strings we parse out of the header to
+                        # ints.
+                        #
+                        uid_vv,uid = [int(x) for x in (line[15:].strip().split('.'))]
+                        return (uid_vv, uid)
+                    except ValueError:
                         self.log.info("get_uid_from_msg: msg %s had malformed "
                                       "uid header: %s" % (msg, line))
                         return (None, None)
                 elif len(line.strip()) == 0:
-                    # Wait.. we should not be looking for a line with just
-                    # whitespace.. we should ONLY be accepting empty lines as
-                    # a maker for the end of the headers.
-                    #
                     return (None, None)
         finally:
             fp.close()
@@ -1295,25 +1279,16 @@ class Mailbox(object):
         children folders or not.
 
         I am being lazy here. Instead of just intelligentily and diligently
-        checking and updating this flag and parent folders during folder
+        checing and updating this flag and parent folders during folder
         instantiation, folder creation (adds flag to parent folders), and
         folder deletion I made this helper function. You call it on a folder
         instance and it will check to see if this folder has any children and
         update the attributes as appropriate.
 
-        Also since 'find_all_folders' is REALLY slow for users (me) with a huge
-        number of mailboxes and a huge number of messages instead of doing a
-        'find_all_folders' at regularly intervals we will basically do a check
-        opportunistically. If we find a folder that has sub-folders that are
-        not in the db, we add them to the db (with a mtime of 0.) The next time
-        we do a 'check_all_folders' we will force a resync and instantiation of
-        these newly found sub-folders.
-
         XXX The biggest downside is that we use mailbox.MH.list_folders() and I
             have a feeling that this can be slow at times.
         """
-        sub_folders = self.mailbox.list_folders()
-        if len(sub_folders) > 0:
+        if len(self.mailbox.list_folders()) > 0:
             self.attributes.add('\\HasChildren')
             if '\\HasNoChildren' in self.attributes:
                 self.attributes.remove('\\HasNoChildren')
@@ -1321,14 +1296,6 @@ class Mailbox(object):
             self.attributes.add('\\HasNoChildren')
             if '\\HasChildren' in self.attributes:
                 self.attributes.remove('\\HasChildren')
-
-        # For each sub-folder see if they are in the database.
-        #
-        for sf_name in sub_folders:
-            full_name = os.path.join(self.name, sf_name)
-            if not Mailbox.exists(full_name, self.server):
-                mbox = Mailbox(full_name, self.server, expiry = 0,
-                               do_not_sync = True)
         return
 
     ##################################################################
@@ -2357,23 +2324,6 @@ class Mailbox(object):
         return max(int(os.path.getmtime(path)),
                    int(os.path.getmtime(seq_path)))
 
-    ##################################################################
-    #
-    @classmethod
-    def exists(self, name, server):
-        """
-        See if mailbox exists in the db. Return True if it does.
-        """
-        c = server.db.cursor()
-        try:
-            c.execute("select count(*) from mailboxes where name = ?", (name,))
-            v = c.fetchone()
-            if int(v[0]) > 0:
-                return True
-        finally:
-            c.close()
-        return False
-
     #########################################################################
     #
     @classmethod
@@ -2473,12 +2423,12 @@ class Mailbox(object):
         - `name`: The name of the mailbox to delete
         - `server`: The user server object
         """
-        log = logging.getLogger("%s.%s.delete()" % (__name__, cls.__name__))
+        log = logging.getLogger("%s.%s.delete()" % (__name__,cls.__name__))
 
         if name == "inbox":
             raise InvalidMailbox("You are not allowed to delete the inbox")
 
-        mbox = server.get_mailbox(name, expiry=0)
+        mbox = server.get_mailbox(name, expiry = 0)
 
         # Remember to delete this mailbox from the message cache..
         #
@@ -2493,15 +2443,14 @@ class Mailbox(object):
             # and has inferior mailboxes.
             #
             if '\\Noselect' in mbox.attributes and len(inferior_mailboxes) > 0:
-                raise InvalidMailbox("The mailbox '%s' is already deleted"
-                                     "and there are inferior mailboxes" %
-                                     name)
+                raise InvalidMailbox("The mailbox '%s' is already deleted" % \
+                                         name)
             # You can not delete a mailbox that has the '\Noselect' attribute
             # and is subscribed.
             #
             if '\\Noselect' in mbox.attributes and mbox.subscribed:
-                raise InvalidMailbox("The mailbox '%s' is still subscribed" %
-                                     name)
+                raise InvalidMailbox("The mailbox '%s' is still subscribed" % \
+                                         name)
 
             # When deleting a mailbox it will cause to be deleted every
             # message in that mailbox to be deleted.
@@ -2517,7 +2466,7 @@ class Mailbox(object):
             #
             for client in mbox.clients.itervalues():
                 client.mbox = None
-            mbox.clients = {}
+            mbox.clients = { }
 
             # If the mailbox has inferior mailboxes then we do not actually
             # delete it. It gets the '\Noselect' flag though. It also gets a
@@ -2560,7 +2509,7 @@ class Mailbox(object):
         #
         parent_name = os.path.dirname(name)
         if parent_name != "":
-            parent_mbox = server.get_mailbox(parent_name, expiry=0)
+            parent_mbox = server.get_mailbox(parent_name, expiry = 0)
             parent_mbox.check_set_haschildren_attr()
             parent_mbox.commit_to_db()
 
@@ -2594,18 +2543,18 @@ class Mailbox(object):
         - `new_name`: the new name of the mailbox
         - `server`: the user server object
         """
-        log = logging.getLogger("%s.%s.rename()" % (__name__, cls.__name__))
-        mbox = server.get_mailbox(old_name, expiry=0)
+        log = logging.getLogger("%s.%s.rename()" % (__name__,cls.__name__))
+        mbox = server.get_mailbox(old_name, expiry = 0)
 
         # The mailbox we are moving to must not exist.
         #
         try:
             tmp = server.mailbox.get_folder(new_name)
-            del tmp
         except mailbox.NoSuchMailboxError:
             pass
         else:
             raise MailboxExists("Destination mailbox '%s' exists" % new_name)
+
 
         # Inbox is handled specially.
         #
@@ -2634,7 +2583,7 @@ class Mailbox(object):
                 #
                 if mbox_old_name in server.active_mailboxes:
                     affected_mailboxes.append((mbox_old_name, mbox_new_name))
-
+                    
             # Change all of the affected old names to their new names.
             #
             for new_mbox_name, old_mbox_name, mbox_id in to_change:
@@ -2645,8 +2594,7 @@ class Mailbox(object):
             #
             old_dir = os.path.join(server.mailbox._path, old_name)
             new_dir = os.path.join(server.mailbox._path, new_name)
-            log.debug("rename(): renaming dir '%s' to '%s'" % (old_dir,
-                                                               new_dir))
+            log.debug("rename(): renaming dir '%s' to '%s'" % (old_dir,new_dir))
             os.rename(old_dir, new_dir)
 
             # Go through all of the active mailboxes whose name changed and
@@ -2663,7 +2611,7 @@ class Mailbox(object):
 
                 # Flush the old name from the message cache..
                 #
-                server.msg_cache.clear_mbox(mbox_old_name)
+                server.msg_cache.clear_mbox(mbox_old_name)                
 
             c.close()
             server.db.commit()
@@ -2673,7 +2621,7 @@ class Mailbox(object):
             #
             old_p_name = os.path.dirname(old_name)
             if old_p_name != "":
-                m = server.get_mailbox(old_p_name, expiry=0)
+                m = server.get_mailbox(old_p_name, expiry = 0)
                 m.check_set_haschildren_attr()
                 m.commit_to_db()
 
@@ -2682,7 +2630,7 @@ class Mailbox(object):
             #
             new_p_name = os.path.dirname(new_name)
             if new_p_name != "":
-                m = server.get_mailbox(new_p_name, expiry=0)
+                m = server.get_mailbox(new_p_name, expiry = 0)
                 m.check_set_haschildren_attr()
                 m.commit_to_db()
 
@@ -2697,7 +2645,7 @@ class Mailbox(object):
 
             # Now move all the messages currently in inbox to the new mailbox.
             #
-            new_mbox = server.get_mailbox(new_name, expiry=0)
+            new_mbox = server.get_mailbox(new_name, expiry = 0)
             try:
                 # mbox.mailbox.lock()
                 # new_mbox.mailbox.lock()
@@ -2709,7 +2657,7 @@ class Mailbox(object):
                         fp.close()
                     new_uid = "%010d.%010d" % (new_mbox.uid_vv,
                                                new_mbox.next_uid)
-                    new_mbox.next_uid += 1
+                    new_mbox.next_uid +=1
                     del full_msg['X-asimapd-uid']
                     full_msg['X-asimapd-uid'] = new_uid
                     new_mbox.add(full_msg)
@@ -2727,7 +2675,7 @@ class Mailbox(object):
     ####################################################################
     #
     @classmethod
-    def list(cls, ref_mbox_name, mbox_match, server, lsub=False):
+    def list(cls, ref_mbox_name, mbox_match, server, lsub = False):
         """
         This returns a list of tuples of mailbox names and that mailboxes
         attributes. The list is generated from the mailboxes db shelf. The
@@ -2761,7 +2709,7 @@ class Mailbox(object):
           subscribed bit set.
         """
 
-        log = logging.getLogger("%s.%s.list()" % (__name__, cls.__name__))
+        log = logging.getLogger("%s.%s.list()" % (__name__,cls.__name__))
 
         # The mbox_match character can not begin with '/' because our mailboxes
         # are unrooted.
