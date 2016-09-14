@@ -8,8 +8,11 @@
 """
 
 import unittest
-from asimap.parse import IMAPClientCommand
+from ..parse import IMAPClientCommand
 
+TEST_DATA = [
+    
+]
 
 class IMAPParseTest(unittest.TestCase):
     """This test case test a bunch of IMAP client messages of various amounts
