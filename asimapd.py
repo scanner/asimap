@@ -16,14 +16,13 @@ import logging
 import logging.handlers
 import socket
 import asyncore
-import traceback
-import select
 
 # Application imports
 #
 import asimap
 import asimap.user_server
 import asimap.utils
+
 
 ############################################################################
 #
@@ -34,43 +33,44 @@ def setup_option_parser():
     actually parse the command line options. It returns the parser object that
     can be used for parsing them.
     """
-    parser = optparse.OptionParser(usage = "%prog [options]",
-                                   version = asimap.__version__)
+    parser = optparse.OptionParser(usage="%prog [options]",
+                                   version=asimap.__version__)
 
-    parser.set_defaults(port = None, ssl_port = 993,
-                        interface = "0.0.0.0", debug = False,
-                        ssl = True, ssl_certificate = None,
-                        daemonize = True,
-                        test_mode = False,
-                        pidfile = "/var/run/asimapd.pid",
-                        logdir = "/var/log/asimapd")
+    parser.set_defaults(port=None, ssl_port=993,
+                        interface="0.0.0.0", debug=False,
+                        ssl=True, ssl_certificate=None,
+                        daemonize=True,
+                        test_mode=False,
+                        pidfile="/var/run/asimapd.pid",
+                        logdir="/var/log/asimapd")
 
     parser.add_option("--port", action="store", type="int", dest="port",
-                      help = "What port to listen on for NON-SSL connections. "
+                      help="What port to listen on for NON-SSL connections. "
                       "Note that is --port is NOT specified we will NOT "
                       "on it. This is how to disable non-encrypted "
                       "connections for this server.")
     parser.add_option("--test_mode",  action="store_true", dest="test_mode",
                       help="Run the server using the test mode environment. "
                       "The server will run as normal except it will use the "
-                      "'test_auth' authentication system and the MH mailbox it "
-                      "use will be the one in '/var/tmp/testmaildir'. It will "
-                      "NOT create this MH mailbox. You must have set it up "
-                      "previously. This mode is obviously of limited value "
-                      "and exists primarily to run a test server that does not "
-                      "attempt to muck with real MH mailboxes or need to run "
-                      "as root.")
+                      "'test_auth' authentication system and the MH mailbox "
+                      "it use will be the one in '/var/tmp/testmaildir'. It "
+                      "will NOT create this MH mailbox. You must have set it "
+                      "up previously. This mode is obviously of limited value "
+                      "and exists primarily to run a test server that does "
+                      "not attempt to muck with real MH mailboxes or need to "
+                      "run as root.")
     parser.add_option("--ssl_port", action="store", type="int", dest="port",
-                      help = "What port to listen on for SSL connections")
+                      help="What port to listen on for SSL connections")
     parser.add_option("--interface", action="store", type="string",
-                      dest="interface", help = "The IP address to bind to.")
+                      dest="interface", help="The IP address to bind to.")
     parser.add_option("--pidfile", action="store", type="string",
-                      dest="pidfile", help = "The file to store the server's "
+                      dest="pidfile", help="The file to store the server's "
                       "pid in")
     parser.add_option("--debug", action="store_true", dest="debug",
                       help="Emit debugging statements.")
     parser.add_option("--foreground", action="store_false", dest="daemonize",
-                      help="Do NOT run in daemon mode.")
+                      help="Do NOT run in daemon mode. Automatically selected "
+                      "if --test_mode is enabled.")
     parser.add_option("--no_ssl", action="store_false", dest="ssl",
                       help="Turn off SSL for the incoming IMAP4 "
                       "connections.")
@@ -80,8 +80,8 @@ def setup_option_parser():
                       "private key and certificate chain in PEM format as "
                       "needed by the python 'ssl' module. Consult the Python "
                       "SSL document at "
-                      "http://docs.python.org/library/ssl.html#ssl-certificates"
-                      " for more information.")
+                      "http://docs.python.org/library/ssl.html#ssl-"
+                      "certificates for more information.")
     parser.add_option("--logdir", action="store", type="string",
                       dest="logdir", help="Path to the directory where log "
                       "files are stored. Since this is a multiprocess server "
@@ -98,6 +98,7 @@ def setup_option_parser():
                       "When we daemonize stderr is redirected to /dev/null.")
     return parser
 
+
 #############################################################################
 #
 def main():
@@ -109,10 +110,45 @@ def main():
     parser = setup_option_parser()
     (options, args) = parser.parse_args()
 
-    # Enter daemon mode early on if it is selected.
+    # Test mode sets up a bunch of defaults:
+    #
+    # XXX I imagine test_mode will go away when we have the tracefile
+    #     runner.
+    #
+    # - disables daemonize
+    # - sets logdir to be 'stderr'
+    # - sets interface to be '127.0.0.1'
+    # - sets ssl to False
+    # - sets port to be 143
+    # - sets pid file to None
+    # - sets debug = True
+    #
+    if options.test_mode:
+        dirname = os.path.dirname(__file__)
+        sys.path.insert(0, dirname)
+
+        print "asimap - 'test_mode' enabled."
+        options.daemonize = False
+        print "\tdaemonize: {}".format(options.daemonize)
+        options.interface = '127.0.0.1'
+        print "\tinterface: {}".format(options.interface)
+        options.port = 1143
+        print "\tport: {}".format(options.port)
+        options.ssl = False
+        print "\tssl: {}".format(options.ssl)
+        options.logdir = 'stderr'
+        print "\tlogdir: {}".format(options.logdir)
+        options.pidfile = None
+        print "\tpidfile: {}".format(options.pidfile)
+        options.debug = True
+        print "\tdebug: {}".format(options.debug)
+
+    # Enter daemon mode early on if it is selected. test_mode disabled
+    # daemon mode.
     #
     if options.daemonize:
         print "asimap - Entering daemon mode"
+        import asimap.utils
         asimap.utils.daemonize()
 
     # Set up the logger. We log either to files in 'options.logdir' or to
@@ -137,8 +173,8 @@ def main():
         #
         log_file_basename = os.path.join(options.logdir, "asimapd.log")
         h = logging.handlers.RotatingFileHandler(log_file_basename,
-                                                 maxBytes = 10485760,
-                                                 backupCount = 5)
+                                                 maxBytes=10485760,
+                                                 backupCount=5)
     h.setLevel(level)
     formatter = logging.Formatter("%(asctime)s %(created)s %(process)d "
                                   "%(levelname)s %(name)s %(message)s")
@@ -152,14 +188,14 @@ def main():
     import asimap.server
 
     try:
-        with open(options.pidfile, "w+") as f:
-            f.write("%d\n" % os.getpid())
-        log.info("Wrote pid %d in to pid file '%s'" % (os.getpid(),
-                                                       options.pidfile))
+        if options.pidfile:
+            with open(options.pidfile, "w+") as f:
+                f.write("%d\n" % os.getpid())
+            log.info("Wrote pid %d in to pid file '%s'" % (os.getpid(),
+                                                           options.pidfile))
     except Exception, e:
         log.error("Unable to write PID file '%s': %s" % (options.pidfile,
                                                          str(e)))
-
 
     # If we are using SSL you must supply a certificate.
     #
@@ -171,15 +207,17 @@ def main():
     # Using the location of the server program determine the location of
     # the user_server program (if it was not set via a command line option.)
     #
-    user_server_program = os.path.abspath(os.path.join(os.path.dirname(sys.argv[0]),"asimapd_user.py"))
+    user_server_program = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "asimapd_user.py")
+    )
 
     # Make sure the user server program exists and is executable before we go
     # any further..
     #
-    if not os.path.exists(user_server_program) or \
-            not os.path.isfile(user_server_program):
-        log.error("User server program does not exist or is not a file: '%s'" \
-                      % user_server_program)
+    if (not os.path.exists(user_server_program) or
+            not os.path.isfile(user_server_program)):
+        log.error("User server program does not exist or is not a file: '%s'"
+                  % user_server_program)
         exit(-1)
 
     # Set this as a variable in the asimap.user_server module.
@@ -187,18 +225,22 @@ def main():
     log.debug("user server program is: '%s'" % user_server_program)
     asimap.user_server.set_user_server_program(user_server_program)
 
+    # NOTE: The asimap.server.IMAPServer object patches into
+    # asyncore. By creating the object it will automatically be
+    # handled when 'asyncore.loop()' is called.
+    #
     try:
         if options.port:
-            non_ssl_server = asimap.server.IMAPServer(options.interface,
-                                                      options.port,
-                                                      options)
+            asimap.server.IMAPServer(options.interface,
+                                     options.port,
+                                     options)
         if options.ssl:
-            ssl_server =  asimap.server.IMAPServer(options.interface,
-                                                   options.ssl_port,
-                                                   options,
-                                                   options.ssl_certificate)
+            asimap.server.IMAPServer(options.interface,
+                                     options.ssl_port,
+                                     options,
+                                     options.ssl_certificate)
     except socket.error, e:
-        log.error("Unable to create server object on %s:%d: socket " \
+        log.error("Unable to create server object on %s:%d: socket "
                   "error: %s" % (options.interface, options.port, e))
         return
 

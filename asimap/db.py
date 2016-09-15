@@ -25,7 +25,8 @@ except ImportError:
 # NOTE: If we know what they are ahead of time we should pre-populate this
 # dict.
 #
-USED_REGEXPS = { }
+USED_REGEXPS = {}
+
 
 ####################################################################
 #
@@ -49,6 +50,7 @@ def regexp(expr, item):
     except Exception, e:
         log.error("got exception: %s" % e)
     return None
+
 
 ##################################################################
 ##################################################################
@@ -74,7 +76,7 @@ class Database(object):
         self.db_filename = os.path.join(self.maildir, "asimap.db")
         self.log.debug("Opening database file: '%s'" % self.db_filename)
         self.conn = sqlite3.connect(self.db_filename,
-                                    detect_types = sqlite3.PARSE_DECLTYPES)
+                                    detect_types=sqlite3.PARSE_DECLTYPES)
         # We want to enable regexp matching in sqlite and in order to do that
         # we have to supply it with a regexp function.
         #
@@ -83,7 +85,7 @@ class Database(object):
         # We do some housecleaning when we open the db.
         #
         self.conn.execute("vacuum")
-        
+
         # Set up the database if necessary. Apply any migrations that
         # we need to.
         #
@@ -116,9 +118,9 @@ class Database(object):
 
         # Apply all the migrations that have not been applied yet.
         #
-        for idx,migration in enumerate(MIGRATIONS[version:], start=version):
-            self.log.info("Applying migration version %d (%s)" % \
-                               (idx, migration.__name__))
+        for idx, migration in enumerate(MIGRATIONS[version:], start=version):
+            self.log.info("Applying migration version %d (%s)" %
+                          (idx, migration.__name__))
             c = self.conn.cursor()
             migration(c)
             c.execute("insert into versions (version) values (?)", str(idx))
@@ -166,36 +168,39 @@ def initial_migration(c):
     - `c`: sqlite3 db connection
     """
     c.execute("create table versions (version integer primary key, "
-                                      "date text default CURRENT_TIMESTAMP)")
+              "date text default CURRENT_TIMESTAMP)")
     c.execute("create table user_server (id integer primary key, "
-                                        "uid_vv integer, "
-                                        "date text default CURRENT_TIMESTAMP)")
+              "uid_vv integer, "
+              "date text default CURRENT_TIMESTAMP)")
     c.execute("create table mailboxes (id integer primary key, "
-                                      "name text,"
-                                      "uid_vv integer, attributes text, "
-                                      "mtime integer, next_uid integer, "
-                                      "num_msgs integer, num_recent integer, "
-                                      "date text default CURRENT_TIMESTAMP)")
+              "name text,"
+              "uid_vv integer, attributes text, "
+              "mtime integer, next_uid integer, "
+              "num_msgs integer, num_recent integer, "
+              "date text default CURRENT_TIMESTAMP)")
     c.execute("create unique index mailbox_names on mailboxes (name)")
     c.execute("create table sequences (id integer primary key, "
-                                      "name text, mailbox_id integer, "
-                                      "sequence text, "
-                                      "date text default CURRENT_TIMESTAMP)")
-    c.execute("create unique index seq_name_mbox on sequences (name,mailbox_id)")
+              "name text, mailbox_id integer, "
+              "sequence text, "
+              "date text default CURRENT_TIMESTAMP)")
+    c.execute("create unique index seq_name_mbox on sequences "
+              "(name,mailbox_id)")
     c.execute("create index seq_mbox_id on sequences (mailbox_id)")
     return
+
 
 ####################################################################
 #
 def add_uids_to_mbox(c):
     """
     Adds a uids text column to the mailbox.
-    
+
     Arguments:
     - `c`: sqlite3 db connection
     """
     c.execute("alter table mailboxes add column uids text default ''")
     return
+
 
 ####################################################################
 #
@@ -216,6 +221,7 @@ def add_last_check_time_to_mbox(c):
     c.execute("alter table mailboxes add column last_resync integer default 0")
     return
 
+
 ####################################################################
 #
 def folders_can_be_subscribed(c):
@@ -228,6 +234,7 @@ def folders_can_be_subscribed(c):
     """
     c.execute("alter table mailboxes add column subscribed integer default 0")
     return
+
 
 ####################################################################
 #

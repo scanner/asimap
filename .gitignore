@@ -1,2 +1,4 @@
 build
 debug
+.cache
+test/test_mode

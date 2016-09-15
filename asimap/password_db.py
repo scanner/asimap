@@ -36,10 +36,11 @@ import logging
 import asimap.utils
 import asimap.exceptions
 
-# XXX Not configurable! this is where the password db for the asimap server goes
-#     Letting it be configurable is a security as well.
+# XXX Not configurable! this is where the password db for the asimap
+#     server goes. Letting it be configurable is deemed a security risk.
 #
 PASSWORD_DB_LOCATION = "/var/db/asimapd_passwords.txt"
+
 
 ##################################################################
 ##################################################################
@@ -64,7 +65,7 @@ class PasswordDB(object):
 
         # This is the dict mapping usernames to their hashed passwords.
         #
-        self.passwords = { }
+        self.passwords = {}
 
         # The mtime of the actual password db file last time we checked.
         #
@@ -84,7 +85,7 @@ class PasswordDB(object):
         if mtime <= self.last_mtime:
             return
 
-        new_passwords = { }
+        new_passwords = {}
 
         with open(self.password_db, 'r') as f:
             for i, line in enumerate(f):

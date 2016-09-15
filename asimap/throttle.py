@@ -11,9 +11,6 @@ This module has some simple logic to deal with failed login attempt throttling.
 import time
 import logging
 
-# asimap imports
-#
-import asimap.exceptions
 
 # We use a pair of dicts that track how often we have had login attempts
 # against a username or attempts for user names that do not exist.
@@ -28,21 +25,21 @@ import asimap.exceptions
 # address for attempting to authenticate for a period of time greatly impairing
 # any brute force attempts to suss out accounts.
 #
-# XXX Maybe when a remote connection hits one of those limits we should just not
-#     respond (no BAD, no NO, just dead air..)
+# XXX Maybe when a remote connection hits one of those limits we
+#     should just not respond (no BAD, no NO, just dead air..)
 #
 
 # Key is the user name, value is a tuple of number of attempts within the
 # timeout period, and the last time they tried to authenticate this user and
 # failed.
 #
-BAD_USER_AUTHS = { }
+BAD_USER_AUTHS = {}
 
 # Key is the ip address of the IMAP client, value is a tuple of number of
 # attempts within the timeout period, and the last time they tried to
 # authenticate this and failed for any reason.
 #
-BAD_IP_AUTHS = { }
+BAD_IP_AUTHS = {}
 
 # How many seconds before we purge an entry from the dicts.
 #
@@ -52,11 +49,12 @@ PURGE_TIME = 60
 # they are trying to brute force something?
 #
 MAX_USER_ATTEMPTS = 4
-MAS_ADDR_ATTEMPTS = 3
+MAX_ADDR_ATTEMPTS = 3
 
 # Our module logger..
 #
 log = logging.getLogger(__name__)
+
 
 ####################################################################
 #
@@ -95,6 +93,7 @@ def login_failed(user, addr):
     else:
         BAD_IP_AUTHS[user] = (1, now)
     return
+
 
 ####################################################################
 #
