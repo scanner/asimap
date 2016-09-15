@@ -15,9 +15,6 @@ Every user that can use the IMAP server has a directory where their
 mailspool is stored.
 """
 
-# system imports
-#
-import os.path
 
 ##################################################################
 ##################################################################
@@ -32,7 +29,7 @@ class User(object):
 
     ##################################################################
     #
-    def __init__(self, imap_username, local_username, mailspool_dir ):
+    def __init__(self, imap_username, local_username, mailspool_dir):
         """
         """
         self.imap_username = imap_username

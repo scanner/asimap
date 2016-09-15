@@ -12,7 +12,6 @@ Objects and functions to fetch elements of a message.
 #
 import email.utils
 import logging
-import hashlib
 from cStringIO import StringIO
 from email.Generator import Generator
 from email.Header import Header
@@ -335,7 +334,7 @@ class FetchAtt(object):
                     # get a sub-part of these as long as it is only
                     # sub-part #1.
                     #
-                    g = TextGenerator(fp, headers = False)
+                    g = TextGenerator(fp, headers=False)
 
                     if section[0] == 1 and not msg.is_multipart():
                         # The logic is simpler to read this way.. if
@@ -358,30 +357,33 @@ class FetchAtt(object):
                             msg = msg.get_payload(section[0]-1)
                         except IndexError:
                             raise BadSection("Section %d does not exist in "
-                                             "this message sub-part" % \
+                                             "this message sub-part" %
                                              section[0])
-                elif isinstance(section[0],str) and section[0].upper() == 'TEXT':
-                    g = TextGenerator(fp, headers = False)
-                elif isinstance(section[0], (list,tuple)):
+                elif (isinstance(section[0], str) and
+                      section[0].upper() == 'TEXT'):
+                    g = TextGenerator(fp, headers=False)
+                elif isinstance(section[0], (list, tuple)):
                     if section[0][0].upper() == "HEADER.FIELDS":
-                        g = HeaderGenerator(fp, headers = section[0][1],
-                                            skip = False)
+                        g = HeaderGenerator(fp, headers=section[0][1],
+                                            skip=False)
                     elif section[0][0].upper() == "HEADER.FIELDS.NOT":
-                        g = HeaderGenerator(fp, headers = section[0][1],
-                                            skip = True)
+                        g = HeaderGenerator(fp, headers=section[0][1],
+                                            skip=True)
                     else:
                         raise BadSection("Section value must be either "
                                          "HEADER.FIELDS or HEADER.FIELDS.NOT, "
                                          "not: %s" % section[0][0])
                 else:
                     g = HeaderGenerator(fp)
-                    if isinstance(section[0], str) and section[0].upper() == 'MIME':
+                    if (isinstance(section[0], str) and
+                            section[0].upper() == 'MIME'):
                         # XXX just use the generator as it is for MIME.. I know
                         # this is not quite right in that it will accept more
                         # then it should, but it will otherwise work.
                         #
                         pass
-                    elif isinstance(section[0],str) and section[0].upper() == 'HEADER':
+                    elif (isinstance(section[0], str) and
+                          section[0].upper() == 'HEADER'):
                         # if the content type is message/rfc822 then to
                         # get the headers we need to use the first
                         # sub-part of this message.
@@ -390,10 +392,10 @@ class FetchAtt(object):
                            msg.get_content_type() == 'message/rfc822':
                             msg = msg.get_payload(0)
                     else:
-                        self.log.warn("body: Unexpected section[0] value: %s" %\
-                                          repr(section))
-                        raise BadSection("%s: Unexpected section value: %s" % \
-                                             (str(self),repr(section[0])))
+                        self.log.warn("body: Unexpected section[0] value: %s" %
+                                      repr(section))
+                        raise BadSection("%s: Unexpected section value: %s" %
+                                         (str(self), repr(section[0])))
             elif isinstance(section[0], int):
                 # We have an integer sub-section. This means that we
                 # need to pull apart the message (it MUST be a
@@ -419,7 +421,7 @@ class FetchAtt(object):
             # an appropriate section to parse.
             #
             if g is None:
-                raise BadSection("Section selector '%s' can not be parsed" % \
+                raise BadSection("Section selector '%s' can not be parsed" %
                                  section)
             g.flatten(msg)
             msg_text = fp.getvalue()
@@ -539,7 +541,7 @@ class FetchAtt(object):
         # We want all of the header that end in "-language"
         #
         langs = []
-        for hdr,value in msg.items():
+        for hdr, value in msg.items():
             if hdr[-9:].lower() != "-language":
                 continue
             if "," in value:
@@ -587,7 +589,7 @@ class FetchAtt(object):
             return "NIL"
 
         msg_params = []
-        for k,v in msg.get_params():
+        for k, v in msg.get_params():
             if v == '':
                 continue
             msg_params.append('"%s"' % k.upper())
@@ -630,8 +632,8 @@ class FetchAtt(object):
                 return '("%s" NIL)' % cd[0][0].upper()
             else:
                 cdpl = []
-                for k,v in cd[1:]:
-                    cdpl.extend(['"%s" "%s"' % (k.upper(),v)])
+                for k, v in cd[1:]:
+                    cdpl.extend(['"%s" "%s"' % (k.upper(), v)])
                 return '("%s" (%s))' % (cd[0][0].upper(), " ".join(cdpl))
         else:
             return "NIL"
@@ -712,7 +714,7 @@ class FetchAtt(object):
             #
             return '(%s "%s" %s %s %s %s)' % \
                    (''.join(sub_parts),
-#                    msg.get_content_subtype().upper(),
+                    # msg.get_content_subtype().upper(),
                     msg.get_content_subtype(),
                     self.body_parameters(msg),
                     self.body_disposition(msg),
@@ -755,7 +757,7 @@ class FetchAtt(object):
             result.append('"%s"' % msg['content-transfer-encoding'].upper())
         else:
             result.append('"7bit"')
-#            result.append('"7BIT"')
+            # result.append('"7BIT"')
 
         # Body size.. length of the payload string.
         #
