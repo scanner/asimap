@@ -18,6 +18,7 @@ import pytz
 import logging
 import random
 import hashlib
+import pwd
 import os
 import sys
 import re
@@ -33,6 +34,7 @@ LOG = logging.getLogger("%s" % (__name__,))
 #
 uid_re = re.compile(r'(\d+)\s*\.\s*(\d+)')
 
+
 ############################################################################
 #
 def parsedate(date_time_str):
@@ -43,24 +45,27 @@ def parsedate(date_time_str):
 
     It is pretty simple, but makes the code a lot shorter and easier to read.
     """
-    return datetime.datetime.fromtimestamp(\
-            email.utils.mktime_tz(email.utils.parsedate_tz(date_time_str)),
-            pytz.UTC)
+    return datetime.datetime.fromtimestamp(
+        email.utils.mktime_tz(email.utils.parsedate_tz(date_time_str)),
+        pytz.UTC
+    )
+
 
 ############################################################################
 #
-def formatdate(datetime, localtime = False, usegmt = False):
+def formatdate(datetime, localtime=False, usegmt=False):
     """
     This is the reverse. It will take a datetime object and format
     and do the deconversions necessary to pass it to email.utils.formatdate()
     and thus return a string properly formatted as an RFC822 date.
     """
     return email.utils.formatdate(calendar.timegm(datetime.utctimetuple()),
-                                  localtime = localtime, usegmt = usegmt)
+                                  localtime=localtime, usegmt=usegmt)
+
 
 ####################################################################
 #
-def sequence_set_to_list(seq_set, seq_max, uid_cmd = False):
+def sequence_set_to_list(seq_set, seq_max, uid_cmd=False):
     """
     Convert a squence set in to a list of numbers.
 
@@ -100,8 +105,8 @@ def sequence_set_to_list(seq_set, seq_max, uid_cmd = False):
             if (start == 0 or end == 0 or start > seq_max or end > seq_max) \
                     and not uid_cmd:
                 raise Bad("Message sequence '%s' is greater than the size of "
-                          "the mailbox, start: %d, end: %d, seq_max: %d" % \
-                              (str(elt), start, end, seq_max))
+                          "the mailbox, start: %d, end: %d, seq_max: %d" %
+                          (str(elt), start, end, seq_max))
             if start > end:
                 result.extend(range(end, start + 1))
             else:
@@ -122,7 +127,8 @@ if os.name == 'posix':
             if os.fork() > 0:
                 sys.exit(0)     # kill off parent
         except OSError, e:
-            sys.stderr.write("fork #1 failed: (%d) %s\n" % (e.errno, e.strerror))
+            sys.stderr.write("fork #1 failed: (%d) %s\n" %
+                             (e.errno, e.strerror))
             sys.exit(1)
         os.setsid()
         os.chdir(our_home_dir)
@@ -133,7 +139,8 @@ if os.name == 'posix':
             if os.fork() > 0:
                 os._exit(0)
         except OSError, e:
-            sys.stderr.write("fork #2 failed: (%d) %s\n" % (e.errno, e.strerror))
+            sys.stderr.write("fork #2 failed: (%d) %s\n" %
+                             (e.errno, e.strerror))
             os._exit(1)
 
         si = open('/dev/null', 'r')
@@ -169,14 +176,15 @@ else:
         def write(self, s):
             pass
 
+
 ############################################################################
 #
-def become_user(user = None):
+def become_user(user=None):
     """
     Change to run as the specified user. If 'None' then we just return.
     If we are already running as the given user, also do nothing and return.
     """
-    if user == None:
+    if user is None:
         return
 
     current_user = pwd.getpwuid(os.getuid())
@@ -184,8 +192,8 @@ def become_user(user = None):
         return
 
     pwinfo = pwd.getpwnam(user)
-    os.setregid(pwinfo[3],pwinfo[3])
-    os.setreuid(pwinfo[2],pwinfo[2])
+    os.setregid(pwinfo[3], pwinfo[3])
+    os.setreuid(pwinfo[2], pwinfo[2])
     return
 
 
@@ -202,7 +210,8 @@ def get_hexdigest(algorithm, salt, raw_password):
         try:
             import crypt
         except ImportError:
-            raise ValueError('"crypt" password algorithm not supported in this environment')
+            raise ValueError('"crypt" password algorithm not supported in '
+                             'this environment')
         return crypt.crypt(raw_password, salt)
 
     if algorithm == 'md5':
@@ -210,6 +219,7 @@ def get_hexdigest(algorithm, salt, raw_password):
     elif algorithm == 'sha1':
         return hashlib.sha1(salt + raw_password).hexdigest()
     raise ValueError("Got unknown password algorithm type in password.")
+
 
 ############################################################################
 #
@@ -220,6 +230,7 @@ def check_password(raw_password, enc_password):
     """
     algo, salt, hsh = enc_password.split('$')
     return hsh == get_hexdigest(algo, salt, raw_password)
+
 
 ####################################################################
 #
@@ -235,6 +246,7 @@ def hash_password(raw_password):
                          str(random.random()))[:5]
     hsh = get_hexdigest(algo, salt, raw_password)
     return '%s$%s$%s' % (algo, salt, hsh)
+
 
 ####################################################################
 #

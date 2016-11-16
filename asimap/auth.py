@@ -24,6 +24,7 @@ from asimap.exceptions import NoSuchUser, BadAuthentication
 #
 log = logging.getLogger(__name__)
 
+
 ############################################################################
 #
 class BaseAuth(object):
@@ -64,6 +65,7 @@ class BaseAuth(object):
         """
         raise NotImplemented
 
+
 ############################################################################
 #
 class TestAuth(BaseAuth):
@@ -83,6 +85,7 @@ class TestAuth(BaseAuth):
         if username == "foobie" and password == "test":
             return User("test", os.getlogin(), maildir)
         raise NoSuchUser("There is no user '%s'." % username)
+
 
 ##################################################################
 ##################################################################
@@ -119,8 +122,9 @@ class SimpleAuth(BaseAuth):
 
         return User(username, username, maildir)
 
-AUTH_SYSTEMS = { "test_auth" : TestAuth() }
+AUTH_SYSTEMS = {"test_auth": TestAuth()}
+
 try:
     AUTH_SYSTEMS['simple_auth'] = SimpleAuth()
-except (OSError,IOError) as e:
+except (OSError, IOError) as e:
     log.warn("Unable to initialize the SimpleAuth module: %s" % str(e))

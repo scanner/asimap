@@ -22,17 +22,18 @@ PERMANENT_FLAGS = (r'\Answered', r'\Deleted', r'\Draft', r'\Flagged', r'\Seen',
 # the actual mh sequence name and the corresponding system flag.
 #
 SYSTEM_FLAG_MAP = {
-    'replied'  : r'\Answered',
-    'Deleted'  : r'\Deleted',
-    'Draft'    : r'\Draft',
-    'flagged'  : r'\Flagged',
-    'Recent'   : r'\Recent',
-    'Seen'     : r'\Seen',
+    'replied': r'\Answered',
+    'Deleted': r'\Deleted',
+    'Draft': r'\Draft',
+    'flagged': r'\Flagged',
+    'Recent': r'\Recent',
+    'Seen': r'\Seen',
     }
 
 REVERSE_SYSTEM_FLAG_MAP = {}
-for key,value in SYSTEM_FLAG_MAP.iteritems():
+for key, value in SYSTEM_FLAG_MAP.iteritems():
     REVERSE_SYSTEM_FLAG_MAP[value] = key
+
 
 ####################################################################
 #
@@ -48,16 +49,16 @@ def flag_to_seq(flag):
         return REVERSE_SYSTEM_FLAG_MAP[flag]
     return flag
 
+
 ####################################################################
 #
 def seq_to_flag(seq):
     """
     The reverse of flag to seq - map an MH sequence name to the IMAP flag.
-    
+
     Arguments:
     - `seq`: The MH sequence name
     """
     if seq in SYSTEM_FLAG_MAP:
         return SYSTEM_FLAG_MAP[seq]
     return seq
-
