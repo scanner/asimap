@@ -195,7 +195,7 @@ class IMAPUserClientHandler(asynchat.async_chat):
         except:
             self_repr = '<__repr__(self) failed for object at %0x>' % id(self)
 
-        self.trace('EXCEPTION', {'data': {t, v, tb}})
+        self.trace('EXCEPTION', {'data': [str(t), str(v), str(tb)]})
         log.error("uncaptured python exception, closing channel {} "
                   "({}:{})".format(self_repr, t, v), exc_info=(t, v, tb))
         self.close()

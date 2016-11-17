@@ -1,0 +1,3 @@
+      35.047   0.000 {"connection": "127.0.0.1:65087", "data": "* STATUS Deleted Messages (MESSAGES 29 UIDNEXT 46360 UIDVALIDITY 77 UNSEEN 0)\r\n", "msg_type": "SEND"}
+
+Shoudl be \"Deleted Messages\", no?

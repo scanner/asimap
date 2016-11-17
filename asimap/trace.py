@@ -11,6 +11,8 @@ to trace writer if it has been initialized.
 
 # system imports
 #
+import os
+import pwd
 import time
 import logging
 import logging.handlers
@@ -75,8 +77,8 @@ def enable_tracing(logdir):
         # Rotate on every 10mb, keep 5 files.
         #
         p = pwd.getpwuid(os.getuid())
-        trace_file_basename = os.path.join(options.logdir,
-                                         "%s-asimapd.trace" % p.pw_name)
+        trace_file_basename = os.path.join(logdir,
+                                           "%s-asimapd.trace" % p.pw_name)
         h = logging.handlers.RotatingFileHandler(trace_file_basename,
                                                  maxBytes=20971520,
                                                  backupCount=5)
@@ -84,6 +86,7 @@ def enable_tracing(logdir):
     formatter = TraceFormatter("%(asctime)s %(message)s")
     h.setFormatter(formatter)
     trace_logger.addHandler(h)
+
 
 ####################################################################
 #
