@@ -16,6 +16,7 @@ import logging
 import logging.handlers
 import socket
 import asyncore
+import random
 
 # Application imports
 #
@@ -41,6 +42,7 @@ def setup_option_parser():
                         ssl=True, ssl_certificate=None,
                         daemonize=True,
                         test_mode=False,
+                        trace_enabled=False,
                         pidfile="/var/run/asimapd.pid",
                         logdir="/var/log/asimapd")
 
@@ -49,6 +51,15 @@ def setup_option_parser():
                       "Note that is --port is NOT specified we will NOT "
                       "on it. This is how to disable non-encrypted "
                       "connections for this server.")
+    parser.add_option("--trace", action="store_true", dest="trace_enabled",
+                      help="The per user subprocesses will each open up a "
+                      "trace file and write to it all messages sent and "
+                      "received. One line per message. The message will be "
+                      "a timestamp, a relative timestamp, the direction of "
+                      "the message (sent/received), and the message itself. "
+                      "The tracefiles will be written to the log dir and "
+                      "will be named <username>-asimap.trace "
+                      )
     parser.add_option("--test_mode",  action="store_true", dest="test_mode",
                       help="Run the server using the test mode environment. "
                       "The server will run as normal except it will use the "
@@ -127,12 +138,24 @@ def main():
         dirname = os.path.dirname(__file__)
         sys.path.insert(0, dirname)
 
-        print "asimap - 'test_mode' enabled."
+        print "asimap - enabling 'test_mode'."
+
+        test_mode_dir = None
+        for path in ('test_mode', 'test/test_mode'):
+            tmd = os.path.join(os.getcwd(), path)
+            print "\tchecking for test_modir dir '{}'".format(tmd)
+            if os.path.isdir(tmd):
+                test_mode_dir = tmd
+                break
+
+        if test_mode_dir is None:
+            raise RuntimeError("Unable to find suitable test mode dir")
+
         options.daemonize = False
         print "\tdaemonize: {}".format(options.daemonize)
         options.interface = '127.0.0.1'
         print "\tinterface: {}".format(options.interface)
-        options.port = 1143
+        options.port = random.randint(1234, 32000)
         print "\tport: {}".format(options.port)
         options.ssl = False
         print "\tssl: {}".format(options.ssl)
@@ -142,6 +165,13 @@ def main():
         print "\tpidfile: {}".format(options.pidfile)
         options.debug = True
         print "\tdebug: {}".format(options.debug)
+
+        # Write the address to connect to in a well known file in our
+        # test mode directory.
+        #
+        addr_file = os.path.join(test_mode_dir, 'test_mode_addr.txt')
+        with open(addr_file, 'w') as f:
+            f.write("{}:{}".format(options.interface, options.port))
 
     # Enter daemon mode early on if it is selected. test_mode disabled
     # daemon mode.

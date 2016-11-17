@@ -104,6 +104,8 @@ class IMAPSubprocessHandle(object):
         cmd.append("--logdir=%s" % self.options.logdir)
         if self.options.debug:
             cmd.append("--debug")
+        if self.options.trace_enabled:
+            cmd.append("--trace")
 
         self.log.debug("Starting user server, cmd: %s, as user: '%s', in "
                        "directory '%s'" % (repr(cmd), self.user.local_username,
@@ -292,31 +294,6 @@ class IMAPClientHandler(asynchat.async_chat):
             self.push("* OK [CAPABILITY %s]\r\n" % ' '.join(CAPABILITIES))
 
         return
-
-    ####################################################################
-    #
-    def push(self, data):
-        """
-        We have our own version of push that logs sent messages to our
-        trace file if we have one.
-
-        Keyword Arguments:
-        data -- (str) data that is being sent to the client and that we
-                      need to log.
-        """
-
-        # XXX asyncore.dispatcher which asynchat.async_chat is a
-        #     subclass of is an old-style class and thus we can not
-        #     use 'super()' (all the more reason to move off of this
-        #     and use something more modern.)
-        #
-        asynchat.async_chat.push(self, data)
-        if self.trace_file:
-            self.trace_file({
-                'time': time.time(),
-                'data': data,
-                'msg_type': 'SEND_DATA'
-            })
 
     ##################################################################
     #
