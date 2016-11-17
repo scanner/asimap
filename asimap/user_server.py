@@ -31,6 +31,7 @@ import asimap.parse
 import asimap.mbox
 import asimap.message_cache
 
+from asimap.trace import trace
 from asimap.client import Authenticated
 from asimap.db import Database
 from asimap.exceptions import MailboxLock, MailboxInconsistency
@@ -38,7 +39,7 @@ from asimap.exceptions import MailboxLock, MailboxInconsistency
 # By default every file is its own logging module. Kind of simplistic
 # but it works for now.
 #
-module_logger = logging.getLogger("asimap.%s" % __name__)
+log = logging.getLogger("asimap.%s" % __name__)
 
 BACKLOG = 5
 
@@ -100,6 +101,7 @@ class IMAPUserClientHandler(asynchat.async_chat):
         #
         self.port = port
         self.rem_addr = rem_address
+        self.trace('CONNECT', {})
 
         # A handle on the server process and its database connection.
         #
@@ -107,6 +109,44 @@ class IMAPUserClientHandler(asynchat.async_chat):
         self.options = options
         self.cmd_processor = Authenticated(self, self.server)
         return
+
+    ####################################################################
+    #
+    def trace(self, msg_type, msg):
+        """
+        We like to include the 'identity' of the IMAP Client handler in
+        our trace messages so we can tie to gether which messages come
+        from which connection. To make this easier we provide our own
+        trace method that fills in various parts of the message being
+        logged automatically.
+
+        Keyword Arguments:
+        msg_type -- 'SEND','RECEIVE','EXCEPTION','CONNECT','REMOTE_CLOSE'
+        msg -- a dict that contains the rest of the message to trace log
+        """
+        msg['connection'] = "{}:{}".format(self.rem_addr, self.port)
+        msg['msg_type'] = msg_type
+        trace(msg)
+
+    ####################################################################
+    #
+    def push(self, data):
+        """
+        We have our own version of push that logs sent messages to our
+        trace file if we have one.
+
+        Keyword Arguments:
+        data -- (str) data that is being sent to the client and that we
+                      need to log.
+        """
+        self.trace('SEND', {'data': data})
+
+        # XXX asyncore.dispatcher which asynchat.async_chat is a
+        #     subclass of is an old-style class and thus we can not
+        #     use 'super()' (all the more reason to move off of this
+        #     and use something more modern.)
+        #
+        asynchat.async_chat.push(self, data)
 
     ##################################################################
     #
@@ -140,28 +180,25 @@ class IMAPUserClientHandler(asynchat.async_chat):
             else:
                 self.log.info(message)
 
-    # XXX Not sure if I want this or not.. need to see if it is useful
-    #     without using errorstack.
+    ##################################################################
     #
-    # ##################################################################
-    # #
-    # def handle_error(self):
-    #     """
-    #     Override the aysnc_chat's error handler so that we can log the
-    #     message
-    #     more directly in such a way that errorstack will get a full stack
-    #     trace.
-    #     """
-    #     t, v, tb = sys.exc_info()
-    #     # sometimes a user repr method will crash.
-    #     try:
-    #         self_repr = repr(self)
-    #     except:
-    #         self_repr = '<__repr__(self) failed for object at %0x>' % d(self)
+    def handle_error(self):
+        """
+        Override the aysnc_chat's error handler so that we can log the
+        message more directly in such a way that errorstack will get a
+        full stack trace.
+        """
+        t, v, tb = sys.exc_info()
+        # sometimes a user repr method will crash.
+        try:
+            self_repr = repr(self)
+        except:
+            self_repr = '<__repr__(self) failed for object at %0x>' % id(self)
 
-    #     self.log.error("uncaptured python exception, closing channel %s "
-    #                    "(%s:%s)" % (self_repr, t, v), exc_info = (t,v,tb))
-    #     self.close()
+        self.trace('EXCEPTION', {'data': {t, v, tb}})
+        log.error("uncaptured python exception, closing channel {} "
+                  "({}:{})".format(self_repr, t, v), exc_info=(t, v, tb))
+        self.close()
 
     ###########################################################################
     #
@@ -212,6 +249,7 @@ class IMAPUserClientHandler(asynchat.async_chat):
         # reading lines.
         #
         imap_msg = "".join(self.ibuffer)
+        self.trace("RECEIVED", {"data": imap_msg})
         self.ibuffer = []
         self.reading_message = False
         self.set_terminator(self.LINE_TERMINATOR)
@@ -269,7 +307,11 @@ class IMAPUserClientHandler(asynchat.async_chat):
         Huh. The main server process severed its connection with us. That is a
         bit strange, but, I guess it crashed or something.
         """
-        self.log.info("main server closed its connection with us.")
+        msg = "main server closed its connection with us. " "{}:{}".format(
+            self.rem_addr, self.port
+        )
+        self.log.info(msg)
+        self.trace('REMOTE_CLOSE', {'msg': msg})
         self.cleanup()
         if self.socket is not None:
             self.close()

@@ -12,25 +12,47 @@ use against a test server.
 
 # system imports
 #
+import os
+import os.path
 import imaplib
-
-# XXX Should have the TestAuth module create a random username and
-# password and write those in to a file relative to the asimap test
-# directory and have this program read those in.
-#
-TEST_USERNAME = 'foobie'
-TEST_PASSWORD = 'test'
-
+from datetime import datetime
+import time
 
 #############################################################################
 #
 def main():
-    # XXX Should have this program read some well known file for the
-    # hostname / port to connect to.
+    # Look for the credentials in a well known file in several
+    # locations relative to the location of this file.
     #
-    imap = imaplib.IMAP4('127.0.0.1', 1143)
-    imap.login(TEST_USERNAME, TEST_PASSWORD)
+    # XXX Should make a command line option to set the mail dir
+    #     directory we exepct to use.
+    #
+    username = None
+    password = None
+    for path in ('test_mode', '../test_mode'):
+        creds_file = os.path.join(os.path.dirname(__file__),
+                                  path,
+                                  "test_mode_creds.txt")
+        print "Looking for creds file {}".format(creds_file)
+        if os.path.exists(creds_file):
+            print "Using credentials file {}".format(creds_file)
+            username, password = open(creds_file).read().strip().split(':')
+            break
+
+    if username is None or password is None:
+        raise RuntimeError("Unable to find test mode credentials")
+
+    # Look for the address file in the same directory as the creds file
+    #
+    addr_file = os.path.join(os.path.dirname(creds_file), 'test_mode_addr.txt')
+    addr, port = open(addr_file).read().strip().split(':')
+    port = int(port)
+
+    imap = imaplib.IMAP4(addr, port)
+    imap.login(username, password)
     imap.select()
+    imap.select('Archive')
+    imap.append('Archive', ('unseen'), None, 'Hello')
     typ, data = imap.search(None, 'ALL')
     if data[0]:
         for num in data[0].split():

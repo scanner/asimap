@@ -37,6 +37,7 @@ import time
 # Application imports
 #
 import asimap
+import asimap.trace as trace
 import asimap.user_server
 
 
@@ -54,9 +55,19 @@ def setup_option_parser():
 
     parser.set_defaults(debug=False,
                         logdir="/var/log/asimapd",
+                        trace_mode=False,
                         standalone_mode=False)
     parser.add_option("--debug", action="store_true", dest="debug",
                       help="Emit debugging statements.")
+    parser.add_option("--trace", action="store_true", dest="trace_enabled",
+                      help="The per user subprocesses will each open up a "
+                      "trace file and write to it all messages sent and "
+                      "received. One line per message. The message will be "
+                      "a timestamp, a relative timestamp, the direction of "
+                      "the message (sent/received), and the message itself. "
+                      "The tracefiles will be written to the log dir and "
+                      "will be named <username>-asimap.trace "
+                      )
     parser.add_option("--standalone_mode", action="store_true",
                       dest="standalone_mode",
                       help="Indicates that the user server object is to be "
@@ -125,6 +136,12 @@ def main():
                                   "%(levelname)s %(name)s %(message)s")
     h.setFormatter(formatter)
     log.addHandler(h)
+
+    if options.trace_enabled:
+        log.debug("Tracing enabled")
+        trace.trace_enabled = True
+        trace.enable_tracing(options.logdir)
+        trace.trace({"trace_format": "1.0"})
 
     server = asimap.user_server.IMAPUserServer(options, os.getcwd())
 
