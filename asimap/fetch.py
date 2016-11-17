@@ -3,7 +3,11 @@
 # File: $Id$
 #
 """
-Objects and functions to fetch elements of a message.
+Objects and functions to fetch elements of a message.  This is the
+module that does the heavy lifting of sending actual content of email
+back to the IMAP Client. The FetchAtt class contains the query of what
+the IMAP Client has asked for as well as the ability to process that
+query and generate the body of the `FETCH` response IMAP message.
 """
 
 # system imports
@@ -15,6 +19,7 @@ import logging
 from cStringIO import StringIO
 from email.Generator import Generator
 from email.Header import Header
+from kitchen.text.converters import to_bytes
 
 # asimap imports
 #
@@ -323,8 +328,10 @@ class FetchAtt(object):
             # body() method. All further recursive calls will always have at
             # least one element in the section list when they are called.
             #
-            msg_text = email.utils.fix_eols(msg.as_string())
-            # msg_text = msg.as_string()
+            fp = StringIO()
+            g = Generator(fp, mangle_from_=False)
+            g.flatten(msg)
+            msg_text = email.utils.fix_eols(fp.getvalue())
         else:
             if len(section) == 1:
                 fp = StringIO()
@@ -435,10 +442,14 @@ class FetchAtt(object):
         if self.partial:
             msg_text = msg_text[self.partial[0]:self.partial[1]]
 
-        # We return all of these body sections as a length prefixed IMAP
-        # string.
+        # We return all of these body sections as a length prefixed
+        # IMAP string. Also run the message text through the wringer
+        # converter it through unicode via utf8 back in to bytes
+        # (since we are sending messages over the network we want
+        # stuff a bytes as much as possible.)
         #
-        return "{%d}\r\n%s" % (len(msg_text), str(msg_text))
+        msg_text = to_bytes(msg_text.decode('utf8', 'replace'))
+        return "{%d}\r\n%s" % (len(msg_text), msg_text)
 
     #######################################################################
     #

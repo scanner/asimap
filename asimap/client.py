@@ -879,7 +879,7 @@ class Authenticated(BaseClientHandler):
             else:
                 raise Bad("Unsupported STATUS attribute '%s'" % att)
 
-        self.client.push("* STATUS %s (%s)\r\n" %
+        self.client.push('* STATUS "%s" (%s)\r\n' %
                          (cmd.mailbox_name, " ".join(result)))
         return
 
@@ -1136,8 +1136,7 @@ class Authenticated(BaseClientHandler):
         results, seq_changed = self.mbox.fetch(cmd.msg_set, cmd.fetch_atts,
                                                cmd)
 
-        for r in results:
-            idx, iter_results = r
+        for idx, iter_results in results:
             self.client.push("* %d FETCH (%s)\r\n" %
                              (idx, " ".join(iter_results)))
 
