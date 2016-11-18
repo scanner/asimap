@@ -58,7 +58,9 @@ def main():
             if num in ('1', '20'):
                 typ, data = imap.fetch(num, '(RFC822)')
                 print 'Message %s\n%s\n' % (num, data[0][1])
-    imap.append('Archive', ('unseen'), None, 'Hello')
+    # imap.append('Archive', ('unseen'), None, 'Hello')
+    big_msg = open('test/test_mode/big_email').read()
+    imap.append('INBOX', ('unseen'), None, big_msg)
     imap.close()
     imap.logout()
 
