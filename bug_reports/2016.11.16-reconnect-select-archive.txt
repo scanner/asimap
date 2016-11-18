@@ -1,0 +1,15 @@
+Mail.app just keep connecting and SELECT 'Archive' and then bails out.
+
+     941.145   0.000 {"connection": "127.0.0.1:13782", "msg_type": "CONNECT"}
+     941.262   0.000 {"connection": "127.0.0.1:13782", "data": "3.171 CAPABILITY", "msg_type": "RECEIVED"}
+     941.262   0.000 {"connection": "127.0.0.1:13782", "data": "* CAPABILITY IMAP4REV1 IDLE ID UNSELECT UIDPLUS LITERAL+ CHILDREN\r\n", "msg_type": "SEND"}
+     941.262   0.000 {"connection": "127.0.0.1:13782", "data": "3.171 OK CAPABILITY completed\r\n", "msg_type": "SEND"}
+     941.477   0.000 {"connection": "127.0.0.1:13782", "data": "4.171 SELECT Archive", "msg_type": "RECEIVED"}
+     941.494   0.000 {"connection": "127.0.0.1:13782", "data": "* 6692 EXISTS\r\n", "msg_type": "SEND"}
+     941.494   0.000 {"connection": "127.0.0.1:13782", "data": "* 0 RECENT\r\n", "msg_type": "SEND"}
+     941.494   0.000 {"connection": "127.0.0.1:13782", "data": "* OK [UIDVALIDITY 915]\r\n", "msg_type": "SEND"}
+     941.494   0.000 {"connection": "127.0.0.1:13782", "data": "* OK [UIDNEXT 20564]\r\n", "msg_type": "SEND"}
+     941.494   0.000 {"connection": "127.0.0.1:13782", "data": "* FLAGS (\\Answered \\Deleted \\Draft \\Flagged \\Recent \\Seen $Forwarded cur $NotJunk NotJunk JunkRecorded $Junk)\r\n", "msg_type": "SEND"}
+     941.494   0.000 {"connection": "127.0.0.1:13782", "data": "* OK [PERMANENTFLAGS (\\Answered \\Deleted \\Draft \\Flagged \\Seen \\*)]\r\n", "msg_type": "SEND"}
+     941.494   0.000 {"connection": "127.0.0.1:13782", "data": "4.171 OK [READ-WRITE] SELECT completed\r\n", "msg_type": "SEND"}
+     942.135   0.000 {"msg": "main server closed its connection with us. 127.0.0.1:13782", "connection": "127.0.0.1:13782", "msg_type": "REMOTE_CLOSE"}

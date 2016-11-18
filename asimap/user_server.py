@@ -23,6 +23,7 @@ import mailbox
 import time
 import errno
 import random
+import traceback
 
 # asimap imports
 #
@@ -195,7 +196,8 @@ class IMAPUserClientHandler(asynchat.async_chat):
         except:
             self_repr = '<__repr__(self) failed for object at %0x>' % id(self)
 
-        self.trace('EXCEPTION', {'data': [str(t), str(v), str(tb)]})
+        tb_string = "".join(traceback.format_tb(tb))
+        self.trace('EXCEPTION', {'data': [str(t), str(v), tb_string]})
         log.error("uncaptured python exception, closing channel {} "
                   "({}:{})".format(self_repr, t, v), exc_info=(t, v, tb))
         self.close()
@@ -698,7 +700,7 @@ class IMAPUserServer(asyncore.dispatcher):
         # missing .mh_sequence files)
         #
         for mbox_name in mboxes_to_create:
-            self.log.debug("Creating mailbox %s" % mbox_name)
+            self.log.debug("Creating mailbox '%s'" % mbox_name)
             self.get_mailbox(mbox_name, expiry=0)
         self.log.debug("find_all_folders: FINISHED. Took %f seconds" %
                        (time.time() - start_time))

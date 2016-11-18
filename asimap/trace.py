@@ -18,6 +18,7 @@ import logging
 import logging.handlers
 import json
 
+log = logging.getLogger("%s" % __name__)
 trace_logger = logging.getLogger("trace")
 trace_enabled = False
 
@@ -59,16 +60,17 @@ class TraceFormatter(logging.Formatter):
 
 ####################################################################
 #
-def enable_tracing(logdir):
+def enable_tracing(logdir, trace_file=None):
     """
     Keyword Arguments:
     logdir -- The directory in to which write the trace files
     """
     trace_logger.setLevel(logging.INFO)
 
-    if logdir == "stderr":
+    if logdir == "stderr" and not trace_file:
         # Do not write traces to a file - write them to stderr.
         #
+        log.debug("Logging trace records to stderr")
         h = logging.StreamHandler()
     else:
         # XXX NOTE: We should make a custom logger that writes a trace
@@ -76,9 +78,15 @@ def enable_tracing(logdir):
         #
         # Rotate on every 10mb, keep 5 files.
         #
-        p = pwd.getpwuid(os.getuid())
-        trace_file_basename = os.path.join(logdir,
-                                           "%s-asimapd.trace" % p.pw_name)
+        if trace_file:
+            trace_file_basename = trace_file
+        else:
+            p = pwd.getpwuid(os.getuid())
+            trace_file_basename = os.path.join(logdir,
+                                               "%s-asimapd.trace" % p.pw_name)
+
+        log.debug("Logging trace records to '{}'".format(trace_file_basename))
+
         h = logging.handlers.RotatingFileHandler(trace_file_basename,
                                                  maxBytes=20971520,
                                                  backupCount=5)

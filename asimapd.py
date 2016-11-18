@@ -43,6 +43,7 @@ def setup_option_parser():
                         daemonize=True,
                         test_mode=False,
                         trace_enabled=False,
+                        trace_file=None,
                         pidfile="/var/run/asimapd.pid",
                         logdir="/var/log/asimapd")
 
@@ -60,6 +61,10 @@ def setup_option_parser():
                       "The tracefiles will be written to the log dir and "
                       "will be named <username>-asimap.trace "
                       )
+    parser.add_option("--trace_file", action="store", type="string",
+                      dest="trace_file", help="If specified forces the "
+                      "trace to be written to the specified file instead "
+                      "of stderr or a file in the logdir.")
     parser.add_option("--test_mode",  action="store_true", dest="test_mode",
                       help="Run the server using the test mode environment. "
                       "The server will run as normal except it will use the "

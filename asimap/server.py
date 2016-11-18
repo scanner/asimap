@@ -106,6 +106,8 @@ class IMAPSubprocessHandle(object):
             cmd.append("--debug")
         if self.options.trace_enabled:
             cmd.append("--trace")
+        if self.options.trace_file:
+            cmd.append("--trace_file={}".format(self.options.trace_file))
 
         self.log.debug("Starting user server, cmd: %s, as user: '%s', in "
                        "directory '%s'" % (repr(cmd), self.user.local_username,

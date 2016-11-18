@@ -56,6 +56,7 @@ def setup_option_parser():
     parser.set_defaults(debug=False,
                         logdir="/var/log/asimapd",
                         trace_mode=False,
+                        trace_file=None,
                         standalone_mode=False)
     parser.add_option("--debug", action="store_true", dest="debug",
                       help="Emit debugging statements.")
@@ -68,6 +69,10 @@ def setup_option_parser():
                       "The tracefiles will be written to the log dir and "
                       "will be named <username>-asimap.trace "
                       )
+    parser.add_option("--trace_file", action="store", type="string",
+                      dest="trace_file", help="If specified forces the "
+                      "trace to be written to the specified file instead "
+                      "of stderr or a file in the logdir.")
     parser.add_option("--standalone_mode", action="store_true",
                       dest="standalone_mode",
                       help="Indicates that the user server object is to be "
@@ -140,7 +145,7 @@ def main():
     if options.trace_enabled:
         log.debug("Tracing enabled")
         trace.trace_enabled = True
-        trace.enable_tracing(options.logdir)
+        trace.enable_tracing(options.logdir, options.trace_file)
         trace.trace({"trace_format": "1.0"})
 
     server = asimap.user_server.IMAPUserServer(options, os.getcwd())
