@@ -302,8 +302,12 @@ class FetchAtt(object):
             result = '"%s"' % \
                 self.ctx.internal_date.strftime("%d-%b-%Y %H:%m:%S %z")
         elif self.attribute == "rfc822.size":
-            result = str(len(self.ctx.mailbox.mailbox.get_string(
-                self.ctx.msg_key)))
+            # result = str(len(self.ctx.mailbox.mailbox.get_string(
+            #     self.ctx.msg_key)))
+            fp = StringIO()
+            g = Generator(fp, mangle_from_=False)
+            g.flatten(self.ctx.msg)
+            result = str(len(email.utils.fix_eols(fp.getvalue())))
         elif self.attribute == "uid":
             result = str(self.ctx.uid)
         else:

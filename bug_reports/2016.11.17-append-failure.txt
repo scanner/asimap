@@ -17,3 +17,9 @@ default	00:55:13.950957 -0800	Mail	[Apricot - B3DC47AE-3A02-4BC9-A8B2-97DB2C52FD
 default	00:55:13.951604 -0800	Mail	[kamidake.apricot.com] <0x7f846fd05240:[Selected mailbox=B3DC47AE-3A02-4BC9-A8B2-97DB2C52FD96 <7 chars>]> Wrote: 5.1141 APPEND <7 chars> <24300 bytes>
 default	00:55:13.958528 -0800	Mail	TCP Conn 0x610000198bb0 canceled
 default	00:55:13.959053 -0800	Mail	[Apricot] Removing handler (0x6080004f8b80)
+
+The problem was that we needed to re-try no read when we got the
+SSLWantReadError..
+
+In _this_ case I fixed it by patching asynchat.py. See
+experiments/asynchat.py

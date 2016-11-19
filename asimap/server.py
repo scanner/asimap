@@ -367,8 +367,13 @@ class IMAPClientHandler(asynchat.async_chat):
             # overriding.
             #
             asynchat.async_chat.handle_read(self)
+        except ssl.SSLWantReadError:
+            # If we are wanting read then we return and wait for the
+            # next time we are called.
+            #
+            return
         except ssl.SSLError, err:
-            self.log.error("handle_write: %s, ssl error: %s" %
+            self.log.error("handle_read: %s, ssl error: %s" %
                            (self.log_string(), str(err)))
             # Maybe we should just close the connection instead of
             # raising the exception?
@@ -497,8 +502,8 @@ class IMAPClientHandler(asynchat.async_chat):
                 # already did everything in a non-synchronizing literal
                 # fashion.
                 #
-                self.ibuffer[-1] = self.ibuffer[-1][:-2] + \
-                    self.ibuffer[-1][-1:]
+                self.ibuffer[-1] = (self.ibuffer[-1][:-2] +
+                                    self.ibuffer[-1][-1:])
 
             # We also tack on a \r\n to the ibuffer so that whatever parses
             # the message knows how to parse the literal string corrctly.

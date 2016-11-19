@@ -2349,7 +2349,7 @@ class Mailbox(object):
                 new_msg.add_sequence('Recent')
                 dest_mbox.mailbox[new_key] = new_msg
 
-                os.utime(mbox_msg_path(dest_mbox.mailbox._path, new_key),
+                os.utime(mbox_msg_path(dest_mbox.mailbox, new_key),
                          (mtime, mtime))
 
                 self.log.debug("copy: Copied message %d(%d) to %d" %
