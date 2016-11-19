@@ -1,0 +1,55 @@
+t-15898 10.320 BAD Unhandled exception: 'str' object has no attribute '_path'
+
+2016-11-18 16:37:52,102 1479515872.1 59935 ERROR asimap.asimap.user_server uncaptured python exception, closing channel <asimap.user_server.IMAPUserClientHandler connected 127.0.0.1:15898 at 0x8023bbf80> (<type 'exceptions.AttributeError'>:'str' object has no attribute '_path')
+Traceback (most recent call last):
+  File "/usr/local/lib/python2.7/asyncore.py", line 83, in read
+    obj.handle_read_event()
+  File "/usr/local/lib/python2.7/asyncore.py", line 449, in handle_read_event
+    self.handle_read()
+  File "/usr/local/lib/python2.7/asynchat.py", line 147, in handle_read
+    self.found_terminator()
+  File "/usr/local/lib/python2.7/site-packages/asimap/user_server.py", line 291, in found_terminator
+    self.cmd_processor.command(imap_cmd)
+  File "/usr/local/lib/python2.7/site-packages/asimap/client.py", line 125, in command
+    imap_command.command)(imap_command)
+  File "/usr/local/lib/python2.7/site-packages/asimap/client.py", line 1333, in do_copy
+    cmd.uid_command)
+  File "/usr/local/lib/python2.7/site-packages/asimap/mbox.py", line 2352, in copy
+    os.utime(mbox_msg_path(dest_mbox.mailbox._path, new_key),
+  File "/usr/local/lib/python2.7/site-packages/asimap/mbox.py", line 57, in mbox_msg_path
+    return os.path.join(mbox._path, str(x))
+AttributeError: 'str' object has no attribute '_path'
+
+       4.3465   0.0000 {"connection": "127.0.0.1:15898", "msg_type": "CONNECT"}
+       4.4678   0.0000 {"connection": "127.0.0.1:15898", "data": "3.320 CAPABILITY", "msg_type": "RECEIVED"}
+       4.4680   0.0000 {"connection": "127.0.0.1:15898", "data": "* CAPABILITY IMAP4REV1 IDLE ID UNSELECT UIDPLUS LITERAL+ CHILDREN\r\n", "msg_type": "SEND"}
+       4.4680   0.0000 {"connection": "127.0.0.1:15898", "data": "3.320 OK CAPABILITY completed\r\n", "msg_type": "SEND"}
+      22.6479   0.0000 {"connection": "127.0.0.1:15898", "data": "4.320 SELECT INBOX", "msg_type": "RECEIVED"}
+      22.6485   0.0000 {"connection": "127.0.0.1:15898", "data": "* 55 EXISTS\r\n", "msg_type": "SEND"}
+      22.6486   0.0000 {"connection": "127.0.0.1:15898", "data": "* 0 RECENT\r\n", "msg_type": "SEND"}
+      22.6487   0.0000 {"connection": "127.0.0.1:15898", "data": "* OK [UNSEEN 55]\r\n", "msg_type": "SEND"}
+      22.6488   0.0000 {"connection": "127.0.0.1:15898", "data": "* OK [UIDVALIDITY 94]\r\n", "msg_type": "SEND"}
+      22.6489   0.0000 {"connection": "127.0.0.1:15898", "data": "* OK [UIDNEXT 137059]\r\n", "msg_type": "SEND"}
+      22.6490   0.0000 {"connection": "127.0.0.1:15898", "data": "* FLAGS (\\Answered \\Deleted \\Draft \\Flagged \\Recent \\Seen $Forwarded $NotJunk unseen JunkRecorded)\r\n", "msg_type": "SEND"}
+      22.6491   0.0000 {"connection": "127.0.0.1:15898", "data": "* OK [PERMANENTFLAGS (\\Answered \\Deleted \\Draft \\Flagged \\Seen \\*)]\r\n", "msg_type": "SEND"}
+      22.6492   0.0000 {"connection": "127.0.0.1:15898", "data": "4.320 OK [READ-WRITE] SELECT completed\r\n", "msg_type": "SEND"}
+      22.8748   0.0000 {"connection": "127.0.0.1:15898", "data": "5.320 IDLE", "msg_type": "RECEIVED"}
+      22.8750   0.0000 {"connection": "127.0.0.1:15898", "data": "+ idling\r\n", "msg_type": "SEND"}
+      76.8549   0.0000 {"connection": "127.0.0.1:15898", "data": "DONE", "msg_type": "RECEIVED"}
+      76.8550   0.0000 {"connection": "127.0.0.1:15898", "data": "5.320 OK IDLE terminated\r\n", "msg_type": "SEND"}
+      76.9808   0.0000 {"connection": "127.0.0.1:15898", "data": "6.320 CHECK", "msg_type": "RECEIVED"}
+      76.9811   0.0000 {"connection": "127.0.0.1:15898", "data": "6.320 OK CHECK completed\r\n", "msg_type": "SEND"}
+      77.1058   0.0000 {"connection": "127.0.0.1:15898", "data": "7.320 LIST \"\" \"\"", "msg_type": "RECEIVED"}
+      77.1060   0.0000 {"connection": "127.0.0.1:15898", "data": "* LIST (\\Noselect) \"/\" \"\"\r\n", "msg_type": "SEND"}
+      77.1061   0.0000 {"connection": "127.0.0.1:15898", "data": "7.320 OK LIST completed\r\n", "msg_type": "SEND"}
+      77.3288   0.0000 {"connection": "127.0.0.1:15898", "data": "8.320 STATUS INBOX (MESSAGES UIDNEXT UIDVALIDITY UNSEEN)", "msg_type": "RECEIVED"}
+      77.3291   0.0000 {"connection": "127.0.0.1:15898", "data": "* STATUS \"inbox\" (MESSAGES 55 UIDNEXT 137059 UIDVALIDITY 94 UNSEEN 1)\r\n", "msg_type": "SEND"}
+      77.3292   0.0000 {"connection": "127.0.0.1:15898", "data": "8.320 OK STATUS completed\r\n", "msg_type": "SEND"}
+      77.5588   0.0000 {"connection": "127.0.0.1:15898", "data": "9.320 IDLE", "msg_type": "RECEIVED"}
+      77.5590   0.0000 {"connection": "127.0.0.1:15898", "data": "+ idling\r\n", "msg_type": "SEND"}
+     119.7779   0.0000 {"connection": "127.0.0.1:15898", "data": "DONE", "msg_type": "RECEIVED"}
+     119.7780   0.0000 {"connection": "127.0.0.1:15898", "data": "9.320 OK IDLE terminated\r\n", "msg_type": "SEND"}
+     119.9048   0.0000 {"connection": "127.0.0.1:15898", "data": "10.320 UID COPY 137057 Archive", "msg_type": "RECEIVED"}
+     119.9678   0.0000 {"connection": "127.0.0.1:15898", "data": "10.320 BAD Unhandled exception: 'str' object has no attribute '_path'\r\n", "msg_type": "SEND"}
+     119.9692   0.0000 {"connection": "127.0.0.1:15898", "data": ["<type 'exceptions.AttributeError'>", "'str' object has no attribute '_path'", "  File \"/usr/local/lib/python2.7/asyncore.py\", line 83, in read\n    obj.handle_read_event()\n  File \"/usr/local/lib/python2.7/asyncore.py\", line 449, in handle_read_event\n    self.handle_read()\n  File \"/usr/local/lib/python2.7/asynchat.py\", line 147, in handle_read\n    self.found_terminator()\n  File \"/usr/local/lib/python2.7/site-packages/asimap/user_server.py\", line 291, in found_terminator\n    self.cmd_processor.command(imap_cmd)\n  File \"/usr/local/lib/python2.7/site-packages/asimap/client.py\", line 125, in command\n    imap_command.command)(imap_command)\n  File \"/usr/local/lib/python2.7/site-packages/asimap/client.py\", line 1333, in do_copy\n    cmd.uid_command)\n  File \"/usr/local/lib/python2.7/site-packages/asimap/mbox.py\", line 2352, in copy\n    os.utime(mbox_msg_path(dest_mbox.mailbox._path, new_key),\n  File \"/usr/local/lib/python2.7/site-packages/asimap/mbox.py\", line 57, in mbox_msg_path\n    return os.path.join(mbox._path, str(x))\n"], "msg_type": "EXCEPTION"}
+     120.9745   0.0000 {"connection": "127.0.0.1:15898", "data": "* 54 FETCH (FLAGS (\\Deleted \\Seen) UID 137057)\r\n", "msg_type": "SEND"}

@@ -55,7 +55,7 @@ class TraceFormatter(logging.Formatter):
         delta = now - self.start
         delta_trace = now - self.last_time
         self.last_time = now
-        return "{:12.3f} {:7.3f}".format(delta, delta_trace)
+        return "{:13.4f} {:8.4f}".format(delta, delta_trace)
 
 
 ####################################################################
