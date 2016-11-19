@@ -12,7 +12,6 @@ single connected IMAP client.
 import sys
 import logging
 import os.path
-import time
 from itertools import count, groupby
 
 # asimapd imports
@@ -26,18 +25,20 @@ from asimap.exceptions import AuthenticationException
 #
 CAPABILITIES = ('IMAP4REV1', 'IDLE', 'ID', 'UNSELECT', 'UIDPLUS', 'LITERAL+',
                 'CHILDREN')
-SERVER_ID = { 'name'        : 'asimapd',
-              'version'     : '1.0rc1',
-              'vendor'      : 'Apricot Systematic',
-              'support-url' : 'https://github.com/scanner/asimap/issues',
-              'command'     : sys.argv[0],
-              'os'          : sys.platform,
-              }
+SERVER_ID = {
+    'name': 'asimapd',
+    'version': '1.0rc1',
+    'vendor': 'Apricot Systematic',
+    'support-url': 'https://github.com/scanner/asimap/issues',
+    'command': sys.argv[0],
+    'os': sys.platform,
+}
 
 # States that our IMAP client handler can be in. These reflect the valid states
 # from rfc2060.
 #
-STATES = ("not_authenticated","authenticated","selected","logged_out")
+STATES = ("not_authenticated", "authenticated", "selected", "logged_out")
+
 
 ##################################################################
 ##################################################################
@@ -58,7 +59,8 @@ class BaseClientHandler(object):
                     client we are handling. This lets us send messages to that
                     IMAP client.
         """
-        self.log = logging.getLogger("%s.%s" % (__name__, self.__class__.__name__))
+        self.log = logging.getLogger("%s.%s" % (__name__,
+                                                self.__class__.__name__))
         self.client = client
         self.state = None
         self.name = "BaseClientHandler"
@@ -117,9 +119,10 @@ class BaseClientHandler(object):
         # except the "OK" response and any exceptional errors which are handled
         # by this method.
         #
-        start_time = time.time()
+        # start_time = time.time()
         try:
-            result = getattr(self, 'do_%s' % imap_command.command)(imap_command)
+            result = getattr(self, 'do_%s' %
+                             imap_command.command)(imap_command)
         except No, e:
             result = "%s NO %s\r\n" % (imap_command.tag, str(e))
             self.client.push(result)
@@ -131,7 +134,8 @@ class BaseClientHandler(object):
             self.log.debug(result)
             return
         except MailboxLock, e:
-            self.log.warn("Unable to get lock on mailbox '%s', putting on to command queue" % e.mbox.name)
+            self.log.warn("Unable to get lock on mailbox '%s', putting on "
+                          "to command queue" % e.mbox.name)
             e.mbox.command_queue.append((self, imap_command))
             return
         except KeyboardInterrupt:
@@ -224,8 +228,8 @@ class BaseClientHandler(object):
         self.client.close()
         return
 
-    ## The following commands are supported in any state.
-    ##
+    # The following commands are supported in any state.
+    #
 
     ##################################################################
     #
@@ -259,7 +263,8 @@ class BaseClientHandler(object):
     def do_namespace(self, cmd):
         """
         We currently only support a single personal name space. No leading
-        prefix is used on personal mailboxes and '/' is the hierarchy delimiter.
+        prefix is used on personal mailboxes and '/' is the hierarchy
+        delimiter.
 
         Arguments:
         - `cmd`: The full IMAP command object.
@@ -279,12 +284,13 @@ class BaseClientHandler(object):
         """
         self.send_pending_expunges()
         self.client_id = cmd.id_dict
-        self.log.info("Client at %s:%d identified itself with: %s" % \
-                          (self.client.rem_addr, self.client.port,
-                           ", ".join("%s: '%s'" % x for x in self.client_id.iteritems())))
+        self.log.info("Client at %s:%d identified itself with: %s" %
+                      (self.client.rem_addr, self.client.port,
+                       ", ".join("%s: '%s'" % x for x in
+                                 self.client_id.iteritems())))
         res = []
-        for k,v in SERVER_ID.iteritems():
-            res.extend(['"%s"' % k,'"%s"' % v])
+        for k, v in SERVER_ID.iteritems():
+            res.extend(['"%s"' % k, '"%s"' % v])
         self.client.push("* ID (%s)\r\n" % ' '.join(res))
         return None
 
@@ -353,17 +359,19 @@ class PreAuthenticated(BaseClientHandler):
         - `client`: An asynchat.async_chat object that is connected to the IMAP
                     client we are handling. This lets us send messages to that
                     IMAP client.
-        - `auth_system`: The auth system we use to authenticate the IMAP client.
+        - `auth_system`: The auth system we use to authenticate the IMAP
+                         client.
         """
         BaseClientHandler.__init__(self, client)
         self.name = "PreAuthenticated"
-        self.log = logging.getLogger("%s.%s" % (__name__, self.__class__.__name__))
+        self.log = logging.getLogger("%s.%s" % (__name__,
+                                                self.__class__.__name__))
         self.auth_system = auth_system
         self.user = None
         return
 
-    ## The following commands are supported in the non-authenticated state.
-    ##
+    # The following commands are supported in the non-authenticated state.
+    #
 
     ##################################################################
     #
@@ -394,7 +402,8 @@ class PreAuthenticated(BaseClientHandler):
         # results then we are going to throttle them and not accept their
         # attempt to login.
         #
-        if not asimap.throttle.check_allow(cmd.user_name, self.client.rem_addr):
+        if not asimap.throttle.check_allow(cmd.user_name,
+                                           self.client.rem_addr):
             raise Bad("Too many authentication failures")
 
         # XXX This should poke the authentication mechanism we were passed
@@ -415,7 +424,7 @@ class PreAuthenticated(BaseClientHandler):
             # Even if the user authenticates properly, we can not allow them to
             # login if they have no maildir.
             #
-            if not (os.path.exists(self.user.maildir) and \
+            if not (os.path.exists(self.user.maildir) and
                     os.path.isdir(self.user.maildir)):
                 raise No("You have no mailbox directory setup")
 
@@ -430,6 +439,7 @@ class PreAuthenticated(BaseClientHandler):
             asimap.throttle.login_failed(cmd.user_name, self.client.rem_addr)
             raise No(str(e))
         return None
+
 
 ##################################################################
 ##################################################################
@@ -457,14 +467,16 @@ class Authenticated(BaseClientHandler):
                          handle to our sqlite3 db, etc.
         """
         BaseClientHandler.__init__(self, client)
-        self.log = logging.getLogger("%s.%s.port-%d" % (__name__, self.__class__.__name__, client.port))
+        self.log = logging.getLogger("%s.%s.port-%d" %
+                                     (__name__,
+                                      self.__class__.__name__, client.port))
         self.server = user_server
-        self.port = client.port # Used for debug messages
+        self.port = client.port  # Used for debug messages
         self.name = "Client:%d" % client.port
         self.db = user_server.db
         self.mbox = None
         self.state = "authenticated"
-        self.examine = False # If a mailbox is selected in 'examine' mode
+        self.examine = False  # If a mailbox is selected in 'examine' mode
 
         # How many times has this client done a FETCH when there are pending
         # expunges? We track this so that when a client gets in a snit about
@@ -478,7 +490,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    def process_or_queue(self, imap_cmd, queue = True):
+    def process_or_queue(self, imap_cmd, queue=True):
         """
         When we have a mailbox selected we may be in a state where we can not
         process the command we have been handed. This happens when we have a
@@ -507,8 +519,8 @@ class Authenticated(BaseClientHandler):
         # mailbox has a non-zero command_queue then we push this command on to
         # the end of the queue and return.
         #
-        if imap_cmd.needs_continuation or self.mbox is None or \
-               len(self.mbox.command_queue) == 0:
+        if (imap_cmd.needs_continuation or self.mbox is None or
+                not self.mbox.command_queue):
             return True
         if queue:
             self.mbox.command_queue.append((self, imap_cmd))
@@ -524,7 +536,7 @@ class Authenticated(BaseClientHandler):
         we only notify this client of exists/recent.
         """
         if self.state == "selected" and self.mbox is not None:
-            self.mbox.resync(only_notify = self)
+            self.mbox.resync(only_notify=self)
         self.send_pending_expunges()
         return
 
@@ -567,7 +579,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    def do_select(self, cmd, examine = False):
+    def do_select(self, cmd, examine=False):
         """
         Select a folder, enter in to 'selected' mode.
 
@@ -638,7 +650,7 @@ class Authenticated(BaseClientHandler):
         """
         examine a specific mailbox (just like select, but read only)
         """
-        return self.do_select(cmd, examine = True)
+        return self.do_select(cmd, examine=True)
 
     ##################################################################
     #
@@ -652,7 +664,7 @@ class Authenticated(BaseClientHandler):
         # You can create a mailbox while you have commands in the command
         # queue, but no notifies are sent in that case.
         #
-        if self.process_or_queue(cmd, queue = False):
+        if self.process_or_queue(cmd, queue=False):
             try:
                 self.notifies()
             except MailboxLock:
@@ -672,7 +684,7 @@ class Authenticated(BaseClientHandler):
         # You can delete a mailbox while you have commands in the command
         # queue, but no notifies are sent in that case.
         #
-        if self.process_or_queue(cmd, queue = False):
+        if self.process_or_queue(cmd, queue=False):
             try:
                 self.notifies()
             except MailboxLock:
@@ -692,7 +704,7 @@ class Authenticated(BaseClientHandler):
         # You can delete a mailbox while you have commands in the command
         # queue, but no notifies are sent in that case.
         #
-        if self.process_or_queue(cmd, queue = False):
+        if self.process_or_queue(cmd, queue=False):
             try:
                 self.notifies()
             except MailboxLock:
@@ -721,7 +733,7 @@ class Authenticated(BaseClientHandler):
         # You can subscribe while you have commands in the command
         # queue, but no notifies are sent in that case.
         #
-        if self.process_or_queue(cmd, queue = False):
+        if self.process_or_queue(cmd, queue=False):
             try:
                 self.notifies()
             except MailboxLock:
@@ -747,7 +759,7 @@ class Authenticated(BaseClientHandler):
         # You can unsubscribe while you have commands in the command
         # queue, but no notifies are sent in that case.
         #
-        if self.process_or_queue(cmd, queue = False):
+        if self.process_or_queue(cmd, queue=False):
             try:
                 self.notifies()
             except MailboxLock:
@@ -760,7 +772,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    def do_list(self, cmd, lsub = False):
+    def do_list(self, cmd, lsub=False):
         """
         The LIST command returns a subset of names from the complete
         set of all names available to the client.  Zero or more
@@ -776,7 +788,7 @@ class Authenticated(BaseClientHandler):
         # You can list while you have commands in the command
         # queue, but no notifies are sent in that case.
         #
-        if self.process_or_queue(cmd, queue = False):
+        if self.process_or_queue(cmd, queue=False):
             try:
                 self.notifies()
             except MailboxLock:
@@ -805,7 +817,7 @@ class Authenticated(BaseClientHandler):
             #
             if ' ' in mbox_name:
                 mbox_name = '"%s"' % mbox_name
-            self.client.push(str('* %s (%s) "/" %s\r\n' % \
+            self.client.push(str('* %s (%s) "/" %s\r\n' %
                                  (res, ' '.join(attributes), mbox_name)))
         return None
 
@@ -820,7 +832,7 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        return self.do_list(cmd, lsub = True)
+        return self.do_list(cmd, lsub=True)
 
     ##################################################################
     #
@@ -835,13 +847,13 @@ class Authenticated(BaseClientHandler):
         # You can lsub while you have commands in the command
         # queue, but no notifies are sent in that case.
         #
-        if self.process_or_queue(cmd, queue = False):
+        if self.process_or_queue(cmd, queue=False):
             try:
                 self.notifies()
             except MailboxLock:
                 pass
 
-        mbox = self.server.get_mailbox(cmd.mailbox_name, expiry = 45)
+        mbox = self.server.get_mailbox(cmd.mailbox_name, expiry=45)
 
         # We can only call resync on this mbox if it has an empty
         # command queue.
@@ -861,14 +873,14 @@ class Authenticated(BaseClientHandler):
                 result.append("UIDVALIDITY %d" % mbox.uid_vv)
             elif att == "unseen":
                 if 'unseen' in mbox.sequences:
-                    result.append("UNSEEN %d" %  len(mbox.sequences['unseen']))
+                    result.append("UNSEEN %d" % len(mbox.sequences['unseen']))
                 else:
                     result.append("UNSEEN 0")
             else:
                 raise Bad("Unsupported STATUS attribute '%s'" % att)
 
-        self.client.push("* STATUS %s (%s)\r\n" % \
-                             (cmd.mailbox_name," ".join(result)))
+        self.client.push('* STATUS "%s" (%s)\r\n' %
+                         (cmd.mailbox_name, " ".join(result)))
         return
 
     ##################################################################
@@ -883,14 +895,14 @@ class Authenticated(BaseClientHandler):
         # You can append while you have commands in the command
         # queue, but no notifies are sent in that case.
         #
-        if self.process_or_queue(cmd, queue = False):
+        if self.process_or_queue(cmd, queue=False):
             try:
                 self.notifies()
             except MailboxLock:
                 pass
 
         try:
-            mbox = self.server.get_mailbox(cmd.mailbox_name, expiry = 0)
+            mbox = self.server.get_mailbox(cmd.mailbox_name, expiry=0)
             uid = mbox.append(cmd.message, cmd.flag_list, cmd.date_time)
         except asimap.mbox.NoSuchMailbox:
             # For APPEND and COPY if the mailbox does not exist we
@@ -931,7 +943,7 @@ class Authenticated(BaseClientHandler):
         # queue. We can only send expunges to our client if it does not have
         # commands in the mailbox's command queue.
         #
-        if self.process_or_queue(cmd, queue = False):
+        if self.process_or_queue(cmd, queue=False):
             self.mbox.resync()
 
         if not self.mbox.has_queued_commands(self):
@@ -984,7 +996,7 @@ class Authenticated(BaseClientHandler):
             if mbox:
                 mbox.resync()
                 mbox.expunge()
-        except MailboxUnlock:
+        except MailboxLock:
             pass
         return
 
@@ -1058,7 +1070,7 @@ class Authenticated(BaseClientHandler):
         # receive the pending expunges. Unless this is a UID command. It is
         # okay to send pending expunges during the operations of a UID SEARCH.
         #
-        self.mbox.resync(notify = cmd.uid_command)
+        self.mbox.resync(notify=cmd.uid_command)
         if len(self.pending_expunges) > 0:
             if cmd.uid_command:
                 self.send_pending_expunges()
@@ -1077,16 +1089,15 @@ class Authenticated(BaseClientHandler):
                 # continued.
                 #
                 if not cmd.needs_continuation and results and len(results) > 0:
-                    self.client.push("* SEARCH %s\r\n" % \
-                                         ' '.join([str(x) for x in results]))
+                    self.client.push("* SEARCH %s\r\n" %
+                                     ' '.join([str(x) for x in results]))
                 break
             except MailboxInconsistency, e:
                 self.server.msg_cache.clear_mbox(self.mbox.name)
-                self.log.warn("do_search: %s, "
-                              "Try %d" % (str(e),count))
+                self.log.warn("do_search: %s, Try %d" % (str(e), count))
                 if count > 5:
                     raise e
-                self.mbox.resync(notify = False, optional = False)
+                self.mbox.resync(notify=False, optional=False)
 
         # If 'needs_continuation' is True then we have actually only partially
         # processed this command. We push this command on to the end of the
@@ -1120,15 +1131,14 @@ class Authenticated(BaseClientHandler):
         if count > 4:
             force = True
 
-        self.mbox.resync(notify = cmd.uid_command, force = force,
-                         optional = optional)
-        results,seq_changed = self.mbox.fetch(cmd.msg_set, cmd.fetch_atts,
-                                              cmd)
+        self.mbox.resync(notify=cmd.uid_command, force=force,
+                         optional=optional)
+        results, seq_changed = self.mbox.fetch(cmd.msg_set, cmd.fetch_atts,
+                                               cmd)
 
-        for r in results:
-            idx, iter_results = r
-            self.client.push("* %d FETCH (%s)\r\n" % \
-                                 (idx, " ".join(iter_results)))
+        for idx, iter_results in results:
+            self.client.push("* %d FETCH (%s)\r\n" %
+                             (idx, " ".join(iter_results)))
 
         return seq_changed
 
@@ -1191,8 +1201,7 @@ class Authenticated(BaseClientHandler):
                 break
             except MailboxInconsistency, e:
                 self.server.msg_cache.clear_mbox(self.mbox.name)
-                self.log.warn("do_fetch: %s, "
-                              "Try %d" % (str(e),count))
+                self.log.warn("do_fetch: %s, Try %d" % (str(e), count))
                 if count > 5:
                     raise e
 
@@ -1201,7 +1210,7 @@ class Authenticated(BaseClientHandler):
         # clients listening to this mailbox.
         #
         if seq_changed:
-            self.mbox.resync(optional = False)
+            self.mbox.resync(optional=False)
 
         # If 'needs_continuation' is True then we have actually only partially
         # processed this command. We push this command on to the end of the
@@ -1259,7 +1268,7 @@ class Authenticated(BaseClientHandler):
             else:
                 raise No("There are pending EXPUNGEs.")
 
-        self.mbox.resync(notify = cmd.uid_command)
+        self.mbox.resync(notify=cmd.uid_command)
 
         # We do not issue any messages to the client here. This is done
         # automatically when 'resync' is called because resync will examine the
@@ -1273,10 +1282,10 @@ class Authenticated(BaseClientHandler):
         self.mbox.store(cmd.msg_set, cmd.store_action, cmd.flag_list,
                         cmd)
         if cmd.silent:
-            self.mbox.resync(notify = False, dont_notify = self,
-                             publish_uids = cmd.uid_command)
+            self.mbox.resync(notify=False, dont_notify=self,
+                             publish_uids=cmd.uid_command)
         else:
-            self.mbox.resync(notify = False, publish_uids = cmd.uid_command)
+            self.mbox.resync(notify=False, publish_uids=cmd.uid_command)
 
         # If 'needs_continuation' is True then we have actually only partially
         # processed this command. We push this command on to the end of the
@@ -1319,9 +1328,9 @@ class Authenticated(BaseClientHandler):
             self.send_pending_expunges()
 
         try:
-            dest_mbox = self.server.get_mailbox(cmd.mailbox_name, expiry = 0)
-            src_uids, dst_uids = self.mbox.copy(cmd.msg_set,
-                                                dest_mbox, cmd.uid_command)
+            dest_mbox = self.server.get_mailbox(cmd.mailbox_name, expiry=0)
+            src_uids, dst_uids = self.mbox.copy(cmd.msg_set, dest_mbox,
+                                                cmd.uid_command)
         except asimap.mbox.NoSuchMailbox:
             # For APPEND and COPY if the mailbox does not exist we
             # MUST supply the TRYCREATE flag so we catch the generic
@@ -1339,15 +1348,23 @@ class Authenticated(BaseClientHandler):
                 self.mbox.command_queue.append((self, cmd))
                 return False
 
-        # NOTE: I tip my hat to: http://stackoverflow.com/questions/3429510/pythonic-way-to-convert-a-list-of-integers-into-a-string-of-comma-separated-range/3430231#3430231
+        # NOTE: I tip my hat to: http://stackoverflow.com/questions/3429510/
+        # pythonic-way-to-convert-a-list-of-integers-into-a-string-of-
+        # comma-separated-range/3430231#3430231
         #
         try:
-            src_uids = (list(x) for _,x in groupby(src_uids, lambda x,c=count(): next(c)-x))
-            src_uids = ",".join(":".join(map(str,(g[0],g[-1])[:len(g)])) for g in src_uids)
-            dst_uids = (list(x) for _,x in groupby(dst_uids, lambda x,c=count(): next(c)-x))
-            dst_uids = ",".join(":".join(map(str,(g[0],g[-1])[:len(g)])) for g in dst_uids)
+            src_uids = (list(x) for _, x in
+                        groupby(src_uids, lambda x, c=count(): next(c)-x))
+            src_uids = ",".join(":".join(map(str, (g[0], g[-1])[:len(g)]))
+                                for g in src_uids)
+            dst_uids = (list(x) for _, x in
+                        groupby(dst_uids, lambda x, c=count(): next(c)-x))
+            dst_uids = ",".join(":".join(map(str, (g[0], g[-1])[:len(g)]))
+                                for g in dst_uids)
         except Exception, e:
-            self.log.error("do_copy: Unable to generate src and dst uid lists. Exception: %s, src_uids: %s, dst_uids: %s" % (str(e), str(src_uids), str(dst_uids)))
+            self.log.error("do_copy: Unable to generate src and dst uid lists."
+                           " Exception: %s, src_uids: %s, dst_uids: %s" %
+                           (str(e), str(src_uids), str(dst_uids)))
             raise e
 
         return "[COPYUID %d %s %s]" % (dest_mbox.uid_vv, src_uids, dst_uids)

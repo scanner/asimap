@@ -11,7 +11,6 @@ commands in other parts of the server.
 # system imports
 #
 import re
-import sys
 import email
 import datetime
 import os.path
@@ -24,41 +23,69 @@ import asimap.utils
 from asimap.search import IMAPSearch
 from asimap.fetch import FetchAtt
 
+
 #######################################################################
 #
 class BadCommand(Exception):
-    def __init__(self, value = "bad command"):
+
+    def __init__(self, value="bad command"):
         self.value = value
+
     def __str__(self):
         return "BadCommand: %s" % self.value
 
+
+#######################################################################
+#
 class NoMatch(BadCommand):
-    def __init__(self, value = "no match"):
+
+    def __init__(self, value="no match"):
         self.value = value
+
     def __str__(self):
         return "NoMatch: %s" % self.value
 
+
+#######################################################################
+#
 class UnknownCommand(BadCommand):
-    def __init__(self, value = "unknown command"):
+
+    def __init__(self, value="unknown command"):
         self.value = value
+
     def __str__(self):
         return "UnknownCommand: %s" % self.value
 
+
+#######################################################################
+#
 class BadLiteral(BadCommand):
-    def __init__(self, value = "bad literal"):
+
+    def __init__(self, value="bad literal"):
         self.value = value
+
     def __str__(self):
         return "BadLiteral: %s" % self.value
 
+
+#######################################################################
+#
 class BadSyntax(BadCommand):
-    def __init__(self, value = "bad syntax"):
+
+    def __init__(self, value="bad syntax"):
         self.value = value
+
     def __str__(self):
         return "BadSyntax: %s" % self.value
 
+
+#######################################################################
+#
 class UnknownSearchKey(BadCommand):
-    def __init__(self, value = "unknown search key"):
+
+    def __init__(self, value="unknown search key"):
         self.value = value
+
     def __str__(self):
         return "UnknownSearchKey: %s" % self.value
 
@@ -69,14 +96,14 @@ class UnknownSearchKey(BadCommand):
 #
 
 REPLACE_FLAGS = 0
-ADD_FLAGS     = 1
-REMOVE_FLAGS  = 2
+ADD_FLAGS = 1
+REMOVE_FLAGS = 2
 
 # For debugging messages.. mapping the flags back to strings.
 #
-flag_to_str = { REPLACE_FLAGS : 'FLAGS',
-                ADD_FLAGS     : '+FLAGS',
-                REMOVE_FLAGS  : '-FLAGS'}
+flag_to_str = {REPLACE_FLAGS: 'FLAGS',
+               ADD_FLAGS: '+FLAGS',
+               REMOVE_FLAGS: '-FLAGS'}
 
 # Attributes of a fetch command. Note that the order is important. We need to
 # match the longest strings with the common prefix first to insure that we
@@ -95,9 +122,9 @@ system_flags = ["\\answered", "\\flagged", "\\deleted", "\\seen", "\\draft",
 #
 uid_commands = ('copy', 'fetch', 'search', 'store', 'expunge')
 
-_month = { 'jan' : 1, 'feb' : 2, 'mar' : 3, 'apr' : 4, 'may' : 5,
-           'jun' : 6, 'jul' : 7, 'aug' : 8, 'sep' : 9, 'oct' : 10,
-           'nov' : 11, 'dec' : 12 }
+_month = {'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5,
+          'jun': 6, 'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10,
+          'nov': 11, 'dec': 12}
 
 # Lots of regular expressions.
 
@@ -174,12 +201,18 @@ _lit_ref_re = re.compile(_lit_ref)
 # Date regular expressions
 #
 _date_day_fixed = r'[ \d]\d'
-_date_year      = r'\d\d\d\d'
-_date_month     = r'(Jan)|(Feb)|(Mar)|(Apr)|(May)|(Jun)|(Jul)|(Aug)|(Sep)|(Oct)|(Nov)|(Dec)'
-_time           = r'\d\d:\d\d:\d\d'
-_zone           = r'[-+]\d\d\d\d'
-_date_time      = r'"(?P<day>[ \d]\d)-(?P<month>(Jan)|(Feb)|(Mar)|(Apr)|(May)|(Jun)|(Jul)|(Aug)|(Sep)|(Oct)|(Nov)|(Dec))-(?P<year>\d\d\d\d) (?P<hour>\d\d):(?P<sec>\d\d):(?P<min>\d\d) (?P<tz_hr>[-+]\d\d)(?P<tz_min>\d\d)"'
-_date           = r'(")?(?P<day>\d?\d)-(?P<month>(Jan)|(Feb)|(Mar)|(Apr)|(May)|(Jun)|(Jul)|(Aug)|(Sep)|(Oct)|(Nov)|(Dec))-(?P<year>\d\d\d\d)(?(1)")'
+_date_year = r'\d\d\d\d'
+_date_month = (r'(Jan)|(Feb)|(Mar)|(Apr)|(May)|(Jun)|(Jul)|(Aug)|(Sep)|' +
+               r'(Oct)|(Nov)|(Dec)')
+_time = r'\d\d:\d\d:\d\d'
+_zone = r'[-+]\d\d\d\d'
+_date_time = (r'"(?P<day>[ \d]\d)-(?P<month>(Jan)|(Feb)|(Mar)|(Apr)|(May)|' +
+              r'(Jun)|(Jul)|(Aug)|(Sep)|(Oct)|(Nov)|(Dec))-' +
+              r'(?P<year>\d\d\d\d) (?P<hour>\d\d):(?P<sec>\d\d):' +
+              r'(?P<min>\d\d) (?P<tz_hr>[-+]\d\d)(?P<tz_min>\d\d)"')
+_date = (r'(")?(?P<day>\d?\d)-(?P<month>(Jan)|(Feb)|(Mar)|(Apr)|(May)|' +
+         r'(Jun)|(Jul)|(Aug)|(Sep)|(Oct)|(Nov)|(Dec))-' +
+         r'(?P<year>\d\d\d\d)(?(1)")')
 _date_re = re.compile(_date, re.I)
 _date_time_re = re.compile(_date_time, re.I)
 _date_day_fixed_re = re.compile(_date_day_fixed)
@@ -196,6 +229,8 @@ _zone_re = re.compile(_zone)
 
 ############################################################################
 #
+
+
 class IMAPClientCommand(object):
     """This is an IMAP Client Command parser. Given a complete IMAP command it
     will parse in to a structure that can be easily processed by the rest of
@@ -213,7 +248,8 @@ class IMAPClientCommand(object):
         Create the IMAPClientCommand object. This does NOT parse the string we
         were given, though. You need to call the 'parse()' method for that.
         """
-        self.log = logging.getLogger("%s.%s" % (__name__, self.__class__.__name__))
+        self.log = logging.getLogger(
+            "%s.%s" % (__name__, self.__class__.__name__))
         self.input = imap_command
         self.uid_command = False
         self.tag = None
@@ -242,7 +278,6 @@ class IMAPClientCommand(object):
         # until the imap command comes back 'needs_continuation == False'
         #
         self.search_results = []
-        return
 
     ##################################################################
     #
@@ -253,7 +288,6 @@ class IMAPClientCommand(object):
         gets created at least and potentially has self.tag set.
         """
         self._parse()
-        return
 
     #######################################################################
     #
@@ -269,7 +303,8 @@ class IMAPClientCommand(object):
             result.append(self.command.upper())
             if self.command == 'fetch':
                 result.append(",".join(map(str, self.msg_set)))
-                result.append("(%s)" % " ".join(x.dbg(show_peek = True) for x in self.fetch_atts))
+                result.append("(%s)" % " ".join(x.dbg(show_peek=True)
+                                                for x in self.fetch_atts))
             elif self.command == 'status':
                 result.append(self.mailbox_name)
                 result.append("(%s)" % " ".join(self.status_att_list))
@@ -292,11 +327,13 @@ class IMAPClientCommand(object):
             elif self.command == 'login':
                 result.append(self.user_name)
             elif self.command == 'id':
-                result.append("(%s)" % ", ".join("%s:'%s'" % (x,y) for x,y in self.id_dict.iteritems()))
+                result.append("(%s)" % ", ".join(
+                    "%s:'%s'" % (x, y) for x, y in self.id_dict.iteritems())
+                )
             elif self.command == 'rename':
                 result.append('"%s"' % self.mailbox_src_name)
                 result.append('"%s"' % self.mailbox_dst_name)
-                
+
         return " ".join(result)
 
     #######################################################################
@@ -343,11 +380,11 @@ class IMAPClientCommand(object):
         # We must always begin with a tag. Pull it off. If this fails it will
         # raise an exception that is caught by our caller.
         #
-        self.tag = self._p_re(_tag_re, syntax_error = "missing expected " \
+        self.tag = self._p_re(_tag_re, syntax_error="missing expected "
                               "tag that prefixes a command")
-        self._p_simple_string(' ', syntax_error = "expected ' ' after tag")
+        self._p_simple_string(' ', syntax_error="expected ' ' after tag")
         self.command = self._p_re(_atom_re,
-                                  syntax_error = "expected an atom for " \
+                                  syntax_error="expected an atom for "
                                   "the command name").lower()
 
         # At this point we have the actual IMAP command being used. We
@@ -357,7 +394,7 @@ class IMAPClientCommand(object):
         # command.
         #
         if not hasattr(self, '_p_%s' % self.command):
-            raise UnknownCommand(value = self.command)
+            raise UnknownCommand(value=self.command)
 
         # Okay. The command was a known command. Now we attempt to parse
         # its arguments based on the command.
@@ -370,7 +407,7 @@ class IMAPClientCommand(object):
         #       mind how this is going to work.
         #
         # # commands are terminated by a CRLF
-        # self._p_simple_string('\r\n', syntax_error = "missing expected <cr>" \
+        # self._p_simple_string('\r\n', syntax_error = "missing expected <cr>"
         #                       "<lf> at the end of the message")
 
         return
@@ -534,12 +571,12 @@ class IMAPClientCommand(object):
 
         # We either get nil or a list of key/value pairs.
         #
-        if self._p_simple_string('nil', silent = True):
+        if self._p_simple_string('nil', silent=True):
             return
-        self._p_simple_string('(', swallow = False, syntax_error = "expected "\
+        self._p_simple_string('(', swallow=False, syntax_error="expected "
                               "a parenthesized list of key/value pairs")
         kv_pairs = self._p_paren_list_of(self._p_string_nstring_pairs)
-        for k,v in kv_pairs:
+        for k, v in kv_pairs:
             self.id_dict[k] = v
         return
 
@@ -553,10 +590,10 @@ class IMAPClientCommand(object):
         If not specified they will be set but be none in this object'''
 
         self._p_simple_string(' ',
-                              syntax_error = "expected ' ' after APPEND")
+                              syntax_error="expected ' ' after APPEND")
         self.mailbox_name = self._p_mailbox()
         self._p_simple_string(' ',
-                              syntax_error = "expected ' ' after mailbox")
+                              syntax_error="expected ' ' after mailbox")
 
         # Now we have two optional arguments and a last required argument. How
         # do we know what we have next? Well, the first optional argument is a
@@ -570,19 +607,19 @@ class IMAPClientCommand(object):
         # Is this a list? If so, parse our list of flags.
         #
         self.flag_list = []
-        if self._p_simple_string('(', silent = True, swallow = False):
+        if self._p_simple_string('(', silent=True, swallow=False):
             self.flag_list = self._p_paren_list_of(self._p_flag)
             self._p_simple_string(' ',
-                                  syntax_error = "expected ' ' after flag " \
+                                  syntax_error="expected ' ' after flag "
                                   "list")
 
         # The next thing is either a date_time or a string literal. If the next
         # character is a '"' then it must be a date time.
         #
         self.date_time = None
-        if self._p_simple_string('"', silent = True, swallow = False):
+        if self._p_simple_string('"', silent=True, swallow=False):
             self.date_time = self._p_date_time()
-            self._p_simple_string(' ', syntax_error = "expected ' ' after " \
+            self._p_simple_string(' ', syntax_error="expected ' ' after "
                                   "rfc822 date-time")
 
         # and the last thing _must_ be a string literal, and it is an email
@@ -628,7 +665,7 @@ class IMAPClientCommand(object):
         # If the next token is 'CHARSET' then we need to pull aside the
         # CHARSET. If not, we default the charset to 'us-ascii'
         #
-        if self._p_simple_string('charset', silent = True):
+        if self._p_simple_string('charset', silent=True):
             self._p_simple_string(' ')
             self.charset = self._p_astring().lower()
             self._p_simple_string(' ')
@@ -638,8 +675,8 @@ class IMAPClientCommand(object):
         # If we get back a list search key's then this is really a bunch of
         # search keys with AND's between them.
         #
-        self.search_key = IMAPSearch('and', search_key = \
-                                     self._p_list_of(self._p_search_key))
+        self.search_key = IMAPSearch(
+            'and', search_key=self._p_list_of(self._p_search_key))
 
     #######################################################################
     #
@@ -669,7 +706,7 @@ class IMAPClientCommand(object):
         self.msg_set = self._p_msg_set()
         self._p_simple_string(' ')
 
-        plus_or_minus = self._p_re(_plus_or_minus_re, silent = True)
+        plus_or_minus = self._p_re(_plus_or_minus_re, silent=True)
         if plus_or_minus == '-':
             self.store_action = REMOVE_FLAGS
         elif plus_or_minus == '+':
@@ -678,16 +715,16 @@ class IMAPClientCommand(object):
             self.store_action = REPLACE_FLAGS
 
         self._p_simple_string("flags")
-        if self._p_simple_string(".silent", silent = True):
+        if self._p_simple_string(".silent", silent=True):
             self.silent = True
         else:
             self.silent = False
         self._p_simple_string(' ')
 
-        if self._p_simple_string('(', silent = True, swallow = False):
+        if self._p_simple_string('(', silent=True, swallow=False):
             self.flag_list = self._p_paren_list_of(self._p_flag)
         else:
-            self.flag_list = [ self._p_flag() ]
+            self.flag_list = [self._p_flag()]
 
     #######################################################################
     #
@@ -727,11 +764,11 @@ class IMAPClientCommand(object):
         #
         command = self._p_re(_atom_re).lower()
         if command not in uid_commands:
-            raise BadSyntax("%s is not a valid UID command: %s" % \
+            raise BadSyntax("%s is not a valid UID command: %s" %
                             (command, str(uid_commands)))
         self.command = command
         if not hasattr(self, '_p_%s' % self.command):
-            raise UnknownCommand(value = self.command)
+            raise UnknownCommand(value=self.command)
         getattr(self, '_p_%s' % self.command)()
 
     #
@@ -781,8 +818,8 @@ class IMAPClientCommand(object):
             # loop. If it is not then we break out of our loop - we are done
             # processing elements in this list.
             #
-            if self._p_simple_string(' ', silent = True,
-                                    swallow = False) is None:
+            if self._p_simple_string(' ', silent=True,
+                                     swallow=False) is None:
                 # Nope.. next character was not a space! we are done.
                 break
 
@@ -815,11 +852,11 @@ class IMAPClientCommand(object):
         """
 
         result = []
-        self._p_simple_string('(', syntax_error = "expected a '(' beginning " \
+        self._p_simple_string('(', syntax_error="expected a '(' beginning "
                               "a parenthesized list")
         # If we hit a ')' then it was an empty list.
         #
-        if self._p_simple_string(')', silent = True) is not None:
+        if self._p_simple_string(')', silent=True) is not None:
             return result
 
         # Go through the list looking for tokens
@@ -834,7 +871,7 @@ class IMAPClientCommand(object):
             # if the next element is a ')' then we have hit the end of our
             # list.
             #
-            if self._p_simple_string(')', silent = True) is not None:
+            if self._p_simple_string(')', silent=True) is not None:
                 break
 
             # It was not a ')' it MUST be a ' ' then.
@@ -867,36 +904,35 @@ class IMAPClientCommand(object):
 
         # Is this a list? If so, parse our list of flags.
         #
-        if self._p_simple_string('(', silent = True, swallow = False):
+        if self._p_simple_string('(', silent=True, swallow=False):
             return self._p_paren_list_of(self._p_fetch_att)
         else:
             # See if we have one of the three defined fetch att macros.
             # If we do we will just by hand create our list of fetch atts
             #
-            macro = self._p_re(_fetch_att_macros_re, silent = True)
+            macro = self._p_re(_fetch_att_macros_re, silent=True)
             if macro is not None:
                 # We had a macro.. so depending on which one we construct a
                 # list of fetch atts.
                 #
                 macro = macro.lower()
                 if macro == "all":
-                    return [ FetchAtt("flags"), FetchAtt("internaldate"),
-                             FetchAtt("rfc822.size"), FetchAtt("envelope") ]
+                    return [FetchAtt("flags"), FetchAtt("internaldate"),
+                            FetchAtt("rfc822.size"), FetchAtt("envelope")]
                 elif macro == "full":
-                    return [ FetchAtt("flags"), FetchAtt("internaldate"),
-                             FetchAtt("rfc822.size"), FetchAtt("envelope"),
-                             FetchAtt("bodystructure", ext_data = False,
-                                      actual_command = "BODY") ]
+                    return [FetchAtt("flags"), FetchAtt("internaldate"),
+                            FetchAtt("rfc822.size"), FetchAtt("envelope"),
+                            FetchAtt("bodystructure", ext_data=False,
+                                     actual_command="BODY")]
                 elif macro == "fast":
-                    return [ FetchAtt("flags"), FetchAtt("internaldate"),
-                             FetchAtt("rfc822.size") ]
+                    return [FetchAtt("flags"), FetchAtt("internaldate"),
+                            FetchAtt("rfc822.size")]
                 else:
-                    raise BadSyntax(value = "\"%s\" is not a valid fetch " \
+                    raise BadSyntax(value="\"%s\" is not a valid fetch "
                                     "attribute")
             else:
                 # Otherwise we have what MUST be a single fetch attribute.
-                return [ self._p_fetch_att() ]
-
+                return [self._p_fetch_att()]
 
     #######################################################################
     #
@@ -930,7 +966,7 @@ class IMAPClientCommand(object):
 
         fetch_att_tok = self._p_re(_fetch_att_atom_re).lower()
         if fetch_att_tok not in fetch_atts:
-            raise BadSyntax("'%s' is not a valid FETCH argument" % \
+            raise BadSyntax("'%s' is not a valid FETCH argument" %
                             fetch_att_tok)
 
         # XXXX NOTE, our turning things from shortcuts to their
@@ -949,23 +985,22 @@ class IMAPClientCommand(object):
             # a rfc822.text fetch is turned in to a body[text] fetch.
             #
             if fetch_att_tok == 'rfc822':
-                return FetchAtt('body', section = [], actual_command = "RFC822")
+                return FetchAtt('body', section=[], actual_command="RFC822")
             elif fetch_att_tok == 'rfc822.size':
                 return FetchAtt(fetch_att_tok)
             elif fetch_att_tok == 'rfc822.header':
-                return FetchAtt('body', section = ['header'], peek = True,
-                                actual_command = "RFC822.HEADER")
+                return FetchAtt('body', section=['header'], peek=True,
+                                actual_command="RFC822.HEADER")
             elif fetch_att_tok == 'rfc822.text':
-                return FetchAtt('body', section = ['text'],
-                                actual_command = "RFC822.TEXT")
+                return FetchAtt('body', section=['text'],
+                                actual_command="RFC822.TEXT")
             else:
                 return FetchAtt(fetch_att_tok)
 
-        if fetch_att_tok == "body" and self._p_simple_string('[',
-                                                      silent = True,
-                                                      swallow = False) is None:
-            return FetchAtt("bodystructure", ext_data = False,
-                            actual_command = "BODY")
+        if fetch_att_tok == "body" and self._p_simple_string(
+                '[', silent=True, swallow=False) is None:
+            return FetchAtt("bodystructure", ext_data=False,
+                            actual_command="BODY")
 
         if fetch_att_tok == "body.peek":
             peek = True
@@ -983,10 +1018,10 @@ class IMAPClientCommand(object):
         # If the next character is a '<' then we have a 'partial' to parse.
         # Otherwise there is no partial and we are done parsing.
         #
-        if self._p_simple_string('<', silent = True, swallow = False) is None:
-            return FetchAtt(fetch_att_tok, section = section, peek = peek)
-        return FetchAtt(fetch_att_tok, section = section,
-                        partial = self._p_partial(), peek = peek)
+        if self._p_simple_string('<', silent=True, swallow=False) is None:
+            return FetchAtt(fetch_att_tok, section=section, peek=peek)
+        return FetchAtt(fetch_att_tok, section=section,
+                        partial=self._p_partial(), peek=peek)
 
     #######################################################################
     #
@@ -1040,7 +1075,7 @@ class IMAPClientCommand(object):
         # At this point if the next character is ']' then we are at the
         # end of our subsection list.
         #
-        if self._p_simple_string(']', silent = True) is not None:
+        if self._p_simple_string(']', silent=True) is not None:
             return sect_list
 
         # Now we either have one of our known strings. If sect_list is not
@@ -1052,12 +1087,12 @@ class IMAPClientCommand(object):
         if len(sect_list) > 0:
             section_texts.append('mime')
         for st in section_texts:
-            section = self._p_simple_string(st, silent = True)
+            section = self._p_simple_string(st, silent=True)
             if section is not None:
                 break
         if section is None:
-            raise BadSyntax(value = "%s: expected a valid section " \
-                            "identifier, one of: %s" % \
+            raise BadSyntax(value="%s: expected a valid section "
+                            "identifier, one of: %s" %
                             (self.input[:10], str(section_texts)))
 
         # If the section is one of 'header.fields.not' or 'header.fields'
@@ -1068,8 +1103,8 @@ class IMAPClientCommand(object):
             self._p_simple_string(' ')
             header_list = self._p_paren_list_of(self._p_astring)
             if len(header_list) == 0:
-                raise BadSyntax(value = "section '%s' must be followed by a " \
-                                "parenthesized list of one or more " \
+                raise BadSyntax(value="section '%s' must be followed by a "
+                                "parenthesized list of one or more "
                                 "headers." % section)
             sect_list.append((section, header_list))
         else:
@@ -1121,7 +1156,7 @@ class IMAPClientCommand(object):
         # Otherwise we parse it as an atom - if this fails we finally try to
         # parse it as a 'set'.
         #
-        if self._p_simple_string('(', silent = True, swallow = False):
+        if self._p_simple_string('(', silent=True, swallow=False):
             # Okay, a possible list of search keys. If this list has
             # only one element then just return that element. Otherwise
             # return an 'and' (of the list of elements.)
@@ -1129,18 +1164,18 @@ class IMAPClientCommand(object):
             search_key = self._p_paren_list_of(self._p_search_key)
             if len(search_key) == 1:
                 return search_key[0]
-            return IMAPSearch('and', search_key = search_key)
+            return IMAPSearch('and', search_key=search_key)
 
         # Not a list.. it is either a seach key atom or a message set.
         #
-        search_tok = self._p_re(_search_atom_re, silent = True)
+        search_tok = self._p_re(_search_atom_re, silent=True)
         if search_tok:
             # Okay. It looks like a search token.. but is it one of the search
             # tokens we understand?
             #
             search_tok = search_tok.lower()
             if not hasattr(self, '_p_srchkey_%s' % search_tok):
-                raise UnknownSearchKey(value = "Unknown search key \"%s\"" % \
+                raise UnknownSearchKey(value="Unknown search key \"%s\"" %
                                        search_tok)
             # Yup. it was a known search key atom. Let our routine
             # specifically for parsing this search key to the rest of the
@@ -1150,7 +1185,7 @@ class IMAPClientCommand(object):
         else:
             # See if it is a message set.
             msg_set = self._p_msg_set()
-            return IMAPSearch('message_set', msg_set = msg_set)
+            return IMAPSearch('message_set', msg_set=msg_set)
 
         # Huh.. we have no idea what this is supposed to be.
         #
@@ -1168,8 +1203,8 @@ class IMAPClientCommand(object):
         '''
         if val.isdigit():
             num = int(val)
-            if num < 0: # 0 is a valid uid...
-                raise SyntaxError("message sequence numbers " \
+            if num < 0:  # 0 is a valid uid...
+                raise SyntaxError("message sequence numbers "
                                   "must be greater then 0: %d" % num)
             return num
 
@@ -1188,55 +1223,55 @@ class IMAPClientCommand(object):
     #######################################################################
     #
     def _p_srchkey_answered(self):
-        return IMAPSearch('keyword', keyword = '\Answered')
+        return IMAPSearch('keyword', keyword='\Answered')
 
     #######################################################################
     #
     def _p_srchkey_bcc(self):
         self._p_simple_string(' ')
-        return IMAPSearch('header', header = 'bcc',
-                          string = self._p_astring().lower())
+        return IMAPSearch('header', header='bcc',
+                          string=self._p_astring().lower())
 
     #######################################################################
     #
     def _p_srchkey_before(self):
         self._p_simple_string(' ')
-        return IMAPSearch('before', date = self._p_date())
+        return IMAPSearch('before', date=self._p_date())
 
     #######################################################################
     #
     def _p_srchkey_body(self):
         self._p_simple_string(' ')
-        return IMAPSearch('body', string = self._p_astring().lower())
+        return IMAPSearch('body', string=self._p_astring().lower())
 
     #######################################################################
     #
     def _p_srchkey_cc(self):
         self._p_simple_string(' ')
-        return IMAPSearch('header', header = 'cc',
-                          string = self._p_astring().lower())
+        return IMAPSearch('header', header='cc',
+                          string=self._p_astring().lower())
 
     #######################################################################
     #
     def _p_srchkey_deleted(self):
-        return IMAPSearch('keyword', keyword = '\Deleted')
+        return IMAPSearch('keyword', keyword='\Deleted')
 
     #######################################################################
     #
     def _p_srchkey_draft(self):
-        return IMAPSearch('keyword', keyword = '\Draft')
+        return IMAPSearch('keyword', keyword='\Draft')
 
     #######################################################################
     #
     def _p_srchkey_flagged(self):
-        return IMAPSearch('keyword', keyword = '\Flagged')
+        return IMAPSearch('keyword', keyword='\Flagged')
 
     #######################################################################
     #
     def _p_srchkey_from(self):
         self._p_simple_string(' ')
-        return IMAPSearch('header', header = 'from',
-                          string = self._p_astring().lower())
+        return IMAPSearch('header', header='from',
+                          string=self._p_astring().lower())
 
     #######################################################################
     #
@@ -1244,43 +1279,43 @@ class IMAPClientCommand(object):
         self._p_simple_string(' ')
         header_fld_name = self._p_astring().lower()
         self._p_simple_string(' ')
-        return IMAPSearch('header', header = header_fld_name,
-                          string = self._p_astring().lower())
+        return IMAPSearch('header', header=header_fld_name,
+                          string=self._p_astring().lower())
 
     #######################################################################
     #
     def _p_srchkey_keyword(self):
         self._p_simple_string(' ')
-        return IMAPSearch('keyword', keyword = self._p_re(_atom_re))
+        return IMAPSearch('keyword', keyword=self._p_re(_atom_re))
 
     #######################################################################
     #
     def _p_srchkey_larger(self):
         self._p_simple_string(' ')
-        return IMAPSearch('larger', n = int(self._p_re(_number_re)))
+        return IMAPSearch('larger', n=int(self._p_re(_number_re)))
 
     #######################################################################
     #
     def _p_srchkey_new(self):
-        return IMAPSearch('and', search_key = [ self._p_srchkey_recent(),
-                                                self._p_srchkey_unseen()])
+        return IMAPSearch('and', search_key=[self._p_srchkey_recent(),
+                                             self._p_srchkey_unseen()])
 
     #######################################################################
     #
     def _p_srchkey_not(self):
         self._p_simple_string(' ')
-        return IMAPSearch('not', search_key = self._p_search_key())
+        return IMAPSearch('not', search_key=self._p_search_key())
 
     #######################################################################
     #
     def _p_srchkey_old(self):
-        return IMAPSearch('not', search_key = self._p_srchkey_recent())
+        return IMAPSearch('not', search_key=self._p_srchkey_recent())
 
     #######################################################################
     #
     def _p_srchkey_on(self):
         self._p_simple_string(' ')
-        return IMAPSearch('on', date = self._p_date())
+        return IMAPSearch('on', date=self._p_date())
 
     #######################################################################
     #
@@ -1289,99 +1324,99 @@ class IMAPClientCommand(object):
         search_key1 = self._p_search_key()
         self._p_simple_string(' ')
         search_key2 = self._p_search_key()
-        return IMAPSearch('or', search_key = (search_key1, search_key2))
+        return IMAPSearch('or', search_key=(search_key1, search_key2))
 
     #######################################################################
     #
     def _p_srchkey_recent(self):
-        return IMAPSearch('keyword', keyword = "\Recent")
+        return IMAPSearch('keyword', keyword="\Recent")
 
     #######################################################################
     #
     def _p_srchkey_seen(self):
-        return IMAPSearch('keyword', keyword = "\Seen")
+        return IMAPSearch('keyword', keyword="\Seen")
 
     #######################################################################
     #
     def _p_srchkey_sentbefore(self):
         self._p_simple_string(' ')
-        return IMAPSearch('sentbefore', date = self._p_date())
+        return IMAPSearch('sentbefore', date=self._p_date())
 
     #######################################################################
     #
     def _p_srchkey_senton(self):
         self._p_simple_string(' ')
-        return IMAPSearch('senton', date = self._p_date())
+        return IMAPSearch('senton', date=self._p_date())
 
     #######################################################################
     #
     def _p_srchkey_sentsince(self):
         self._p_simple_string(' ')
-        return IMAPSearch('sentsince', date = self._p_date())
+        return IMAPSearch('sentsince', date=self._p_date())
 
     #######################################################################
     #
     def _p_srchkey_since(self):
         self._p_simple_string(' ')
-        return IMAPSearch('since', date = self._p_date())
+        return IMAPSearch('since', date=self._p_date())
 
     #######################################################################
     #
     def _p_srchkey_smaller(self):
         self._p_simple_string(' ')
         return IMAPSearch('smaller',
-                          n = int(self._p_re(_number_re)))
+                          n=int(self._p_re(_number_re)))
 
     #######################################################################
     #
     def _p_srchkey_subject(self):
         self._p_simple_string(' ')
-        return IMAPSearch('header', header = 'subject',
-                          string = self._p_astring().lower())
+        return IMAPSearch('header', header='subject',
+                          string=self._p_astring().lower())
 
     #######################################################################
     #
     def _p_srchkey_text(self):
         self._p_simple_string(' ')
-        return IMAPSearch('text', string = self._p_astring().lower())
+        return IMAPSearch('text', string=self._p_astring().lower())
 
     #######################################################################
     #
     def _p_srchkey_to(self):
         self._p_simple_string(' ')
-        return IMAPSearch('header', header = 'to',
-                          string = self._p_astring().lower())
+        return IMAPSearch('header', header='to',
+                          string=self._p_astring().lower())
 
     #######################################################################
     #
     def _p_srchkey_uid(self):
         self._p_simple_string(' ')
-        return IMAPSearch('uid', msg_set = self._p_msg_set())
+        return IMAPSearch('uid', msg_set=self._p_msg_set())
 
     #######################################################################
     #
     def _p_srchkey_unanswered(self):
-        return IMAPSearch('not', search_key = self._p_srchkey_answered())
+        return IMAPSearch('not', search_key=self._p_srchkey_answered())
 
     #######################################################################
     #
     def _p_srchkey_undeleted(self):
-        return IMAPSearch('not', search_key = self._p_srchkey_deleted())
+        return IMAPSearch('not', search_key=self._p_srchkey_deleted())
 
     #######################################################################
     #
     def _p_srchkey_unflagged(self):
-        return IMAPSearch('not', search_key = self._p_srchkey_flagged())
+        return IMAPSearch('not', search_key=self._p_srchkey_flagged())
 
     #######################################################################
     #
     def _p_srchkey_unkeyword(self):
-        return IMAPSearch('not', search_key = self._p_srchkey_keyword())
+        return IMAPSearch('not', search_key=self._p_srchkey_keyword())
 
     #######################################################################
     #
     def _p_srchkey_unseen(self):
-        return IMAPSearch('not', search_key = self._p_srchkey_seen())
+        return IMAPSearch('not', search_key=self._p_srchkey_seen())
 
     #######################################################################
     #
@@ -1413,7 +1448,7 @@ class IMAPClientCommand(object):
 
         # Pull what should be a message off of our input string.
         #
-        msg_set = self._p_re(_msg_set_re, syntax_error = "missing or "
+        msg_set = self._p_re(_msg_set_re, syntax_error="missing or "
                              "invalid message sequence set")
 
         # Now just because we got something does not mean it is a message
@@ -1440,12 +1475,12 @@ class IMAPClientCommand(object):
                 sn_start = self.is_seq_num(search.group(1))
                 sn_end = self.is_seq_num(search.group(2))
                 if sn_start is not None and sn_end is not None:
-                    result.append( (sn_start, sn_end) )
+                    result.append((sn_start, sn_end))
                     continue
 
             # Otherwise this is a bad sequence number..
             #
-            raise BadSyntax(value = "\"%s\" is not a valid message " \
+            raise BadSyntax(value="\"%s\" is not a valid message "
                             "sequence number" % seq_num)
         return result
 
@@ -1465,7 +1500,7 @@ class IMAPClientCommand(object):
         match = _date_re.match(date)
         return datetime.datetime(int(match.group('year')),
                                  _month[match.group('month').lower()],
-                                 int(match.group('day')), 0, 0, 0, 0,pytz.UTC)
+                                 int(match.group('day')), 0, 0, 0, 0, pytz.UTC)
 
     #######################################################################
     #
@@ -1479,7 +1514,7 @@ class IMAPClientCommand(object):
 
         The return is a datetime object.'''
 
-        date_time = self._p_re(_date_time_re, syntax_error = "expected a " \
+        date_time = self._p_re(_date_time_re, syntax_error="expected a "
                                "rfc822 formated date-time")
 
         # We need to strip off the "" surrounding the date-time string.
@@ -1487,15 +1522,15 @@ class IMAPClientCommand(object):
         return asimap.utils.parsedate(date_time[1:-1])
 ##         match = _date_time_re.match(date_time)
 
-##         return datetime.datetime(int(match.group('year')),
-##                                  _month[match.group('month').lower()],
-##                                  int(match.group('day')),
-##                                  int(match.group('hour')),
-##                                  int(match.group('min')),
+# return datetime.datetime(int(match.group('year')),
+# _month[match.group('month').lower()],
+# int(match.group('day')),
+# int(match.group('hour')),
+# int(match.group('min')),
 ##                                  int(match.group('sec')), 0,
-##                                  FixedOffsetTZ(
+# FixedOffsetTZ(
 ##                                     hours = int(match.group('tz_hr')),
-##                                     minutes = int(match.group('tz_min'))))
+# minutes = int(match.group('tz_min'))))
 
     #######################################################################
     #
@@ -1521,7 +1556,7 @@ class IMAPClientCommand(object):
         # first character of our result.
         #
         flag = ''
-        if self._p_simple_string('\\', silent = True) is not None:
+        if self._p_simple_string('\\', silent=True) is not None:
             flag = '\\'
 
         # And what follows is always an atom.
@@ -1536,12 +1571,12 @@ class IMAPClientCommand(object):
         '''status_att ::= "MESSAGES" / "RECENT" / "UIDNEXT" / "UIDVALIDITY" /
                           "UNSEEN"
         '''
-        stats_atts = ["messages","recent", "uidnext", "uidvalidity","unseen"]
+        stats_atts = ["messages", "recent", "uidnext", "uidvalidity", "unseen"]
         for status in stats_atts:
-            stat = self._p_simple_string(status, silent = True)
+            stat = self._p_simple_string(status, silent=True)
             if stat is not None:
                 return stat
-        raise BadSyntax(value = "expected a status attribute: %s" % \
+        raise BadSyntax(value="expected a status attribute: %s" %
                         str(stats_atts))
 
     #######################################################################
@@ -1553,7 +1588,7 @@ class IMAPClientCommand(object):
            In other words, it is the same as the 'atom' r.e., except it may
            also include the characters '%' and '*'.. or it is a string.
         """
-        list_mailbox = self._p_re(_list_atom_re, silent = True)
+        list_mailbox = self._p_re(_list_atom_re, silent=True)
         if list_mailbox is None:
             list_mailbox = self._p_string()
         return list_mailbox
@@ -1570,7 +1605,7 @@ class IMAPClientCommand(object):
         # We must match the case insensitive string 'mailbox' first because
         # our other mailbox names are case sensitive.
         #
-        mbox_name = self._p_simple_string('inbox', silent = True)
+        mbox_name = self._p_simple_string('inbox', silent=True)
         if mbox_name is None:
             mbox_name = self._p_astring()
         if mbox_name != "":
@@ -1593,12 +1628,12 @@ class IMAPClientCommand(object):
         '''we expect a STRING " " (NIL | STRING) pair.
         '''
         key = self._p_string()
-        self._p_simple_string(' ', syntax_error = "expected a space between " \
+        self._p_simple_string(' ', syntax_error="expected a space between "
                               "strings in a parenthesized key/value list")
         # What is next may be 'nil' which turns in to None in python
         # or a string.
         #
-        if self._p_simple_string('nil', silent = True):
+        if self._p_simple_string('nil', silent=True):
             return (key, None)
         return (key, self._p_string())
 
@@ -1609,7 +1644,7 @@ class IMAPClientCommand(object):
         try:
             return self._p_re(_quoted_re)[1:-1]
         except NoMatch:
-            literal_length = int(self._p_re(_lit_ref_re, group = 1))
+            literal_length = int(self._p_re(_lit_ref_re, group=1))
 #            print "got literal length: %s" % literal_length
 
             # Huh. We have a literal string. This means the client sent us
@@ -1621,8 +1656,8 @@ class IMAPClientCommand(object):
             # that the input string is at least as long as the literal string
             # is supposed to be.
             if literal_length > len(self.input):
-                raise BadLiteral(value = "Remaining input %d characters " \
-                                 "long, expected at least %d" % \
+                raise BadLiteral(value="Remaining input %d characters "
+                                 "long, expected at least %d" %
                                  (len(self.input), literal_length))
             str = self.input[:literal_length]
             self.input = self.input[literal_length:]
@@ -1631,8 +1666,8 @@ class IMAPClientCommand(object):
 
     #######################################################################
     #
-    def _p_re(self, regexp, silent = False, swallow = True, group = 0,
-              syntax_error = None):
+    def _p_re(self, regexp, silent=False, swallow=True, group=0,
+              syntax_error=None):
         """This will attempt to match (ie: at the beginning of the string)
         the given regular expression with our current input string. If it
         matches it will return what matched. If 'silent' is False, and it did
@@ -1654,9 +1689,9 @@ class IMAPClientCommand(object):
                 return None
             else:
                 if syntax_error:
-                    raise NoMatch(value = syntax_error)
+                    raise NoMatch(value=syntax_error)
                 else:
-                    raise NoMatch(value = "No match for r.e. '%s'" % \
+                    raise NoMatch(value="No match for r.e. '%s'" %
                                   regexp.pattern)
         if swallow:
             self.input = self.input[match.end():]
@@ -1664,8 +1699,8 @@ class IMAPClientCommand(object):
 
     #######################################################################
     #
-    def _p_simple_string(self, string, silent = False, swallow = True,
-                        case_matters = False, syntax_error = None):
+    def _p_simple_string(self, string, silent=False, swallow=True,
+                         case_matters=False, syntax_error=None):
         """Like p_re(), this is used to parse a bit of input. However it just
         a well defined string so there is no waste time invoking a regular
         expression.
@@ -1696,9 +1731,10 @@ class IMAPClientCommand(object):
                 return None
             else:
                 if syntax_error:
-                    raise NoMatch(value = syntax_error)
+                    raise NoMatch(value=syntax_error)
                 else:
-                    raise NoMatch(value = "No match for simple string '%s', input started with: '%s'" % (string, self.input[:10]))
+                    raise NoMatch(value="No match for simple string '%s', input started with: '%s'" % (
+                        string, self.input[:10]))
         if swallow:
             self.input = self.input[len(string):]
         return match

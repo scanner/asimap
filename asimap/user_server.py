@@ -19,11 +19,11 @@ import asynchat
 import logging
 import os
 import os.path
-import pwd
 import mailbox
 import time
 import errno
 import random
+import traceback
 
 # asimap imports
 #
@@ -32,6 +32,7 @@ import asimap.parse
 import asimap.mbox
 import asimap.message_cache
 
+from asimap.trace import trace
 from asimap.client import Authenticated
 from asimap.db import Database
 from asimap.exceptions import MailboxLock, MailboxInconsistency
@@ -39,7 +40,7 @@ from asimap.exceptions import MailboxLock, MailboxInconsistency
 # By default every file is its own logging module. Kind of simplistic
 # but it works for now.
 #
-module_logger = logging.getLogger("asimap.%s" % __name__)
+log = logging.getLogger("asimap.%s" % __name__)
 
 BACKLOG = 5
 
@@ -101,6 +102,7 @@ class IMAPUserClientHandler(asynchat.async_chat):
         #
         self.port = port
         self.rem_addr = rem_address
+        self.trace('CONNECT', {})
 
         # A handle on the server process and its database connection.
         #
@@ -108,6 +110,44 @@ class IMAPUserClientHandler(asynchat.async_chat):
         self.options = options
         self.cmd_processor = Authenticated(self, self.server)
         return
+
+    ####################################################################
+    #
+    def trace(self, msg_type, msg):
+        """
+        We like to include the 'identity' of the IMAP Client handler in
+        our trace messages so we can tie to gether which messages come
+        from which connection. To make this easier we provide our own
+        trace method that fills in various parts of the message being
+        logged automatically.
+
+        Keyword Arguments:
+        msg_type -- 'SEND','RECEIVE','EXCEPTION','CONNECT','REMOTE_CLOSE'
+        msg -- a dict that contains the rest of the message to trace log
+        """
+        msg['connection'] = "{}:{}".format(self.rem_addr, self.port)
+        msg['msg_type'] = msg_type
+        trace(msg)
+
+    ####################################################################
+    #
+    def push(self, data):
+        """
+        We have our own version of push that logs sent messages to our
+        trace file if we have one.
+
+        Keyword Arguments:
+        data -- (str) data that is being sent to the client and that we
+                      need to log.
+        """
+        self.trace('SEND', {'data': data})
+
+        # XXX asyncore.dispatcher which asynchat.async_chat is a
+        #     subclass of is an old-style class and thus we can not
+        #     use 'super()' (all the more reason to move off of this
+        #     and use something more modern.)
+        #
+        asynchat.async_chat.push(self, data)
 
     ##################################################################
     #
@@ -141,28 +181,26 @@ class IMAPUserClientHandler(asynchat.async_chat):
             else:
                 self.log.info(message)
 
-    # XXX Not sure if I want this or not.. need to see if it is useful
-    #     without using errorstack.
+    ##################################################################
     #
-    # ##################################################################
-    # #
-    # def handle_error(self):
-    #     """
-    #     Override the aysnc_chat's error handler so that we can log the
-    #     message
-    #     more directly in such a way that errorstack will get a full stack
-    #     trace.
-    #     """
-    #     t, v, tb = sys.exc_info()
-    #     # sometimes a user repr method will crash.
-    #     try:
-    #         self_repr = repr(self)
-    #     except:
-    #         self_repr = '<__repr__(self) failed for object at %0x>' % d(self)
+    def handle_error(self):
+        """
+        Override the aysnc_chat's error handler so that we can log the
+        message more directly in such a way that errorstack will get a
+        full stack trace.
+        """
+        t, v, tb = sys.exc_info()
+        # sometimes a user repr method will crash.
+        try:
+            self_repr = repr(self)
+        except:
+            self_repr = '<__repr__(self) failed for object at %0x>' % id(self)
 
-    #     self.log.error("uncaptured python exception, closing channel %s "
-    #                    "(%s:%s)" % (self_repr, t, v), exc_info = (t,v,tb))
-    #     self.close()
+        tb_string = "".join(traceback.format_tb(tb))
+        self.trace('EXCEPTION', {'data': [str(t), str(v), tb_string]})
+        log.error("uncaptured python exception, closing channel {} "
+                  "({}:{})".format(self_repr, t, v), exc_info=(t, v, tb))
+        self.close()
 
     ###########################################################################
     #
@@ -213,6 +251,7 @@ class IMAPUserClientHandler(asynchat.async_chat):
         # reading lines.
         #
         imap_msg = "".join(self.ibuffer)
+        self.trace("RECEIVED", {"data": imap_msg})
         self.ibuffer = []
         self.reading_message = False
         self.set_terminator(self.LINE_TERMINATOR)
@@ -256,7 +295,7 @@ class IMAPUserClientHandler(asynchat.async_chat):
         # our connection to the main server process.
         #
         if self.cmd_processor.state == "logged_out":
-            self.log.info("Client %s has logged out of the subprocess" % \
+            self.log.info("Client %s has logged out of the subprocess" %
                           self.log_string())
             self.cleanup()
             if self.socket is not None:
@@ -270,7 +309,11 @@ class IMAPUserClientHandler(asynchat.async_chat):
         Huh. The main server process severed its connection with us. That is a
         bit strange, but, I guess it crashed or something.
         """
-        self.log.info("main server closed its connection with us.")
+        msg = "main server closed its connection with us. " "{}:{}".format(
+            self.rem_addr, self.port
+        )
+        self.log.info(msg)
+        self.trace('REMOTE_CLOSE', {'msg': msg})
         self.cleanup()
         if self.socket is not None:
             self.close()
@@ -311,9 +354,10 @@ class IMAPUserClientHandler(asynchat.async_chat):
 #
 class IMAPUserServer(asyncore.dispatcher):
     """
-    Listen on a port on localhost for connections from the
-    asimapd. When we get one create an IMAPUserClientHandler object that
-    gets the new connection (and handles all further IMAP related
+    Listen on a port on localhost for connections from the asimapd
+    main server that gets connections from actual IMAP clients. When
+    we get one create an IMAPUserClientHandler object that gets the
+    new connection (and handles all further IMAP related
     communications with the client.)
     """
 
@@ -337,7 +381,7 @@ class IMAPUserServer(asyncore.dispatcher):
 
         # Do NOT create our socket if we are running in standalone mode
         #
-        if self.options.standalone_mode is False:
+        if not self.options.standalone_mode:
             self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
             self.set_reuse_addr()
             self.bind(("127.0.0.1", 0))
@@ -379,7 +423,7 @@ class IMAPUserServer(asyncore.dispatcher):
         #
         self.msg_cache = asimap.message_cache.MessageCache()
 
-        # When we have any connected clients this time gets set to
+        # When we have any connected clients self.expiry gets set to
         # None. Otherwise use it to determine when we have hung around long
         # enough with no connected clients and decide to exit.
         #
@@ -417,8 +461,8 @@ class IMAPUserServer(asyncore.dispatcher):
         """
         Returns True if any active mailbox has queued commands.
         """
-        return any(len(x.command_queue) > 0
-                   for x in self.active_mailboxes.itervalues())
+        return any(active_mbox.has_queued_commands()
+                   for active_mbox in self.active_mailboxes.values())
 
     ##################################################################
     #
@@ -447,10 +491,11 @@ class IMAPUserServer(asyncore.dispatcher):
         # the command queue this should generally work through the queued
         # commands in a fair fashion.
         #
-        mboxes = [x for x in self.active_mailboxes.values()
-                  if x.has_queued_commands()]
-        if len(mboxes) == 0:
+        mboxes = [x for x in
+                  self.active_mailboxes.values() if x.has_queued_commands()]
+        if not mboxes:
             return
+
         start_time = time.time()
 
         num_queued_cmds = sum(len(x.command_queue) for x in mboxes)
@@ -655,7 +700,7 @@ class IMAPUserServer(asyncore.dispatcher):
         # missing .mh_sequence files)
         #
         for mbox_name in mboxes_to_create:
-            self.log.debug("Creating mailbox %s" % mbox_name)
+            self.log.debug("Creating mailbox '%s'" % mbox_name)
             self.get_mailbox(mbox_name, expiry=0)
         self.log.debug("find_all_folders: FINISHED. Took %f seconds" %
                        (time.time() - start_time))
@@ -701,17 +746,19 @@ class IMAPUserServer(asyncore.dispatcher):
         #     resync'd in the last 30 seconds because those are already checked
         #     by another process.
         #
-        for mbox_name,mtime in mboxes:
+        for mbox_name, mtime in mboxes:
             # If this mailbox is active and has a client idling on it OR if it
             # has queued commands then we can skip doing a resync here. It has
-            # being handled already. It is especially important not to do
+            # been handled already. It is especially important not to do
             # random resyncs on folders that are in the middle of processing a
             # queued command. It might cause messages to be generated and reset
             # various bits of state that are important to the queued command.
             #
-            if mbox_name in self.active_mailboxes and \
-                    (any(x.idling for x in self.active_mailboxes[mbox_name].clients.itervalues()) or \
-                         len(self.active_mailboxes[mbox_name].command_queue) > 0):
+            if (mbox_name in self.active_mailboxes and
+                (any(x.idling
+                     for x in
+                     self.active_mailboxes[mbox_name].clients.itervalues()) or
+                 len(self.active_mailboxes[mbox_name].command_queue) > 0)):
                 continue
 
             path = os.path.join(self.mailbox._path, mbox_name)
@@ -723,8 +770,8 @@ class IMAPUserServer(asyncore.dispatcher):
                     # The mtime differs.. force the mailbox to resync.
                     #
                     self.log.debug("check_all_folders: doing resync on '%s' "
-                                   "stored mtime: %d, actual mtime: %d" % \
-                                       (mbox_name, mtime, fmtime))
+                                   "stored mtime: %d, actual mtime: %d" %
+                                   (mbox_name, mtime, fmtime))
                     m = self.get_mailbox(mbox_name, 30)
                     if (m.mtime >= fmtime) and not force:
                         # Looking at the actual mailbox its mtime is NOT
@@ -735,7 +782,7 @@ class IMAPUserServer(asyncore.dispatcher):
                         m.commit_to_db()
                     else:
                         # Yup, we need to resync this folder.
-                        m.resync(force = force)
+                        m.resync(force=force)
             except (MailboxLock, MailboxInconsistency), e:
                 # If hit one of these exceptions they are usually
                 # transient.  we will skip it. The command processor in
@@ -749,8 +796,8 @@ class IMAPUserServer(asyncore.dispatcher):
                                    "not exist for mtime check" % (path,
                                                                   seq_path))
 
-        self.log.debug("check_all_folders finished, Took %f seconds" % \
-                           (time.time() - start_time))
+        self.log.debug("check_all_folders finished, Took %f seconds" %
+                       (time.time() - start_time))
         return
 
     ##################################################################
@@ -763,7 +810,7 @@ class IMAPUserServer(asyncore.dispatcher):
 
         pair = self.accept()
         if pair is not None:
-            sock,addr = pair
+            sock, addr = pair
             self.log.info("Incoming connection from %s:%d" % addr)
             self.expiry = None
             handler = IMAPUserClientHandler(sock, addr[0], addr[1], self,
