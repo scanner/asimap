@@ -18,7 +18,7 @@ default	00:55:13.951604 -0800	Mail	[kamidake.apricot.com] <0x7f846fd05240:[Selec
 default	00:55:13.958528 -0800	Mail	TCP Conn 0x610000198bb0 canceled
 default	00:55:13.959053 -0800	Mail	[Apricot] Removing handler (0x6080004f8b80)
 
-The problem was that we needed to re-try no read when we got the
+The problem was that we needed to re-try on read when we got the
 SSLWantReadError..
 
 In _this_ case I fixed it by patching asynchat.py. See
