@@ -366,6 +366,11 @@ class IMAPClientHandler(asynchat.async_chat):
             # We are not in ssl handshake.. Just call the function we are
             # overriding.
             #
+            # XXX asyncore.dispatcher which asynchat.async_chat is a
+            #     subclass of is an old-style class and thus we can not
+            #     use 'super()' (all the more reason to move off of this
+            #     and use something more modern.)
+            #
             asynchat.async_chat.handle_read(self)
         except ssl.SSLWantReadError:
             # If we are wanting read then we return and wait for the
