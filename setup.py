@@ -12,10 +12,12 @@ setup(
                       'stores, like MH as the mail store.'),
     author='Scanner',
     author_email='scanner@apricot.com',
-    url='http://github.com/scanner/asimap',
-    download_url='http://github.com/asimap/archives/master',
+    url='https://github.com/scanner/asimap',
+    download_url='https://github.com/asimap/archives/master',
     packages=["asimap"],
     # scripts=["asimapd.py", "asimapd_user.py"]
     data_files=[('etc/rc.d', ['utils/asimapd.sh']),
                 ('libexec', ['asimapd.py', 'asimapd_user.py'])]
+    setup_requires=['pytest-runner',],
+    tests_require=['pytest', ],
     )
