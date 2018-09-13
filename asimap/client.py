@@ -1122,19 +1122,31 @@ class Authenticated(BaseClientHandler):
         - `cmd`: The IMAP command being processed
         - `count`: Number of times we have been called. If more than 1 we force
           the resync.
-
         """
+        # Try to fetch the message, potentally forcing a resync of the mbox.
+        #
+        # XXX Maybe `mbox.fetch()` should do the resync?
+        #
+        #
         force = False
         optional = True
-        if count > 1:
-            optional = False
-        if count > 4:
-            force = True
+        RETRY_LIMIT = 2
+        for count in range(RETRY_LIMIT + 1):
+            if count >= 1:
+                optional = False
+            if count >= 2:
+                force = True
 
-        self.mbox.resync(notify=cmd.uid_command, force=force,
-                         optional=optional)
-        results, seq_changed = self.mbox.fetch(cmd.msg_set, cmd.fetch_atts,
-                                               cmd)
+            try:
+                self.mbox.resync(notify=cmd.uid_command, force=force,
+                                 optional=optional)
+                results, seq_changed = self.mbox.fetch(cmd.msg_set,
+                                                       cmd.fetch_atts, cmd)
+            except MailboxInconsistency as e:
+                self.server.msg_cache.clear_mbox(self.mbox.name)
+                self.log.warn("do_fetch: %s, Try %d", str(e), count)
+                if count >= RETRY_LIMIT:
+                    raise
 
         for idx, iter_results in results:
             self.client.push("* %d FETCH (%s)\r\n" %
@@ -1192,18 +1204,7 @@ class Authenticated(BaseClientHandler):
                     raise No("There are pending EXPUNGEs.")
 
         self.fetch_while_pending_count = 0
-        success = False
-        count = 0
-        while not success:
-            try:
-                count += 1
-                seq_changed = self._fetch_internal(cmd, count)
-                break
-            except MailboxInconsistency, e:
-                self.server.msg_cache.clear_mbox(self.mbox.name)
-                self.log.warn("do_fetch: %s, Try %d" % (str(e), count))
-                if count > 5:
-                    raise e
+        seq_changed = self._fetch_internal(cmd, count)
 
         # If the fetch caused sequences to change then we need to make the
         # resync non-optional so that we will send FETCH messages to the other

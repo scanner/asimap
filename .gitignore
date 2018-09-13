@@ -4,3 +4,5 @@ debug
 test/test_mode
 *.pyc
 *~
+.pytest_cache
+asimap.egg-info
