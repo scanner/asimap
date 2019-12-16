@@ -6,6 +6,6 @@ kitchen==1.2.6
 more-itertools==8.0.2
 pluggy==0.13.0
 py==1.8.0
-pytest==5.3.1
+pytest==5.3.2
 pytz==2019.3
 six==1.13.0
