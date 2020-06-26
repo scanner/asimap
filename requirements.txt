@@ -5,7 +5,7 @@ funcsigs==1.0.2
 kitchen==1.2.6
 more-itertools==8.4.0
 pluggy==0.13.1
-py==1.8.2
+py==1.9.0
 pytest==5.4.3
 pytz==2020.1
 six==1.15.0
