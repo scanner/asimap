@@ -3,7 +3,7 @@ atomicwrites==1.4.0
 docopt==0.6.2
 funcsigs==1.0.2
 kitchen==1.2.6
-more-itertools==8.5.0
+more-itertools==8.6.0
 pluggy==0.13.1
 py==1.9.0
 pytest==6.1.2
