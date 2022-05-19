@@ -4,7 +4,7 @@ docopt==0.6.2
 funcsigs==1.0.2
 kitchen==1.2.6
 more-itertools==8.13.0
-pluggy==0.13.1
+pluggy==1.0.0
 py==1.11.0
 pytest==7.1.2
 pytz==2022.1
