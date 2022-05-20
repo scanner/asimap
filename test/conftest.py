@@ -9,10 +9,11 @@ pytest fixtures for testing `asimap`
 # system imports
 #
 
+import ssl
+
 # project imports
 #
 import pytest
-import ssl
 
 
 ####################################################################
@@ -26,7 +27,7 @@ def create_test_users(tmpdir):
 
 ####################################################################
 #
-@pytest.fixture(scope='session')
+@pytest.fixture(scope="session")
 def ssl_certificate(tmpdir):
     """
     Generate a SSL certificate for use by `asimap` in tests.
@@ -38,7 +39,7 @@ def ssl_certificate(tmpdir):
 
 ####################################################################
 #
-@pytest.fixture(scope='session')
+@pytest.fixture(scope="session")
 def ssl_context(ssl_certificate):
     """
     Generate and return a SSL context that has its own private CA and

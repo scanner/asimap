@@ -24,26 +24,30 @@ o The user this program is being run as is the one that has the MH
 o The MH folder is stored in ~/Mail
 """
 
+import asyncore
+import logging
+import logging.handlers
+import optparse
+
 # system imports
 #
 import os
 import os.path
 import pwd
 import sys
-import optparse
-import logging
-import logging.handlers
-import asyncore
 import time
 
 # XXX NOTE: We munge the python path so that we use the asimap directory we
 #     are running out of as the source of its modules!
-asimap_module_dir = os.path.abspath(os.path.join(os.path.dirname(__file__),".."))
+asimap_module_dir = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..")
+)
 sys.path.insert(0, asimap_module_dir)
 # Application imports
 #
 import asimap
 import asimap.user_server
+
 
 ##################################################################
 ##################################################################
@@ -73,6 +77,7 @@ class TempOptions(object):
         self.maildir = "/Volumes/extra/tmp/testmaildir"
         return
 
+
 #############################################################################
 #
 def main():
@@ -90,8 +95,10 @@ def main():
     log.setLevel(level)
     h = logging.StreamHandler()
     h.setLevel(level)
-    formatter = logging.Formatter("%(asctime)s %(created)s %(process)d "
-                                   "%(levelname)s %(name)s %(message)s")
+    formatter = logging.Formatter(
+        "%(asctime)s %(created)s %(process)d "
+        "%(levelname)s %(name)s %(message)s"
+    )
     h.setFormatter(formatter)
     log.addHandler(h)
     log.info("Changing to maildir directory '%s'" % options.maildir)
@@ -101,7 +108,7 @@ def main():
     server = asimap.user_server.IMAPUserServer(options, options.maildir)
 
     server.find_all_folders()
-    server.check_all_folders(force = True)
+    server.check_all_folders(force=True)
 
     log.info("Finishing all indexing.")
     asyncore.close_all()
@@ -113,6 +120,7 @@ def main():
     server.mailbox.close()
 
     return
+
 
 ############################################################################
 ############################################################################

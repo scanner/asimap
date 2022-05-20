@@ -6,14 +6,15 @@
 a test echo server that uses SSL.
 """
 
-# system imports
-#
-import ssl
 import asyncore
 import socket
 
-class EchoServer(asyncore.dispatcher):
+# system imports
+#
+import ssl
 
+
+class EchoServer(asyncore.dispatcher):
     def __init__(self, certfile):
         self.certfile = certfile
         asyncore.dispatcher.__init__(self)
@@ -24,19 +25,22 @@ class EchoServer(asyncore.dispatcher):
     def handle_accept(self):
         sock_obj, addr = self.accept()
         if test_support.verbose:
-            sys.stdout.write(" server:  new connection from %s:%s\n" %addr)
+            sys.stdout.write(" server:  new connection from %s:%s\n" % addr)
         self.ConnectionHandler(sock_obj, self.certfile)
 
     def handle_error(self):
         raise
 
-class ConnectionHandler(asyncore.dispatcher_with_send):
 
+class ConnectionHandler(asyncore.dispatcher_with_send):
     def __init__(self, conn, certfile):
         asyncore.dispatcher_with_send.__init__(self, conn)
-        self.socket = ssl.wrap_socket(conn, server_side=True,
-                                      certfile=certfile,
-                                      do_handshake_on_connect=False)
+        self.socket = ssl.wrap_socket(
+            conn,
+            server_side=True,
+            certfile=certfile,
+            do_handshake_on_connect=False,
+        )
         self._ssl_accepting = True
 
     def readable(self):
@@ -48,14 +52,16 @@ class ConnectionHandler(asyncore.dispatcher_with_send):
     def _do_ssl_handshake(self):
         try:
             self.socket.do_handshake()
-        except ssl.SSLError, err:
-            if err.args[0] in (ssl.SSL_ERROR_WANT_READ,
-                               ssl.SSL_ERROR_WANT_WRITE):
+        except ssl.SSLError as err:
+            if err.args[0] in (
+                ssl.SSL_ERROR_WANT_READ,
+                ssl.SSL_ERROR_WANT_WRITE,
+            ):
                 return
             elif err.args[0] == ssl.SSL_ERROR_EOF:
                 return self.handle_close()
             raise
-        except socket.error, err:
+        except socket.error as err:
             if err.args[0] == errno.ECONNABORTED:
                 return self.handle_close()
         else:
@@ -66,7 +72,7 @@ class ConnectionHandler(asyncore.dispatcher_with_send):
             self._do_ssl_handshake()
         else:
             data = self.recv(1024)
-            if data and data.strip() != 'over':
+            if data and data.strip() != "over":
                 self.send(data.lower())
 
     def handle_close(self):

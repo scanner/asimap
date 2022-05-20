@@ -1,12 +1,13 @@
-class EchoServer (asyncore.dispatcher):
-
-    class ConnectionHandler (asyncore.dispatcher_with_send):
-
+class EchoServer(asyncore.dispatcher):
+    class ConnectionHandler(asyncore.dispatcher_with_send):
         def __init__(self, conn, certfile):
             asyncore.dispatcher_with_send.__init__(self, conn)
-            self.socket = ssl.wrap_socket(conn, server_side=True,
-                                          certfile=certfile,
-                                          do_handshake_on_connect=True)
+            self.socket = ssl.wrap_socket(
+                conn,
+                server_side=True,
+                certfile=certfile,
+                do_handshake_on_connect=True,
+            )
 
         def readable(self):
             if isinstance(self.socket, ssl.SSLSocket):
@@ -21,7 +22,9 @@ class EchoServer (asyncore.dispatcher):
         def handle_close(self):
             self.close()
             if test_support.verbose:
-                sys.stdout.write(" server:  closed connection %s\n" % self.socket)
+                sys.stdout.write(
+                    " server:  closed connection %s\n" % self.socket
+                )
 
         def handle_error(self):
             raise
@@ -36,19 +39,21 @@ class EchoServer (asyncore.dispatcher):
     def handle_accept(self):
         sock_obj, addr = self.accept()
         if test_support.verbose:
-            sys.stdout.write(" server:  new connection from %s:%s\n" %addr)
+            sys.stdout.write(" server:  new connection from %s:%s\n" % addr)
         self.ConnectionHandler(sock_obj, self.certfile)
 
     def handle_error(self):
         raise
 
+
 import asynchat
+import errno
 import socket
 import ssl
-import errno
+
 
 class async_chat_ssl(asynchat.async_chat):
-    """ Asynchronous connection with SSL support. """
+    """Asynchronous connection with SSL support."""
 
     def connect(self, host, use_ssl=False):
         self.use_ssl = use_ssl
@@ -58,38 +63,41 @@ class async_chat_ssl(asynchat.async_chat):
         asynchat.async_chat.connect(self, host)
 
     def handle_connect(self):
-        """ Initializes SSL support after the connection has been made. """
+        """Initializes SSL support after the connection has been made."""
         if self.use_ssl:
             self.ssl = ssl.wrap_socket(self.socket)
             self.set_socket(self.ssl)
 
     def _ssl_send(self, data):
-        """ Replacement for self.send() during SSL connections. """
+        """Replacement for self.send() during SSL connections."""
         try:
             result = self.write(data)
             return result
-        except ssl.SSLError, why:
+        except ssl.SSLError as why:
             if why[0] in (asyncore.EWOULDBLOCK, errno.ESRCH):
                 return 0
             else:
-                raise ssl.SSLError, why
+                raise ssl.SSLError(why)
             return 0
 
     def _ssl_recv(self, buffer_size):
-        """ Replacement for self.recv() during SSL connections. """
+        """Replacement for self.recv() during SSL connections."""
         try:
             data = self.read(buffer_size)
             if not data:
                 self.handle_close()
-                return ''
+                return ""
             return data
-        except ssl.SSLError, why:
-            if why[0] in (asyncore.ECONNRESET, asyncore.ENOTCONN,
-                          asyncore.ESHUTDOWN):
+        except ssl.SSLError as why:
+            if why[0] in (
+                asyncore.ECONNRESET,
+                asyncore.ENOTCONN,
+                asyncore.ESHUTDOWN,
+            ):
                 self.handle_close()
-                return ''
+                return ""
             elif why[0] == errno.ENOENT:
                 # Required in order to keep it non-blocking
-                return ''
+                return ""
             else:
                 raise

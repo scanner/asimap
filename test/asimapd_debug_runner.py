@@ -49,10 +49,11 @@ Options:
                           output as set in the tracefile being played back.
 """
 
+import fileinput
+
 # system imports
 #
 import json
-import fileinput
 
 # 3rd party imports
 #
@@ -62,12 +63,12 @@ from docopt import docopt
 #
 import asimap.user_server
 
+
 ########################################################################
 ########################################################################
 #
 class DebugRunner(object):
-    """
-    """
+    """ """
 
     ####################################################################
     #
@@ -78,11 +79,9 @@ class DebugRunner(object):
 #############################################################################
 #
 def main():
-    """
-
-    """
-    args = docopt(__doc__, version='0.1')
-    user_server = args['<user_server>']
+    """ """
+    args = docopt(__doc__, version="0.1")
+    user_server = args["<user_server>"]
     asimap.user_server.set_user_server_program(user_server)
 
     DebugRunner()
@@ -93,7 +92,7 @@ def main():
 #
 # Here is where it all starts
 #
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
 #
 ############################################################################

@@ -25,16 +25,18 @@ If it is newer we read it all in to memory in to a dict.
 We then look up the username in the dict.
 """
 
+import logging
+
 # system imports
 #
 import os
 import os.path
-import logging
+
+import asimap.exceptions
 
 # asimap imports
 #
 import asimap.utils
-import asimap.exceptions
 
 # XXX Not configurable! this is where the password db for the asimap
 #     server goes. Letting it be configurable is deemed a security risk.
@@ -58,8 +60,9 @@ class PasswordDB(object):
     ##################################################################
     #
     def __init__(self, password_db):
-        self.log = logging.getLogger("%s.%s" % (__name__,
-                                                self.__class__.__name__))
+        self.log = logging.getLogger(
+            "%s.%s" % (__name__, self.__class__.__name__)
+        )
 
         self.password_db = password_db
 
@@ -87,7 +90,7 @@ class PasswordDB(object):
 
         new_passwords = {}
 
-        with open(self.password_db, 'r') as f:
+        with open(self.password_db, "r") as f:
             for i, line in enumerate(f):
                 line = line.strip()
                 if len(line) == 0 or line[0] == "#":
@@ -95,12 +98,14 @@ class PasswordDB(object):
 
                 # Make sure this is a valid input line. If it is not
                 # then log an error.
-                if ':' not in line:
-                    self.log.error("Bad entry in password file at line %d: "
-                                   "'%s'" % (i+1, line))
+                if ":" not in line:
+                    self.log.error(
+                        "Bad entry in password file at line %d: "
+                        "'%s'" % (i + 1, line)
+                    )
                     continue
 
-                user, pw = line.split(':')
+                user, pw = line.split(":")
                 new_passwords[user.strip()] = pw.strip()
 
         # We got this far, replace the password db with the new one.
@@ -129,6 +134,7 @@ class PasswordDB(object):
         if user not in self.passwords:
             raise asimap.exceptions.NoSuchUser("There is no user '%s'." % user)
         return asimap.utils.check_password(raw_password, self.passwords[user])
+
 
 # We maintain a singleon password db instance that everyone else refers to.
 #

@@ -11,20 +11,21 @@ structure.
 #
 import logging
 import os.path
-import pytz
 from datetime import datetime
+
+import pytz
+
+import asimap.constants
 
 # asimap imports
 #
 import asimap.utils
-import asimap.constants
 from asimap.exceptions import MailboxInconsistency
 
 
 ############################################################################
 #
 class BadSearchOp(Exception):
-
     def __init__(self, value="bad search operation"):
         self.value = value
 
@@ -44,8 +45,9 @@ class SearchContext(object):
 
     ##################################################################
     #
-    def __init__(self, mailbox, msg_key, msg_number, seq_max, uid_max,
-                 sequences):
+    def __init__(
+        self, mailbox, msg_key, msg_number, seq_max, uid_max, sequences
+    ):
         """
         A container to hold the contextual information an IMAPSearch
         objects to actually perform its matching function.
@@ -60,9 +62,10 @@ class SearchContext(object):
         - `sequences`: The sequences for the mailbox. Passed in to save us from
           having to load and parse it separately for every message.
         """
-        self.log = logging.getLogger("%s.%s.%s.msg-%d" %
-                                     (__name__, self.__class__.__name__,
-                                      mailbox.name, msg_key))
+        self.log = logging.getLogger(
+            "%s.%s.%s.msg-%d"
+            % (__name__, self.__class__.__name__, mailbox.name, msg_key)
+        )
 
         self.mailbox = mailbox
         self.msg_key = msg_key
@@ -75,8 +78,7 @@ class SearchContext(object):
         #                          self.msg['x-asimapd-uid'].strip().split('.')]
         self.path = os.path.join(mailbox.mailbox._path, str(msg_key))
         self.internal_date = datetime.fromtimestamp(
-            os.path.getmtime(self.path),
-            pytz.UTC
+            os.path.getmtime(self.path), pytz.UTC
         )
 
         # msg & uid are looked up and set ONLY if the search actually reaches
@@ -107,20 +109,22 @@ class SearchContext(object):
         #
         if self._uid is None:
             self._uid_vv, self._uid = asimap.utils.get_uidvv_uid(
-                self.msg['x-asimapd-uid']
+                self.msg["x-asimapd-uid"]
             )
             if self._uid is None:
-                raise MailboxInconsistency(mbox_name=self.mailbox.name,
-                                           msg_key=self.msg_key)
+                raise MailboxInconsistency(
+                    mbox_name=self.mailbox.name, msg_key=self.msg_key
+                )
         else:
             # If, after we get the message and if the UID is defined and if the
             # UID in the message does NOT match the UID we have then raise a
             # mailboxinconsistency error.
             #
-            uid_vv, uid = asimap.utils.get_uidvv_uid(self.msg['x-asimapd-uid'])
+            uid_vv, uid = asimap.utils.get_uidvv_uid(self.msg["x-asimapd-uid"])
             if self._uid != uid or uid is None:
-                raise MailboxInconsistency(mbox_name=self.mailbox.name,
-                                           msg_key=self.msg_key)
+                raise MailboxInconsistency(
+                    mbox_name=self.mailbox.name, msg_key=self.msg_key
+                )
 
         return self._msg
 
@@ -180,7 +184,7 @@ class SearchContext(object):
         # is in, if any.
         #
         self._sequences = []
-        for name, key_list in self.mailbox_sequences.iteritems():
+        for name, key_list in self.mailbox_sequences.items():
             if self.msg_key in key_list:
                 self._sequences.append(name)
         return self._sequences
@@ -201,29 +205,45 @@ class IMAPSearch(object):
     matches the given search criteria.
     """
 
-    OP_ALL = 'all'
-    OP_AND = 'and'
-    OP_BEFORE = 'before'
-    OP_BODY = 'body'
-    OP_HEADER = 'header'
-    OP_KEYWORD = 'keyword'
-    OP_LARGER = 'larger'
-    OP_MESSAGE_SET = 'message_set'
-    OP_NOT = 'not'
-    OP_ON = 'on'
-    OP_OR = 'or'
-    OP_SENTBEFORE = 'sentbefore'
-    OP_SENTON = 'senton'
-    OP_SENTSINCE = 'sentsince'
-    OP_SINCE = 'since'
-    OP_SMALLER = 'smaller'
-    OP_TEXT = 'text'
-    OP_UID = 'uid'
+    OP_ALL = "all"
+    OP_AND = "and"
+    OP_BEFORE = "before"
+    OP_BODY = "body"
+    OP_HEADER = "header"
+    OP_KEYWORD = "keyword"
+    OP_LARGER = "larger"
+    OP_MESSAGE_SET = "message_set"
+    OP_NOT = "not"
+    OP_ON = "on"
+    OP_OR = "or"
+    OP_SENTBEFORE = "sentbefore"
+    OP_SENTON = "senton"
+    OP_SENTSINCE = "sentsince"
+    OP_SINCE = "since"
+    OP_SMALLER = "smaller"
+    OP_TEXT = "text"
+    OP_UID = "uid"
 
-    VALID_OPS = (OP_ALL, OP_AND, OP_BEFORE, OP_BODY, OP_HEADER, OP_KEYWORD,
-                 OP_LARGER, OP_MESSAGE_SET, OP_NOT, OP_ON, OP_OR, OP_SENTON,
-                 OP_SENTBEFORE, OP_SENTSINCE, OP_SINCE, OP_SMALLER, OP_TEXT,
-                 OP_UID)
+    VALID_OPS = (
+        OP_ALL,
+        OP_AND,
+        OP_BEFORE,
+        OP_BODY,
+        OP_HEADER,
+        OP_KEYWORD,
+        OP_LARGER,
+        OP_MESSAGE_SET,
+        OP_NOT,
+        OP_ON,
+        OP_OR,
+        OP_SENTON,
+        OP_SENTBEFORE,
+        OP_SENTSINCE,
+        OP_SINCE,
+        OP_SMALLER,
+        OP_TEXT,
+        OP_UID,
+    )
 
     #########################################################################
     #
@@ -233,7 +253,8 @@ class IMAPSearch(object):
         required for that search operation.
         """
         self.log = logging.getLogger(
-            "%s.%s" % (__name__, self.__class__.__name__))
+            "%s.%s" % (__name__, self.__class__.__name__)
+        )
         if op not in self.VALID_OPS:
             raise BadSearchOp("'%s' is not a valid search op" % op)
         self.op = op
@@ -250,23 +271,31 @@ class IMAPSearch(object):
         result = "IMAPSearch('%s'" % self.op
         if self.op in (self.OP_AND, self.OP_OR):
             elt = []
-            for search in self.args['search_key']:
+            for search in self.args["search_key"]:
                 elt.append(str(search))
-            result += ', [%s]' % ', '.join(elt)
+            result += ", [%s]" % ", ".join(elt)
         elif self.op in (self.OP_NOT):
-            result += ', search_key = %s' % self.args['search_key']
-        elif self.op in (self.OP_BEFORE, self.OP_ON, self.OP_SENTON,
-                         self.OP_SENTBEFORE, self.OP_SENTSINCE, self.OP_SINCE):
-            result += ', date = "%s"' % self.args['date']
+            result += ", search_key = %s" % self.args["search_key"]
+        elif self.op in (
+            self.OP_BEFORE,
+            self.OP_ON,
+            self.OP_SENTON,
+            self.OP_SENTBEFORE,
+            self.OP_SENTSINCE,
+            self.OP_SINCE,
+        ):
+            result += ', date = "%s"' % self.args["date"]
         elif self.op in (self.OP_LARGER, self.OP_SMALLER):
-            result += ', n = %d' % self.args['n']
+            result += ", n = %d" % self.args["n"]
         elif self.op in (self.OP_TEXT, self.OP_BODY):
-            result += ', string = "%s"' % self.args['string']
+            result += ', string = "%s"' % self.args["string"]
         elif self.op in (self.OP_HEADER):
-            result += ', header = "%s", string = "%s"' % (self.args['header'],
-                                                          self.args['string'])
+            result += ', header = "%s", string = "%s"' % (
+                self.args["header"],
+                self.args["string"],
+            )
         elif self.op in (self.OP_KEYWORD):
-            result += ', keyword = "%s"' % self.args['keyword']
+            result += ', keyword = "%s"' % self.args["keyword"]
         return result + ")"
 
     ##################################################################
@@ -288,7 +317,7 @@ class IMAPSearch(object):
         # We look up the method on ourselves that is the search op we
         # are to perform and we call that operation.
         #
-        return getattr(self, '_match_%s' % self.op)()
+        return getattr(self, "_match_%s" % self.op)()
 
     #########################################################################
     #########################################################################
@@ -312,7 +341,7 @@ class IMAPSearch(object):
         #       a decision on whether or not the message is removed from the
         #       recent sequence or not.
         #
-        keyword = asimap.constants.flag_to_seq(self.args['keyword'])
+        keyword = asimap.constants.flag_to_seq(self.args["keyword"])
         result = keyword in self.ctx.sequences
         # XXX Decided that I am not going to reset the \Recent flag on a search
         #     match.
@@ -329,8 +358,10 @@ class IMAPSearch(object):
         in the [RFC-822] field-body.
         """
         header = self.args["header"]
-        return header in self.ctx.msg and \
-            self.ctx.msg[header].lower().find(self.args['string']) != -1
+        return (
+            header in self.ctx.msg
+            and self.ctx.msg[header].lower().find(self.args["string"]) != -1
+        )
 
     #########################################################################
     #
@@ -339,7 +370,7 @@ class IMAPSearch(object):
         We have a list of search keys. If any of these are false then
         the match is false.
         """
-        for search_op in self.args['search_key']:
+        for search_op in self.args["search_key"]:
             if not search_op.match(self.ctx):
                 return False
         return True
@@ -360,7 +391,7 @@ class IMAPSearch(object):
         We have a list of search keys. If any of these are false then
         the match is false.
         """
-        for search_op in self.args['search_key']:
+        for search_op in self.args["search_key"]:
             if search_op.match(self.ctx):
                 return True
         return False
@@ -381,7 +412,7 @@ class IMAPSearch(object):
         Messages that contain the specified string in the body of the
         message.
         """
-        text = self.args['string']
+        text = self.args["string"]
         for msg_part in self.ctx.msg.walk():
             if msg_part.is_multipart():
                 continue
@@ -412,13 +443,17 @@ class IMAPSearch(object):
         sequence number in our mailbox.
         """
         for elt in self.args["msg_set"]:
-            if (isinstance(elt, str) and elt == "*" and
-                    self.ctx.msg_number == self.id_max):
+            if (
+                isinstance(elt, str)
+                and elt == "*"
+                and self.ctx.msg_number == self.id_max
+            ):
                 return True
             elif isinstance(elt, int) and elt == self.ctx.msg_number:
                 return True
-            elif isinstance(elt, tuple) and (self.ctx.msg_number >= elt[0] and
-                                             self.ctx.msg_number <= elt[1]):
+            elif isinstance(elt, tuple) and (
+                self.ctx.msg_number >= elt[0] and self.ctx.msg_number <= elt[1]
+            ):
                 return True
         return False
 
@@ -428,7 +463,7 @@ class IMAPSearch(object):
         """
         Messages that do not match the specified search key.
         """
-        return not self.args['search_key'].match(self.ctx)
+        return not self.args["search_key"].match(self.ctx)
 
     #########################################################################
     #
@@ -450,9 +485,9 @@ class IMAPSearch(object):
         Messages whose [RFC-822] Date: header is earlier than the
         specified date.
         """
-        return 'date' in self.ctx.msg and \
-            self.args['date'] > \
-            asimap.utils.parsedate(self.ctx.msg['date'])
+        return "date" in self.ctx.msg and self.args[
+            "date"
+        ] > asimap.utils.parsedate(self.ctx.msg["date"])
 
     #########################################################################
     #
@@ -461,9 +496,11 @@ class IMAPSearch(object):
         Messages whose [RFC-822] Date: header is within the specified
         date.
         """
-        return 'date' in self.ctx.msg and \
-            self.args['date'].date() == \
-            asimap.utils.parsedate(self.ctx.msg['date']).date()
+        return (
+            "date" in self.ctx.msg
+            and self.args["date"].date()
+            == asimap.utils.parsedate(self.ctx.msg["date"]).date()
+        )
 
     #########################################################################
     #
@@ -472,9 +509,9 @@ class IMAPSearch(object):
         Messages whose [RFC-822] Date: header is later than the
         specified date.
         """
-        return ('date' in self.ctx.msg and
-                self.args['date'] < asimap.utils.parsedate(
-                    self.ctx.msg['date']))
+        return "date" in self.ctx.msg and self.args[
+            "date"
+        ] < asimap.utils.parsedate(self.ctx.msg["date"])
 
     #########################################################################
     #
@@ -483,8 +520,10 @@ class IMAPSearch(object):
         Messages whose internal date is within or later than the
         specified date.
         """
-        return self.ctx.internal_date > self.args["date"] or \
-            self.ctx.internal_date.date() == self.args["date"].date()
+        return (
+            self.ctx.internal_date > self.args["date"]
+            or self.ctx.internal_date.date() == self.args["date"].date()
+        )
 
     #########################################################################
     #
@@ -505,8 +544,8 @@ class IMAPSearch(object):
         # Look in the headers.. and if it is not in the headers, look
         # in the body.
         #
-        text = self.args['string']
-        for header in self.ctx.msg.values():
+        text = self.args["string"]
+        for header in list(self.ctx.msg.values()):
             if header.lower().find(text) != -1:
                 return True
         return self._match_body()
@@ -524,7 +563,8 @@ class IMAPSearch(object):
                     return True
             elif isinstance(elt, int) and elt == self.ctx.uid:
                 return True
-            elif isinstance(elt, tuple) and (self.ctx.uid >= elt[0] and
-                                             self.ctx.uid <= elt[1]):
+            elif isinstance(elt, tuple) and (
+                self.ctx.uid >= elt[0] and self.ctx.uid <= elt[1]
+            ):
                 return True
         return False

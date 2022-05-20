@@ -6,22 +6,23 @@
 A test asynccore based IMAP main server.
 """
 
+import asynchat
+
 # system imports
 #
 import asyncore
-import asynchat
 import logging
+import os
 import socket
 import ssl
-import os
 
 # By default every file is its own logging module. Kind of simplistic
 # but it works for now.
 #
-log      = logging.getLogger("asimap.%s" % __name__)
+log = logging.getLogger("asimap.%s" % __name__)
 
-BACKLOG  = 5
-SIZE     = 4096
+BACKLOG = 5
+SIZE = 4096
 
 ##################################################################
 ##################################################################
@@ -55,14 +56,14 @@ class IMAPServer(asyncore.dispatcher):
     ##################################################################
     #
     def handle_accept(self):
-        """
-        """
+        """ """
 
         pair = self.accept()
         if pair is not None:
-            sock,addr = pair
-            print "Incoming connection from %s" % repr(pair)
+            sock, addr = pair
+            print("Incoming connection from %s" % repr(pair))
             handler = IMAPClient(sock, self._options)
+
 
 ##################################################################
 ##################################################################
@@ -83,6 +84,7 @@ class IMAPClientHandler(asyncore.dispatcher_with_send):
 
     ##################################################################
     #
-    def __init__(self, ):
-        """
-        """
+    def __init__(
+        self,
+    ):
+        """ """

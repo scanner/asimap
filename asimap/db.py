@@ -8,11 +8,13 @@ to maintain our user and mailbox state and the rest of the user
 server.
 """
 
+import logging
+
 # system imports
 #
 import os.path
-import logging
 import re
+
 try:
     import sqlite3
 except ImportError:
@@ -47,7 +49,7 @@ def regexp(expr, item):
             reg = re.compile(expr)
             USED_REGEXPS[expr] = reg
         return reg.search(item) is not None
-    except Exception, e:
+    except Exception as e:
         log.error("got exception: %s" % e)
     return None
 
@@ -70,13 +72,15 @@ class Database(object):
         Arguments:
         - `maildir`: The directory where our database file lives.
         """
-        self.log = logging.getLogger("%s.%s" % (__name__,
-                                                self.__class__.__name__))
+        self.log = logging.getLogger(
+            "%s.%s" % (__name__, self.__class__.__name__)
+        )
         self.maildir = maildir
         self.db_filename = os.path.join(self.maildir, "asimap.db")
         self.log.debug("Opening database file: '%s'" % self.db_filename)
-        self.conn = sqlite3.connect(self.db_filename,
-                                    detect_types=sqlite3.PARSE_DECLTYPES)
+        self.conn = sqlite3.connect(
+            self.db_filename, detect_types=sqlite3.PARSE_DECLTYPES
+        )
         # We want to enable regexp matching in sqlite and in order to do that
         # we have to supply it with a regexp function.
         #
@@ -105,12 +109,13 @@ class Database(object):
         version = 0
         try:
             c = self.conn.cursor()
-            c.execute("select version from versions "
-                      "order by version desc limit 1")
+            c.execute(
+                "select version from versions " "order by version desc limit 1"
+            )
             v = c.fetchone()
             c.close()
             version = int(v[0]) + 1
-        except sqlite3.OperationalError, e:
+        except sqlite3.OperationalError as e:
             # if we have no versions table then our first migration is 0.
             #
             if str(e) != "no such table: versions":
@@ -119,8 +124,10 @@ class Database(object):
         # Apply all the migrations that have not been applied yet.
         #
         for idx, migration in enumerate(MIGRATIONS[version:], start=version):
-            self.log.info("Applying migration version %d (%s)" %
-                          (idx, migration.__name__))
+            self.log.info(
+                "Applying migration version %d (%s)"
+                % (idx, migration.__name__)
+            )
             c = self.conn.cursor()
             migration(c)
             c.execute("insert into versions (version) values (?)", str(idx))
@@ -167,24 +174,33 @@ def initial_migration(c):
     Arguments:
     - `c`: sqlite3 db connection
     """
-    c.execute("create table versions (version integer primary key, "
-              "date text default CURRENT_TIMESTAMP)")
-    c.execute("create table user_server (id integer primary key, "
-              "uid_vv integer, "
-              "date text default CURRENT_TIMESTAMP)")
-    c.execute("create table mailboxes (id integer primary key, "
-              "name text,"
-              "uid_vv integer, attributes text, "
-              "mtime integer, next_uid integer, "
-              "num_msgs integer, num_recent integer, "
-              "date text default CURRENT_TIMESTAMP)")
+    c.execute(
+        "create table versions (version integer primary key, "
+        "date text default CURRENT_TIMESTAMP)"
+    )
+    c.execute(
+        "create table user_server (id integer primary key, "
+        "uid_vv integer, "
+        "date text default CURRENT_TIMESTAMP)"
+    )
+    c.execute(
+        "create table mailboxes (id integer primary key, "
+        "name text,"
+        "uid_vv integer, attributes text, "
+        "mtime integer, next_uid integer, "
+        "num_msgs integer, num_recent integer, "
+        "date text default CURRENT_TIMESTAMP)"
+    )
     c.execute("create unique index mailbox_names on mailboxes (name)")
-    c.execute("create table sequences (id integer primary key, "
-              "name text, mailbox_id integer, "
-              "sequence text, "
-              "date text default CURRENT_TIMESTAMP)")
-    c.execute("create unique index seq_name_mbox on sequences "
-              "(name,mailbox_id)")
+    c.execute(
+        "create table sequences (id integer primary key, "
+        "name text, mailbox_id integer, "
+        "sequence text, "
+        "date text default CURRENT_TIMESTAMP)"
+    )
+    c.execute(
+        "create unique index seq_name_mbox on sequences " "(name,mailbox_id)"
+    )
     c.execute("create index seq_mbox_id on sequences (mailbox_id)")
     return
 
@@ -253,6 +269,7 @@ def get_rid_of_root_folder(c):
     c.execute("delete from mailboxes where name=''")
     return
 
+
 # The list of migrations we have so far. These are executed in order. They are
 # executed only once. They are executed when the database is opened. We track
 # which ones have been executed and new ones are executed when the database is
@@ -264,4 +281,4 @@ MIGRATIONS = [
     add_last_check_time_to_mbox,
     folders_can_be_subscribed,
     get_rid_of_root_folder,
-    ]
+]

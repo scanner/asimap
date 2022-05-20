@@ -6,11 +6,11 @@
 This module has some simple logic to deal with failed login attempt throttling.
 """
 
+import logging
+
 # system imports
 #
 import time
-import logging
-
 
 # We use a pair of dicts that track how often we have had login attempts
 # against a username or attempts for user names that do not exist.
@@ -136,8 +136,10 @@ def check_allow(user, addr):
     # PURGE_TIME). See if they have exceeded the number of allowable attempts.
     #
     if user in BAD_USER_AUTHS and BAD_USER_AUTHS[user][0] > MAX_USER_ATTEMPTS:
-        log.warn("check_allow: too many attempts for user: '%s', from "
-                 "address: %s" % (user, addr))
+        log.warn(
+            "check_allow: too many attempts for user: '%s', from "
+            "address: %s" % (user, addr)
+        )
         return False
 
     if addr in BAD_IP_AUTHS and BAD_IP_AUTHS[addr][0] > MAX_ADDR_ATTEMPTS:

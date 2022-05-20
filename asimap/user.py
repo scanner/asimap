@@ -30,8 +30,7 @@ class User(object):
     ##################################################################
     #
     def __init__(self, imap_username, local_username, mailspool_dir):
-        """
-        """
+        """ """
         self.imap_username = imap_username
         self.local_username = local_username
         self.maildir = mailspool_dir
@@ -46,5 +45,7 @@ class User(object):
     ##################################################################
     #
     def __str__(self):
-        return "IMAP username: '%s', local username: '%s'" % \
-            (self.imap_username, self.local_username)
+        return "IMAP username: '%s', local username: '%s'" % (
+            self.imap_username,
+            self.local_username,
+        )

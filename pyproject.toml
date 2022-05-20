@@ -1,0 +1,81 @@
+[tool.black]
+line-length = 79
+exclude = '''
+(
+  /(
+      \.tox
+    | .+/migrations
+    | venv*
+    | \.venv
+    | \.pre-commit-cache
+  )/
+)
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 79
+skip_gitignore = true
+filter_files = true
+skip_glob = ["*venv*","*/migrations/*",".*cache"]
+
+[tool.mypy]
+exclude = [
+    '__pycache__',
+    '^\.mnt',
+    '.*[-_]cache',
+    '.git',
+    '\.venv',
+    'venv*',
+    'tmp',
+    'fixtures',
+    'deployment',
+    'docs',
+    'requirements',
+    'migrations'
+]
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+plugins = [
+    "mypy_django_plugin.main"
+]
+
+[[tool.mypy.overrides]]
+module = [
+    'boto3',
+    'click',
+    'funcy',
+]
+
+[tool.pytest.ini_options]
+addopts = "-vvv"
+testpaths = [
+    "mibudge",
+]
+markers = [
+    "smoke: marks tests as smoke (deselect with '-m \"not smoke\"')",
+    "integration",
+]
+
+[tool.pylint.MASTER]
+ignore-paths=[ ".*/migrations/.*" ]
+
+[tool.pylint.FORMAT]
+max-module-lines=2000
+
+[tool.pylint.DESIGN]
+max-attributes=15
+max-branches=15
+
+[tool.pylint.BASIC]
+no-docstring-rgx='^_|^Meta$|.+Serializer$|.+ViewSet$|^[Tt]est'
+
+[tool.pylint.'MESSAGES CONTROL']
+disable=[
+    "unnecessary-pass",
+    "import-error",
+    "too-few-public-methods"
+]

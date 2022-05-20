@@ -8,27 +8,27 @@ network connections, authenticates users, spawns userserver's, and
 relays IMAP messages between an IMAP client and a userserver.
 """
 
-# system imports
-#
-import time
-import asyncore
 import asynchat
+import asyncore
 import logging
-import socket
-import ssl
 import os
 import pwd
 import re
-import traceback
+import socket
+import ssl
 import subprocess
+
+# system imports
+#
+import time
+import traceback
 
 # asimap imports
 #
 import asimap.parse
 import asimap.user_server
-
-from asimap.client import PreAuthenticated, CAPABILITIES
 from asimap.auth import AUTH_SYSTEMS
+from asimap.client import CAPABILITIES, PreAuthenticated
 
 # By default every file is its own logging module. Kind of simplistic
 # but it works for now.
@@ -36,7 +36,7 @@ from asimap.auth import AUTH_SYSTEMS
 log = logging.getLogger("%s" % __name__)
 
 BACKLOG = 5
-RE_LITERAL_STRING_START = re.compile(r'\{(\d+)\+?\}$')
+RE_LITERAL_STRING_START = re.compile(r"\{(\d+)\+?\}$")
 
 # This dict is all of the subprocesses that we have created. One for each
 # authenticated user with at least one active connection.
@@ -86,7 +86,8 @@ class IMAPSubprocessHandle(object):
                   user to switch to for handling that user's mailbox.
         """
         self.log = logging.getLogger(
-            "%s.%s" % (__name__, self.__class__.__name__))
+            "%s.%s" % (__name__, self.__class__.__name__)
+        )
         self.options = options
         self.user = user
         self.port = None
@@ -109,14 +110,18 @@ class IMAPSubprocessHandle(object):
         if self.options.trace_file:
             cmd.append("--trace_file={}".format(self.options.trace_file))
 
-        self.log.debug("Starting user server, cmd: %s, as user: '%s', in "
-                       "directory '%s'" % (repr(cmd), self.user.local_username,
-                                           self.user.maildir))
-        self.subprocess = subprocess.Popen(cmd,
-                                           preexec_fn=self.setuid_to_user,
-                                           close_fds=True,
-                                           cwd=self.user.maildir,
-                                           stdout=subprocess.PIPE)
+        self.log.debug(
+            "Starting user server, cmd: %s, as user: '%s', in "
+            "directory '%s'"
+            % (repr(cmd), self.user.local_username, self.user.maildir)
+        )
+        self.subprocess = subprocess.Popen(
+            cmd,
+            preexec_fn=self.setuid_to_user,
+            close_fds=True,
+            cwd=self.user.maildir,
+            stdout=subprocess.PIPE,
+        )
 
         # We expect the subprocess to send back to us over its stdout a single
         # line which has the port it is listening on.
@@ -128,9 +133,11 @@ class IMAPSubprocessHandle(object):
         self.log.debug("Reading port from subprocess.")
         try:
             self.port = int(self.subprocess.stdout.read().strip())
-        except ValueError, e:
-            self.log.error("Unable to read port definition from subprocess: "
-                           "%s" % str(e))
+        except ValueError as e:
+            self.log.error(
+                "Unable to read port definition from subprocess: "
+                "%s" % str(e)
+            )
             # XXX Uh.. what do we do here? basically the subprocess start
             # failed and we need to tell our caller so they can deal with it.
             #
@@ -158,8 +165,10 @@ class IMAPSubprocessHandle(object):
             os.setuid(pwd.getpwnam(self.user.local_username)[2])
         else:
             p = pwd.getpwuid(os.getuid())
-            self.log.info("setuid_to_user: Not setting uid, we are running as "
-                          "'%s', uid: %d" % (p[0], p[2]))
+            self.log.info(
+                "setuid_to_user: Not setting uid, we are running as "
+                "'%s', uid: %d" % (p[0], p[2])
+            )
         return
 
     ##################################################################
@@ -205,7 +214,8 @@ class IMAPServer(asyncore.dispatcher):
         - `options` : The options set on the command line
         """
         self.log = logging.getLogger(
-            "%s.%s" % (__name__, self.__class__.__name__))
+            "%s.%s" % (__name__, self.__class__.__name__)
+        )
         asyncore.dispatcher.__init__(self)
 
         self.options = options
@@ -216,8 +226,9 @@ class IMAPServer(asyncore.dispatcher):
         self.set_reuse_addr()
         self.bind((interface, port))
         self.listen(BACKLOG)
-        self.log.info("IMAP Server listening on %s:%d" %
-                      (self.interface, self.port))
+        self.log.info(
+            "IMAP Server listening on %s:%d" % (self.interface, self.port)
+        )
         return
 
     ##################################################################
@@ -237,9 +248,10 @@ class IMAPServer(asyncore.dispatcher):
                 # registers it into the asyncore dispatch loop.
                 #
                 IMAPClientHandler(sock, addr, self.options, self.ssl_cert)
-            except ssl.SSLError, e:
-                self.log.error("Error accepting connection from %s: %s" %
-                               (addr, str(e)))
+            except ssl.SSLError as e:
+                self.log.error(
+                    "Error accepting connection from %s: %s" % (addr, str(e))
+                )
         return
 
 
@@ -274,7 +286,8 @@ class IMAPClientHandler(asynchat.async_chat):
         self.trace_file = trace_file
         self.options = options
         self.log = logging.getLogger(
-            "%s.%s" % (__name__, self.__class__.__name__))
+            "%s.%s" % (__name__, self.__class__.__name__)
+        )
         self.ssl_cert = ssl_cert
         self.rem_addr = addr[0]
         self.port = addr[1]
@@ -288,12 +301,15 @@ class IMAPClientHandler(asynchat.async_chat):
         self.in_ssl_handshake = False
 
         if self.ssl_cert:
-            self.socket = ssl.wrap_socket(sock, server_side=True,
-                                          certfile=self.ssl_cert,
-                                          do_handshake_on_connect=False)
+            self.socket = ssl.wrap_socket(
+                sock,
+                server_side=True,
+                certfile=self.ssl_cert,
+                do_handshake_on_connect=False,
+            )
             self.in_ssl_handshake = True
         else:
-            self.push("* OK [CAPABILITY %s]\r\n" % ' '.join(CAPABILITIES))
+            self.push("* OK [CAPABILITY %s]\r\n" % " ".join(CAPABILITIES))
 
         return
 
@@ -316,11 +332,9 @@ class IMAPClientHandler(asynchat.async_chat):
         #
         asynchat.async_chat.push(self, data)
         if self.trace_file:
-            self.trace_file({
-                'time': time.time(),
-                'data': data,
-                'msg_type': 'SEND_DATA'
-            })
+            self.trace_file(
+                {"time": time.time(), "data": data, "msg_type": "SEND_DATA"}
+            )
 
     ##################################################################
     #
@@ -330,10 +344,11 @@ class IMAPClientHandler(asynchat.async_chat):
         have in our log messages.
         """
         if self.msg_processor:
-            return "%s from %s:%d" % \
-                (str(self.msg_processor.client_handler.user),
-                 self.rem_addr,
-                 self.port)
+            return "%s from %s:%d" % (
+                str(self.msg_processor.client_handler.user),
+                self.rem_addr,
+                self.port,
+            )
         else:
             return "from %s:%d" % (self.rem_addr, self.port)
 
@@ -350,14 +365,17 @@ class IMAPClientHandler(asynchat.async_chat):
                 try:
                     self.socket.do_handshake()
                     self.in_ssl_handshake = False
-                    self.push("* OK [CAPABILITY %s]\r\n" %
-                              ' '.join(CAPABILITIES))
-                except ssl.SSLError, err:
+                    self.push(
+                        "* OK [CAPABILITY %s]\r\n" % " ".join(CAPABILITIES)
+                    )
+                except ssl.SSLError as err:
                     # If we are wanting read or wanting write then we
                     # return and wait for the next time we are called.
                     #
-                    if err.args[0] in (ssl.SSL_ERROR_WANT_READ,
-                                       ssl.SSL_ERROR_WANT_WRITE):
+                    if err.args[0] in (
+                        ssl.SSL_ERROR_WANT_READ,
+                        ssl.SSL_ERROR_WANT_WRITE,
+                    ):
                         return
                     else:
                         raise
@@ -377,9 +395,11 @@ class IMAPClientHandler(asynchat.async_chat):
             # next time we are called.
             #
             return
-        except ssl.SSLError, err:
-            self.log.error("handle_read: %s, ssl error: %s" %
-                           (self.log_string(), str(err)))
+        except ssl.SSLError as err:
+            self.log.error(
+                "handle_read: %s, ssl error: %s"
+                % (self.log_string(), str(err))
+            )
             # Maybe we should just close the connection instead of
             # raising the exception?
             #
@@ -397,14 +417,17 @@ class IMAPClientHandler(asynchat.async_chat):
                 try:
                     self.socket.do_handshake()
                     self.in_ssl_handshake = False
-                    self.push("* OK [CAPABILITY %s]\r\n" %
-                              ' '.join(CAPABILITIES))
-                except ssl.SSLError, err:
+                    self.push(
+                        "* OK [CAPABILITY %s]\r\n" % " ".join(CAPABILITIES)
+                    )
+                except ssl.SSLError as err:
                     # If we are wanting read or wanting write then we
                     # return and wait for the next time we are called.
                     #
-                    if err.args[0] in (ssl.SSL_ERROR_WANT_READ,
-                                       ssl.SSL_ERROR_WANT_WRITE):
+                    if err.args[0] in (
+                        ssl.SSL_ERROR_WANT_READ,
+                        ssl.SSL_ERROR_WANT_WRITE,
+                    ):
                         return
                     else:
                         raise
@@ -414,9 +437,11 @@ class IMAPClientHandler(asynchat.async_chat):
             # overriding.
             #
             asynchat.async_chat.handle_write(self)
-        except ssl.SSLError, err:
-            self.log.error("handle_write: %s, ssl error: %s" %
-                           (self.log_string(), str(err)))
+        except ssl.SSLError as err:
+            self.log.error(
+                "handle_write: %s, ssl error: %s"
+                % (self.log_string(), str(err))
+            )
             # Maybe we should just close the connection instead of
             # raising the exception?
             #
@@ -507,8 +532,9 @@ class IMAPClientHandler(asynchat.async_chat):
                 # already did everything in a non-synchronizing literal
                 # fashion.
                 #
-                self.ibuffer[-1] = (self.ibuffer[-1][:-2] +
-                                    self.ibuffer[-1][-1:])
+                self.ibuffer[-1] = (
+                    self.ibuffer[-1][:-2] + self.ibuffer[-1][-1:]
+                )
 
             # We also tack on a \r\n to the ibuffer so that whatever parses
             # the message knows how to parse the literal string corrctly.
@@ -523,7 +549,8 @@ class IMAPClientHandler(asynchat.async_chat):
         self.ibuffer = []
         if self.msg_processor is None:
             self.log.error(
-                "We have no message processor to send a message to.")
+                "We have no message processor to send a message to."
+            )
         else:
             self.msg_processor.message(msg)
         return
@@ -597,7 +624,8 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
         - `options`: The configuration options
         """
         self.log = logging.getLogger(
-            "%s.%s" % (__name__, self.__class__.__name__))
+            "%s.%s" % (__name__, self.__class__.__name__)
+        )
         asynchat.async_chat.__init__(self)
 
         self.client_connection = client_connection
@@ -608,15 +636,16 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
         # '/var/tmp/testmaildir'
         #
         if self.options.test_mode:
-            auth_system = 'test_auth'
+            auth_system = "test_auth"
         else:
-            auth_system = 'simple_auth'
+            auth_system = "simple_auth"
 
         # The IMAP message processor that handles all of the IMAP commands
         # from the client when we are in the not-authenticated state.
         #
-        self.client_handler = PreAuthenticated(self.client_connection,
-                                               AUTH_SYSTEMS[auth_system])
+        self.client_handler = PreAuthenticated(
+            self.client_connection, AUTH_SYSTEMS[auth_system]
+        )
         self.subprocess = None
 
         # We do not buffer and process data from the subprocess. As soon as we
@@ -632,9 +661,11 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
         A bit of DRY: returns a string with common information that we like to
         have in our log messages.
         """
-        return "%s from %s:%d" % (self.client_handler.user,
-                                  self.client_connection.rem_addr,
-                                  self.client_connection.port)
+        return "%s from %s:%d" % (
+            self.client_handler.user,
+            self.client_connection.rem_addr,
+            self.client_connection.port,
+        )
 
     ##################################################################
     #
@@ -671,7 +702,7 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
             imap_cmd = asimap.parse.IMAPClientCommand(msg)
             imap_cmd.parse()
 
-        except asimap.parse.BadCommand, e:
+        except asimap.parse.BadCommand as e:
             # The command we got from the client was bad...  If we at least
             # managed to parse the TAG out of the command the client sent us we
             # use that when sending our response to the client so it knows what
@@ -690,7 +721,7 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
         #
         try:
             self.client_handler.command(imap_cmd)
-        except Exception, e:
+        except Exception as e:
             # We catch all exceptions because we do not want the server
             # unceremoniously exiting.
             #
@@ -698,9 +729,17 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
             #     we should disconnect the client?
             #
             tb = traceback.format_exc()
-            self.log.error("Exception handling IMAP command %s(%s) for %s: "
-                           "%s\n%s" % (imap_cmd.command, imap_cmd.tag,
-                                       self.log_string(), str(e), tb))
+            self.log.error(
+                "Exception handling IMAP command %s(%s) for %s: "
+                "%s\n%s"
+                % (
+                    imap_cmd.command,
+                    imap_cmd.tag,
+                    self.log_string(),
+                    str(e),
+                    tb,
+                )
+            )
 
         # After processing that command see if we are in the authenticated or
         # logged out state and take the appropriate action.
@@ -712,14 +751,16 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
             #
             try:
                 self.get_and_connect_subprocess(self.client_handler.user)
-            except Exception, e:
+            except Exception as e:
                 # If we fail to launch our subprocess then tell the client we
                 # had an internal error and log it for us to figure out what
                 # went wrong.
                 #
                 tb = traceback.format_exc()
-                self.log.error("Exception starting subprocess for %s: "
-                               "%s\n%s" % (self.log_string(), str(e), tb))
+                self.log.error(
+                    "Exception starting subprocess for %s: "
+                    "%s\n%s" % (self.log_string(), str(e), tb)
+                )
                 msg = "* BAD Internal error launching user mail spool\r\n"
                 self.client_connection.push(msg)
                 self.client_connection.close()
@@ -770,7 +811,7 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
         # And initiate a connection to the subprocess.
         #
         self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.connect(('127.0.0.1', self.subprocess.port))
+        self.connect(("127.0.0.1", self.subprocess.port))
         return
 
     ##################################################################
@@ -812,15 +853,18 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
         """
 
         self.client_handler.state = "non_authenticated"
-        self.log.info("Connection with subprocess for %s has closed" %
-                      (self.log_string()))
+        self.log.info(
+            "Connection with subprocess for %s has closed"
+            % (self.log_string())
+        )
         # See if the subprocess is alive.. if it is not then it ungraciously
         # went away and we need to tell the IMAP client to go away too.
         #
         if self.subprocess.is_alive is False:
-            self.log.error("Our subprocess for %s went away unexpectedly with "
-                           "the exit code: %d" % (self.log_string,
-                                                  self.subprocess.rc))
+            self.log.error(
+                "Our subprocess for %s went away unexpectedly with "
+                "the exit code: %d" % (self.log_string, self.subprocess.rc)
+            )
         if self.socket is not None:
             self.close()
 
@@ -841,8 +885,9 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
 
         We close our connection to the subprocess and do various cleanups.
         """
-        self.log.info("IMAP client for %s has disconnected" %
-                      self.log_string())
+        self.log.info(
+            "IMAP client for %s has disconnected" % self.log_string()
+        )
         self.client_connection = None
         self.client_handler.state = "non_authenticated"
         self.client_handler.user = None

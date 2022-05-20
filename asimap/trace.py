@@ -9,14 +9,15 @@ Defines a method for setting up the trace writer and writing messages
 to trace writer if it has been initialized.
 """
 
+import json
+import logging
+import logging.handlers
+
 # system imports
 #
 import os
 import pwd
 import time
-import logging
-import logging.handlers
-import json
 
 log = logging.getLogger("%s" % __name__)
 trace_logger = logging.getLogger("trace")
@@ -36,8 +37,7 @@ class TraceFormatter(logging.Formatter):
     ####################################################################
     #
     def __init__(self, *args, **kwargs):
-        """
-        """
+        """ """
         super(TraceFormatter, self).__init__(*args, **kwargs)
         self.start = time.time()
         self.last_time = self.start
@@ -82,14 +82,15 @@ def enable_tracing(logdir, trace_file=None):
             trace_file_basename = trace_file
         else:
             p = pwd.getpwuid(os.getuid())
-            trace_file_basename = os.path.join(logdir,
-                                               "%s-asimapd.trace" % p.pw_name)
+            trace_file_basename = os.path.join(
+                logdir, "%s-asimapd.trace" % p.pw_name
+            )
 
         log.debug("Logging trace records to '{}'".format(trace_file_basename))
 
-        h = logging.handlers.RotatingFileHandler(trace_file_basename,
-                                                 maxBytes=20971520,
-                                                 backupCount=5)
+        h = logging.handlers.RotatingFileHandler(
+            trace_file_basename, maxBytes=20971520, backupCount=5
+        )
     h.setLevel(logging.INFO)
     formatter = TraceFormatter("%(asctime)s %(message)s")
     h.setFormatter(formatter)

@@ -9,18 +9,19 @@ XXX We really need to do some sort of locking on the pw file to prevent
     conflicts.
 """
 
+import getpass
+import hashlib
+import optparse
+import os
+import os.path
+import random
+import shutil
+import stat
+
 # system imports
 #
 import sys
-import os
-import os.path
 import time
-import shutil
-import hashlib
-import optparse
-import stat
-import getpass
-import random
 
 # XXX NOTE: We copy the hash utilities out of the asimap module because it is
 #           likely that this program is being run in an environment where they
@@ -42,14 +43,19 @@ def setup_option_parser():
     actually parse the command line options. It returns the parser object that
     can be used for parsing them.
     """
-    parser = optparse.OptionParser(usage = "%prog [options]",
-                                   version = "1.0")
+    parser = optparse.OptionParser(usage="%prog [options]", version="1.0")
 
-    parser.set_defaults(user = None)
+    parser.set_defaults(user=None)
 
-    parser.add_option("--user", action="store", type="string",
-                      dest="user", help = "The user to set the password for")
+    parser.add_option(
+        "--user",
+        action="store",
+        type="string",
+        dest="user",
+        help="The user to set the password for",
+    )
     return parser
+
 
 ############################################################################
 #
@@ -60,18 +66,21 @@ def get_hexdigest(algorithm, salt, raw_password):
 
     Borrowed from the django User auth model.
     """
-    if algorithm == 'crypt':
+    if algorithm == "crypt":
         try:
             import crypt
         except ImportError:
-            raise ValueError('"crypt" password algorithm not supported in this environment')
+            raise ValueError(
+                '"crypt" password algorithm not supported in this environment'
+            )
         return crypt.crypt(raw_password, salt)
 
-    if algorithm == 'md5':
+    if algorithm == "md5":
         return hashlib.md5(salt + raw_password).hexdigest()
-    elif algorithm == 'sha1':
+    elif algorithm == "sha1":
         return hashlib.sha1(salt + raw_password).hexdigest()
     raise ValueError("Got unknown password algorithm type in password.")
+
 
 ####################################################################
 #
@@ -82,11 +91,11 @@ def hash_password(raw_password):
     Arguments:
     - `raw_password`: The plain text password
     """
-    algo = 'sha1'
-    salt = get_hexdigest(algo, str(random.random()),
-                         str(random.random()))[:5]
+    algo = "sha1"
+    salt = get_hexdigest(algo, str(random.random()), str(random.random()))[:5]
     hsh = get_hexdigest(algo, salt, raw_password)
-    return '%s$%s$%s' % (algo, salt, hsh)
+    return "%s$%s$%s" % (algo, salt, hsh)
+
 
 ####################################################################
 #
@@ -109,15 +118,16 @@ def write_password(user, password_hash):
     - `password_hash`: The hashed and salted password to write to the file
     """
 
-    new_pw_file=PASSWORD_DB_LOCATION + ".new"
+    new_pw_file = PASSWORD_DB_LOCATION + ".new"
     wrote_account = False
 
     with open(new_pw_file, "w+") as newf:
         if os.path.exists(PASSWORD_DB_LOCATION):
             # Backup the old file before we do anything.
             #
-            backup_db = PASSWORD_DB_LOCATION + \
-                time.strftime("%Y.%m.%d-%H.%M.%s")
+            backup_db = PASSWORD_DB_LOCATION + time.strftime(
+                "%Y.%m.%d-%H.%M.%s"
+            )
             shutil.copy(PASSWORD_DB_LOCATION, backup_db)
 
             with open(PASSWORD_DB_LOCATION, "r") as oldf:
@@ -126,8 +136,8 @@ def write_password(user, password_hash):
                     # If the line has a ':' in it then it is a password file
                     # entry.
                     #
-                    if ':' in line:
-                        u, pw = line.split(':')
+                    if ":" in line:
+                        u, pw = line.split(":")
                         if u.strip() == user:
                             wrote_account = True
                             newf.write("%s:%s\n" % (user, password_hash))
@@ -151,6 +161,7 @@ def write_password(user, password_hash):
     #
     os.chmod(PASSWORD_DB_LOCATION, stat.S_IRUSR)
     return
+
 
 #############################################################################
 #
@@ -177,20 +188,23 @@ def main():
     # woudl be the user that invoked this program.
     #
     if options.user is None:
-        sys.stderr.write("You must specify the user to set the password for "
-                         "on the command line.\n")
+        sys.stderr.write(
+            "You must specify the user to set the password for "
+            "on the command line.\n"
+        )
         sys.exit(1)
 
-    print "Setting the password for '%s'" % options.user
+    print("Setting the password for '%s'" % options.user)
     while True:
         pw1 = getpass.getpass("Password: ")
         pw2 = getpass.getpass("Enter password again to verify: ")
         if pw1 == pw2:
             break
-        print "Passwords do NOT match! Re-enter please."
+        print("Passwords do NOT match! Re-enter please.")
 
     write_password(options.user, hash_password(pw1))
     return
+
 
 ############################################################################
 ############################################################################

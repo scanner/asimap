@@ -6,51 +6,55 @@
 Test ssl with ayncore and asynchat
 """
 
+import asynchat
+import asyncore
+import select
+import socket
+import ssl
+
 # system imports
 #
 import sys
-import asyncore
-import asynchat
-import ssl
-import socket
-import select
 
-class EchoServer (asyncore.dispatcher):
 
-    def __init__(self, certfile, keyfile = None):
+class EchoServer(asyncore.dispatcher):
+    def __init__(self, certfile, keyfile=None):
         self.certfile = certfile
         self.keyfile = keyfile
         asyncore.dispatcher.__init__(self)
         self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
         self.set_reuse_addr()
-        self.bind(('0.0.0.0', 993))
+        self.bind(("0.0.0.0", 993))
         self.port = 993
         self.listen(5)
 
     def handle_accept(self):
         sock_obj, addr = self.accept()
-        sys.stderr.write(" server:  new connection from %s:%s\n" %addr)
+        sys.stderr.write(" server:  new connection from %s:%s\n" % addr)
         try:
             ConnectionHandler(sock_obj, self.certfile, self.keyfile)
-        except ssl.SSLError, e:
+        except ssl.SSLError as e:
             sys.stderr.write(" server: connection failed: %s" % str(e))
 
     def handle_error(self):
         raise
 
-class ConnectionHandler (asynchat.async_chat):
 
+class ConnectionHandler(asynchat.async_chat):
     def __init__(self, conn, certfile, keyfile):
         asynchat.async_chat.__init__(self, conn)
-        self.socket = ssl.wrap_socket(conn, server_side=True,
-                                      certfile = certfile,
-                                      keyfile = keyfile,
-                                      do_handshake_on_connect=False)
+        self.socket = ssl.wrap_socket(
+            conn,
+            server_side=True,
+            certfile=certfile,
+            keyfile=keyfile,
+            do_handshake_on_connect=False,
+        )
         while True:
             try:
                 self.socket.do_handshake()
                 break
-            except ssl.SSLError, err:
+            except ssl.SSLError as err:
                 if err.args[0] == ssl.SSL_ERROR_WANT_READ:
                     select.select([self.socket], [], [])
                 elif err.args[0] == ssl.SSL_ERROR_WANT_WRITE:
@@ -61,7 +65,7 @@ class ConnectionHandler (asynchat.async_chat):
         self.ibuffer = []
         self.set_terminator("\r\n")
         msg = "* OK [IMAP4rev1 IDLE ID UNSELECT UIDPLUS] IMAP4rev1 Service Ready\r\n"
-        print "Writing: '%s'" % msg
+        print("Writing: '%s'" % msg)
         self.push(msg)
         return
 
@@ -79,13 +83,13 @@ class ConnectionHandler (asynchat.async_chat):
     def found_terminator(self):
         msg = "".join(self.ibuffer)
         self.ibuffer = []
-        print "Msg: %s" % msg
+        print("Msg: %s" % msg)
         tag, cmd = msg.split(" ")
-        if cmd.lower() == 'capability':
+        if cmd.lower() == "capability":
             out_msg = "%s CAPABILITY IMAP4rev1 IDLE ID UNSELECT UIDPLUS" % tag
         else:
             out_msg = "%s OK" % tag
-        print "Writing: '%s'" % out_msg
+        print("Writing: '%s'" % out_msg)
         self.push(out_msg + "\r\n")
         return
 
@@ -110,19 +114,18 @@ class ConnectionHandler (asynchat.async_chat):
 #############################################################################
 #
 def main():
-    """
-
-    """
+    """ """
     if len(sys.argv) == 3:
-        print "Using certfile %s, keyfile: %s" % (sys.argv[1], sys.argv[2])
-        s = EchoServer(certfile = sys.argv[1], keyfile = sys.argv[2])
+        print("Using certfile %s, keyfile: %s" % (sys.argv[1], sys.argv[2]))
+        s = EchoServer(certfile=sys.argv[1], keyfile=sys.argv[2])
     elif len(sys.argv) == 2:
-        print "Using certfile %s" % sys.argv[1]
-        s = EchoServer(certfile = sys.argv[1])
+        print("Using certfile %s" % sys.argv[1])
+        s = EchoServer(certfile=sys.argv[1])
 
-    print "Starting..."
+    print("Starting...")
     asyncore.loop()
     return
+
 
 ############################################################################
 ############################################################################

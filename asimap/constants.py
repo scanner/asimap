@@ -12,26 +12,38 @@ Various global constants.
 # Here we set the list of defined system flags (flags that may be set on a
 # message) and the subset of those flags that may not be set by a  user.
 #
-SYSTEM_FLAGS = (r'\Answered', r'\Deleted', r'\Draft', r'\Flagged', r'\Recent',
-                r'\Seen')
-NON_SETTABLE_FLAGS = (r'\Recent')
-PERMANENT_FLAGS = (r'\Answered', r'\Deleted', r'\Draft', r'\Flagged', r'\Seen',
-                   r'\*')
+SYSTEM_FLAGS = (
+    r"\Answered",
+    r"\Deleted",
+    r"\Draft",
+    r"\Flagged",
+    r"\Recent",
+    r"\Seen",
+)
+NON_SETTABLE_FLAGS = r"\Recent"
+PERMANENT_FLAGS = (
+    r"\Answered",
+    r"\Deleted",
+    r"\Draft",
+    r"\Flagged",
+    r"\Seen",
+    r"\*",
+)
 
 # mh does not allow '\' in sequence names so we have a mapping between
 # the actual mh sequence name and the corresponding system flag.
 #
 SYSTEM_FLAG_MAP = {
-    'replied': r'\Answered',
-    'Deleted': r'\Deleted',
-    'Draft': r'\Draft',
-    'flagged': r'\Flagged',
-    'Recent': r'\Recent',
-    'Seen': r'\Seen',
-    }
+    "replied": r"\Answered",
+    "Deleted": r"\Deleted",
+    "Draft": r"\Draft",
+    "flagged": r"\Flagged",
+    "Recent": r"\Recent",
+    "Seen": r"\Seen",
+}
 
 REVERSE_SYSTEM_FLAG_MAP = {}
-for key, value in SYSTEM_FLAG_MAP.iteritems():
+for key, value in SYSTEM_FLAG_MAP.items():
     REVERSE_SYSTEM_FLAG_MAP[value] = key
 
 

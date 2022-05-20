@@ -1,11 +1,13 @@
 -r base.in
 
-mypy
-pytest
-pytest-factoryboy
+black
 flake8
 flake8-isort
+ipython
 isort
+mypy
 pip-tools
 pre-commit
+pytest
+pytest-factoryboy
 rich

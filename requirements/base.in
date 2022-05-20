@@ -1,2 +1,3 @@
 pytz
-more-itertools
+aiofiles
+aiomultiprocess

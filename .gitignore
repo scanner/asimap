@@ -4,6 +4,8 @@ debug
 test/test_mode
 *.pyc
 *~
+*.bak
 .pytest_cache
 asimap.egg-info
 venv*
+.tox

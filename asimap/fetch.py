@@ -9,23 +9,22 @@ back to the IMAP Client. The FetchAtt class contains the query of what
 the IMAP Client has asked for as well as the ability to process that
 query and generate the body of the `FETCH` response IMAP message.
 """
-
 # system imports
-#
-# System imports
 #
 import email.utils
 import logging
-from cStringIO import StringIO
-from email.Generator import Generator
-from email.Header import Header
-from kitchen.text.converters import to_bytes
+from email.generator import Generator
+from email.header import Header
+from io import StringIO
+
+import asimap.constants
+import asimap.exceptions
 
 # asimap imports
 #
 import asimap.utils
-import asimap.constants
-import asimap.exceptions
+
+# from kitchen.text.converters import to_bytes  XXX was used in py2
 
 
 ############################################################################
@@ -88,7 +87,7 @@ class TextGenerator(Generator):
 def _is8bitstring(s):
     if isinstance(s, str):
         try:
-            unicode(s, 'us-ascii')
+            str(s, "us-ascii")
         except UnicodeError:
             return True
     return False
@@ -115,8 +114,9 @@ class HeaderGenerator(Generator):
     ####################################################################
     #
     def __init__(self, outfp, headers=[], skip=True):
-        self.log = logging.getLogger("%s.%s" % (__name__,
-                                                self.__class__.__name__))
+        self.log = logging.getLogger(
+            "%s.%s" % (__name__, self.__class__.__name__)
+        )
         Generator.__init__(self, outfp)
         self._headers = [x.lower() for x in headers]
         self._skip = skip
@@ -141,7 +141,7 @@ class HeaderGenerator(Generator):
         #     message's '_write_headers' function will skip our header
         #     field exclusion/inclusion rules.
         #
-        meth = getattr(msg, '_write_headers', None)
+        meth = getattr(msg, "_write_headers", None)
         if meth is None:
             self._write_headers(msg)
         else:
@@ -150,22 +150,23 @@ class HeaderGenerator(Generator):
     ####################################################################
     #
     def _write_headers(self, msg):
-        for h, v in msg.items():
+        for h, v in list(msg.items()):
             # Determine if we are supposed to skip this header or not.
             #
-            if (self._skip and h.lower() in self._headers) or \
-               (not self._skip and h.lower() not in self._headers):
+            if (self._skip and h.lower() in self._headers) or (
+                not self._skip and h.lower() not in self._headers
+            ):
                 continue
 
             # Otherwise output this header.
             #
-            print >> self._fp, '%s:' % h,
+            print("%s:" % h, end=" ", file=self._fp)
             if self._maxheaderlen == 0:
                 # Explicit no-wrapping
-                print >> self._fp, v
+                print(v, file=self._fp)
             elif isinstance(v, Header):
                 # Header instances know what to do
-                print >> self._fp, v.encode()
+                print(v.encode(), file=self._fp)
             elif _is8bitstring(v):
                 # If we have raw 8bit data in a byte string, we have no idea
                 # what the encoding is.  There is no safe way to split this
@@ -173,14 +174,20 @@ class HeaderGenerator(Generator):
                 # ascii split, but if it's multibyte then we could break the
                 # string.  There's no way to know so the least harm seems to
                 # be to not split the string and risk it being too long.
-                print >> self._fp, v
+                print(v, file=self._fp)
             else:
                 # Header's got lots of smarts, so use it.
-                print >> self._fp, Header(
-                    v, maxlinelen=self._maxheaderlen,
-                    header_name=h, continuation_ws='\t').encode()
+                print(
+                    Header(
+                        v,
+                        maxlinelen=self._maxheaderlen,
+                        header_name=h,
+                        continuation_ws="\t",
+                    ).encode(),
+                    file=self._fp,
+                )
         # A blank line always separates headers from body
-        print >> self._fp
+        print(file=self._fp)
 
 
 ############################################################################
@@ -195,20 +202,27 @@ class FetchAtt(object):
     indicates.
     """
 
-    OP_BODY = 'body'
-    OP_BODYSTRUCTURE = 'bodystructure'
-    OP_ENVELOPE = 'envelope'
-    OP_FLAGS = 'flags'
-    OP_INTERNALDATE = 'internaldate'
-    OP_RFC822_HEADER = 'rfc822.header'
-    OP_RFC822_SIZE = 'rfc822.size'
-    OP_RFC822_TEXT = 'rfc822.text'
-    OP_UID = 'uid'
+    OP_BODY = "body"
+    OP_BODYSTRUCTURE = "bodystructure"
+    OP_ENVELOPE = "envelope"
+    OP_FLAGS = "flags"
+    OP_INTERNALDATE = "internaldate"
+    OP_RFC822_HEADER = "rfc822.header"
+    OP_RFC822_SIZE = "rfc822.size"
+    OP_RFC822_TEXT = "rfc822.text"
+    OP_UID = "uid"
 
     #######################################################################
     #
-    def __init__(self, attribute, section=None, partial=None,
-                 peek=False, ext_data=True, actual_command=None):
+    def __init__(
+        self,
+        attribute,
+        section=None,
+        partial=None,
+        peek=False,
+        ext_data=True,
+        actual_command=None,
+    ):
         """
         Fill in the details of our FetchAtt object based on what we parse
         from the given attribute/section/partial.
@@ -222,15 +236,18 @@ class FetchAtt(object):
             self.actual_command = self.attribute.upper()
         else:
             self.actual_command = actual_command
-        self.log = logging.getLogger("%s.%s.%s" % (__name__,
-                                                   self.__class__.__name__,
-                                                   actual_command))
+        self.log = logging.getLogger(
+            "%s.%s.%s" % (__name__, self.__class__.__name__, actual_command)
+        )
 
     #######################################################################
     #
     def __repr__(self):
-        return "FetchAtt(%s[%s]<%s>)" % (self.attribute, str(self.section),
-                                         str(self.partial))
+        return "FetchAtt(%s[%s]<%s>)" % (
+            self.attribute,
+            str(self.section),
+            str(self.partial),
+        )
 
     ##################################################################
     #
@@ -261,12 +278,13 @@ class FetchAtt(object):
                     # convert that to a proper string for our FETCH response.
                     #
                     if isinstance(s, (list, tuple)):
-                        sects.append("%s (%s)" %
-                                     (str(s[0]).upper(),
-                                      ' '.join(x for x in s[1])))
+                        sects.append(
+                            "%s (%s)"
+                            % (str(s[0]).upper(), " ".join(x for x in s[1]))
+                        )
                     else:
                         sects.append(str(s).upper())
-                result += '[%s]' % '.'.join(sects)
+                result += "[%s]" % ".".join(sects)
             if self.partial:
                 result += "<%d.%d>" % (self.partial[0], self.partial[1])
         return result
@@ -274,7 +292,7 @@ class FetchAtt(object):
     #######################################################################
     #
     def fetch(self, ctx):
-        """
+        r"""
         This method applies fetch criteria that this object represents
         to the message and message entry being passed in.
 
@@ -296,11 +314,13 @@ class FetchAtt(object):
         elif self.attribute == "envelope":
             result = self.envelope(self.ctx.msg)
         elif self.attribute == "flags":
-            result = '(%s)' % ' '.join(
-                [asimap.constants.seq_to_flag(x) for x in self.ctx.sequences])
+            result = "(%s)" % " ".join(
+                [asimap.constants.seq_to_flag(x) for x in self.ctx.sequences]
+            )
         elif self.attribute == "internaldate":
-            result = '"%s"' % \
-                self.ctx.internal_date.strftime("%d-%b-%Y %H:%m:%S %z")
+            result = '"%s"' % self.ctx.internal_date.strftime(
+                "%d-%b-%Y %H:%m:%S %z"
+            )
         elif self.attribute == "rfc822.size":
             # result = str(len(self.ctx.mailbox.mailbox.get_string(
             #     self.ctx.msg_key)))
@@ -361,52 +381,71 @@ class FetchAtt(object):
                         # as the message to pass to the generator.
                         #
                         if section[0] != 1 and not msg.is_multipart():
-                            raise BadSection("Trying to retrieve section %d "
-                                             "and this message is not "
-                                             "multipart" % section[0])
+                            raise BadSection(
+                                "Trying to retrieve section %d "
+                                "and this message is not "
+                                "multipart" % section[0]
+                            )
                         try:
-                            msg = msg.get_payload(section[0]-1)
+                            msg = msg.get_payload(section[0] - 1)
                         except IndexError:
-                            raise BadSection("Section %d does not exist in "
-                                             "this message sub-part" %
-                                             section[0])
-                elif (isinstance(section[0], str) and
-                      section[0].upper() == 'TEXT'):
+                            raise BadSection(
+                                "Section %d does not exist in "
+                                "this message sub-part" % section[0]
+                            )
+                elif (
+                    isinstance(section[0], str)
+                    and section[0].upper() == "TEXT"
+                ):
                     g = TextGenerator(fp, headers=False)
                 elif isinstance(section[0], (list, tuple)):
                     if section[0][0].upper() == "HEADER.FIELDS":
-                        g = HeaderGenerator(fp, headers=section[0][1],
-                                            skip=False)
+                        g = HeaderGenerator(
+                            fp, headers=section[0][1], skip=False
+                        )
                     elif section[0][0].upper() == "HEADER.FIELDS.NOT":
-                        g = HeaderGenerator(fp, headers=section[0][1],
-                                            skip=True)
+                        g = HeaderGenerator(
+                            fp, headers=section[0][1], skip=True
+                        )
                     else:
-                        raise BadSection("Section value must be either "
-                                         "HEADER.FIELDS or HEADER.FIELDS.NOT, "
-                                         "not: %s" % section[0][0])
+                        raise BadSection(
+                            "Section value must be either "
+                            "HEADER.FIELDS or HEADER.FIELDS.NOT, "
+                            "not: %s" % section[0][0]
+                        )
                 else:
                     g = HeaderGenerator(fp)
-                    if (isinstance(section[0], str) and
-                            section[0].upper() == 'MIME'):
+                    if (
+                        isinstance(section[0], str)
+                        and section[0].upper() == "MIME"
+                    ):
                         # XXX just use the generator as it is for MIME.. I know
                         # this is not quite right in that it will accept more
                         # then it should, but it will otherwise work.
                         #
                         pass
-                    elif (isinstance(section[0], str) and
-                          section[0].upper() == 'HEADER'):
+                    elif (
+                        isinstance(section[0], str)
+                        and section[0].upper() == "HEADER"
+                    ):
                         # if the content type is message/rfc822 then to
                         # get the headers we need to use the first
                         # sub-part of this message.
                         #
-                        if msg.is_multipart() and \
-                           msg.get_content_type() == 'message/rfc822':
+                        if (
+                            msg.is_multipart()
+                            and msg.get_content_type() == "message/rfc822"
+                        ):
                             msg = msg.get_payload(0)
                     else:
-                        self.log.warn("body: Unexpected section[0] value: %s" %
-                                      repr(section))
-                        raise BadSection("%s: Unexpected section value: %s" %
-                                         (str(self), repr(section[0])))
+                        self.log.warn(
+                            "body: Unexpected section[0] value: %s"
+                            % repr(section)
+                        )
+                        raise BadSection(
+                            "%s: Unexpected section value: %s"
+                            % (str(self), repr(section[0]))
+                        )
             elif isinstance(section[0], int):
                 # We have an integer sub-section. This means that we
                 # need to pull apart the message (it MUST be a
@@ -416,15 +455,19 @@ class FetchAtt(object):
                 # list removed.)
                 #
                 if not msg.is_multipart():
-                    raise BadSection("Message does not contain subsection %d "
-                                     "(section list: %s" % section[0],
-                                     section)
+                    raise BadSection(
+                        "Message does not contain subsection %d "
+                        "(section list: %s" % section[0],
+                        section,
+                    )
                 try:
-                    msg = msg.get_payload(section[0]-1)
+                    msg = msg.get_payload(section[0] - 1)
                 except TypeError:
-                    raise BadSection("Message does not contain subsection %d "
-                                     "(section list: %s)" % section[0],
-                                     section)
+                    raise BadSection(
+                        "Message does not contain subsection %d "
+                        "(section list: %s)" % section[0],
+                        section,
+                    )
                 return self.body(msg, section[1:])
 
             # We should have a generator that will give us the text
@@ -432,8 +475,9 @@ class FetchAtt(object):
             # an appropriate section to parse.
             #
             if g is None:
-                raise BadSection("Section selector '%s' can not be parsed" %
-                                 section)
+                raise BadSection(
+                    "Section selector '%s' can not be parsed" % section
+                )
             g.flatten(msg)
             msg_text = fp.getvalue()
 
@@ -444,7 +488,7 @@ class FetchAtt(object):
         #
         msg_text = email.utils.fix_eols(msg_text)
         if self.partial:
-            msg_text = msg_text[self.partial[0]:self.partial[1]]
+            msg_text = msg_text[self.partial[0] : self.partial[1]]
 
         # We return all of these body sections as a length prefixed
         # IMAP string. Also run the message text through the wringer
@@ -452,7 +496,8 @@ class FetchAtt(object):
         # (since we are sending messages over the network we want
         # stuff a bytes as much as possible.)
         #
-        msg_text = to_bytes(msg_text.decode('utf8', 'replace'))
+        # msg_text = to_bytes(msg_text.decode("utf8", "replace")) XXX py2 way
+        msg_text = msg_text.encode(encoding="UTF-8")
         return "{%d}\r\n%s" % (len(msg_text), msg_text)
 
     #######################################################################
@@ -470,13 +515,23 @@ class FetchAtt(object):
         result = []
 
         from_field = ""
-        for field in ('date', 'subject', 'from', 'sender', 'reply-to',
-                      'to', 'cc', 'bcc', 'in-reply-to', 'message-id'):
+        for field in (
+            "date",
+            "subject",
+            "from",
+            "sender",
+            "reply-to",
+            "to",
+            "cc",
+            "bcc",
+            "in-reply-to",
+            "message-id",
+        ):
 
             # 'reply-to' and 'sender' are copied from the 'from' field
             # if they are not explicitly defined.
             #
-            if field in ('sender', 'reply-to') and field not in msg:
+            if field in ("sender", "reply-to") and field not in msg:
                 result.append(from_field)
                 continue
 
@@ -489,7 +544,7 @@ class FetchAtt(object):
             # The from, sender, reply-to, to, cc, and bcc fields are
             # parenthesized lists of address structures.
             #
-            if field in ('from', 'sender', 'reply-to', 'to', 'cc', 'bcc'):
+            if field in ("from", "sender", "reply-to", "to", "cc", "bcc"):
                 addrs = email.Utils.getaddresses([msg[field]])
                 if len(addrs) == 0:
                     result.append("NIL")
@@ -521,8 +576,8 @@ class FetchAtt(object):
                     # name.
                     #
                     if paddr != "":
-                        if '@' in paddr:
-                            mbox_name, host_name = paddr.split('@')
+                        if "@" in paddr:
+                            mbox_name, host_name = paddr.split("@")
                             one_addr.append('"%s"' % mbox_name)
                             one_addr.append('"%s"' % host_name)
                         else:
@@ -540,7 +595,7 @@ class FetchAtt(object):
                     from_field = result[-1]
             else:
                 result.append('"%s"' % msg[field])
-        return '(%s)' % " ".join(result)
+        return "(%s)" % " ".join(result)
 
     ##################################################################
     #
@@ -556,7 +611,7 @@ class FetchAtt(object):
         # We want all of the header that end in "-language"
         #
         langs = []
-        for hdr, value in msg.items():
+        for hdr, value in list(msg.items()):
             if hdr[-9:].lower() != "-language":
                 continue
             if "," in value:
@@ -583,8 +638,8 @@ class FetchAtt(object):
         Arguments:
         - `msg`: the message (message part) we are looking at
         """
-        if 'content-location' in msg:
-            return '"%s"' % msg['content-location']
+        if "content-location" in msg:
+            return '"%s"' % msg["content-location"]
         return "NIL"
 
     ##################################################################
@@ -605,7 +660,7 @@ class FetchAtt(object):
 
         msg_params = []
         for k, v in msg.get_params():
-            if v == '':
+            if v == "":
                 continue
             msg_params.append('"%s"' % k.upper())
             msg_params.append('"%s"' % v)
@@ -633,11 +688,11 @@ class FetchAtt(object):
         """
         # If we have a content-disposition
         #
-        if 'content-disposition' in msg:
+        if "content-disposition" in msg:
             # XXX We are hard coding what we assume will be in
             # XXX content-disposition. This is doomed to eventual failure.
             #
-            cd = msg.get_params(header='content-disposition')
+            cd = msg.get_params(header="content-disposition")
 
             # if the content disposition does not have parameters then just
             # put 'NIL' for the parameter list, otherwise we have a list of
@@ -656,9 +711,9 @@ class FetchAtt(object):
     #######################################################################
     #
     def bodystructure(self, msg):
-        '''
+        """
         XXX NOTE: WE need to not send extension data if self.ext_data is False.
-        '''
+        """
 
         if msg.is_multipart():
             # If the message is a multipart message then the bodystructure
@@ -699,9 +754,11 @@ class FetchAtt(object):
             # everything we need to return a result.
             #
             if not self.ext_data:
-                return '(%s "%s")' % (''.join(sub_parts),
-                                      msg.get_content_subtype())
-#                                      msg.get_content_subtype().upper())
+                return '(%s "%s")' % (
+                    "".join(sub_parts),
+                    msg.get_content_subtype(),
+                )
+            #                                      msg.get_content_subtype().upper())
 
             # Otherwise this is a real 'bodystructure' fetch and we need to
             # return the extension data as well.
@@ -727,14 +784,15 @@ class FetchAtt(object):
             #    A string list giving the body content URI as defined in
             #    [LOCATION].
             #
-            return '(%s "%s" %s %s %s %s)' % \
-                   (''.join(sub_parts),
-                    # msg.get_content_subtype().upper(),
-                    msg.get_content_subtype(),
-                    self.body_parameters(msg),
-                    self.body_disposition(msg),
-                    self.body_languages(msg),
-                    self.body_location(msg))
+            return '(%s "%s" %s %s %s %s)' % (
+                "".join(sub_parts),
+                # msg.get_content_subtype().upper(),
+                msg.get_content_subtype(),
+                self.body_parameters(msg),
+                self.body_disposition(msg),
+                self.body_languages(msg),
+                self.body_location(msg),
+            )
 
         # Otherwise, we figure out the bodystructure of this message
         # part and return that as a string in parentheses.
@@ -759,17 +817,17 @@ class FetchAtt(object):
         # The body id (what is this? none of our message from a test
         # IMAP server ever set this.
         #
-        result.append('NIL')
+        result.append("NIL")
 
         # Body description.
         # diito as body id.. noone seems to use this.
         #
-        result.append('NIL')
+        result.append("NIL")
 
         # The body encoding, from the 'content transfer-encoding' header.
         #
-        if 'content-transfer-encoding' in msg:
-            result.append('"%s"' % msg['content-transfer-encoding'].upper())
+        if "content-transfer-encoding" in msg:
+            result.append('"%s"' % msg["content-transfer-encoding"].upper())
         else:
             result.append('"7bit"')
             # result.append('"7BIT"')
@@ -804,7 +862,7 @@ class FetchAtt(object):
         # If we are not supposed to return extension data then we are done here
         #
         if not self.ext_data:
-            return '(%s)' % ' '.join(result)
+            return "(%s)" % " ".join(result)
 
         # Now we have the message body extension data.
         #
@@ -812,7 +870,7 @@ class FetchAtt(object):
         # XXX Dovecot does not supply this so we will skip this too.
         # result.append('"%s"' % hashlib.md5(payload).hexdigest())
         #
-        result.append('NIL')
+        result.append("NIL")
 
         # body disposition
         #    A parenthesized list, consisting of a disposition type
@@ -831,4 +889,4 @@ class FetchAtt(object):
 
         # Convert our result in to a parentheses list.
         #
-        return '(%s)' % ' '.join(result)
+        return "(%s)" % " ".join(result)

@@ -21,9 +21,10 @@ can tell us to clear all the entries for that mailbox.
 
 # system imports
 #
-from __future__ import division
+
 import logging
 import time
+from functools import reduce
 
 # asimap imports
 #
@@ -61,8 +62,9 @@ class MessageCache(object):
         - `max_size`: Limit in octets of how many messages we will
           store in the cache.
         """
-        self.log = logging.getLogger("%s.%s" % (__name__,
-                                                self.__class__.__name__))
+        self.log = logging.getLogger(
+            "%s.%s" % (__name__, self.__class__.__name__)
+        )
         self.max_size = max_size
         self.cur_size = 0
         self.num_msgs = 0
@@ -76,12 +78,19 @@ class MessageCache(object):
         For string return the object and some stats about it.
         """
         num_msgs = reduce(
-            lambda x, y: x+y, [len(z) for z in
-                               self.msgs_by_mailbox.itervalues()]
+            lambda x, y: x + y, [len(z) for z in self.msgs_by_mailbox.values()]
         )
-        return "<%s.%s: size: %d, number of mboxes: %d, number of " \
-            "messages: %d" % (__name__, self.__class__.__name__, self.cur_size,
-                              len(self.msgs_by_mailbox), num_msgs)
+        return (
+            "<%s.%s: size: %d, number of mboxes: %d, number of "
+            "messages: %d"
+            % (
+                __name__,
+                self.__class__.__name__,
+                self.cur_size,
+                len(self.msgs_by_mailbox),
+                num_msgs,
+            )
+        )
 
     ##################################################################
     #
@@ -103,9 +112,11 @@ class MessageCache(object):
         # Somewhere up the call stack it will see this and trigger a
         # resync of the mailbox and then re-try the failed command.
         #
-        if 'x-asimapd-uid' not in msg:
-            self.log.error("add: mailbox '%s' inconsistency msg key %d has no"
-                           " UID header" % (mbox, msg_key))
+        if "x-asimapd-uid" not in msg:
+            self.log.error(
+                "add: mailbox '%s' inconsistency msg key %d has no"
+                " UID header" % (mbox, msg_key)
+            )
             raise MailboxInconsistency(mbox_name=mbox, msg_key=msg_key)
 
         if mbox not in self.msgs_by_mailbox:
@@ -113,15 +124,16 @@ class MessageCache(object):
 
         msg_size = len(msg.as_string())
         self.cur_size += msg_size
-        self.msgs_by_mailbox[mbox].append((msg_key, msg_size, msg,
-                                           time.time()))
+        self.msgs_by_mailbox[mbox].append(
+            (msg_key, msg_size, msg, time.time())
+        )
 
         # If we have exceeded our max size remove the oldest messages
         # until we go under our max size.
         #
         while self.cur_size > self.max_size:
             oldest = None
-            for mbox_name in self.msgs_by_mailbox.iterkeys():
+            for mbox_name in self.msgs_by_mailbox.keys():
                 if len(self.msgs_by_mailbox[mbox_name]) == 0:
                     continue
                 if oldest is None:
@@ -129,8 +141,10 @@ class MessageCache(object):
                 elif oldest[1][3] > self.msgs_by_mailbox[mbox_name][0][3]:
                     oldest = (mbox_name, self.msgs_by_mailbox[mbox_name][0])
             if oldest is None:
-                self.log.warn("Unable to get cur_size %d under max size %d" %
-                              (self.cur_size, self.max_size))
+                self.log.warn(
+                    "Unable to get cur_size %d under max size %d"
+                    % (self.cur_size, self.max_size)
+                )
                 return
             self.msgs_by_mailbox[oldest[0]].pop(0)
             if len(self.msgs_by_mailbox[oldest[0]]) == 0:
@@ -208,11 +222,16 @@ class MessageCache(object):
         for msg_item in self.msgs_by_mailbox[mbox]:
             self.cur_size -= msg_item[1]
         del self.msgs_by_mailbox[mbox]
-        self.log.debug("Clear mbox %s from the message cache, "
-                       "new size: %d (%.1f%% full, %.1fMib)" %
-                       (mbox, self.cur_size,
-                        (self.cur_size / self.max_size)*100,
-                        (self.cur_size / 1048576)))
+        self.log.debug(
+            "Clear mbox %s from the message cache, "
+            "new size: %d (%.1f%% full, %.1fMib)"
+            % (
+                mbox,
+                self.cur_size,
+                (self.cur_size / self.max_size) * 100,
+                (self.cur_size / 1048576),
+            )
+        )
         return
 
     ##################################################################
