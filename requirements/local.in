@@ -1,0 +1,11 @@
+-r base.in
+
+mypy
+pytest
+pytest-factoryboy
+flake8
+flake8-isort
+isort
+pip-tools
+pre-commit
+rich
