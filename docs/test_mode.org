@@ -13,5 +13,3 @@ In test mode the following parameters are forced:
 - foreground (no daemonize)
 - pid file: None
 - log dir: stderr
-
-

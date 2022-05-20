@@ -86,5 +86,3 @@ class IMAPClientHandler(asyncore.dispatcher_with_send):
     def __init__(self, ):
         """
         """
-        
-        

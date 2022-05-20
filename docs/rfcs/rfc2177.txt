@@ -56,7 +56,7 @@ Status of this Memo
 
 
 Leiba                       Standards Track                     [Page 1]
-
+
 RFC 2177                   IMAP4 IDLE command                  June 1997
 
 
@@ -112,7 +112,7 @@ RFC 2177                   IMAP4 IDLE command                  June 1997
 
 
 Leiba                       Standards Track                     [Page 2]
-
+
 RFC 2177                   IMAP4 IDLE command                  June 1997
 
 
@@ -168,7 +168,7 @@ RFC 2177                   IMAP4 IDLE command                  June 1997
 
 
 Leiba                       Standards Track                     [Page 3]
-
+
 RFC 2177                   IMAP4 IDLE command                  June 1997
 
 
@@ -224,4 +224,3 @@ RFC 2177                   IMAP4 IDLE command                  June 1997
 
 
 Leiba                       Standards Track                     [Page 4]
-

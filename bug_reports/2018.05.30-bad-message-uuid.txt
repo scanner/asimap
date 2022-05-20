@@ -28,7 +28,7 @@ Traceback (most recent call last):
   File "/usr/local/lib/python2.7/site-packages/asimap/client.py", line 126, in c
 ommand
     imap_command.command)(imap_command)
-  File "/usr/local/lib/python2.7/site-packages/asimap/client.py", line 1207, in 
+  File "/usr/local/lib/python2.7/site-packages/asimap/client.py", line 1207, in
 do_fetch
     raise e
 

@@ -76,4 +76,3 @@ class ConnectionHandler(asyncore.dispatcher_with_send):
 
     def handle_error(self):
         raise
-

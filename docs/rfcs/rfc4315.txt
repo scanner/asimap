@@ -56,7 +56,7 @@ Abstract
 
 
 Crispin                     Standards Track                     [Page 1]
-
+
 RFC 4315                IMAP - UIDPLUS Extension           December 2005
 
 
@@ -112,7 +112,7 @@ RFC 4315                IMAP - UIDPLUS Extension           December 2005
 
 
 Crispin                     Standards Track                     [Page 2]
-
+
 RFC 4315                IMAP - UIDPLUS Extension           December 2005
 
 
@@ -168,7 +168,7 @@ RFC 4315                IMAP - UIDPLUS Extension           December 2005
 
 
 Crispin                     Standards Track                     [Page 3]
-
+
 RFC 4315                IMAP - UIDPLUS Extension           December 2005
 
 
@@ -224,7 +224,7 @@ RFC 4315                IMAP - UIDPLUS Extension           December 2005
 
 
 Crispin                     Standards Track                     [Page 4]
-
+
 RFC 4315                IMAP - UIDPLUS Extension           December 2005
 
 
@@ -280,7 +280,7 @@ RFC 4315                IMAP - UIDPLUS Extension           December 2005
 
 
 Crispin                     Standards Track                     [Page 5]
-
+
 RFC 4315                IMAP - UIDPLUS Extension           December 2005
 
 
@@ -336,7 +336,7 @@ RFC 4315                IMAP - UIDPLUS Extension           December 2005
 
 
 Crispin                     Standards Track                     [Page 6]
-
+
 RFC 4315                IMAP - UIDPLUS Extension           December 2005
 
 
@@ -392,7 +392,7 @@ Author's Address
 
 
 Crispin                     Standards Track                     [Page 7]
-
+
 RFC 4315                IMAP - UIDPLUS Extension           December 2005
 
 
@@ -448,4 +448,3 @@ Acknowledgement
 
 
 Crispin                     Standards Track                     [Page 8]
-
