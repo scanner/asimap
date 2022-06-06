@@ -125,8 +125,7 @@ class Database(object):
         #
         for idx, migration in enumerate(MIGRATIONS[version:], start=version):
             self.log.info(
-                "Applying migration version %d (%s)"
-                % (idx, migration.__name__)
+                "Applying migration version %d (%s)" % (idx, migration.__name__)
             )
             c = self.conn.cursor()
             migration(c)

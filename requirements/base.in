@@ -1,3 +1,4 @@
 pytz
 aiofiles
 aiomultiprocess
+aiosqlite

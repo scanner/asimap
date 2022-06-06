@@ -6,7 +6,7 @@
 The AS IMAP Daemon. This is intended to be run as root. It provides an
 IMAP service that is typically backed by MH mail folders.
 """
-
+import asyncio
 import asyncore
 import logging
 import logging.handlers
@@ -14,6 +14,7 @@ import optparse
 import os.path
 import random
 import socket
+import ssl
 
 # system imports
 #
@@ -335,6 +336,17 @@ def main():
     # handled when 'asyncore.loop()' is called.
     #
     try:
+        if options.asyncio:
+            ssl_context = None
+            if options.ssl_cert:
+                ssl_context = ssl.create_default_context(ssl.CLIENT_AUTH)
+                ssl_context.load_cert_chain(options.ssl_cert)
+            server = asimap.server.AsyncIMAPServer(
+                options.interface, options.port, options, ssl_context
+            )
+            asyncio.run(server.get_server())
+            return
+
         if options.port:
             asimap.server.IMAPServer(options.interface, options.port, options)
         if options.ssl:

@@ -6,10 +6,12 @@
 pytest fixtures for testing `asimap`
 """
 
+import json
+import ssl
+
 # system imports
 #
-
-import ssl
+from pathlib import Path
 
 # project imports
 #
@@ -55,3 +57,14 @@ def ssl_context(ssl_certificate):
     # XXX Do not remove until we actually properly setup the context
     #
     raise NotImplementedError
+
+
+####################################################################
+#
+@pytest.fixture()
+def good_received_messages():
+    """
+    Proper IMAP messages for testing parsing
+    """
+    msgs = Path(__file__).parent / "fixtures" / "good_received_imap_messages.js"
+    return json.loads(msgs.read_text())

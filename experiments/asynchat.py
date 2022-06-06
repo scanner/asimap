@@ -238,9 +238,7 @@ class async_chat(asyncore.dispatcher):
             try:
                 with catch_warnings():
                     if py3kwarning:
-                        filterwarnings(
-                            "ignore", ".*buffer", DeprecationWarning
-                        )
+                        filterwarnings("ignore", ".*buffer", DeprecationWarning)
                     data = memoryview(first, 0, obs)
             except TypeError:
                 data = first.more()

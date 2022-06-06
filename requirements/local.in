@@ -11,3 +11,4 @@ pre-commit
 pytest
 pytest-factoryboy
 rich
+codetiming

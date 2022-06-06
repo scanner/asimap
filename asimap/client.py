@@ -136,9 +136,7 @@ class BaseClientHandler(object):
         #
         # start_time = time.time()
         try:
-            result = getattr(self, "do_%s" % imap_command.command)(
-                imap_command
-            )
+            result = getattr(self, "do_%s" % imap_command.command)(imap_command)
         except No as e:
             result = "%s NO %s\r\n" % (imap_command.tag, str(e))
             self.client.push(result)
@@ -432,9 +430,7 @@ class PreAuthenticated(BaseClientHandler):
         # results then we are going to throttle them and not accept their
         # attempt to login.
         #
-        if not asimap.throttle.check_allow(
-            cmd.user_name, self.client.rem_addr
-        ):
+        if not asimap.throttle.check_allow(cmd.user_name, self.client.rem_addr):
             raise Bad("Too many authentication failures")
 
         # XXX This should poke the authentication mechanism we were passed

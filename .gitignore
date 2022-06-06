@@ -9,3 +9,6 @@ test/test_mode
 asimap.egg-info
 venv*
 .tox
+.isorted
+.blackened
+venv*

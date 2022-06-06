@@ -1176,8 +1176,7 @@ class IMAPClientCommand(object):
         if section is None:
             raise BadSyntax(
                 value="%s: expected a valid section "
-                "identifier, one of: %s"
-                % (self.input[:10], str(section_texts))
+                "identifier, one of: %s" % (self.input[:10], str(section_texts))
             )
 
         # If the section is one of 'header.fields.not' or 'header.fields'
@@ -1580,8 +1579,7 @@ class IMAPClientCommand(object):
             # Otherwise this is a bad sequence number..
             #
             raise BadSyntax(
-                value='"%s" is not a valid message '
-                "sequence number" % seq_num
+                value='"%s" is not a valid message ' "sequence number" % seq_num
             )
         return result
 

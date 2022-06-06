@@ -394,8 +394,7 @@ class FetchAtt(object):
                                 "this message sub-part" % section[0]
                             )
                 elif (
-                    isinstance(section[0], str)
-                    and section[0].upper() == "TEXT"
+                    isinstance(section[0], str) and section[0].upper() == "TEXT"
                 ):
                     g = TextGenerator(fp, headers=False)
                 elif isinstance(section[0], (list, tuple)):

@@ -1217,8 +1217,7 @@ class Mailbox(object):
                     redoing_rest_of_folder = True
                     self.log.debug(
                         "Found msg %d uid_vv/uid %s.%s out of "
-                        "sequence. Redoing rest of folder."
-                        % (msg, uid_vv, uid)
+                        "sequence. Redoing rest of folder." % (msg, uid_vv, uid)
                     )
                 else:
                     uids_found.append(uid)
@@ -1456,13 +1455,13 @@ class Mailbox(object):
             have a feeling that this can be slow at times.
         """
         if len(self.mailbox.list_folders()) > 0:
-            self.attributes.add("\\HasChildren")
-            if "\\HasNoChildren" in self.attributes:
-                self.attributes.remove("\\HasNoChildren")
+            self.attributes.add(r"\HasChildren")
+            if r"\HasNoChildren" in self.attributes:
+                self.attributes.remove(r"\HasNoChildren")
         else:
-            self.attributes.add("\\HasNoChildren")
-            if "\\HasChildren" in self.attributes:
-                self.attributes.remove("\\HasChildren")
+            self.attributes.add(r"\HasNoChildren")
+            if r"\HasChildren" in self.attributes:
+                self.attributes.remove(r"\HasChildren")
         return
 
     ##################################################################
@@ -2542,9 +2541,7 @@ class Mailbox(object):
             #
             open(seq_path, "w+").close()
 
-        return max(
-            int(os.path.getmtime(path)), int(os.path.getmtime(seq_path))
-        )
+        return max(int(os.path.getmtime(path)), int(os.path.getmtime(seq_path)))
 
     #########################################################################
     #

@@ -296,8 +296,7 @@ class IMAPUserClientHandler(asynchat.async_chat):
         #
         if self.cmd_processor.state == "logged_out":
             self.log.info(
-                "Client %s has logged out of the subprocess"
-                % self.log_string()
+                "Client %s has logged out of the subprocess" % self.log_string()
             )
             self.cleanup()
             if self.socket is not None:
@@ -556,8 +555,7 @@ class IMAPUserServer(asyncore.dispatcher):
             if now - start_time > 5:
                 self.log.debug(
                     "process_queued_command: ** Running for %f "
-                    "seconds. Will run more commands later"
-                    % (now - start_time)
+                    "seconds. Will run more commands later" % (now - start_time)
                 )
                 return
 

@@ -7,8 +7,8 @@ This is the heart of the main server. This is what accepts incoming
 network connections, authenticates users, spawns userserver's, and
 relays IMAP messages between an IMAP client and a userserver.
 """
-
 import asynchat
+import asyncio
 import asyncore
 import logging
 import os
@@ -22,6 +22,7 @@ import subprocess
 #
 import time
 import traceback
+from typing import Any, Dict, Optional
 
 # asimap imports
 #
@@ -135,8 +136,7 @@ class IMAPSubprocessHandle(object):
             self.port = int(self.subprocess.stdout.read().strip())
         except ValueError as e:
             self.log.error(
-                "Unable to read port definition from subprocess: "
-                "%s" % str(e)
+                "Unable to read port definition from subprocess: " "%s" % str(e)
             )
             # XXX Uh.. what do we do here? basically the subprocess start
             # failed and we need to tell our caller so they can deal with it.
@@ -191,6 +191,69 @@ class IMAPSubprocessHandle(object):
         if self.rc != 0:
             self.log.error("Subprocess had non-zero return code: %d" % self.rc)
         return False
+
+
+########################################################################
+########################################################################
+#
+class AsyncIMAPServer:
+    """
+    The IMAPServer dispatcher. This really just listens for TCP
+    connections from IMAP Clients and when we accept one we hand it
+    off to an IMAPClientHandler to deal with.
+    """
+
+    ####################################################################
+    #
+    def __init__(
+        self,
+        address: str,
+        port: int,
+        options: Dict[str, Any],
+        ssl_context: Optional[ssl.SSLContext] = None,
+    ):
+        """ """
+        self.options = options
+        self.address = address
+        self.port = port
+        self.ssl_context = ssl_context
+        self.asyncio_server = None
+
+    ####################################################################
+    #
+    def get_server(self):
+        """ """
+        self.asyncio_server = asyncio.start_server(
+            self.new_client, self.address, self.port
+        )
+        return self.asyncio_server
+
+    ####################################################################
+    #
+    async def new_client(self, reader, writer):
+        """
+        New client connection. Create a new AsyncIMAPClientHandler
+        with the reader and writer. Create a new task to handle all
+        future communications with the new client.
+        """
+        client_handler = AsyncIMAPClientHandler(self, reader, writer)
+        # XXX Get the name from the reader/writer.. we want the
+        #     ip/port of the remote connection.
+        #
+        task = asyncio.create_task(client_handler.start(), name="foo")
+        task.add_done_callback(self.client_done)
+        self.tasks[task] = client_handler
+
+    ####################################################################
+    #
+    def client_done(self, task):
+        """
+        Keyword Arguments:
+        task --
+        """
+        if task in self.tasks:
+            del self.tasks[task]
+        logger.info(f"client done, task: {task}")
 
 
 ##################################################################
@@ -397,8 +460,7 @@ class IMAPClientHandler(asynchat.async_chat):
             return
         except ssl.SSLError as err:
             self.log.error(
-                "handle_read: %s, ssl error: %s"
-                % (self.log_string(), str(err))
+                "handle_read: %s, ssl error: %s" % (self.log_string(), str(err))
             )
             # Maybe we should just close the connection instead of
             # raising the exception?
@@ -532,9 +594,7 @@ class IMAPClientHandler(asynchat.async_chat):
                 # already did everything in a non-synchronizing literal
                 # fashion.
                 #
-                self.ibuffer[-1] = (
-                    self.ibuffer[-1][:-2] + self.ibuffer[-1][-1:]
-                )
+                self.ibuffer[-1] = self.ibuffer[-1][:-2] + self.ibuffer[-1][-1:]
 
             # We also tack on a \r\n to the ibuffer so that whatever parses
             # the message knows how to parse the literal string corrctly.
@@ -548,9 +608,7 @@ class IMAPClientHandler(asynchat.async_chat):
         msg = "".join(self.ibuffer)
         self.ibuffer = []
         if self.msg_processor is None:
-            self.log.error(
-                "We have no message processor to send a message to."
-            )
+            self.log.error("We have no message processor to send a message to.")
         else:
             self.msg_processor.message(msg)
         return
@@ -574,6 +632,47 @@ class IMAPClientHandler(asynchat.async_chat):
             self.close()
         self.log.info(" ".join(log_msg))
         return
+
+
+########################################################################
+########################################################################
+#
+class AsyncServerIMAPMessageProcessor(object):
+    """
+    This class is the communication channel to the subprocess that handles all
+    of a specific IMAP client's messages.
+
+    This class and the AsyncIMAPClientHandler form the two parts of
+    communictation between an IMAP client and the subprocess running
+    as a user handling all of that IMAP client's messages.
+
+    This class is given full IMAP messages from the IMAP client.
+
+    IMAP messages are passed to us to pass to the subprocess by calling the
+    'message()' method.
+
+    When we get a full message we either:
+
+    1) hand the message to an instance of the PreAuthenticated class.
+    2) send it to a subprocess to handle and respond to.
+
+    The PreAuthenticated class is an IMAP message processor that understands
+    the IMAP commands from the IMAP client that all involve the
+    'before-authentication' steps.
+
+    Once a client has successfully authenticated with the server we connect to
+    a subprocess that is running as that user and send all further messages
+    from the client to that subprocess to handle.
+
+    When that subprocess disconnects we move back in to the
+    'before-authentication' state (or if the subprocess crashed, we disconnect
+    from the client.)
+    """
+
+    ####################################################################
+    #
+    def __init__(self, client_connection):
+        """ """
 
 
 ##################################################################
@@ -854,8 +953,7 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
 
         self.client_handler.state = "non_authenticated"
         self.log.info(
-            "Connection with subprocess for %s has closed"
-            % (self.log_string())
+            "Connection with subprocess for %s has closed" % (self.log_string())
         )
         # See if the subprocess is alive.. if it is not then it ungraciously
         # went away and we need to tell the IMAP client to go away too.
@@ -885,9 +983,7 @@ class ServerIMAPMessageProcessor(asynchat.async_chat):
 
         We close our connection to the subprocess and do various cleanups.
         """
-        self.log.info(
-            "IMAP client for %s has disconnected" % self.log_string()
-        )
+        self.log.info("IMAP client for %s has disconnected" % self.log_string())
         self.client_connection = None
         self.client_handler.state = "non_authenticated"
         self.client_handler.user = None

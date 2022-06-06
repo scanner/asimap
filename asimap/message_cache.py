@@ -124,9 +124,7 @@ class MessageCache(object):
 
         msg_size = len(msg.as_string())
         self.cur_size += msg_size
-        self.msgs_by_mailbox[mbox].append(
-            (msg_key, msg_size, msg, time.time())
-        )
+        self.msgs_by_mailbox[mbox].append((msg_key, msg_size, msg, time.time()))
 
         # If we have exceeded our max size remove the oldest messages
         # until we go under our max size.

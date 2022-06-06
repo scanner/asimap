@@ -80,8 +80,7 @@ def main():
 
         if len(msgs) < options.keep:
             print(
-                "Less than %s messages in folder. Nothing to do."
-                % options.keep
+                "Less than %s messages in folder. Nothing to do." % options.keep
             )
             return
 
