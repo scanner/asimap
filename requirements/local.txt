@@ -36,6 +36,8 @@ decorator==5.1.1
     # via ipython
 distlib==0.3.4
     # via virtualenv
+docopt==0.6.2
+    # via -r /Users/scanner/Sync/src/asimap/requirements/base.in
 executing==0.8.3
     # via stack-data
 factory-boy==3.2.1

@@ -104,7 +104,7 @@ class TestAuth(BaseAuth):
         self.cwd = os.getcwd()
         self.maildir = None
 
-        alpha_num = string.uppercase + string.lowercase + string.digits
+        alpha_num = string.ascii_letters + string.digits
 
         self.username = "".join(random.choice(alpha_num) for i in range(16))
         self.password = "".join(random.choice(alpha_num) for i in range(16))
