@@ -17,7 +17,7 @@ setup(
     packages=["asimap"],
     # scripts=["asimapd.py", "asimapd_user.py"]
     data_files=[('etc/rc.d', ['utils/asimapd.sh']),
-                ('libexec', ['asimapd.py', 'asimapd_user.py'])]
+                ('libexec', ['asimapd.py', 'asimapd_user.py'])],
     setup_requires=['pytest-runner',],
     tests_require=['pytest', ],
     )
