@@ -1,0 +1,55 @@
+---
+kind: pipeline
+name: AS IMAP Tests
+
+steps:
+  - name: test
+    image: "python:3.11"
+    environment:
+      PYTHONUNBUFFERED: 1
+      DEBUG: true
+    commands:
+      - pip install -U pip
+      - pip install -r ./requirements/development.txt
+      - pytest
+
+---
+kind: pipeline
+name: Build Notify
+
+depends_on:
+  - AS IMAP Tests
+
+trigger:
+  status:
+    - success
+    - failure
+
+steps:
+  - name: slack notification
+    image: plugins/slack
+    settings:
+      webhook:
+        from_secret: slack_notify_webhook
+      channel: builds
+      username: drone
+      template: >-
+        {{#if build.pull }}
+          *{{#success build.status }}✔{{ else }}✘{{/success }} {{ uppercasefirst build.status }}*: <https://github.com/{{ repo.owner }}/{{ repo.name }}/pull/{{ build.pull }}|Pull Request {{ build.pull }}>
+        {{ else }}
+          *{{#success build.status }}✔{{ else }}✘{{/success }} {{ uppercasefirst build.status }}: Build {{ build.number }}* (type: `{{ build.event }}`)
+        {{/if }}
+
+        Repository: <https://github.com/{{ repo.owner }}/{{ repo.name }}|{{ repo.name }}>
+
+        Commit message: {{ build.message }}
+
+        Commit: <https://github.com/{{ repo.owner }}/{{ repo.name }}/commit/{{ build.commit }}|{{ truncate build.commit 8 }}>
+
+        Branch: <https://github.com/{{ repo.owner }}/{{ repo.name }}/commits/{{ build.branch }}|{{ build.branch }}>
+
+        Author: {{ build.author }}
+
+        Duration: {{ since build.started }}
+
+        <{{ build.link }}|Visit build page ↗>
