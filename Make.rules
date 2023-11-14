@@ -1,0 +1,80 @@
+# -*- Mode: Makefile -*-
+
+ACTIVATE := source $(ROOT_DIR)/venv/bin/activate &&
+PYTHON ?= python3.11
+
+.git/hooks/pre-commit .git/hooks/pre-push: venv
+	@$(ACTIVATE) pre-commit install
+	@echo "pre-commit hooks installed!"
+	@touch .git/hooks/pre-commit .git/hooks/pre-push
+
+clean::	## Swab the decks! Does not touch docker images or volumes.
+	@find $(ROOT_DIR) -name \*~ -exec rm '{}' +
+	@find $(ROOT_DIR) -name \*.pyc -exec rm '{}' +
+	@find $(ROOT_DIR) -name __pycache__ -prune -exec rm -fr '{}' +
+	@find $(ROOT_DIR) -name .mypy_cache -prune -exec rm -fr '{}' +
+	@rm -rf build bdist cover dist sdist distribute-* *.egg *.egg-info
+	@rm -rf node_modules
+	@rm -rf *.tar.gz junit.xml coverage.xml .cache
+	@rm -rf .tox .eggs .blackened .isorted .ruff_cache
+	@rm -rf venv*
+	@rm -rf ./ssl/*.pem
+	@find $(ROOT_DIR) \( -name \*.orig -o -name \*.bak -o -name \*.rej \) -exec rm '{}' +
+	@make -C requirements/ clean
+	@mkdir .mypy_cache
+
+requirements/production.txt: requirements/production.in
+	@make -C requirements/ production.txt
+requirements/lint.txt: requirements/lint.in
+	@make -C requirements/ lint.txt
+requirements/development.txt: requirements/development.in requirements/lint.txt requirements/production.txt
+	@make -C requirements/ development.txt
+
+requirements: requirements/development.txt	## Rebuild out of date requirements
+
+$(ROOT_DIR)/venv: requirements/development.txt
+	@if [ -d "$@" ] ; then \
+	  $(ACTIVATE) pip-sync $(ROOT_DIR)/requirements/development.txt ; \
+        else \
+	  $(PYTHON) -m venv $@ ; \
+	  $(ACTIVATE) pip install -U pip ; \
+	  $(ACTIVATE) pip install -U setuptools ; \
+	  $(ACTIVATE) pip install -r $(ROOT_DIR)/requirements/development.txt ; \
+        fi
+	@touch $@
+
+venv:: $(ROOT_DIR)/venv
+
+# Squeegee vs lint targets. `lint` is pre-commit, so it does what you
+# need done for the pre-commit hook to pass. Squeegee runs the various
+# linting and formatting commands directly. It also runs mypy.
+#
+squeegee: venv isort black mypy	## Manually run isort, black, mypy, and ruff over all project files
+	@$(ACTIVATE) ruff $(ROOT_DIR)
+
+lint: venv .git/hooks/pre-commit	## Run all pre-commit hooks. Note: this only runs over files in the git repo (and staged fiels)
+	@$(ACTIVATE) pre-commit run -a
+
+PY_FILES=$(shell find $(ROOT_DIR)/asimap/ $(ROOT_DIR)/scripts/ -type f -name '*.py')
+JS_FILES=$(shell find $(ROOT_DIR)/asimap/ $(ROOT_DIR)/scripts/ -type f -name '*.js')
+.blackened: $(PY_FILES) venv
+	@$(ACTIVATE) black $(ROOT_DIR)/app/ $(ROOT_DIR)/scripts/
+	@touch .blackened
+
+.isorted: $(PY_FILES) venv
+	@$(ACTIVATE) isort $(ROOT_DIR)/app/ $(ROOT_DIR)/scripts/
+	@touch .isorted
+
+.prettier: $(JS_FILES)
+	@npx prettier --write $(ROOT_DIR)/app
+	@touch .prettier
+
+formatting: isort black prettier	## Run `isort`, `black`, `prettier` over all files in project.
+isort: .isorted
+black: .blackened
+prettier: .prettier
+
+mypy: venv  ## Run `mypy` over `app/` and `scripts/`
+	@$(ACTIVATE) mypy --install-types --non-interactive --explicit-package-bases ./app/ ./scripts/
+
+.PHONY: requirements formatting lint squeegee isort black mypy

@@ -34,6 +34,7 @@ import time
 #
 PASSWORD_DB_LOCATION = "/var/db/asimapd_passwords.txt"
 
+
 ############################################################################
 #
 def setup_option_parser():

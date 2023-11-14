@@ -1,1 +1,7 @@
--r base.in
+aiofiles
+aiomultiprocess
+aiorwlock
+aiosqlite
+docopt
+pytz
+sentry-sdk

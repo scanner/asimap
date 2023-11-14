@@ -1,3 +1,7 @@
+[![Build
+Status](https://drone.apricot.com/api/badges/scanner/asimap/status.svg?ref=refs/heads/main)](https://drone.apricot.com/scanner/asimap)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
 'asimap' is a python IMAP server that uses python's mailbox module to
 provide the backing store. This lets us export things like an MH mail
 store via IMAP. Actually the way it is coded right now it ONLY support

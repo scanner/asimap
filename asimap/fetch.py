@@ -331,7 +331,7 @@ class FetchAtt(object):
         elif self.attribute == "uid":
             result = str(self.ctx.uid)
         else:
-            raise NotImplemented
+            raise NotImplementedError
 
         return "%s %s" % (str(self), result)
 
@@ -526,7 +526,6 @@ class FetchAtt(object):
             "in-reply-to",
             "message-id",
         ):
-
             # 'reply-to' and 'sender' are copied from the 'from' field
             # if they are not explicitly defined.
             #

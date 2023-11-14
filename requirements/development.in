@@ -1,0 +1,14 @@
+-r production.txt
+-r lint.txt
+
+codetiming
+ipython
+pytest
+pytest-asyncio
+pytest-coverage
+pytest-factoryboy
+pytest-mock
+pytest-sugar
+requests-mock
+rich
+trustme

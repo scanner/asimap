@@ -9,17 +9,13 @@ timestamp of when the mail was received in its headers.
 
 Except we will keep at least 1,000 in the folder
 """
-
+# system imports
+#
 import email.utils
 import mailbox
 import optparse
 import os
-
-# system imports
-#
-import sys
 import time
-from datetime import datetime
 
 
 ############################################################################
@@ -88,7 +84,6 @@ def main():
         # which ones to move in to which sub-folders.
         #
         for i, msg_key in enumerate(msgs):
-
             if i % 200 == 0:
                 print("%d out of %d" % (i, len(msgs) - i))
 
@@ -99,9 +94,10 @@ def main():
                 if "delivery-date" in msg:
                     tt = email.utils.parsedate_tz(msg["delivery-date"])
                     date = email.utils.mktime_tz(tt)
-            except (ValueError, TypeError):
-                print("Yow. Message %d's 'delivery-date'(%s) resulted in ")
-                "a: %s" % (msg_key, msg["delivery-date"], str(e))
+            except (ValueError, TypeError) as e:
+                print(
+                    f"Yow. Message {msg_key}'s 'delivery-date'({msg['delivery-date']}) resulted in {e}"
+                )
                 tt = None
 
             try:
@@ -137,10 +133,9 @@ def main():
         )
 
         msg_array = msg_array[: -options.keep]
-        print("Goign to move %d messages" % len(msg_array))
+        print(f"Going to move {len(msg_array)} messages")
 
         subfolder = None
-        subfolder_year = None
 
         if options.dry_run:
             print("Doing a dry run! So nothing is actually being done..")

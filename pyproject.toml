@@ -51,10 +51,10 @@ module = [
 ]
 
 [tool.pytest.ini_options]
-addopts = "-vvv"
-testpaths = [
-    "mibudge",
-]
+# addopts = "-vvv"
+# testpaths = [
+#     "mibudge",
+# ]
 markers = [
     "smoke: marks tests as smoke (deselect with '-m \"not smoke\"')",
     "integration",

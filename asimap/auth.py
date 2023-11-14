@@ -67,7 +67,7 @@ class BaseAuth(object):
         It will raise BadAuthentication if the credentials presented are not
         valid.
         """
-        raise NotImplemented
+        raise NotImplementedError
 
 
 ############################################################################
@@ -167,7 +167,6 @@ class SimpleAuth(BaseAuth):
     #########################################################################
     #
     def authenticate(self, username, password):
-
         # if the password does not pan out..
         #
         if not self.password_db.check_password(username, password):

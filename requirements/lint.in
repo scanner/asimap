@@ -1,0 +1,16 @@
+autopep8
+black
+coverage
+flake8
+isort
+mypy
+pip-tools
+pre-commit
+ruff
+types-cachetools
+types-pytz
+types-requests
+types-setuptools
+types-aiofiles
+types-redis
+yapf

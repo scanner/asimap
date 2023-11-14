@@ -23,27 +23,15 @@ o The user this program is being run as is the one that has the MH
   folder you want to index.
 o The MH folder is stored in ~/Mail
 """
-
+# system imports
+#
 import asyncore
 import logging
 import logging.handlers
-import optparse
-
-# system imports
-#
 import os
 import os.path
-import pwd
-import sys
-import time
 
-# XXX NOTE: We munge the python path so that we use the asimap directory we
-#     are running out of as the source of its modules!
-asimap_module_dir = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..")
-)
-sys.path.insert(0, asimap_module_dir)
-# Application imports
+# project imports
 #
 import asimap
 import asimap.user_server
@@ -52,7 +40,7 @@ import asimap.user_server
 ##################################################################
 ##################################################################
 #
-class TempOptions(object):
+class TempOptions:
     """
     An options object that contains the attributes that the user
     server and folder objects expect to do their job.

@@ -8,11 +8,11 @@ class or module. This started with the utilities to pass an fd betwene
 processes. If we build a decently sized set of messaging routines many of these
 may move over in to a module dedicated for that.
 """
-
-import calendar
+import asyncio
 
 # system imports
 #
+import calendar
 import datetime
 import email.utils
 import hashlib
@@ -22,6 +22,7 @@ import pwd
 import random
 import re
 import sys
+from contextlib import asynccontextmanager
 
 import pytz
 
@@ -35,6 +36,92 @@ LOG = logging.getLogger("%s" % (__name__,))
 # message
 #
 uid_re = re.compile(r"(\d+)\s*\.\s*(\d+)")
+
+
+##################################################################
+##################################################################
+#
+class UpgradeableReadWriteLock:
+    """
+    A lock object that allows many simultaneous 'read locks', but only
+    allows one 'write lock.' Furthermore the 'write lock' can only be acquired
+    when a read lock has already been acquired.
+
+    NOTE: This does not support nesting of locks! You could support nesting
+          read locks as long as none of those read locks attempts to upgrade to
+          a write lock.
+    """
+
+    ##################################################################
+    #
+    def __init__(self):
+        self._read_ready = asyncio.Condition()
+
+        # How many read locks are currently held.
+        #
+        self._readers = 0
+
+        # How many read locks want to upgrade to a write lock
+        #
+        self._want_write = 0
+
+    ####################################################################
+    #
+    @asynccontextmanager
+    async def read_lock(self):
+        async with self._read_ready:
+            self._readers += 1
+        try:
+            yield
+        finally:
+            async with self._read_ready:
+                # The key thing is that you must have a read lock to upgrade to
+                # a write lock. We keep track of how many read locks want to
+                # acquire write locks. When this number is the same then we
+                # know that only entities desiring a write lock are around (and
+                # what is more they are all in wait_for on this same condition
+                # -- num read locks == num waiting for a write lock.)
+                #
+                self._readers -= 1
+                if self._readers == self._want_write:
+                    self._read_ready.notify_all()
+
+    ####################################################################
+    #
+    @asynccontextmanager
+    async def write_lock(self):
+        """
+        Upgrade a read lock to a read/write lock. This MUST ONLY be called
+        when you already have a readlock, otherwise the logic will not work.
+        """
+        async with self._read_ready:
+            # While we have the ready_ready lock increment the number of read
+            # lock holders that want to upgrade to a write lock.
+            #
+            self._want_write += 1
+            if self._readers == 0:
+                raise RuntimeError(
+                    "Must already have a read lock to upgrade to a write lock"
+                )
+
+            # We will now wait to be notified when the only read locks that are
+            # held are ones that want to upgrade to a write lock.
+            #
+            await self._read_ready.await_for(
+                lambda: self._readers == self._want_write
+            )
+            # We can decrement that the number of read locks wanting a write
+            # lock has gone down. No one else can execute until we exit this
+            # `async with`
+            #
+            self._want_write -= 1
+
+            # And now we have the write lock. Since we still are holding the
+            # read_ready condition, no other read lock will be able to do
+            # anything until we release our read lock (and send another
+            # notify.)
+            #
+            yield
 
 
 ############################################################################

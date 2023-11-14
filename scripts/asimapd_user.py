@@ -210,7 +210,6 @@ def main():
     now = time.time()
 
     while True:
-
         # If any folders have queued commands then set the timeout waiting for
         # data from clients to 0 so we can process the command queues.
         #

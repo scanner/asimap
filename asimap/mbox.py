@@ -464,7 +464,6 @@ class Mailbox(object):
             found_uids = self.uids
             start_idx = 0
             if len(msgs) > 0:
-
                 # NOTE: We handle a special case where the db was reset.. if
                 #       the last message in the folder has a uid greater than
                 #       what is stored in the folder then set that plus to be
@@ -549,7 +548,6 @@ class Mailbox(object):
                     # deal with in the mailbox.
                     #
                     if first_new_msg or first_msg_wo_uid:
-
                         # Start at the lower of these two message keys.
                         # 'start' is they MH message key. 'start_idx' index in
                         # to the list of message keys for 'start'
@@ -626,7 +624,6 @@ class Mailbox(object):
                             and only_notify.client.port == client.client.port
                         )
                     ):
-
                         to_notify.append(client.client)
 
                 # NOTE: We separate the generating which clients to notify from
@@ -950,7 +947,6 @@ class Mailbox(object):
         old = open(old_name, "r")
         new = open(new_name, "wb")
         try:
-
             # We are fast because we do no header or message parsing. We know
             # this:
             # o the header ends when we hit our first blank line.
@@ -1783,7 +1779,6 @@ class Mailbox(object):
             #
             msgs = list(self.mailbox.keys())
             for msg in seq["Deleted"]:
-
                 # Remove the message from the folder.. and also remove it from
                 # our uids to message index mapping. (NOTE: 'which' is in IMAP
                 # message sequence order, so its actual position in the array
@@ -2175,6 +2170,7 @@ class Mailbox(object):
           is a continuation what the remaining message sequence is.)  we have
           to return not message sequence numbers but message UID's.
         """
+
         ####################################################################
         #
         def add_flags(flags, msgs, seqs, cmd):
@@ -2781,7 +2777,6 @@ class Mailbox(object):
         # Inbox is handled specially.
         #
         if mbox.name.lower() != "inbox":
-
             c = server.db.cursor()
 
             # Get all of the mailboxes that either have the name we are
@@ -2795,7 +2790,6 @@ class Mailbox(object):
                 (old_name, "%s/%%" % old_name),
             )
             for mbox_old_name, mbox_id in r:
-
                 # Compute the mailbox's changed name.
                 #
                 old_name_len = len(old_name)

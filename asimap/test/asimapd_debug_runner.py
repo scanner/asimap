@@ -48,12 +48,8 @@ Options:
                           subprocess does not match the expected
                           output as set in the tracefile being played back.
 """
-
-import fileinput
-
 # system imports
 #
-import json
 
 # 3rd party imports
 #

@@ -858,7 +858,6 @@ class IMAPClientCommand(object):
         # we can for this list and we return what we have.
         #
         while True:
-
             # We should have a token next. If this fails it will raise an
             # exception all the way up
             #
@@ -913,7 +912,6 @@ class IMAPClientCommand(object):
         # Go through the list looking for tokens
         #
         while True:
-
             # We should have a token next. If this fails it will raise an
             # exception all the way up
             #
