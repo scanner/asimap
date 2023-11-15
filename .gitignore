@@ -1,7 +1,7 @@
 build
 debug
 .cache
-test/test_mode
+ssl
 *.pyc
 *~
 *.bak

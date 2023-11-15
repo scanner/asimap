@@ -1,20 +1,14 @@
-#!/usr/bin/env python
-#
-# File: $Id$
-#
 """
 The module that deals with the mailbox objects.
 
 There will be a mailbox per MH folder (but not one for the top level
 that holds all the folders.)
 """
-
+# system imports
+#
 import errno
 import logging
 import mailbox
-
-# system imports
-#
 import os.path
 import re
 import shutil
@@ -22,10 +16,9 @@ import stat
 import time
 from email.parser import HeaderParser
 
-import asimap.search
-
-# asimap import
+# Project imports
 #
+import asimap.search
 import asimap.utils
 from asimap.constants import (
     PERMANENT_FLAGS,
@@ -88,7 +81,7 @@ class InvalidMailbox(MailboxException):
 ##################################################################
 ##################################################################
 #
-class Mailbox(object):
+class Mailbox:
     """
     An instance of an active mailbox folder.
 

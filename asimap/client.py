@@ -1,17 +1,13 @@
-#!/usr/bin/env python
-#
-# File: $Id$
-#
 """
 Here we have the classes that represent the server side state for a
 single connected IMAP client.
 """
-
-import logging
-import os.path
+import asyncio
 
 # system imports
 #
+import logging
+import os.path
 import sys
 from itertools import count, groupby
 
@@ -102,7 +98,7 @@ class BaseClientHandler(object):
 
     ##################################################################
     #
-    def command(self, imap_command):
+    async def command(self, imap_command):
         """
         Process an IMAP command we received from the client.
 
@@ -123,7 +119,7 @@ class BaseClientHandler(object):
         #
         self.tag = imap_command.tag
         if not hasattr(self, "do_%s" % imap_command.command):
-            self.client.push(
+            await self.client.push(
                 "%s BAD Sorry, %s is not a supported "
                 "command\r\n" % (imap_command.tag, imap_command.command)
             )
@@ -139,12 +135,12 @@ class BaseClientHandler(object):
             result = getattr(self, "do_%s" % imap_command.command)(imap_command)
         except No as e:
             result = "%s NO %s\r\n" % (imap_command.tag, str(e))
-            self.client.push(result)
+            await self.client.push(result)
             self.log.debug(result)
             return
         except Bad as e:
             result = "%s BAD %s\r\n" % (imap_command.tag, str(e))
-            self.client.push(result)
+            await self.client.push(result)
             self.log.debug(result)
             return
         except MailboxLock as e:
@@ -161,7 +157,7 @@ class BaseClientHandler(object):
                 imap_command.tag,
                 str(e),
             )
-            self.client.push(result)
+            await self.client.push(result)
             self.log.debug(result)
             raise
 
@@ -174,7 +170,7 @@ class BaseClientHandler(object):
                 imap_command.tag,
                 imap_command.command.upper(),
             )
-            self.client.push(result)
+            await self.client.push(result)
             # self.log.debug(result)
         elif result is False:
             # Some commands do NOT send an OK response immediately.. aka the
@@ -192,7 +188,7 @@ class BaseClientHandler(object):
                 result,
                 imap_command.command.upper(),
             )
-            self.client.push(result)
+            await self.client.push(result)
             # self.log.debug(result)
         return
 
@@ -217,7 +213,7 @@ class BaseClientHandler(object):
 
     ##################################################################
     #
-    def send_pending_expunges(self):
+    async def send_pending_expunges(self):
         """
         Deal with pending expunges that have built up for this client.  This
         can only be called during a command, but not during FETCH, STORE, or
@@ -227,8 +223,9 @@ class BaseClientHandler(object):
         because they are no longer listening to the mailbox (but they will
         empty the list of pending expunges.
         """
-        for p in self.pending_expunges:
-            self.client.push(p)
+        awaitables = []
+        [self.client.push(p) for p in self.pending_expunges]
+        await asyncio.gather(awaitables)
         self.pending_expunges = []
 
     ##################################################################

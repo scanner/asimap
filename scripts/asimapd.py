@@ -7,71 +7,59 @@ The AS IMAP Daemon. This is intended to be run as root. It provides an
 IMAP service that is typically backed by MH mail folders.
 
 Usage:
-  asimapd.py [--port=<p>] [--address=<i>] [--cert=<cert>] [--key=<key>]
-             [--trace=<trace>] [--test] [--debug] [--pidfile=<pidfile>]
-             [--foreground] [--logdir=<d>]
+  asimapd.py [--address=<i>] [--port=<p>] [--cert=<cert>] [--key=<key>]
+             [--trace=<trace>] [--debug] [--logdir=<d>] [--pwfile=<pwfile>]
 
 Options:
   --version
   -h, --help         Show this text and exit
-  --port=<p>         Port to listen on. If `--cert` is specified it will
-                     default to 993 if not stated specifically. Otherwise a
-                     random non priveleged port will be picked.
   --address=<i>      The address to listen on. [default: '0.0.0.0']
+  --port=<p>         Port to listen on. [default: 993]
+  --cert=<cert>      SSL Certificate file
+  --key=<key>        SSL Certificate key file
   --trace=<trace>    The per user subprocesses will each open up a trace file
                      and write to it all messages sent and received. One line
                      per message. The message will be a timestamp, a relative
                      timestamp, the direction of the message (sent/received),
                      and the message itself.The tracefiles will be written to
                      the log dir and will be named <username>-asimap.trace
-  --pidfile=<f>      The PID of the main process will be written to this file.
-  --foreground       Do NOT run in daemon mode. Automatically selected if
-                     `--test` is set.
+  --debug            Debugging output messages enabled
   --logdir=<d>       Path to the directory where log files are stored. Since
                      this is a multiprocess server which each sub-process
                      running as a different user we have a log file for the
                      main server and then a separate log file for each
-                     sub-process. One sub-process per account. The main logfile
+                     sub-process. One sub-process per user. The main logfile
                      will be called 'asimapd.log'. Each sub-process's logfile
-                     will be called '<local user>-asimapd.log'. If this is set
+                     will be called '<user>-asimapd.log'. If this is set
                      to 'stderr' then we will not log to a file but emit all
                      messages for all processes on stderr. [default: stderr]
-  --test             Run the server using the test mode environment. The server
-                     will run as normal except it will use the 'test_auth'
-                     authentication system and the MH mailbox it use will be
-                     the one in '/var/tmp/testmaildir'. It will NOT create this
-                     MH mailbox. You must have set it up previously. This mode
-                     is obviously of limited value and exists primarily to run
-                     a test server that does not attempt to muck with real MH
-                     mailboxes or need to run as root.
-  --debug            Debugging output messages enabled
+  --pwfile=<pwfile>  The file that contains the users and their hashed passwords
 
 """
-import asyncio
-import logging
-
 # system imports
 #
+import asyncio
+import logging
 import os
-import random
 import ssl
-import sys
 from pathlib import Path
 
 # 3rd party imports
 #
 from docopt import docopt
-
-from asimap.server import AsyncIMAPServer
-from asimap.user_server import set_user_server_program
+from dotenv import load_dotenv
+from rich.traceback import install as rich_install
 
 # Application imports
 #
-from asimap.utils import daemonize
+from asimap.server import AsyncIMAPServer
+from asimap.user_server import set_user_server_program
+
+rich_install(show_locals=True)
 
 VERSION = "2.0"
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("asimap")
 
 
 ####################################################################
@@ -128,98 +116,36 @@ def main():
     daemon mode if necessary, setup the asimap library and start
     accepting connections.
     """
+    load_dotenv()
     args = docopt(__doc__, version=VERSION)
-    test = args["--test"]
-    debug = args["--debug"]
-    foreground = args["--foreground"]
     address = args["--address"]
-    port = args["--port"]
-    cert = args["--cert"]
-    key = args["--key"]
-    pidfile = args["--pidfile"]
+    port = int(args["--port"])
+    ssl_cert_file = args["--cert"]
+    ssl_key_file = args["--key"]
+    trace = args["--trace"] if "--trace" in args else None
+    debug = args["--debug"]
     logdir = args["--logdir"]
-
-    # Test mode sets up a bunch of defaults:
-    #
-    # XXX I imagine test_mode will go away when we have the tracefile
-    #     runner.
-    #
-    # - disables daemonize
-    # - sets logdir to be 'stderr'
-    # - sets interface to be '127.0.0.1'
-    # - sets ssl to False
-    # - sets port to be 143
-    # - sets pid file to None
-    # - sets debug = True
-    #
-    if test:
-        dirname = Path(__file__).parent
-        sys.path.insert(0, dirname)
-
-        print("asimap - enabling 'test_mode'.")
-
-        test_mode_dir = None
-        for path in ("test_mode", "test/test_mode", "asimap/test/test_mode"):
-            tmd = Path.cwd() / path
-            print(f"\tchecking for test_modir dir '{tmd}'")
-            if tmd.is_dir():
-                test_mode_dir = tmd
-                break
-
-        if test_mode_dir is None:
-            raise RuntimeError("Unable to find suitable test mode dir")
-
-        foreground = True
-        address = "127.0.0.1"
-        port = random.randint(1234, 32000)
-        cert = None
-        key = None
-        logdir = "stderr"
-        pidfile = None
-        debug = True
-        print(f"\tforeground: {foreground}")
-        print(f"\taddress: {address}:{port}")
-        print(f"\tlogdir: {logdir}")
-        print(f"\tdebug: {debug}")
-
-    # Enter daemon mode early on if it is selected. test_mode disabled
-    # daemon mode.
-    #
-    if not foreground:
-        print("asimap - Entering daemon mode")
-        daemonize()
+    pwfile = args["--pwfile"]
 
     setup_logging(logdir, debug)
     logger.info("Starting")
 
-    try:
-        if pidfile:
-            with open(pidfile, "w+") as f:
-                f.write(f"{os.getpid()}\n")
-            logger.info(f"Wrote pid {os.getpid()} in to pid file '{pidfile}'")
-    except Exception as exc:
-        logger.exception(f"Unable to write PID file '{pidfile}': {exc}")
+    ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    ssl_context.check_hostname = False
+    ssl_context.load_cert_chain(ssl_cert_file, ssl_key_file)
 
-    # If you supply just a certificate then it is both the key and
-    # certificate in one file (key first in the file).
-    #
-    # This forces the port to 993 if a ssl cert is specified
-    #
-    ssl_context = None
-    if cert:
-        ssl_context = ssl.create_default_context(ssl.CLIENT_AUTH)
-        ssl_context.load_cert_chain(cert, keyfile=key)
-        if port is None:
-            port = 993
-
-    # If the port is not yet set, pick a random one. Log our bind address.
-    #
-    if port is None:
-        port = random.randint(1234, 32000)
     logger.info(f"Binding address: {address}:{port}")
 
+    # ASIMap is run internally as a main server that accepts connections and
+    # authenticates them, and once it authenticates them it passes control to a
+    # subprocess. One subprocess per authenticated user.
+    #
+    # We use the program `asimapd_user.py` as the entry point for this user's
+    # subprocess. One subprocess per user. Multiple connections from the same
+    # user go to this one subprocess.
+    #
     # Using the location of the server program determine the location of
-    # the user_server program (if it was not set via a command line option.)
+    # the user server program.
     #
     user_server_program = Path(__file__).parent / "asimapd_user.py"
     user_server_program.resolve(strict=True)
@@ -239,8 +165,13 @@ def main():
     logger.debug(f"user server program is: '{user_server_program}'")
     set_user_server_program(user_server_program)
 
-    server = AsyncIMAPServer(address, port, ssl_context, debug=debug, test=test)
-    asyncio.run(server.get_server())
+    server = AsyncIMAPServer(
+        address, port, ssl_context, pwfile, trace=trace, debug=debug
+    )
+    try:
+        asyncio.run(server.run())
+    except KeyboardInterrupt:
+        logger.warning("Keyboard interrupt, exiting")
     return
 
 
