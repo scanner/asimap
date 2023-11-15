@@ -5,66 +5,118 @@
 """
 pytest fixtures for testing `asimap`
 """
-
-import json
-import ssl
-
 # system imports
 #
-from pathlib import Path
+from email.headerregistry import Address
+from email.message import EmailMessage
 
-# project imports
+# 3rd party imports
 #
 import pytest
 
-
-####################################################################
+# project imports
 #
-def create_test_users(tmpdir):
-    """
-    Create a auth yaml file with some test users in it.
-    """
-    raise NotImplementedError
+import asimap.auth
+
+from .factories import UserFactory
 
 
 ####################################################################
 #
-@pytest.fixture(scope="session")
-def ssl_certificate(tmpdir):
+@pytest.fixture(autouse=True)
+def mailbox_dir(tmp_path):
     """
-    Generate a SSL certificate for use by `asimap` in tests.
-
-    Returns the file path to the certificate
+    The directory all of the mail dirs will be in for our tests
     """
-    raise NotImplementedError
+    mail_base_dir = tmp_path / "mail_base_dir"
+    mail_base_dir.mkdir(parents=True, exist_ok=True)
+    yield mail_base_dir
 
 
 ####################################################################
 #
-@pytest.fixture(scope="session")
-def ssl_context(ssl_certificate):
+@pytest.fixture
+def user_factory(mailbox_dir):
+    def make_user(*args, **kwargs):
+        user = UserFactory(*args, **kwargs)
+        if "maildir" not in kwargs:
+            maildir = mailbox_dir / user.username
+            maildir.mkdir(parents=True, exist_ok=True)
+            user.maildir = str(maildir)
+        return user
+
+    yield make_user
+
+
+####################################################################
+#
+@pytest.fixture
+def password_file_factory(tmp_path):
     """
-    Generate and return a SSL context that has its own private CA and
-    such so we can test SSL as part of our test suite.
+    Returns a function that when called will create a password file and
+    setup the auth module to use it, given the users it is called with.
     """
-    # Create certificate
 
-    # Store in temp file
+    def make_pw_file(users):
+        # XXX Maybe should randomize the file name?
+        pw_file_location = tmp_path / "asimap_pwfile.txt"
+        with pw_file_location.open("w") as f:
+            for user in users:
+                f.write(f"{user.username}:{user.pw_hash}:{user.maildir}\n")
+        setattr(asimap.auth, "PW_FILE_LOCATION", pw_file_location)
+        return pw_file_location
 
-    ctx = ssl.SSLContext(ssl.PROTOCOL_TSL)
-    ctx.verify_mode = ssl.CERT_NONE
+    orig_location = getattr(asimap.auth, "PW_FILE_LOCATION")
+    yield make_pw_file
+    setattr(asimap.auth, "PW_FILE_LOCATION", orig_location)
 
-    # XXX Do not remove until we actually properly setup the context
+
+####################################################################
+#
+@pytest.fixture
+def email_factory(faker):
+    """
+    Returns a factory that creates email.message.EmailMessages
+
+    For now we will always create MIMEMultipart messages with a text part, html
+    alternative, and a binary attachment.
+    """
+
+    # TODO: have this factory take kwargs for headers the caller can set in the
+    #       generated email.
     #
-    raise NotImplementedError
+    def make_email(**kwargs):
+        """
+        if kwargs for 'subject', 'from' or 'to' are provided use those in
+        the message instead of faker generated ones.
 
+        NOTE: `from` is a reserverd word in python so you need to specify
+              `frm`
+        """
+        msg = EmailMessage()
+        msg["Message-ID"] = faker.uuid4()
+        msg["Subject"] = (
+            faker.sentence() if "subject" not in kwargs else kwargs["subject"]
+        )
+        if "msg_from" not in kwargs:
+            username, domain_name = faker.email().split("@")
+            msg["From"] = Address(faker.name(), username, domain_name)
+        else:
+            msg["From"] = kwargs["msg_from"]
 
-####################################################################
-#
-@pytest.fixture()
-def good_received_messages():
-    """
-    Proper IMAP messages for testing parsing
-    """
-    msgs = Path(__file__).parent / "fixtures" / "good_received_imap_messages.js"
-    return json.loads(msgs.read_text())
+        if "to" not in kwargs:
+            username, domain_name = faker.email().split("@")
+            msg["To"] = Address(faker.name(), username, domain_name)
+        else:
+            msg["To"] = kwargs["to"]
+
+        message_content = faker.paragraphs(nb=5)
+        msg.set_content("\n".join(message_content))
+        paragraphs = "\n".join([f"<p>{x}</p>" for x in message_content])
+        msg.add_alternative(
+            f"<html><head></head><body>{paragraphs}</body></html>",
+            subtype="html",
+        )
+        return msg
+
+    return make_email
