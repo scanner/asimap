@@ -1,6 +1,5 @@
 aiofiles
-aiomultiprocess
-aiorwlock
+aiologger[aiofiles]
 aiosqlite
 docopt
 pytz
