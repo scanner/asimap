@@ -7,8 +7,10 @@ pytest fixtures for testing `asimap`
 """
 # system imports
 #
+import json
 from email.headerregistry import Address
 from email.message import EmailMessage
+from pathlib import Path
 
 # 3rd party imports
 #
@@ -120,3 +122,17 @@ def email_factory(faker):
         return msg
 
     return make_email
+
+
+####################################################################
+#
+@pytest.fixture
+def good_received_imap_messages():
+    """
+    Loop over a file of imap messages
+    """
+    imap_messages_file = (
+        Path(__file__).parent / "fixtures/good_received_imap_messages.json"
+    )
+    messages = json.loads(imap_messages_file.read_text())
+    return messages

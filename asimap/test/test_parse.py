@@ -7,18 +7,17 @@
 """
 Test the asimap IMAP message parser.
 """
-
-from asimap.parse import IMAPClientCommand
+from ..parse import IMAPClientCommand
 
 
 ####################################################################
 #
-def test_parse_good_messages(good_received_messages):
+def test_parse_good_messages(good_received_imap_messages):
     """
     Test the set of messages we know should succeed and what we expect
     the parsed result to print out as.
     """
-    for msg, result in good_received_messages:
+    for msg, result in good_received_imap_messages:
         p = IMAPClientCommand(msg)
         p.parse()
         assert str(p) == result
