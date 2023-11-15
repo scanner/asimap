@@ -195,6 +195,8 @@ pytest-sugar==0.9.7
     # via -r development.in
 python-dateutil==2.8.2
     # via faker
+python-dotenv==1.0.0
+    # via -r production.txt
 pytz==2023.3.post1
     # via -r production.txt
 pyyaml==6.0.1
