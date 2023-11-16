@@ -996,7 +996,7 @@ class Authenticated(BaseClientHandler):
         state: must be selected
 
         The CLOSE command permanently removes all messages that have
-        the \Deleted flag set from the currently selected mailbox, and
+        the Deleted flag set from the currently selected mailbox, and
         returns to the authenticated state from the selected state.
         No untagged EXPUNGE responses are sent.
 
@@ -1043,7 +1043,7 @@ class Authenticated(BaseClientHandler):
     #
     def do_expunge(self, cmd):
         """
-        Delete all messages marked with '\Delete' from the mailbox and send out
+        Delete all messages marked with 'Delete' from the mailbox and send out
         untagged expunge messages...
 
         Arguments:

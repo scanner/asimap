@@ -271,12 +271,12 @@ class Mailbox:
     #
     def marked(self, bool):
         """
-        A helper function that toggles the '\Marked' or '\\Unmarked' flags on a
+        A helper function that toggles the '\\Marked' or '\\Unmarked' flags on a
         folder (another one of those annoying things in the RFC you really only
         need one of these flags.)
 
         Arguments:
-        - `bool`: if True the \Marked attribute is added to the folder. If
+        - `bool`: if True the \\Marked attribute is added to the folder. If
                   False the \\Unmarked attribute is added to the folder.
         """
         if bool:
@@ -306,23 +306,23 @@ class Mailbox:
         and that it is up to date with what messages are in the 'seen'
         sequence.
 
-        This is also what controls setting the '\Marked' and '\\Unmarked' flags
-        on the mailbox as well as marking individual messages as '\Recent'
+        This is also what controls setting the '\\Marked' and '\\Unmarked' flags
+        on the mailbox as well as marking individual messages as '\\Recent'
 
-        We have a '\Seen' flag and we derive this by seeing what messages are
+        We have a '\\Seen' flag and we derive this by seeing what messages are
         in the unseen sequence.
 
-        Since the definition of '\Recent' in rfc3501 is a bit vague on when the
-        \Recent flag is reset (when you select the folder they all get reset?
+        Since the definition of '\\Recent' in rfc3501 is a bit vague on when the
+        \\Recent flag is reset (when you select the folder they all get reset?
         But then how do you find them? It makes little sense) I am going to
-        define a \Recent message as any message whose mtime is at least one
+        define a \\Recent message as any message whose mtime is at least one
         hour before the mtime of the folder.
 
-        This way all new messages are marked '\Recent' and eventually as the
+        This way all new messages are marked '\\Recent' and eventually as the
         folder's mtime moves forward with new messages messages will lose their
-        '\Recent' flag.
+        '\\Recent' flag.
 
-        Any folder with unseen messages will be tagged with '\Marked.' That is
+        Any folder with unseen messages will be tagged with '\\Marked.' That is
         how we are going to treat that flag.
 
         Calling this method will cause 'EXISTS' and 'RECENT' messages to be
@@ -1491,7 +1491,7 @@ class Mailbox:
               <n> EXISTS  The number of messages in the mailbox.  See the
                           description of the EXISTS response for more detail.
 
-              <n> RECENT  The number of messages with the \Recent flag set.
+              <n> RECENT  The number of messages with the \\Recent flag set.
                           See the description of the RECENT response for more
                           detail.
 
@@ -1652,7 +1652,7 @@ class Mailbox:
     def append(self, message, flags=[], date_time=None):
         """
         Append the given message to this mailbox.
-        Set the flags given. We also set the \Recent flag.
+        Set the flags given. We also set the \\Recent flag.
         If date_time is not given set it to 'now'.
         The internal date on the message is set to date_time.
 
@@ -2152,7 +2152,7 @@ class Mailbox:
         """
         Update the flags (sequences) of the messages in msg_set.
 
-        NOTE: No matter what flags are set/reset etc. \Recent is not affected.
+        NOTE: No matter what flags are set/reset etc. \\Recent is not affected.
 
         Arguments:
         - `msg_set`: The set of messages to modify the flags on
@@ -2390,7 +2390,7 @@ class Mailbox:
         """
         Copy the messages in msg_set to the destination mailbox.
         Flags (sequences), and internal date are preserved.
-        Messages get the '\Recent' flag in the new mailbox.
+        Messages get the '\\Recent' flag in the new mailbox.
         Arguments:
         - `msg_set`: Set of messages to copy.
         - `dest_mbox`: mailbox instance messages are being copied to

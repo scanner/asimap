@@ -18,7 +18,7 @@ import string
 import subprocess
 import time
 import traceback
-from typing import Any, Awaitable, Dict, Optional
+from typing import Dict, Optional
 
 # 3rd party imports
 #
@@ -381,7 +381,6 @@ class AsyncIMAPServer:
         self.trace = trace
         self.debug = debug
         self.asyncio_server: asyncio.Server
-        self.asyncio_server_coro: Awaitable[Any]
         self.tasks: Dict[asyncio.Task, AsyncIMAPClientHandler] = {}
 
     ####################################################################
@@ -410,11 +409,10 @@ class AsyncIMAPServer:
         addrs = ", ".join(
             str(sock.getsockname()) for sock in self.asyncio_server.sockets
         )
-        print(f"Serving on {addrs}")
+        logger.debug("Serving on %s", addrs)
         try:
             async with self.asyncio_server:
                 await self.asyncio_server.serve_forever()
-                # await self.asyncio_server_coro
         except asyncio.exceptions.CancelledError:
             pass
         finally:

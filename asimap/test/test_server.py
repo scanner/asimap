@@ -16,6 +16,8 @@ import time
 #
 import pytest
 
+from ..client import CAPABILITIES
+
 # Project imports
 #
 from ..server import AsyncIMAPServer
@@ -65,10 +67,15 @@ def test_server_capabilities(
         imap = imaplib.IMAP4_SSL(
             host=host, port=port, ssl_context=client_ssl_context, timeout=1
         )
-        capabilities = imap.capability()
-        print(f"Capabilities: {capabilities}")
+        status, capabilities = imap.capability()
+        assert status == "OK"
+        assert str(capabilities[0], "ascii") == " ".join(CAPABILITIES)
         imap.logout()
     finally:
         # And shutdown the server.
         #
-        server.asyncio_server.close()
+        try:
+            server.asyncio_server.close()
+        except Exception:
+            pass
+        server_thread.join(timeout=5.0)
