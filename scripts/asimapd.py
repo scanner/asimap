@@ -52,6 +52,7 @@ from rich.traceback import install as rich_install
 
 # Application imports
 #
+import asimap.auth
 from asimap.server import AsyncIMAPServer
 from asimap.user_server import set_user_server_program
 
@@ -122,10 +123,16 @@ def main():
     port = int(args["--port"])
     ssl_cert_file = args["--cert"]
     ssl_key_file = args["--key"]
-    trace = args["--trace"] if "--trace" in args else None
+    trace = args["--trace"]
     debug = args["--debug"]
     logdir = args["--logdir"]
     pwfile = args["--pwfile"]
+
+    # If a password file was specified overwrote the default location for the
+    # password file in the asimap.auth module.
+    #
+    if pwfile:
+        setattr(asimap.auth, "PW_FILE_LOCATION", pwfile)
 
     setup_logging(logdir, debug)
     logger.info("Starting")
@@ -166,7 +173,7 @@ def main():
     set_user_server_program(user_server_program)
 
     server = AsyncIMAPServer(
-        address, port, ssl_context, pwfile, trace=trace, debug=debug
+        address, port, ssl_context, trace=trace, debug=debug
     )
     try:
         asyncio.run(server.run())

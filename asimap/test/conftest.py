@@ -15,12 +15,26 @@ from pathlib import Path
 # 3rd party imports
 #
 import pytest
+import trustme
 
 # project imports
 #
 import asimap.auth
 
 from .factories import UserFactory
+
+
+####################################################################
+#
+@pytest.fixture(scope="session")
+def ssl_certs():
+    """
+    Creates certificates using `trustme`. What is returned is a tuple of a
+    `trustme.CA()` instance, and the `trustme` issued server cert.
+    """
+    ca = trustme.CA()
+    server_cert = ca.issue_cert("127.0.0.1", "localhost", "::1")
+    return (ca, server_cert)
 
 
 ####################################################################

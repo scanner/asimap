@@ -2,10 +2,9 @@
 Here we have the classes that represent the server side state for a
 single connected IMAP client.
 """
-import asyncio
-
 # system imports
 #
+import asyncio
 import logging
 import os.path
 import sys
@@ -52,7 +51,7 @@ STATES = ("not_authenticated", "authenticated", "selected", "logged_out")
 ##################################################################
 ##################################################################
 #
-class BaseClientHandler(object):
+class BaseClientHandler:
     """
     Both the pre-authenticated and authenticated client handlers operate in the
     same manner. So we provide a base class that they both extend to have
@@ -132,7 +131,9 @@ class BaseClientHandler(object):
         #
         # start_time = time.time()
         try:
-            result = getattr(self, "do_%s" % imap_command.command)(imap_command)
+            result = await getattr(self, "do_%s" % imap_command.command)(
+                imap_command
+            )
         except No as e:
             result = "%s NO %s\r\n" % (imap_command.tag, str(e))
             await self.client.push(result)
@@ -223,14 +224,14 @@ class BaseClientHandler(object):
         because they are no longer listening to the mailbox (but they will
         empty the list of pending expunges.
         """
-        awaitables = []
-        [self.client.push(p) for p in self.pending_expunges]
-        await asyncio.gather(awaitables)
-        self.pending_expunges = []
+        awaitables = [self.client.push(p) for p in self.pending_expunges]
+        if awaitables:
+            await asyncio.gather(*awaitables, return_exceptions=True)
+            self.pending_expunges = []
 
     ##################################################################
     #
-    def unceremonious_bye(self, msg):
+    async def unceremonious_bye(self, msg):
         """
         Sometimes we hit a state where we can not easily recover while a client
         is connected. Frequently for clients that are in 'select' on a
@@ -244,8 +245,8 @@ class BaseClientHandler(object):
         Arguments:
         - `msg`: The message to send to the client in the BYE.
         """
-        self.client.push("* BYE %s\r\n" % msg)
-        self.client.close()
+        await self.client.push("* BYE %s\r\n" % msg)
+        await self.client.close()
         return
 
     # The following commands are supported in any state.
@@ -253,7 +254,7 @@ class BaseClientHandler(object):
 
     ##################################################################
     #
-    def do_done(self, cmd):
+    async def do_done(self, cmd):
         """
         We have gotten a DONE. This is only called when we are idling.
 
@@ -261,26 +262,26 @@ class BaseClientHandler(object):
         - `cmd`: This is ignored.
         """
         self.idling = False
-        self.send_pending_expunges()
-        self.client.push("%s OK IDLE terminated\r\n" % self.tag)
+        await self.send_pending_expunges()
+        await self.client.push("%s OK IDLE terminated\r\n" % self.tag)
         return
 
     #########################################################################
     #
-    def do_capability(self, cmd):
+    async def do_capability(self, cmd):
         """
         Return the capabilities of this server.
 
         Arguments:
         - `cmd`: The full IMAP command object.
         """
-        self.send_pending_expunges()
-        self.client.push("* CAPABILITY %s\r\n" % " ".join(CAPABILITIES))
+        await self.send_pending_expunges()
+        await self.client.push("* CAPABILITY %s\r\n" % " ".join(CAPABILITIES))
         return None
 
     #########################################################################
     #
-    def do_namespace(self, cmd):
+    async def do_namespace(self, cmd):
         """
         We currently only support a single personal name space. No leading
         prefix is used on personal mailboxes and '/' is the hierarchy
@@ -289,20 +290,20 @@ class BaseClientHandler(object):
         Arguments:
         - `cmd`: The full IMAP command object.
         """
-        self.send_pending_expunges()
-        self.client.push('* NAMESPACE (("" "/")) NIL NIL\r\n')
+        await self.send_pending_expunges()
+        await self.client.push('* NAMESPACE (("" "/")) NIL NIL\r\n')
         return None
 
     #########################################################################
     #
-    def do_id(self, cmd):
+    async def do_id(self, cmd):
         """
         Construct an ID response... uh.. lookup the rfc that defines this.
 
         Arguments:
         - `cmd`: The full IMAP command object.
         """
-        self.send_pending_expunges()
+        await self.send_pending_expunges()
         self.client_id = cmd.id_dict
         self.log.info(
             "Client at %s:%d identified itself with: %s"
@@ -315,12 +316,12 @@ class BaseClientHandler(object):
         res = []
         for k, v in SERVER_ID.items():
             res.extend(['"%s"' % k, '"%s"' % v])
-        self.client.push("* ID (%s)\r\n" % " ".join(res))
+        await self.client.push("* ID (%s)\r\n" % " ".join(res))
         return None
 
     #########################################################################
     #
-    def do_idle(self, cmd):
+    async def do_idle(self, cmd):
         """
         The idle command causes the server to wait until the client sends
         us a 'DONE' continuation. During that time the client can not send
@@ -338,14 +339,14 @@ class BaseClientHandler(object):
         # of input, if it is "DONE" then we complete this command
         # If it is any other input we raise a bad syntax error.
         #
-        self.client.push("+ idling\r\n")
-        self.send_pending_expunges()
+        await self.client.push("+ idling\r\n")
+        await self.send_pending_expunges()
         self.idling = True
         return False
 
     #########################################################################
     #
-    def do_logout(self, cmd):
+    async def do_logout(self, cmd):
         """
         This just sets our state to 'logged out'. Our caller will take the
         appropriate actions to finishing a client's log out request.
@@ -354,7 +355,9 @@ class BaseClientHandler(object):
         - `cmd`: The full IMAP command object.
         """
         self.pending_expunges = []
-        self.client.push("* BYE Logging out of asimap server. Good bye.\r\n")
+        await self.client.push(
+            "* BYE Logging out of asimap server. Good bye.\r\n"
+        )
         self.state = "logged_out"
         return None
 
@@ -377,7 +380,7 @@ class PreAuthenticated(BaseClientHandler):
 
     ##################################################################
     #
-    def __init__(self, client, auth_system):
+    def __init__(self, client):
         """
         Arguments:
         - `client`: An asynchat.async_chat object that is connected to the IMAP
@@ -391,7 +394,6 @@ class PreAuthenticated(BaseClientHandler):
         self.log = logging.getLogger(
             "%s.%s" % (__name__, self.__class__.__name__)
         )
-        self.auth_system = auth_system
         self.user = None
         return
 

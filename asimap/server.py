@@ -18,7 +18,7 @@ import string
 import subprocess
 import time
 import traceback
-from typing import Dict, Optional
+from typing import Any, Awaitable, Dict, Optional
 
 # 3rd party imports
 #
@@ -30,7 +30,6 @@ from sentry_sdk.integrations.asyncio import AsyncioIntegration
 #
 import asimap.parse
 import asimap.user_server
-from asimap.auth import AUTH_SYSTEMS
 from asimap.client import CAPABILITIES, PreAuthenticated
 
 # logger = logging.getLogger("asimap.server")
@@ -373,9 +372,8 @@ class AsyncIMAPServer:
         address: str,
         port: int,
         ssl_context: ssl.SSLContext,
-        trace: Optional[str | None] = None,
+        trace: Optional[str] = None,
         debug: bool = False,
-        test: bool = False,
     ):
         self.address = address
         self.port = port
@@ -383,6 +381,7 @@ class AsyncIMAPServer:
         self.trace = trace
         self.debug = debug
         self.asyncio_server: asyncio.Server
+        self.asyncio_server_coro: Awaitable[Any]
         self.tasks: Dict[asyncio.Task, AsyncIMAPClientHandler] = {}
 
     ####################################################################
@@ -415,7 +414,16 @@ class AsyncIMAPServer:
         try:
             async with self.asyncio_server:
                 await self.asyncio_server.serve_forever()
+                # await self.asyncio_server_coro
+        except asyncio.exceptions.CancelledError:
+            pass
         finally:
+            # Close any open clients, and await those tasks completing.
+            #
+            clients = [client.close() for client in self.tasks.values()]
+            tasks = [task for task in self.tasks.keys()]
+            await asyncio.gather(*clients, return_exceptions=True)
+            await asyncio.gather(*tasks, return_exceptions=True)
             await logger.shutdown()
 
     ####################################################################
@@ -430,18 +438,16 @@ class AsyncIMAPServer:
         with the reader and writer. Create a new task to handle all
         future communications with the new client.
         """
-        client_handler = AsyncIMAPClientHandler(self, reader, writer)
-        # XXX Get the name from the reader/writer.. we want the
-        #     ip/port of the remote connection.
-        #
-        logger.debug(f"New client: reader: {reader}, writer: {writer}")
-        task = asyncio.create_task(client_handler.start(), name="foo")
+        peer_name = "%s:%d" % writer.get_extra_info("peername")
+        logger.debug(f"New client: {peer_name}")
+        client_handler = AsyncIMAPClientHandler(self, peer_name, reader, writer)
+        task = asyncio.create_task(client_handler.start(), name=peer_name)
         task.add_done_callback(self.client_done)
         self.tasks[task] = client_handler
 
     ####################################################################
     #
-    async def client_done(self, task):
+    def client_done(self, task):
         """
         When the asyncio task represented by the AsyncIMAPClientHandler has
         exited this call back is invoked.
@@ -456,7 +462,7 @@ class AsyncIMAPServer:
 
         try:
             task_name = task.get_name()
-            await task
+            # await task
             logger.info(f"{task_name}: Client handler task done")
         except Exception as exc:
             logger.exception(f"{task_name}: Client handler task failed: {exc}")
@@ -494,15 +500,15 @@ class AsyncIMAPClientHandler:
     def __init__(
         self,
         imap_server: AsyncIMAPServer,
+        name: str,
         reader: asyncio.StreamReader,
         writer: asyncio.StreamWriter,
     ):
+        self.name = name
         self.reader = reader
         self.writer = writer
         self.imap_server = imap_server
         self.debug = imap_server.debug
-        self.test_mode: bool = imap_server.test_mode
-        self.ssl_context = imap_server.ssl_context
         self.trace_file = None
         self.done = False
 
@@ -510,6 +516,11 @@ class AsyncIMAPClientHandler:
         self.stream_buffer_size = 65536
         self.ibuffer = []
         self.msg_processor = AsyncServerIMAPMessageProcessor(self)
+
+    ####################################################################
+    #
+    def __str__(self):
+        return f"{type(self)}:{self.name}"
 
     ####################################################################
     #
@@ -539,78 +550,637 @@ class AsyncIMAPClientHandler:
         XXX This needs to handle all exceptions since it is the root
             of an asyncio task.
         """
-        capabilities = b" ".join([bytes(x, "ascii") for x in CAPABILITIES])
-        await self.push(b"* OK [CAPABILITY %s]\r\n" % capabilities)
-        self.ibuffer = []
-        client_connected = True
-        while client_connected:
-            # Read until b'\r\n'. Trim off the '\r\n'. If the message is not of
-            # 0 length then append it to our incremental buffer.
-            #
-            msg = await self.reader.readuntil(self.LINE_TERMINATOR)
-            msg = msg[:-2]
-            if msg:
-                self.ibuffer.append(msg)
-
-            # If after reading up to a line terminator our incremental buffer
-            # is empty then this is an empty message from the client and that
-            # is an error.
-            #
-            if not self.ibuffer:
-                await self.push(b"* BAD We do not accept empty messages.\r\n")
-                continue
-
-            # Check to see if `msg` ends with a string literal declaration
-            #
-            m = RE_LITERAL_STRING_START.search(msg)
-            if m:
-                literal_str_length = int(m.group(1))
-
-                # If this is a synchronizing string literal (does not have '+'
-                # as the second to last character in its length prefix) we need
-                # to tell the IMAP client that it can proceed to send us the
-                # string literal.
-                #
-                if not m.group(2):
-                    await self.push(b"+ Ready for more input\r\n")
-
-                # Read the string literal.
-                #
-                msg = self.reader.readexactly(literal_str_length)
-                self.ibuffer.append(msg)
-
-                # Loop back to read what is either a b'\r\n' or maybe another
-                # string literal.
-                #
-                continue
-
-            # We only get here if we have read the complete message from the
-            # IMAP Client.
-            #
-            # Send the fully received message from the IMAP Client to the
-            # message processor. If the IMAP Client has properly authenticated
-            # then the message is sent to a subprocess to work on. Otherwise,
-            # we process the IMAP command locally and send a response back.
-            #
-            msg = b"".join(self.ibuffer)
+        try:
+            capabilities = " ".join(CAPABILITIES)
+            await self.push(f"* OK [CAPABILITY {capabilities}]\r\n")
             self.ibuffer = []
-            client_connected = await self.msg_processor.message(msg)
-        # We get here when we are no longer supposed to be connected to the
-        # client. Close our connection and return which will cause this task to
-        # be completed.
-        #
-        await self.close()
+            client_connected = True
+            while client_connected:
+                # Read until b'\r\n'. Trim off the '\r\n'. If the message is
+                # not of 0 length then append it to our incremental buffer.
+                #
+                msg = await self.reader.readuntil(self.LINE_TERMINATOR)
+                msg = msg[:-2]
+                if msg:
+                    self.ibuffer.append(msg)
+
+                # If after reading up to a line terminator our incremental
+                # buffer is empty then this is an empty message from the client
+                # and that is an error.
+                #
+                if not self.ibuffer:
+                    await self.push(
+                        "* BAD We do not accept empty messages.\r\n"
+                    )
+                    continue
+
+                # Check to see if `msg` ends with a string literal declaration
+                #
+                m = RE_LITERAL_STRING_START.search(msg)
+                if m:
+                    literal_str_length = int(m.group(1))
+
+                    # If this is a synchronizing string literal (does not have
+                    # '+' as the second to last character in its length prefix)
+                    # we need to tell the IMAP client that it can proceed to
+                    # send us the string literal.
+                    #
+                    if not m.group(2):
+                        await self.push("+ Ready for more input\r\n")
+
+                    # Read the string literal.
+                    #
+                    msg = self.reader.readexactly(literal_str_length)
+                    self.ibuffer.append(msg)
+
+                    # Loop back to read what is either a b'\r\n' or maybe
+                    # another string literal.
+                    #
+                    continue
+
+                # We only get here if we have read the complete message from
+                # the IMAP Client.
+                #
+                # Send the fully received message from the IMAP Client to the
+                # message processor. If the IMAP Client has properly
+                # authenticated then the message is sent to a subprocess to
+                # work on. Otherwise, we process the IMAP command locally and
+                # send a response back.
+                #
+                msg = b"".join(self.ibuffer)
+                self.ibuffer = []
+                client_connected = await self.msg_processor.message(msg)
+
+        except asyncio.exceptions.IncompleteReadError:
+            # We got an EOF while waiting for a line terminator. Client
+            # disconnecrted and we do not really care.
+            #
+            pass
+        except Exception as exc:
+            logger.exception("Exception in %s: %s", self, exc)
+        finally:
+            # We get here when we are no longer supposed to be connected to the
+            # client. Close our connection and return which will cause this
+            # task to be completed.
+            #
+            await self.close()
 
     ####################################################################
     #
     async def close(self):
         """
-        Close our streams to the client.
+        Close our streams to the client. This may happen after something
+        else has failed so swallow any exceptions we get while closing it (but
+        do log them as errors)
         """
-        if not self.writer.is_closing():
-            self.writer.close()
-        await self.writer.wait_closed()
+        try:
+            if not self.writer.is_closing():
+                self.writer.close()
+            await self.writer.wait_closed()
+        except Exception as exc:
+            logger.error("Exception when closing %s: %s", self, exc)
 
+
+########################################################################
+########################################################################
+#
+class AsyncServerIMAPMessageProcessor:
+    """
+    This class is the communication channel to the subprocess that handles all
+    of a specific IMAP client's messages.
+
+    This class and the AsyncIMAPClientHandler form the two parts of
+    communictation between an IMAP client and the subprocess running
+    as a user handling all of that IMAP client's messages.
+
+    This class is given full IMAP messages from the IMAP client.
+
+    IMAP messages are passed to us to pass to the subprocess by calling the
+    'message()' method.
+
+    When we get a full message we either:
+
+    1) hand the message to an instance of the PreAuthenticated class.
+    2) send it to a subprocess to handle and respond to.
+
+    The PreAuthenticated class is an IMAP message processor that understands
+    the IMAP commands from the IMAP client that all involve the
+    'before-authentication' steps.
+
+    Once a client has successfully authenticated with the server we connect to
+    a subprocess that is running as that user and send all further messages
+    from the client to that subprocess to handle.
+
+    When that subprocess disconnects we move back in to the
+    'before-authentication' state (or if the subprocess crashed, we disconnect
+    from the client.)
+    """
+
+    ####################################################################
+    #
+    def __init__(self, imap_client_connection: AsyncIMAPClientHandler):
+        """
+        imap_client_connection: a reference to the object has has a
+        connection to the IMAP client.
+        """
+        self.imap_client_connection = imap_client_connection
+        self.debug = imap_client_connection.debug
+
+        # The IMAP message processor that handles all of the IMAP commands
+        # from the client when we are in the not-authenticated state.
+        #
+        self.client_handler = PreAuthenticated(self.imap_client_connection)
+        self.subprocess = None
+        self.subprocess_writer: Optional[asyncio.StreamWriter] = None
+        self.subprocess_reader: Optional[asyncio.StreamReader] = None
+
+    ##################################################################
+    #
+    def log_string(self):
+        """
+        A bit of DRY: returns a string with common information that we like to
+        have in our log messages.
+        """
+        peername = self.imap_client_connection.writer.get_extra_info("peername")
+        return f"{self.client_handler.user} from {peername}"
+
+    ##################################################################
+    #
+    async def message(self, msg: bytes) -> bool:
+        """
+        Handle an IMAP message from a client.
+
+        If the client is NOT authenticated then we parse this message and hand
+        it to a local IMAP message processor to deal with.
+
+        If the client IS authenticated then we send it on to the subprocess
+        that is dealing with the user's actual mail spool.
+
+        Arguments: - `msg`: A full IMAP message from an IMAP client
+
+        Retruns: bool
+        """
+
+        # If the IMAP client is authenticated then we can just push the IMAP
+        # messages off to the subprocess to handle.
+        #
+        if self.client_handler.state == "authenticated":
+            await self.push(f"{len(msg)}\n".encode("ascii") + msg)
+            return True
+
+        # The user has not authenticated we need to locally parse the message
+        # and deal with all of the IMAP protocol interactions required for a
+        # user to authenticate...
+        #
+        try:
+            imap_cmd = asimap.parse.IMAPClientCommand(str(msg, "ascii"))
+            imap_cmd.parse()
+
+        except asimap.parse.BadCommand as e:
+            # The command we got from the client was bad...  If we at least
+            # managed to parse the TAG out of the command the client sent us we
+            # use that when sending our response to the client so it knows what
+            # message we had problems with.
+            #
+            if imap_cmd.tag is not None:
+                msg = f"{imap_cmd.tag} BAD {e}\r\n".encode("ascii")
+            else:
+                msg = f"* BAD {e}\r\n".encode("ascii")
+            await self.imap_client_connection.push(msg)
+            return True
+
+        # This hands the IMAP command to be processed by the client handler
+        # (dealing with everything before the client is in the authenticated
+        # state.)
+        #
+        try:
+            await self.client_handler.command(imap_cmd)
+        except Exception as e:
+            # We catch all exceptions because we do not want the server
+            # unceremoniously exiting.
+            #
+            # XXX However an exception making it to this level probably means
+            #     we should disconnect the client?
+            #
+            tb = traceback.format_exc()
+            logger.error(
+                "Exception handling IMAP command %s(%s) for %s: "
+                "%s\n%s"
+                % (
+                    imap_cmd.command,
+                    imap_cmd.tag,
+                    self.log_string(),
+                    str(e),
+                    tb,
+                )
+            )
+
+        # After processing that command see if we are in the authenticated or
+        # logged out state and take the appropriate action.
+        #
+        if self.client_handler.state == "authenticated":
+            # The client has authenticated to us.. connect a subprocess
+            # that will handle the client's messages from now until it
+            # logs out.
+            #
+            try:
+                await self.get_and_connect_subprocess(self.client_handler.user)
+            except Exception as e:
+                # If we fail to launch our subprocess then tell the client we
+                # had an internal error and log it for us to figure out what
+                # went wrong.
+                #
+                tb = traceback.format_exc()
+                logger.error(
+                    "Exception starting subprocess for %s: "
+                    "%s\n%s" % (self.log_string(), str(e), tb)
+                )
+                msg = b"* BAD Internal error launching user mail spool\r\n"
+                await self.imap_client_connection.push(msg)
+                if self.subprocess_writer is not None:
+                    self.subprocess_writer.close()
+                    await self.subprocess_writer.wait_closed()
+                return False
+        elif self.client_handler.state == "logged_out":
+            # The client has logged out. We need to close our connection to the
+            # subprocess if we have it, and close our connection to the
+            # client.
+            #
+            await self.imap_client_connection.close()
+            if self.subprocess_writer:
+                self.subprocess_writer.close()
+                await self.subprocess_writer.wait_closed()
+            return False
+        return True
+
+    ##################################################################
+    #
+    async def get_and_connect_subprocess(self, user):
+        """
+        At this point the IMAP client has authenticated to us and we know what
+        user they authenticated as. We need to see if there is an existing
+        subprocess for this user.
+
+        If there is none then we create one.
+
+        After we have a handle on the subprocess create a TCP connection to
+        that subprocess. This TCP connection is how this specific IMAP Client
+        will communicate with the subprocess (and in the subprocess it will
+        know which IMAP client is sending it commands based on which TCP
+        connection the command comes in on)
+        """
+        if user.imap_username in user_imap_subprocesses:
+            self.subprocess = user_imap_subprocesses[user.imap_username]
+        else:
+            self.subprocess = AsyncIMAPSubprocessHandle(user, self.options)
+            user_imap_subprocesses[user.imap_username] = self.subprocess
+
+        if not self.subprocess.is_alive():
+            await self.subprocess.start()
+
+        # And initiate a connection to the subprocess.
+        #
+        (reader, writer) = await asyncio.open_connection(
+            "127.0.0.1",
+            self.subprocess.port,
+            family=socket.AF_INET,
+            proto=socket.SOCK_STREAM,
+        )
+        self.subprocess_reader = reader
+        self.subprocess_writer = writer
+
+        # We have an authentication key for talking to this subprocess. The
+        # first message we send to the subprocess is that authentication key
+        # and we expect to get back the string "accepted\n"
+        #
+        # XXX we should probably better handle if it is not accepted.
+        writer.write(self.subprocess_key)
+        await writer.drain()
+        result = await reader.readline()
+        assert result and result == b"accepted"
+
+
+# ##################################################################
+# ##################################################################
+# #
+# class ServerIMAPMessageProcessor(asynchat.async_chat):
+#     """
+#     This class is the communication channel to the subprocess that handles all
+#     of a specific IMAP client's messages.
+
+#     This class and the IMAPClientHandler form the two parts of communictation
+#     between an IMAP client and the subprocess running as a user handling all
+#     of that IMAP client's messages.
+
+#     This class is given full IMAP messages from the IMAP client.
+
+#     IMAP messages are passed to us to pass to the subprocess by calling the
+#     'message()' method.
+
+#     When we get a full message we either:
+
+#     1) hand the message to an instance of the PreAuthenticated class.
+#     2) send it to a subprocess to handle and respond to.
+
+#     The PreAuthenticated class is an IMAP message processor that understands
+#     the IMAP commands from the IMAP client that all involve the
+#     'before-authentication' steps.
+
+#     Once a client has successfully authenticated with the server we connect to
+#     a subprocess that is running as that user and send all further messages
+#     from the client to that subprocess to handle.
+
+#     When that subprocess disconnects we move back in to the
+#     'before-authentication' state (or if the subprocess crashed, we disconnect
+#     from the client.)
+
+#     """
+
+#     ##################################################################
+#     #
+#     def __init__(self, client_connection):
+#         """
+
+#         Arguments:
+#         - `client_connection`: An async_chat object that is a connect to the
+#                                IMAP client. We can use its 'push()' method to
+#                                send messages to the IMAP client.
+#         - `options`: The configuration options
+#         """
+#         self.log = logging.getLogger(
+#             "%s.%s" % (__name__, self.__class__.__name__)
+#         )
+#         asynchat.async_chat.__init__(self)
+
+#         self.client_connection = client_connection
+#         self.options = client_connection.options
+
+#         # If we are in test-mode then use the 'simple_auth' auth system.  This
+#         # basically has only one user, 'test', and its mailbox is in
+#         # '/var/tmp/testmaildir'
+#         #
+#         if self.options.test_mode:
+#             auth_system = "test_auth"
+#         else:
+#             auth_system = "simple_auth"
+
+#         # The IMAP message processor that handles all of the IMAP commands
+#         # from the client when we are in the not-authenticated state.
+#         #
+#         self.client_handler = PreAuthenticated(
+#             self.client_connection, AUTH_SYSTEMS[auth_system]
+#         )
+#         self.subprocess = None
+
+#         # We do not buffer and process data from the subprocess. As soon as we
+#         # get it, we send it on to the IMAP client.
+#         #
+#         self.set_terminator(None)
+#         return
+
+#     ##################################################################
+#     #
+#     def log_string(self):
+#         """
+#         A bit of DRY: returns a string with common information that we like to
+#         have in our log messages.
+#         """
+#         return "%s from %s:%d" % (
+#             self.client_handler.user,
+#             self.client_connection.rem_addr,
+#             self.client_connection.port,
+#         )
+
+#     ##################################################################
+#     #
+#     def message(self, msg):
+#         """
+#         Handle an IMAP message from a client.
+
+#         If the client is NOT authenticated then we parse this message and hand
+#         it to a local IMAP message processor to deal with.
+
+#         If the client IS authenticated then we send it on to the subprocess
+#         that is dealing with the user's actual mail spool.
+
+#         Arguments: - `msg`: A full IMAP message from an IMAP client
+#         """
+
+#         # If the IMAP client is authenticated then we can just push the IMAP
+#         # messages off to the subprocess to handle.
+#         #
+#         # XXX What are the failure modes here that we need to worry about?  Can
+#         #     we push messages before the connection has actually been
+#         #     established?
+#         #
+#         if self.client_handler.state == "authenticated":
+#             self.push("%d\n" % len(msg))
+#             self.push(msg)
+#             return
+
+#         # The user has not authenticated we need to locally parse the message
+#         # and deal with all of the IMAP protocol interactions required for a
+#         # user to authenticate...
+#         #
+#         try:
+#             imap_cmd = asimap.parse.IMAPClientCommand(msg)
+#             imap_cmd.parse()
+
+#         except asimap.parse.BadCommand as e:
+#             # The command we got from the client was bad...  If we at least
+#             # managed to parse the TAG out of the command the client sent us we
+#             # use that when sending our response to the client so it knows what
+#             # message we had problems with.
+#             #
+#             if imap_cmd.tag is not None:
+#                 msg = "%s BAD %s\r\n" % (imap_cmd.tag, str(e))
+#             else:
+#                 msg = "* BAD %s\r\n" % str(e)
+#             self.client_connection.push(msg)
+#             return
+
+#         # This hands the IMAP command to be processed by the client handler
+#         # (dealing with everything before the client is in the authenticated
+#         # state.)
+#         #
+#         try:
+#             self.client_handler.command(imap_cmd)
+#         except Exception as e:
+#             # We catch all exceptions because we do not want the server
+#             # unceremoniously exiting.
+#             #
+#             # XXX However an exception making it to this level probably means
+#             #     we should disconnect the client?
+#             #
+#             tb = traceback.format_exc()
+#             self.logger.error(
+#                 "Exception handling IMAP command %s(%s) for %s: "
+#                 "%s\n%s"
+#                 % (
+#                     imap_cmd.command,
+#                     imap_cmd.tag,
+#                     self.log_string(),
+#                     str(e),
+#                     tb,
+#                 )
+#             )
+
+#         # After processing that command see if we are in the authenticated or
+#         # logged out state and take the appropriate action.
+#         #
+#         if self.client_handler.state == "authenticated":
+#             # The client has authenticated to us.. connect a subprocess
+#             # that will handle the client's messages from now until it
+#             # logs out.
+#             #
+#             try:
+#                 self.get_and_connect_subprocess(self.client_handler.user)
+#             except Exception as e:
+#                 # If we fail to launch our subprocess then tell the client we
+#                 # had an internal error and log it for us to figure out what
+#                 # went wrong.
+#                 #
+#                 tb = traceback.format_exc()
+#                 self.logger.error(
+#                     "Exception starting subprocess for %s: "
+#                     "%s\n%s" % (self.log_string(), str(e), tb)
+#                 )
+#                 msg = "* BAD Internal error launching user mail spool\r\n"
+#                 self.client_connection.push(msg)
+#                 self.client_connection.close()
+#                 if self.socket is not None:
+#                     self.close()
+#                 return
+#         elif self.client_handler.state == "logged_out":
+#             # The client has logged out. We need to close our connection to the
+#             # subprocess if we have it, and close our connection to the
+#             # client. Doing these two things should cause this object to be
+#             # removed from the asyncore dispatcher loop.
+#             #
+#             if self.socket is not None:
+#                 self.close()
+#             self.client_connection.close()
+#         return
+
+#     ##################################################################
+#     #
+#     def collect_incoming_data(self, data):
+#         """
+#         We have received data from the subprocess handling the IMAP client's
+#         messages.
+#         """
+#         if self.client_connection is not None:
+#             self.client_connection.push(data)
+#         return
+
+#     ##################################################################
+#     #
+#     def get_and_connect_subprocess(self, user):
+#         """
+#         At this point the IMAP client has authenticated to us and we know what
+#         user they authenticated as. We need to see if there is an existing
+#         subprocess handler for this user.
+
+#         If there is none then we create one.
+#         """
+#         if user.imap_username in user_imap_subprocesses:
+#             self.subprocess = user_imap_subprocesses[user.imap_username]
+#         else:
+#             self.subprocess = IMAPSubprocessHandle(user, self.options)
+#             user_imap_subprocesses[user.imap_username] = self.subprocess
+
+#         if not self.subprocess.is_alive():
+#             self.subprocess.start()
+
+#         # And initiate a connection to the subprocess.
+#         #
+#         self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
+#         self.connect(("127.0.0.1", self.subprocess.port))
+#         return
+
+#     ##################################################################
+#     #
+#     def handle_connect(self):
+#         """
+#         We have established a connection to the subprocess for this user.
+#         Yay.
+#         """
+#         return
+
+#     ##################################################################
+#     #
+#     def handle_close(self):
+#         """
+#         This gets called when the subprocess handling this user's mailspool has
+#         disconnected from us.
+
+#         This can happen for two reasons:
+
+#         1) The IMAP client has gone through the process of de-authenticating
+#            and they are no longer authenticated. The subprocess signals the
+#            success of this IMAP protocol transaction by closing its TCP
+#            connection to us.
+
+#         2) However, this is also what will happen if the subprocess crashes for
+#            some reason. Crashes happen. In this case we need to send some
+#            signal back to the IMAP client so that it does not sit there
+#            thinking it can send messages to us expecting us to be in some IMAP
+#            state that we are not in. So, in this case we need to close our
+#            connection to the IMAP client as if we had indeed crashed.
+
+#            THe question is: how do we know that this is the case, not (1)?
+#            Although this is not perfect what we do is see if the subprocess is
+#            still alive, and if it is not, see if its exit code is non-zero.
+
+#            If it is not alive and its exit code is non-zero then we know it
+#            crashed.
+#         """
+
+#         self.client_handler.state = "non_authenticated"
+#         self.logger.info(
+#             "Connection with subprocess for %s has closed" % (self.log_string())
+#         )
+#         # See if the subprocess is alive.. if it is not then it ungraciously
+#         # went away and we need to tell the IMAP client to go away too.
+#         #
+#         if self.subprocess.is_alive is False:
+#             self.logger.error(
+#                 "Our subprocess for %s went away unexpectedly with "
+#                 "the exit code: %d" % (self.log_string, self.subprocess.rc)
+#             )
+#         if self.socket is not None:
+#             self.close()
+
+#         # Since we lost the connection to our subprocess close the
+#         # connection to the IMAP client too.
+#         #
+#         self.client_connection.close()
+#         self.client_connection = None
+#         self.client_handler.user = None
+#         self.client_handler = None
+#         return
+
+#     ##################################################################
+#     #
+#     def client_disconnected(self):
+#         """
+#         This is called when the IMAP client has disconnected from us.
+
+#         We close our connection to the subprocess and do various cleanups.
+#         """
+#         self.logger.info(
+#             "IMAP client for %s has disconnected" % self.log_string()
+#         )
+#         self.client_connection = None
+#         self.client_handler.state = "non_authenticated"
+#         self.client_handler.user = None
+#         self.subprocess = None
+
+#         # If we have a connection to the subprocess then close it too.
+#         #
+#         if self.socket is not None:
+#             self.close()
+#         return
 
 # ##################################################################
 # ##################################################################
@@ -989,558 +1559,4 @@ class AsyncIMAPClientHandler:
 #         if self.socket is not None:
 #             self.close()
 #         self.logger.info(" ".join(log_msg))
-#         return
-
-
-########################################################################
-########################################################################
-#
-# XXX Rename to AsyncIMAPSubprocessConnection
-class AsyncServerIMAPMessageProcessor:
-    """
-    This class is the communication channel to the subprocess that handles all
-    of a specific IMAP client's messages.
-
-    This class and the AsyncIMAPClientHandler form the two parts of
-    communictation between an IMAP client and the subprocess running
-    as a user handling all of that IMAP client's messages.
-
-    This class is given full IMAP messages from the IMAP client.
-
-    IMAP messages are passed to us to pass to the subprocess by calling the
-    'message()' method.
-
-    When we get a full message we either:
-
-    1) hand the message to an instance of the PreAuthenticated class.
-    2) send it to a subprocess to handle and respond to.
-
-    The PreAuthenticated class is an IMAP message processor that understands
-    the IMAP commands from the IMAP client that all involve the
-    'before-authentication' steps.
-
-    Once a client has successfully authenticated with the server we connect to
-    a subprocess that is running as that user and send all further messages
-    from the client to that subprocess to handle.
-
-    When that subprocess disconnects we move back in to the
-    'before-authentication' state (or if the subprocess crashed, we disconnect
-    from the client.)
-    """
-
-    ####################################################################
-    #
-    def __init__(self, imap_client_connection):
-        """
-        imap_client_connection: a reference to the object has has a
-        connection to the IMAP client.
-        """
-        self.imap_client_connection = imap_client_connection
-        self.debug = imap_client_connection.debug
-        self.test_mode = imap_client_connection.test_mode
-
-        # If we are in test-mode then use the 'simple_auth' auth system.  This
-        # basically has only one user, 'test', and its mailbox is in
-        # '/var/tmp/testmaildir'
-        #
-        if self.test_mode:
-            auth_system = "test_auth"
-        else:
-            auth_system = "simple_auth"
-
-        # The IMAP message processor that handles all of the IMAP commands
-        # from the client when we are in the not-authenticated state.
-        #
-        self.client_handler = PreAuthenticated(
-            self.imap_client_connection, AUTH_SYSTEMS[auth_system]
-        )
-        self.subprocess = None
-        self.subprocess_writer: asyncio.StreamWriter = None
-        self.subprocess_reader: asyncio.StreamReader = None
-
-    ##################################################################
-    #
-    def log_string(self):
-        """
-        A bit of DRY: returns a string with common information that we like to
-        have in our log messages.
-        """
-        peername = self.imap_client_connection.writer.get_extra_info("peername")
-        return f"{self.client_handler.user} from {peername}"
-
-    ##################################################################
-    #
-    async def message(self, msg: bytes) -> bool:
-        """
-        Handle an IMAP message from a client.
-
-        If the client is NOT authenticated then we parse this message and hand
-        it to a local IMAP message processor to deal with.
-
-        If the client IS authenticated then we send it on to the subprocess
-        that is dealing with the user's actual mail spool.
-
-        Arguments: - `msg`: A full IMAP message from an IMAP client
-
-        Retruns: bool
-        """
-
-        # If the IMAP client is authenticated then we can just push the IMAP
-        # messages off to the subprocess to handle.
-        #
-        if self.client_handler.state == "authenticated":
-            await self.push(f"{len(msg)}\n".encode("ascii") + msg)
-            return True
-
-        # The user has not authenticated we need to locally parse the message
-        # and deal with all of the IMAP protocol interactions required for a
-        # user to authenticate...
-        #
-        try:
-            imap_cmd = asimap.parse.IMAPClientCommand(str(msg, "ascii"))
-            imap_cmd.parse()
-
-        except asimap.parse.BadCommand as e:
-            # The command we got from the client was bad...  If we at least
-            # managed to parse the TAG out of the command the client sent us we
-            # use that when sending our response to the client so it knows what
-            # message we had problems with.
-            #
-            if imap_cmd.tag is not None:
-                msg = f"{imap_cmd.tag} BAD {e}\r\n".encode("ascii")
-            else:
-                msg = f"* BAD {e}\r\n".encode("ascii")
-            await self.imap_client_connection.push(msg)
-            return True
-
-        # This hands the IMAP command to be processed by the client handler
-        # (dealing with everything before the client is in the authenticated
-        # state.)
-        #
-        try:
-            await self.client_handler.command(imap_cmd)
-        except Exception as e:
-            # We catch all exceptions because we do not want the server
-            # unceremoniously exiting.
-            #
-            # XXX However an exception making it to this level probably means
-            #     we should disconnect the client?
-            #
-            tb = traceback.format_exc()
-            logger.error(
-                "Exception handling IMAP command %s(%s) for %s: "
-                "%s\n%s"
-                % (
-                    imap_cmd.command,
-                    imap_cmd.tag,
-                    self.log_string(),
-                    str(e),
-                    tb,
-                )
-            )
-
-        # After processing that command see if we are in the authenticated or
-        # logged out state and take the appropriate action.
-        #
-        if self.client_handler.state == "authenticated":
-            # The client has authenticated to us.. connect a subprocess
-            # that will handle the client's messages from now until it
-            # logs out.
-            #
-            try:
-                await self.get_and_connect_subprocess(self.client_handler.user)
-            except Exception as e:
-                # If we fail to launch our subprocess then tell the client we
-                # had an internal error and log it for us to figure out what
-                # went wrong.
-                #
-                tb = traceback.format_exc()
-                logger.error(
-                    "Exception starting subprocess for %s: "
-                    "%s\n%s" % (self.log_string(), str(e), tb)
-                )
-                msg = b"* BAD Internal error launching user mail spool\r\n"
-                await self.imap_client_connection.push(msg)
-                if self.subprocess_writer is not None:
-                    self.subprocess_writer.close()
-                    await self.subprocess_writer.wait_closed()
-                return False
-        elif self.client_handler.state == "logged_out":
-            # The client has logged out. We need to close our connection to the
-            # subprocess if we have it, and close our connection to the
-            # client.
-            #
-            if self.socket is not None:
-                self.subprocess_writer.close()
-                await self.subprocess_writer.wait_closed()
-            return False
-        return True
-
-    ##################################################################
-    #
-    async def get_and_connect_subprocess(self, user):
-        """
-        At this point the IMAP client has authenticated to us and we know what
-        user they authenticated as. We need to see if there is an existing
-        subprocess for this user.
-
-        If there is none then we create one.
-
-        After we have a handle on the subprocess create a TCP connection to
-        that subprocess. This TCP connection is how this specific IMAP Client
-        will communicate with the subprocess (and in the subprocess it will
-        know which IMAP client is sending it commands based on which TCP
-        connection the command comes in on)
-        """
-        if user.imap_username in user_imap_subprocesses:
-            self.subprocess = user_imap_subprocesses[user.imap_username]
-        else:
-            self.subprocess = AsyncIMAPSubprocessHandle(user, self.options)
-            user_imap_subprocesses[user.imap_username] = self.subprocess
-
-        if not self.subprocess.is_alive():
-            await self.subprocess.start()
-
-        # And initiate a connection to the subprocess.
-        #
-        (reader, writer) = await asyncio.open_connection(
-            "127.0.0.1",
-            self.subprocess.port,
-            family=socket.AF_INET,
-            proto=socket.SOCK_STREAM,
-        )
-        self.subprocess_reader = reader
-        self.subprocess_writer = writer
-
-        # We have an authentication key for talking to this subprocess. The
-        # first message we send to the subprocess is that authentication key
-        # and we expect to get back the string "accepted\n"
-        #
-        # XXX we should probably better handle if it is not accepted.
-        writer.write(self.subprocess_key)
-        await writer.drain()
-        result = await reader.readline()
-        assert result and result == b"accepted"
-
-
-# ##################################################################
-# ##################################################################
-# #
-# class ServerIMAPMessageProcessor(asynchat.async_chat):
-#     """
-#     This class is the communication channel to the subprocess that handles all
-#     of a specific IMAP client's messages.
-
-#     This class and the IMAPClientHandler form the two parts of communictation
-#     between an IMAP client and the subprocess running as a user handling all
-#     of that IMAP client's messages.
-
-#     This class is given full IMAP messages from the IMAP client.
-
-#     IMAP messages are passed to us to pass to the subprocess by calling the
-#     'message()' method.
-
-#     When we get a full message we either:
-
-#     1) hand the message to an instance of the PreAuthenticated class.
-#     2) send it to a subprocess to handle and respond to.
-
-#     The PreAuthenticated class is an IMAP message processor that understands
-#     the IMAP commands from the IMAP client that all involve the
-#     'before-authentication' steps.
-
-#     Once a client has successfully authenticated with the server we connect to
-#     a subprocess that is running as that user and send all further messages
-#     from the client to that subprocess to handle.
-
-#     When that subprocess disconnects we move back in to the
-#     'before-authentication' state (or if the subprocess crashed, we disconnect
-#     from the client.)
-
-#     """
-
-#     ##################################################################
-#     #
-#     def __init__(self, client_connection):
-#         """
-
-#         Arguments:
-#         - `client_connection`: An async_chat object that is a connect to the
-#                                IMAP client. We can use its 'push()' method to
-#                                send messages to the IMAP client.
-#         - `options`: The configuration options
-#         """
-#         self.log = logging.getLogger(
-#             "%s.%s" % (__name__, self.__class__.__name__)
-#         )
-#         asynchat.async_chat.__init__(self)
-
-#         self.client_connection = client_connection
-#         self.options = client_connection.options
-
-#         # If we are in test-mode then use the 'simple_auth' auth system.  This
-#         # basically has only one user, 'test', and its mailbox is in
-#         # '/var/tmp/testmaildir'
-#         #
-#         if self.options.test_mode:
-#             auth_system = "test_auth"
-#         else:
-#             auth_system = "simple_auth"
-
-#         # The IMAP message processor that handles all of the IMAP commands
-#         # from the client when we are in the not-authenticated state.
-#         #
-#         self.client_handler = PreAuthenticated(
-#             self.client_connection, AUTH_SYSTEMS[auth_system]
-#         )
-#         self.subprocess = None
-
-#         # We do not buffer and process data from the subprocess. As soon as we
-#         # get it, we send it on to the IMAP client.
-#         #
-#         self.set_terminator(None)
-#         return
-
-#     ##################################################################
-#     #
-#     def log_string(self):
-#         """
-#         A bit of DRY: returns a string with common information that we like to
-#         have in our log messages.
-#         """
-#         return "%s from %s:%d" % (
-#             self.client_handler.user,
-#             self.client_connection.rem_addr,
-#             self.client_connection.port,
-#         )
-
-#     ##################################################################
-#     #
-#     def message(self, msg):
-#         """
-#         Handle an IMAP message from a client.
-
-#         If the client is NOT authenticated then we parse this message and hand
-#         it to a local IMAP message processor to deal with.
-
-#         If the client IS authenticated then we send it on to the subprocess
-#         that is dealing with the user's actual mail spool.
-
-#         Arguments: - `msg`: A full IMAP message from an IMAP client
-#         """
-
-#         # If the IMAP client is authenticated then we can just push the IMAP
-#         # messages off to the subprocess to handle.
-#         #
-#         # XXX What are the failure modes here that we need to worry about?  Can
-#         #     we push messages before the connection has actually been
-#         #     established?
-#         #
-#         if self.client_handler.state == "authenticated":
-#             self.push("%d\n" % len(msg))
-#             self.push(msg)
-#             return
-
-#         # The user has not authenticated we need to locally parse the message
-#         # and deal with all of the IMAP protocol interactions required for a
-#         # user to authenticate...
-#         #
-#         try:
-#             imap_cmd = asimap.parse.IMAPClientCommand(msg)
-#             imap_cmd.parse()
-
-#         except asimap.parse.BadCommand as e:
-#             # The command we got from the client was bad...  If we at least
-#             # managed to parse the TAG out of the command the client sent us we
-#             # use that when sending our response to the client so it knows what
-#             # message we had problems with.
-#             #
-#             if imap_cmd.tag is not None:
-#                 msg = "%s BAD %s\r\n" % (imap_cmd.tag, str(e))
-#             else:
-#                 msg = "* BAD %s\r\n" % str(e)
-#             self.client_connection.push(msg)
-#             return
-
-#         # This hands the IMAP command to be processed by the client handler
-#         # (dealing with everything before the client is in the authenticated
-#         # state.)
-#         #
-#         try:
-#             self.client_handler.command(imap_cmd)
-#         except Exception as e:
-#             # We catch all exceptions because we do not want the server
-#             # unceremoniously exiting.
-#             #
-#             # XXX However an exception making it to this level probably means
-#             #     we should disconnect the client?
-#             #
-#             tb = traceback.format_exc()
-#             self.logger.error(
-#                 "Exception handling IMAP command %s(%s) for %s: "
-#                 "%s\n%s"
-#                 % (
-#                     imap_cmd.command,
-#                     imap_cmd.tag,
-#                     self.log_string(),
-#                     str(e),
-#                     tb,
-#                 )
-#             )
-
-#         # After processing that command see if we are in the authenticated or
-#         # logged out state and take the appropriate action.
-#         #
-#         if self.client_handler.state == "authenticated":
-#             # The client has authenticated to us.. connect a subprocess
-#             # that will handle the client's messages from now until it
-#             # logs out.
-#             #
-#             try:
-#                 self.get_and_connect_subprocess(self.client_handler.user)
-#             except Exception as e:
-#                 # If we fail to launch our subprocess then tell the client we
-#                 # had an internal error and log it for us to figure out what
-#                 # went wrong.
-#                 #
-#                 tb = traceback.format_exc()
-#                 self.logger.error(
-#                     "Exception starting subprocess for %s: "
-#                     "%s\n%s" % (self.log_string(), str(e), tb)
-#                 )
-#                 msg = "* BAD Internal error launching user mail spool\r\n"
-#                 self.client_connection.push(msg)
-#                 self.client_connection.close()
-#                 if self.socket is not None:
-#                     self.close()
-#                 return
-#         elif self.client_handler.state == "logged_out":
-#             # The client has logged out. We need to close our connection to the
-#             # subprocess if we have it, and close our connection to the
-#             # client. Doing these two things should cause this object to be
-#             # removed from the asyncore dispatcher loop.
-#             #
-#             if self.socket is not None:
-#                 self.close()
-#             self.client_connection.close()
-#         return
-
-#     ##################################################################
-#     #
-#     def collect_incoming_data(self, data):
-#         """
-#         We have received data from the subprocess handling the IMAP client's
-#         messages.
-#         """
-#         if self.client_connection is not None:
-#             self.client_connection.push(data)
-#         return
-
-#     ##################################################################
-#     #
-#     def get_and_connect_subprocess(self, user):
-#         """
-#         At this point the IMAP client has authenticated to us and we know what
-#         user they authenticated as. We need to see if there is an existing
-#         subprocess handler for this user.
-
-#         If there is none then we create one.
-#         """
-#         if user.imap_username in user_imap_subprocesses:
-#             self.subprocess = user_imap_subprocesses[user.imap_username]
-#         else:
-#             self.subprocess = IMAPSubprocessHandle(user, self.options)
-#             user_imap_subprocesses[user.imap_username] = self.subprocess
-
-#         if not self.subprocess.is_alive():
-#             self.subprocess.start()
-
-#         # And initiate a connection to the subprocess.
-#         #
-#         self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
-#         self.connect(("127.0.0.1", self.subprocess.port))
-#         return
-
-#     ##################################################################
-#     #
-#     def handle_connect(self):
-#         """
-#         We have established a connection to the subprocess for this user.
-#         Yay.
-#         """
-#         return
-
-#     ##################################################################
-#     #
-#     def handle_close(self):
-#         """
-#         This gets called when the subprocess handling this user's mailspool has
-#         disconnected from us.
-
-#         This can happen for two reasons:
-
-#         1) The IMAP client has gone through the process of de-authenticating
-#            and they are no longer authenticated. The subprocess signals the
-#            success of this IMAP protocol transaction by closing its TCP
-#            connection to us.
-
-#         2) However, this is also what will happen if the subprocess crashes for
-#            some reason. Crashes happen. In this case we need to send some
-#            signal back to the IMAP client so that it does not sit there
-#            thinking it can send messages to us expecting us to be in some IMAP
-#            state that we are not in. So, in this case we need to close our
-#            connection to the IMAP client as if we had indeed crashed.
-
-#            THe question is: how do we know that this is the case, not (1)?
-#            Although this is not perfect what we do is see if the subprocess is
-#            still alive, and if it is not, see if its exit code is non-zero.
-
-#            If it is not alive and its exit code is non-zero then we know it
-#            crashed.
-#         """
-
-#         self.client_handler.state = "non_authenticated"
-#         self.logger.info(
-#             "Connection with subprocess for %s has closed" % (self.log_string())
-#         )
-#         # See if the subprocess is alive.. if it is not then it ungraciously
-#         # went away and we need to tell the IMAP client to go away too.
-#         #
-#         if self.subprocess.is_alive is False:
-#             self.logger.error(
-#                 "Our subprocess for %s went away unexpectedly with "
-#                 "the exit code: %d" % (self.log_string, self.subprocess.rc)
-#             )
-#         if self.socket is not None:
-#             self.close()
-
-#         # Since we lost the connection to our subprocess close the
-#         # connection to the IMAP client too.
-#         #
-#         self.client_connection.close()
-#         self.client_connection = None
-#         self.client_handler.user = None
-#         self.client_handler = None
-#         return
-
-#     ##################################################################
-#     #
-#     def client_disconnected(self):
-#         """
-#         This is called when the IMAP client has disconnected from us.
-
-#         We close our connection to the subprocess and do various cleanups.
-#         """
-#         self.logger.info(
-#             "IMAP client for %s has disconnected" % self.log_string()
-#         )
-#         self.client_connection = None
-#         self.client_handler.state = "non_authenticated"
-#         self.client_handler.user = None
-#         self.subprocess = None
-
-#         # If we have a connection to the subprocess then close it too.
-#         #
-#         if self.socket is not None:
-#             self.close()
 #         return

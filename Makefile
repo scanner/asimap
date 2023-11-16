@@ -4,10 +4,15 @@ include $(ROOT_DIR)/Make.rules
 DOCKER_BUILDKIT := 1
 LATEST_TAG := $(shell git describe --abbrev=0)
 
-.PHONY: clean lint test mypy logs shell restart delete down up build dirs help
+.PHONY: clean lint test test_units test_integrations mypy logs shell restart delete down up build dirs help
 
-test: venv
-	$(ACTIVATE) pytest
+test_integrations: venv
+	$(ACTIVATE) pytest -m integration
+
+test_units: venv
+	$(ACTIVATE) pytest -m "not integration"
+
+test: venv test_units test_integrations
 
 build: requirements/production.txt requirements/development.txt	## `docker build` for both `prod` and `dev` targets
 	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --target prod
