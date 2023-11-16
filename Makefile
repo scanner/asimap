@@ -12,7 +12,8 @@ test_integrations: venv
 test_units: venv
 	$(ACTIVATE) pytest -m "not integration"
 
-test: venv test_units test_integrations
+test: venv
+	$(ACTIVATE) pytest
 
 build: requirements/production.txt requirements/development.txt	## `docker build` for both `prod` and `dev` targets
 	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --target prod

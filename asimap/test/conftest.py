@@ -7,7 +7,12 @@ pytest fixtures for testing `asimap`
 """
 # system imports
 #
+import asyncio
+import imaplib
 import json
+import ssl
+import threading
+import time
 from email.headerregistry import Address
 from email.message import EmailMessage
 from pathlib import Path
@@ -21,6 +26,7 @@ import trustme
 #
 import asimap.auth
 
+from ..server import AsyncIMAPServer
 from .factories import UserFactory
 
 
@@ -150,3 +156,52 @@ def good_received_imap_messages():
     )
     messages = json.loads(imap_messages_file.read_text())
     return messages
+
+
+####################################################################
+#
+@pytest.fixture
+def imap_server(faker, ssl_certs, user_factory, password_file_factory):
+    """
+    Starts an IMAP Server in a separate thread and yields an imaplib client
+    connected to that server (along with other data like username, password,
+    etc.)
+    """
+    password = faker.password()
+    user = user_factory(password=password)
+    pw_file = password_file_factory([user])
+
+    ca, server_cert = ssl_certs
+    host = "127.0.0.1"
+    port = faker.pyint(min_value=1024, max_value=65535)
+
+    ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    server_cert.configure_cert(ssl_context)
+    server = AsyncIMAPServer(host, port, ssl_context, pw_file)
+
+    ############################
+    #
+    # start a mini server.. how cute
+    #
+    def start_server():
+        asyncio.run(server.run())
+
+    server_thread = threading.Thread(target=start_server, daemon=True)
+    server_thread.start()
+
+    # Sleep for a teeny bit to let our server actually start up
+    #
+    time.sleep(0.1)
+    client_ssl_context = ssl.create_default_context()
+    ca.configure_trust(client_ssl_context)
+    imap = imaplib.IMAP4_SSL(
+        host=host, port=port, ssl_context=client_ssl_context, timeout=1
+    )
+
+    yield {"client": imap, "user": user, "password": password, "server": server}
+
+    try:
+        server.asyncio_server.close()
+    except Exception:
+        pass
+    server_thread.join(timeout=5.0)
