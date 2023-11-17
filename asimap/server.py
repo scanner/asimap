@@ -18,7 +18,7 @@ import string
 import subprocess
 import time
 import traceback
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Union
 
 # 3rd party imports
 #
@@ -54,7 +54,7 @@ RE_LITERAL_STRING_START = re.compile(rb"\{(\d+)(\+)?\}$")
 # The key is the username. The value is an IMAPSubprocessHandle.
 #
 #
-user_imap_subprocesses = {}
+USER_IMAP_SUBPROCESSES: Dict[str, "AsyncIMAPSubprocessHandle"] = {}
 
 
 ##################################################################
@@ -148,7 +148,7 @@ class AsyncIMAPSubprocessHandle:
             random.SystemRandom().choice(string.ascii_uppercase + string.digits)
             for _ in range(32)
         )
-        self.subprocess_key = self.subprocess_key.encode("ascii")
+        self.subprocess_key = self.subprocess_key.encode("latin-1")
         self.subprocess.stdin.write(self.subprocess_key + b"\n")
         await self.subprocess.write.drain()
         logger.debug("Reading port from subprocess.")
@@ -512,7 +512,7 @@ class AsyncIMAPClientHandler:
 
         self.reading_string_literal = False
         self.stream_buffer_size = 65536
-        self.ibuffer = []
+        self.ibuffer: List[bytes] = []
         self.msg_processor = AsyncServerIMAPMessageProcessor(self)
 
     ####################################################################
@@ -522,17 +522,27 @@ class AsyncIMAPClientHandler:
 
     ####################################################################
     #
-    async def push(self, data):
+    async def push(self, *data: Union[bytes, str]):
         """
         Write data to the IMAP Client. Also write it to the trace
         file if we have one.
         """
-        self.writer.write(bytes(data, "ascii"))
+        for d in data:
+            if isinstance(d, str):
+                d = bytes(d, "latin-1")
+            self.writer.write(d)
         await self.writer.drain()
 
         if self.trace_file:
+            msg = [
+                str(d, "latin-1") if isinstance(d, bytes) else d for d in data
+            ]
             await self.trace_file(
-                {"time": time.time(), "data": data, "msg_type": "SEND_DATA"}
+                {
+                    "time": time.time(),
+                    "data": "".join(msg),
+                    "msg_type": "SEND_DATA",
+                }
             )
 
     ####################################################################
@@ -548,6 +558,7 @@ class AsyncIMAPClientHandler:
         XXX This needs to handle all exceptions since it is the root
             of an asyncio task.
         """
+        msg: bytes
         try:
             capabilities = " ".join(CAPABILITIES)
             await self.push(f"* OK [CAPABILITY {capabilities}]\r\n")
@@ -568,7 +579,7 @@ class AsyncIMAPClientHandler:
                 #
                 if not self.ibuffer:
                     await self.push(
-                        "* BAD We do not accept empty messages.\r\n"
+                        b"* BAD We do not accept empty messages.\r\n"
                     )
                     continue
 
@@ -584,11 +595,11 @@ class AsyncIMAPClientHandler:
                     # send us the string literal.
                     #
                     if not m.group(2):
-                        await self.push("+ Ready for more input\r\n")
+                        await self.push(b"+ Ready for more input\r\n")
 
                     # Read the string literal.
                     #
-                    msg = self.reader.readexactly(literal_str_length)
+                    msg = await self.reader.readexactly(literal_str_length)
                     self.ibuffer.append(msg)
 
                     # Loop back to read what is either a b'\r\n' or maybe
@@ -688,9 +699,9 @@ class AsyncServerIMAPMessageProcessor:
         # from the client when we are in the not-authenticated state.
         #
         self.client_handler = PreAuthenticated(self.imap_client_connection)
-        self.subprocess = None
-        self.subprocess_writer: Optional[asyncio.StreamWriter] = None
-        self.subprocess_reader: Optional[asyncio.StreamReader] = None
+        self.subprocess: AsyncIMAPSubprocessHandle
+        self.subprocess_writer: asyncio.StreamWriter
+        self.subprocess_reader: asyncio.StreamReader
 
     ##################################################################
     #
@@ -701,6 +712,19 @@ class AsyncServerIMAPMessageProcessor:
         """
         peername = self.imap_client_connection.writer.get_extra_info("peername")
         return f"{self.client_handler.user} from {peername}"
+
+    ####################################################################
+    #
+    async def push(self, *data: Union[bytes, str]):
+        """
+        Write data to IMAP Subprocess. Also write it to the trace
+        file if we have one.
+        """
+        for d in data:
+            if isinstance(d, str):
+                d = bytes(d, "latin-1")
+            self.subprocess_writer.write(d)
+        await self.subprocess_writer.drain()
 
     ##################################################################
     #
@@ -723,7 +747,7 @@ class AsyncServerIMAPMessageProcessor:
         # messages off to the subprocess to handle.
         #
         if self.client_handler.state == "authenticated":
-            await self.push(f"{len(msg)}\n".encode("ascii") + msg)
+            await self.push(f"{len(msg)}\n", msg)
             return True
 
         # The user has not authenticated we need to locally parse the message
@@ -731,7 +755,7 @@ class AsyncServerIMAPMessageProcessor:
         # user to authenticate...
         #
         try:
-            imap_cmd = asimap.parse.IMAPClientCommand(str(msg, "ascii"))
+            imap_cmd = asimap.parse.IMAPClientCommand(str(msg, "latin-1"))
             imap_cmd.parse()
 
         except asimap.parse.BadCommand as e:
@@ -741,10 +765,10 @@ class AsyncServerIMAPMessageProcessor:
             # message we had problems with.
             #
             if imap_cmd.tag is not None:
-                msg = f"{imap_cmd.tag} BAD {e}\r\n".encode("ascii")
+                bad = f"{imap_cmd.tag} BAD {e}\r\n"
             else:
-                msg = f"* BAD {e}\r\n".encode("ascii")
-            await self.imap_client_connection.push(msg)
+                bad = f"* BAD {e}\r\n"
+            await self.imap_client_connection.push(bad)
             return True
 
         # This hands the IMAP command to be processed by the client handler
@@ -827,11 +851,11 @@ class AsyncServerIMAPMessageProcessor:
         know which IMAP client is sending it commands based on which TCP
         connection the command comes in on)
         """
-        if user.imap_username in user_imap_subprocesses:
-            self.subprocess = user_imap_subprocesses[user.imap_username]
+        if user.imap_username in USER_IMAP_SUBPROCESSES:
+            self.subprocess = USER_IMAP_SUBPROCESSES[user.imap_username]
         else:
             self.subprocess = AsyncIMAPSubprocessHandle(user, self.options)
-            user_imap_subprocesses[user.imap_username] = self.subprocess
+            USER_IMAP_SUBPROCESSES[user.imap_username] = self.subprocess
 
         if not self.subprocess.is_alive():
             await self.subprocess.start()
