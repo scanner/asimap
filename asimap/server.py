@@ -86,7 +86,7 @@ class AsyncIMAPSubprocessHandle:
 
     ##################################################################
     #
-    def __init__(self, user: str, debug: bool = False, test_mode: bool = False):
+    def __init__(self, user: str, debug: bool = False):
         """
 
         Arguments:
@@ -99,7 +99,7 @@ class AsyncIMAPSubprocessHandle:
         self.trace_enabled = False
         self.trace_file = None
         self.user = user
-        self.port = None
+        self.port: int
         self.subprocess = None
         self.rc = None
 
@@ -646,6 +646,8 @@ class AsyncIMAPClientHandler:
             if not self.writer.is_closing():
                 self.writer.close()
             await self.writer.wait_closed()
+        except socket.error:
+            pass
         except Exception as exc:
             logger.error("Exception when closing %s: %s", self, exc)
 
