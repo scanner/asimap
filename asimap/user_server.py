@@ -41,6 +41,7 @@ from asimap.trace import trace
 log = logging.getLogger(f"asimap.{__name__}")
 
 BACKLOG = 5
+USER_SERVER_PROGRAM: str = ""
 
 
 ####################################################################
@@ -61,12 +62,15 @@ def set_user_server_program(prg):
 ##################################################################
 ##################################################################
 #
-class IMAPUserClientHandler(asynchat.async_chat):
+class IMAPClientProxy:
     """
-    This class receives messages from the main server process.
+    An IMAP Client out in the net sends messages to the main IMAP Server
+    process. That main IMAP Server process sends them on to this
+    per-authenticated user subprocess.
 
-    These messages are recevied by the main server process from an IMAP client
-    and it has sent them on to us to process.
+    This class has the asyncio.StreamReader and asyncio.StreamWriter's for
+    receiving these messages and passing messages from this per-user subprocess
+    back to the IMAP client out in the net.
 
     All of the messages we receive will be for an IMAP client that has
     successfully authenticated with the main server.
@@ -88,6 +92,7 @@ class IMAPUserClientHandler(asynchat.async_chat):
         """ """
         asynchat.async_chat.__init__(self, sock=sock)
 
+        self.name = rem_address
         self.log = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self.reading_message = False
         self.ibuffer = []
@@ -358,7 +363,7 @@ class IMAPUserServer(asyncore.dispatcher):
     """
     Listen on a port on localhost for connections from the asimapd
     main server that gets connections from actual IMAP clients. When
-    we get one create an IMAPUserClientHandler object that gets the
+    we get one create an IMAPClientProxy object that gets the
     new connection (and handles all further IMAP related
     communications with the client.)
     """
@@ -850,7 +855,7 @@ class IMAPUserServer(asyncore.dispatcher):
             sock, addr = pair
             self.log.info("Incoming connection from %s:%d" % addr)
             self.expiry = None
-            handler = IMAPUserClientHandler(
+            handler = IMAPClientProxy(
                 sock, addr[0], addr[1], self, self.options
             )
             self.clients[addr[1]] = handler

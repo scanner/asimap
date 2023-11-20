@@ -26,7 +26,7 @@ import trustme
 #
 import asimap.auth
 
-from ..server import AsyncIMAPServer
+from ..server import IMAPServer
 from .factories import UserFactory
 
 
@@ -85,6 +85,7 @@ def password_file_factory(tmp_path):
         with pw_file_location.open("w") as f:
             for user in users:
                 f.write(f"{user.username}:{user.pw_hash}:{user.maildir}\n")
+                print(f"{user.username}:{user.pw_hash}:{user.maildir}\n")
         setattr(asimap.auth, "PW_FILE_LOCATION", pw_file_location)
         return pw_file_location
 
@@ -177,7 +178,7 @@ def imap_server(faker, ssl_certs, user_factory, password_file_factory):
 
     ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
     server_cert.configure_cert(ssl_context)
-    server = AsyncIMAPServer(host, port, ssl_context, pw_file)
+    server = IMAPServer(host, port, ssl_context, pw_file, debug=True)
 
     ############################
     #
@@ -202,6 +203,6 @@ def imap_server(faker, ssl_certs, user_factory, password_file_factory):
 
     try:
         server.asyncio_server.close()
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"server exception: {exc}")
     server_thread.join(timeout=5.0)

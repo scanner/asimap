@@ -14,6 +14,7 @@ import email
 import logging
 import os.path
 import re
+from typing import Union
 
 # 3rd party imports
 #
@@ -259,10 +260,9 @@ _zone_re = re.compile(_zone)
 #######################################################################
 #######################################################################
 
+
 ############################################################################
 #
-
-
 class IMAPClientCommand(object):
     """This is an IMAP Client Command parser. Given a complete IMAP command it
     will parse in to a structure that can be easily processed by the rest of
@@ -1866,3 +1866,17 @@ class IMAPClientCommand(object):
     #
     #######################################################################
     #######################################################################
+
+
+####################################################################
+#
+def parse_cmd_from_msg(msg: Union[bytes, str]) -> IMAPClientCommand:
+    """
+    Create an IMAPClientCommand from the message, and parse it. Return the
+    command to the caller.
+    """
+    if isinstance(msg, bytes):
+        msg = str(msg, "latin-1")
+    cmd = IMAPClientCommand(msg)
+    cmd.parse()
+    return cmd

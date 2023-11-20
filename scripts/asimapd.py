@@ -53,7 +53,7 @@ from rich.traceback import install as rich_install
 # Application imports
 #
 import asimap.auth
-from asimap.server import AsyncIMAPServer
+from asimap.server import IMAPServer
 from asimap.user_server import set_user_server_program
 
 rich_install(show_locals=True)
@@ -172,9 +172,7 @@ def main():
     logger.debug(f"user server program is: '{user_server_program}'")
     set_user_server_program(user_server_program)
 
-    server = AsyncIMAPServer(
-        address, port, ssl_context, trace=trace, debug=debug
-    )
+    server = IMAPServer(address, port, ssl_context, trace=trace, debug=debug)
     try:
         asyncio.run(server.run())
     except KeyboardInterrupt:

@@ -9,18 +9,27 @@ import logging
 import os.path
 import sys
 from itertools import count, groupby
+from typing import TYPE_CHECKING, Union
 
 # asimapd imports
 #
 import asimap.mbox
 import asimap.throttle
-from asimap.exceptions import (
+
+from .auth import User, authenticate
+from .exceptions import (
     AuthenticationException,
     Bad,
     MailboxInconsistency,
     MailboxLock,
     No,
 )
+
+# Allow circular imports for annotations
+#
+if TYPE_CHECKING:
+    from .server import IMAPClient
+    from .user_server import IMAPClientProxy
 
 # Local constants
 #
@@ -60,7 +69,7 @@ class BaseClientHandler:
 
     ##################################################################
     #
-    def __init__(self, client):
+    def __init__(self, client: Union["IMAPClient", "IMAPClientProxy"]):
         """
         Arguments:
         - `client`: An asynchat.async_chat object that is connected to the IMAP
@@ -306,10 +315,9 @@ class BaseClientHandler:
         await self.send_pending_expunges()
         self.client_id = cmd.id_dict
         self.log.info(
-            "Client at %s:%d identified itself with: %s"
+            "Client at %s identified itself with: %s"
             % (
-                self.client.rem_addr,
-                self.client.port,
+                self.client.name,
                 ", ".join("%s: '%s'" % x for x in self.client_id.items()),
             )
         )
@@ -381,20 +389,13 @@ class PreAuthenticated(BaseClientHandler):
     ##################################################################
     #
     def __init__(self, client):
-        """
-        Arguments:
-        - `client`: An asynchat.async_chat object that is connected to the IMAP
-                    client we are handling. This lets us send messages to that
-                    IMAP client.
-        - `auth_system`: The auth system we use to authenticate the IMAP
-                         client.
-        """
+        """ """
         BaseClientHandler.__init__(self, client)
         self.name = "PreAuthenticated"
         self.log = logging.getLogger(
             "%s.%s" % (__name__, self.__class__.__name__)
         )
-        self.user = None
+        self.user: User
         return
 
     # The following commands are supported in the non-authenticated state.
@@ -402,7 +403,7 @@ class PreAuthenticated(BaseClientHandler):
 
     ##################################################################
     #
-    def do_authenticated(self):
+    async def do_authenticated(self):
         """
         We do not support any authentication mechanisms at this time.. just
         password authentication via the 'login' IMAP client command.
@@ -410,14 +411,14 @@ class PreAuthenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The full IMAP command object.
         """
-        self.send_pending_expunges()
+        await self.send_pending_expunges()
         if self.state == "authenticated":
             raise Bad("client already is in the authenticated state")
         raise No("unsupported authentication mechanism")
 
     ##################################################################
     #
-    def do_login(self, cmd):
+    async def do_login(self, cmd):
         """
         Process a LOGIN command with a username and password from the IMAP
         client.
@@ -429,7 +430,7 @@ class PreAuthenticated(BaseClientHandler):
         # results then we are going to throttle them and not accept their
         # attempt to login.
         #
-        if not asimap.throttle.check_allow(cmd.user_name, self.client.rem_addr):
+        if not asimap.throttle.check_allow(cmd.user_name, self.client.name):
             raise Bad("Too many authentication failures")
 
         # XXX This should poke the authentication mechanism we were passed
@@ -439,14 +440,12 @@ class PreAuthenticated(BaseClientHandler):
         #     But for our first test we are going to accept a test user
         #     and password.
         #
-        self.send_pending_expunges()
+        await self.send_pending_expunges()
         if self.state == "authenticated":
             raise Bad("client already is in the authenticated state")
 
         try:
-            self.user = self.auth_system.authenticate(
-                cmd.user_name, cmd.password
-            )
+            self.user = await authenticate(cmd.user_name, cmd.password)
 
             # Even if the user authenticates properly, we can not allow them to
             # login if they have no maildir.
@@ -457,16 +456,14 @@ class PreAuthenticated(BaseClientHandler):
             ):
                 raise No("You have no mailbox directory setup")
 
-            self.user.auth_system = self.auth_system
             self.state = "authenticated"
             self.log.info(
-                "%s logged in from %s:%d"
-                % (str(self.user), self.client.rem_addr, self.client.port)
+                "%s logged in from %s" % (str(self.user), self.client.name)
             )
         except AuthenticationException as e:
             # Record this failed authentication attempt
             #
-            asimap.throttle.login_failed(cmd.user_name, self.client.rem_addr)
+            asimap.throttle.login_failed(cmd.user_name, self.client.name)
             raise No(str(e))
         return None
 
@@ -487,15 +484,7 @@ class Authenticated(BaseClientHandler):
     ##################################################################
     #
     def __init__(self, client, user_server):
-        """
-
-        Arguments:
-        - `client`: An asynchat.async_chat object that is connected to the IMAP
-                    client we are handling. This lets us send messages to that
-                    IMAP client.
-        - `user_server`: A handle on the user server object (which holds the
-                         handle to our sqlite3 db, etc.
-        """
+        """ """
         BaseClientHandler.__init__(self, client)
         self.log = logging.getLogger(
             "%s.%s.port-%d" % (__name__, self.__class__.__name__, client.port)
@@ -564,14 +553,14 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    def notifies(self):
+    async def notifies(self):
         """
         Handles the common case of sending pending expunges and a resync where
         we only notify this client of exists/recent.
         """
         if self.state == "selected" and self.mbox is not None:
             self.mbox.resync(only_notify=self)
-        self.send_pending_expunges()
+        await self.send_pending_expunges()
         return
 
     #########################################################################
