@@ -99,7 +99,7 @@ def enable_tracing(logdir, trace_file=None):
 
 ####################################################################
 #
-def trace(msg):
+async def trace(msg):
     """
     Keyword Arguments:
     msg --

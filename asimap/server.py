@@ -484,7 +484,7 @@ class IMAPClient:
     """
     This class is a communication channel to an IMAP client.
 
-    This class and the AsyncServerIMAPMessageProcessor form the two parts of
+    This class and the IMAPSubprocessInterface form the two parts of
     communictation between an IMAP client and the subprocess running as a user
     handling all of that IMAP client's messages.
 
@@ -494,7 +494,7 @@ class IMAPClient:
     strings so that it gets an entire message.
 
     When an entire message has been received we pass it off to a
-    AsyncServerIMAPMessageProcessor to deal with.
+    IMAPSubprocessInterface to deal with.
 
     That AyncServerIMAPMessageProcessor will call our '.push()' method to send
     messages back to the IMAP client.
@@ -524,7 +524,7 @@ class IMAPClient:
         self.reading_string_literal = False
         self.stream_buffer_size = 65536
         self.ibuffer: List[bytes] = []
-        self.msg_processor = AsyncServerIMAPMessageProcessor(self)
+        self.msg_processor = IMAPSubprocessInterface(self)
 
     ####################################################################
     #
@@ -552,7 +552,7 @@ class IMAPClient:
                 {
                     "time": time.time(),
                     "data": "".join(msg),
-                    "msg_type": "SEND_DATA",
+                    "msg_type": "SEND",
                 }
             )
 
@@ -666,7 +666,7 @@ class IMAPClient:
 ########################################################################
 ########################################################################
 #
-class AsyncServerIMAPMessageProcessor:
+class IMAPSubprocessInterface:
     """
     This class is the communication channel to the subprocess that handles all
     of a specific IMAP client's messages.

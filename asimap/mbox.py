@@ -15,6 +15,7 @@ import shutil
 import stat
 import time
 from email.parser import HeaderParser
+from typing import TYPE_CHECKING, Dict
 
 # Project imports
 #
@@ -31,6 +32,11 @@ from asimap.constants import (
 from asimap.exceptions import Bad, MailboxInconsistency, MailboxLock, No
 from asimap.fetch import FetchAtt
 from asimap.parse import ADD_FLAGS, REMOVE_FLAGS, REPLACE_FLAGS
+
+# Allow circular imports for annotations
+#
+if TYPE_CHECKING:
+    from .user_server import IMAPClientProxy
 
 # RE used to see if a mailbox being created is just digits.
 #
@@ -245,7 +251,7 @@ class Mailbox:
         # The dict of clients that currently have this mailbox selected.
         # This includes clients that used 'EXAMINE' instead of 'SELECT'
         #
-        self.clients = {}
+        self.clients: Dict[str, "IMAPClientProxy"] = {}
 
         # After initial setup fill in any persistent values from the database
         # (and if there are no, then create an entry in the db for this
@@ -1610,7 +1616,7 @@ class Mailbox:
 
     ##################################################################
     #
-    def unselected(self, client):
+    def unselected(self, client_name: str):
         """
         When the client is no longer selecting/examining this mailbox.
 
@@ -1626,26 +1632,13 @@ class Mailbox:
         # We only bother with doing anything in the client is actually
         # in this mailbox's list of clients.
         #
-        if client.client.port not in self.clients:
+        if client_name not in self.clients:
             return
 
-        del self.clients[client.client.port]
+        del self.clients[client_name]
 
-        # Also if this client currently has any pending commands for this
-        # folder they are tossed since the client is no longer associatd with
-        # this folder.
-        #
-        if self.command_queue:
-            self.command_queue = [
-                x
-                for x in self.command_queue
-                if x[0].client.port == client.client.port
-            ]
-
-        if len(self.clients) == 0:
-            self.log.debug("unselected(): No clients, starting expiry timer")
+        if not self.clients:
             self.expiry = time.time() + MBOX_EXPIRY_TIME
-        return
 
     ##################################################################
     #

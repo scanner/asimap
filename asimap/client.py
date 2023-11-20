@@ -80,7 +80,7 @@ class BaseClientHandler:
             "%s.%s" % (__name__, self.__class__.__name__)
         )
         self.client = client
-        self.state = None
+        self.state = "not_authenticated"
         self.name = "BaseClientHandler"
         self.mbox = None
 
@@ -641,7 +641,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    def do_unselect(self, cmd):
+    async def do_unselect(self, cmd):
         """
         Unselect a mailbox. Similar to close, except it does not do an expunge.
 
@@ -659,7 +659,7 @@ class Authenticated(BaseClientHandler):
 
         if self.mbox:
             try:
-                self.mbox.unselected(self)
+                self.mbox.unselected(self.client.name)
             except MailboxLock:
                 pass
             self.mbox = None
