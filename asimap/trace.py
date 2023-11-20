@@ -8,20 +8,18 @@ The support for writing (and eventually reading) trace files.
 Defines a method for setting up the trace writer and writing messages
 to trace writer if it has been initialized.
 """
-
+# system imports
+#
 import json
 import logging
 import logging.handlers
-
-# system imports
-#
 import os
 import pwd
 import time
 
 log = logging.getLogger("%s" % __name__)
-trace_logger = logging.getLogger("trace")
-trace_enabled = False
+trace_logger = logging.getLogger("asimap.trace")
+TRACE_ENABLED = False
 
 
 ########################################################################
@@ -104,5 +102,5 @@ async def trace(msg):
     Keyword Arguments:
     msg --
     """
-    if trace_enabled:
+    if TRACE_ENABLED:
         trace_logger.info(json.dumps(msg))

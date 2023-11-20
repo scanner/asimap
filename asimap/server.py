@@ -6,7 +6,8 @@ relays IMAP messages between an IMAP client and a userserver.
 # system imports
 #
 import asyncio
-import logging
+
+# import logging
 import os
 import random
 import re
@@ -19,6 +20,7 @@ from typing import Dict, List, Optional, Union
 # 3rd party imports
 #
 import sentry_sdk
+from aiologger import Logger
 from sentry_sdk.integrations.asyncio import AsyncioIntegration
 
 # asimap imports
@@ -29,11 +31,8 @@ from .auth import User
 from .client import CAPABILITIES, PreAuthenticated
 from .parse import BadCommand, parse_cmd_from_msg
 
-# from aiologger import Logger
-
-
-logger = logging.getLogger("asimap.server")
-# logger = Logger.with_default_handlers(name="asimap.server")
+# logger = logging.getLogger("asimap.server")
+logger = Logger.with_default_handlers(name="asimap.server")
 
 BACKLOG = 5
 
@@ -117,8 +116,6 @@ class IMAPSubprocess:
         Start our subprocess. This assumes that we have no subprocess
         already. If we do then we will be basically creating an orphan process.
         """
-        import q
-
         cmd = asimap.user_server.USER_SERVER_PROGRAM
         args = []
         if self.logdir:
@@ -130,10 +127,8 @@ class IMAPSubprocess:
         if self.trace_file:
             args.append(f"--trace_file={self.options.trace_file}")
 
-        q.q(f"Starting server: {args}")
         print(f"Starting server: {args}")
-
-        logger.error(
+        logger.info(
             "Starting user server, cmd: %s, as user: '%s', in "
             "directory '%s'"
             % (repr(cmd), self.user.username, self.user.maildir)
@@ -143,7 +138,7 @@ class IMAPSubprocess:
             *args,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
+            # stderr=asyncio.subprocess.STDOUT,
             close_fds=True,
             cwd=self.user.maildir,
         )
@@ -178,9 +173,11 @@ class IMAPSubprocess:
         await self.subprocess.stdin.wait_closed()
         logger.debug("Reading port from subprocess.")
         try:
-            m = await self.subprocess.stdout.readline()
-            print(f"Got: {m}")
-            self.port = int(str(m, "latin-1").strip())
+            # m = await self.subprocess.stdout.readline()
+            m = await self.subprocess.stdout.read()
+            s = str(m, "latin-1").strip()
+            logger.debug("Read port info from subprocess: '%s'", s)
+            self.port = int(s)
         except ValueError as e:
             logger.exception(
                 "Unable to read port definition from subprocess: %s", e
@@ -189,7 +186,7 @@ class IMAPSubprocess:
             # failed and we need to tell our caller so they can deal with it.
             #
             raise
-        logger.debug("Subprocess is listening on port: %d" % self.port)
+        logger.debug("Subprocess is listening on port: %s" % str(self.port))
 
     ####################################################################
     #

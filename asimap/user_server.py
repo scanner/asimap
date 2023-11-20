@@ -21,6 +21,7 @@ import os.path
 import socket
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional, Union
 
@@ -119,7 +120,6 @@ class IMAPClientProxy:
             if not self.writer.is_closing():
                 self.writer.close()
             await self.writer.wait_closed()
-            await self.cleanup()
         except socket.error:
             pass
         except Exception as exc:
@@ -172,7 +172,9 @@ class IMAPClientProxy:
                 #
                 if self.cmd_processor.idling:
                     if imap_msg.lower().strip() != "done":
-                        self.push(f"* BAD Expected 'DONE' not: {imap_msg}\r\n")
+                        await self.push(
+                            f"* BAD Expected 'DONE' not: {imap_msg}\r\n"
+                        )
                     else:
                         self.cmd_processor.do_done(None)
                     return
@@ -188,9 +190,9 @@ class IMAPClientProxy:
                     # the client so it knows what message we had problems with.
                     #
                     if imap_cmd.tag is not None:
-                        self.push(f"{imap_cmd.tag} BAD {e}\r\n")
+                        await self.push(f"{imap_cmd.tag} BAD {e}\r\n")
                     else:
-                        self.push(f"* BAD {e}\r\n")
+                        await self.push(f"* BAD {e}\r\n")
                     return
 
                 # Pass the command on to the command processor to handle.
@@ -220,7 +222,6 @@ class IMAPClientProxy:
             # client. Close our connection and return which will cause this
             # task to be completed.
             #
-            await self.cleanup()
             await self.close()
 
     ####################################################################
@@ -265,36 +266,6 @@ class IMAPClientProxy:
         """
         return f"from {self.name}"
 
-    ##################################################################
-    #
-    async def cleanup(self):
-        """
-        This cleans up various references and resources held open by this
-        client.
-
-        The code was collected here because it is called when a client logs out
-        or when the main server closes the connection to us.
-        """
-        # Be sure to remove our entry from the server.clients dict. Also go
-        # through all of the active mailboxes and make sure the client
-        # unselects any if it had selections on them.
-        #
-        if self.name in self.server.clients:
-            del self.server.clients[self.port]
-        for mbox in self.server.active_mailboxes.values():
-            mbox.unselected(self.cmd_processor)
-
-        # If the user server has no more clients then start the idle timeout
-        # clock
-        #
-        if len(self.server.clients) == 0:
-            self.log.debug(
-                "cleanup(): Server has no clients, starting timeout clock"
-            )
-            self.expiry = time.time() + 1800
-
-        return
-
 
 ##################################################################
 ##################################################################
@@ -314,8 +285,7 @@ class IMAPUserServer:
         self,
         maildir: Path,
         debug: Optional[bool] = False,
-        trace: Optional[bool] = False,
-        trace_file: Optional[str] = None,
+        trace_enabled: Optional[bool] = False,
     ):
         """
         Setup our dispatcher.. listen on a port we are supposed to accept
@@ -437,11 +407,9 @@ class IMAPUserServer:
         self.asyncio_server = await asyncio.start_server(
             self.new_client, "127.0.0.1"
         )
-        addrs = [
-            str(sock.getsockname()) for sock in self.asyncio_server.sockets
-        ]
+        addrs = [sock.getsockname() for sock in self.asyncio_server.sockets]
         self.port = addrs[0][1]
-        self.log.debug("Serving on port %d", self.port)
+        self.log.debug("Serving on port %s (addrs: %s)", self.port, addrs)
 
         try:
             # Before we tell the main server process what port we are listening
@@ -551,6 +519,17 @@ class IMAPUserServer:
         for mbox in self.active_mailboxes.values():
             mbox.unselected(client.name)
         del self.clients[task]
+
+        # If there are no more clients, then set the IMAPUserServer's expiry
+        # time.
+        #
+        if not self.clients:
+            self.expiry = time.time() + 1800
+            self.log.debug(
+                "No more IMAP clients. Expiry set for %s",
+                datetime.fromtimestamp(self.expiry),
+            )
+
         self.log.debug("IMAP Client task done (disconnected):", client.name)
 
     ##################################################################
@@ -810,21 +789,3 @@ class IMAPUserServer:
             % (time.time() - start_time)
         )
         return
-
-    ##################################################################
-    #
-    def handle_accept(self):
-        """
-        A client has connected to us. Create the IMAPClientHandler object to
-        handle that client and let it deal with it.
-        """
-
-        pair = self.accept()
-        if pair is not None:
-            sock, addr = pair
-            self.log.info("Incoming connection from %s:%d" % addr)
-            self.expiry = None
-            handler = IMAPClientProxy(
-                sock, addr[0], addr[1], self, self.options
-            )
-            self.clients[addr[1]] = handler

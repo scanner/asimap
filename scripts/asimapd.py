@@ -50,15 +50,15 @@ from docopt import docopt
 from dotenv import load_dotenv
 from rich.traceback import install as rich_install
 
+import asimap.auth
+
 # Application imports
 #
-import asimap.auth
+from asimap import __version__ as VERSION
 from asimap.server import IMAPServer
 from asimap.user_server import set_user_server_program
 
 rich_install(show_locals=True)
-
-VERSION = "2.0"
 
 logger = logging.getLogger("asimap")
 
