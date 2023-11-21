@@ -1,7 +1,3 @@
-#!/usr/bin/env python
-#
-# File: $Id$
-#
 """
 The heart of the asimap server process to handle a single user's
 mailbox for multiple IMAP clients.
@@ -18,6 +14,7 @@ import logging
 import mailbox
 import os
 import os.path
+import re
 import socket
 import sys
 import time
@@ -48,6 +45,7 @@ logger = logging.getLogger(f"asimap.{__name__}")
 
 BACKLOG = 5
 USER_SERVER_PROGRAM: str = ""
+RE_LITERAL_STRING_START = re.compile(rb"\{(\d+)(\+)?\}$")
 
 
 ####################################################################
@@ -108,7 +106,6 @@ class IMAPClientProxy:
         self.writer = writer
         self.server = server
         self.cmd_processor = Authenticated(self, self.server)
-        self.trace("CONNECT", {})
 
     ####################################################################
     #
@@ -120,6 +117,7 @@ class IMAPClientProxy:
             if not self.writer.is_closing():
                 self.writer.close()
             await self.writer.wait_closed()
+            await self.trace("CLOSE", {})
         except socket.error:
             pass
         except Exception as exc:
@@ -151,6 +149,7 @@ class IMAPClientProxy:
             #
             # {\d+}\n< ... \d octects
             #
+            await self.trace("CONNECT", {})
             client_connected = True
             while client_connected:
                 # Read until b'\n'. Trim off the '\n'. If the message is
@@ -160,10 +159,19 @@ class IMAPClientProxy:
                 #     right format, ie: '{\d+}\n'
                 #
                 msg = await self.reader.readuntil(self.LINE_TERMINATOR)
-                length = int(str(msg[1:-2], "latin-1"))
+                m = RE_LITERAL_STRING_START.search(msg)
+                if not m:
+                    # Messages from the server MUST start with '{\d}\n' If they
+                    # do not conform to this then just disconnect this client.
+                    #
+                    self.log.info(f"Client sent invalid message start: {msg!r}")
+                    client_connected = False
+                    break
+                self.log.debug(f"start: message: {str(msg,'latin-1')}")
+                length = int(m.group(1))
                 msg = await self.reader.readexactly(length)
                 imap_msg = str(msg, "latin-1")
-                self.trace("RECEIVED", {"data": imap_msg})
+                await self.trace("RECEIVED", {"data": imap_msg})
 
                 # We special case if the client is idling. In this state we
                 # look for ONLY a 'DONE' non-tagged message and when we get
@@ -197,7 +205,7 @@ class IMAPClientProxy:
 
                 # Pass the command on to the command processor to handle.
                 #
-                self.cmd_processor.command(imap_cmd)
+                await self.cmd_processor.command(imap_cmd)
 
                 # If our state is "logged_out" after processing the command
                 # then the client has logged out of the authenticated state. We
@@ -393,6 +401,7 @@ class IMAPUserServer:
         through the main process. Run until the server exits.
         """
         if "SENTRY_DSN" in os.environ:
+            sys.stderr.write("initializing sentry_sdk\n")
             sentry_sdk.init(
                 dsn=os.environ["SENTRY_DSN"],
                 # Set traces_sample_rate to 1.0 to capture 100%
@@ -404,11 +413,15 @@ class IMAPUserServer:
                 ],
                 environment="devel",
             )
+        else:
+            sys.stderr.write("***** SENTRY_DSN not in enviornment")
         self.asyncio_server = await asyncio.start_server(
             self.new_client, "127.0.0.1"
         )
         addrs = [sock.getsockname() for sock in self.asyncio_server.sockets]
         self.port = addrs[0][1]
+        sys.stderr.write(f"listening on {addrs}\n")
+        sys.stderr.flush()
         self.log.debug("Serving on port %s (addrs: %s)", self.port, addrs)
 
         try:
@@ -425,7 +438,7 @@ class IMAPUserServer:
             #
             sys.stdout.write(f"{self.port}\n")
             sys.stdout.flush()
-            sys.stdout.close()
+            sys.stderr.write(f"***** SUBPROCESS: Wrote port: {self.port}\n")
 
             async with self.asyncio_server:
                 await self.asyncio_server.serve_forever()
@@ -441,6 +454,27 @@ class IMAPUserServer:
             self.db.commit()
             self.db.close()
             self.mailbox.close()
+
+    ####################################################################
+    #
+    def new_client(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+    ):
+        """
+        New client connection. Create a new IMAPClient
+        with the reader and writer. Create a new task to handle all
+        future communications with the new client.
+        """
+        rem_addr, port = writer.get_extra_info("peername")
+        peer_name = f"{rem_addr}:{port}"
+        self.log.debug(f"New IMAP client proxy: {peer_name}")
+        client_handler = IMAPClientProxy(self, peer_name, reader, writer)
+        task = asyncio.create_task(client_handler.start(), name=peer_name)
+        task.add_done_callback(self.client_done)
+        self.clients[task] = client_handler
+        self.expiry = None
 
     ####################################################################
     #
@@ -478,27 +512,6 @@ class IMAPUserServer:
             if self.asyncio_server.is_serving():
                 self.asyncio_server.close()
                 await self.asyncio_server.wait_closed()
-
-    ####################################################################
-    #
-    def new_client(
-        self,
-        reader: asyncio.StreamReader,
-        writer: asyncio.StreamWriter,
-    ):
-        """
-        New client connection. Create a new IMAPClient
-        with the reader and writer. Create a new task to handle all
-        future communications with the new client.
-        """
-        rem_addr, port = writer.get_extra_info("peername")
-        peer_name = f"{rem_addr}:{port}"
-        self.log.debug(f"New client: {peer_name}")
-        client_handler = IMAPClientProxy(self, peer_name, reader, writer)
-        task = asyncio.create_task(client_handler.start(), name=peer_name)
-        task.add_done_callback(self.client_done)
-        self.clients[task] = client_handler
-        self.expiry = None
 
     ####################################################################
     #

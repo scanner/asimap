@@ -9,7 +9,7 @@ import logging
 import os.path
 import sys
 from itertools import count, groupby
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, List, Union
 
 # asimapd imports
 #
@@ -100,7 +100,7 @@ class BaseClientHandler:
         # during its next command (that we can send pending expunges during)
         # they are stored here.
         #
-        self.pending_expunges = []
+        self.pending_expunges: List[str] = []
 
         return
 
@@ -487,11 +487,10 @@ class Authenticated(BaseClientHandler):
         """ """
         BaseClientHandler.__init__(self, client)
         self.log = logging.getLogger(
-            "%s.%s.port-%d" % (__name__, self.__class__.__name__, client.port)
+            f"{__name__}.{self.__class__.__name__}-{client.name}"
         )
         self.server = user_server
-        self.port = client.port  # Used for debug messages
-        self.name = "Client:%d" % client.port
+        self.name = client.name
         self.db = user_server.db
         self.mbox = None
         self.state = "authenticated"
