@@ -543,7 +543,7 @@ class IMAPUserServer:
                 datetime.fromtimestamp(self.expiry),
             )
 
-        self.log.debug("IMAP Client task done (disconnected):", client.name)
+        self.log.debug("IMAP Client task done (disconnected): %s", client.name)
 
     ##################################################################
     #
@@ -671,7 +671,6 @@ class IMAPUserServer:
         create an entry for it.
         """
         start_time = time.time()
-        self.log.debug("find_all_folders: STARTING")
         extant_mboxes = {}
         mboxes_to_create = []
         c = self.db.cursor()
@@ -697,7 +696,7 @@ class IMAPUserServer:
         for mbox_name in mboxes_to_create:
             await self.get_mailbox(mbox_name, expiry=0)
         self.log.debug(
-            "find_all_folders: FINISHED. Took %f seconds"
+            "find_all_folders: finished. Took %f seconds"
             % (time.time() - start_time)
         )
 
@@ -720,8 +719,6 @@ class IMAPUserServer:
                     mailbox regardless of their mtimes.
         """
         start_time = time.time()
-        self.log.debug("check_all_folders begun")
-
         # Get all of the folders and mtimes we know about from the sqlite db at
         # the beginning. This takes more memory (not _that_ much really in the
         # grand scheme of things) but it gives the answers in one go-round to
