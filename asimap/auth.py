@@ -4,19 +4,23 @@ authenticate users.
 """
 # system imports
 #
-from typing import Dict
+import logging
+from pathlib import Path
+from typing import TYPE_CHECKING, Dict
 
 # 3rd party imports
 #
 import aiofiles.os
-from aiologger import Logger
 
 # asimapd imports
 #
 from asimap.exceptions import BadAuthentication, NoSuchUser
 from asimap.hashers import check_password
 
-logger = Logger.with_default_handlers(name="asimap.auth")
+if TYPE_CHECKING:
+    from _typeshed import StrPath
+
+logger = logging.getLogger("asimap.auth")
 
 # We populate a dict of mappings from username to their user object.
 # This is read in from the pw file.
@@ -53,10 +57,10 @@ class User:
 
     ##################################################################
     #
-    def __init__(self, username: str, maildir: str, password_hash: str):
+    def __init__(self, username: str, maildir: "StrPath", password_hash: str):
         """ """
         self.username = username
-        self.maildir = maildir
+        self.maildir = Path(maildir)
         self.pw_hash = password_hash
 
     ##################################################################

@@ -40,7 +40,6 @@ Options:
 #
 import asyncio
 import logging
-import os
 import ssl
 from pathlib import Path
 
@@ -50,63 +49,17 @@ from docopt import docopt
 from dotenv import load_dotenv
 from rich.traceback import install as rich_install
 
-import asimap.auth
-
 # Application imports
 #
 from asimap import __version__ as VERSION
+from asimap import auth
 from asimap.server import IMAPServer
 from asimap.user_server import set_user_server_program
+from asimap.utils import setup_asyncio_logging, setup_logging
 
 rich_install(show_locals=True)
 
-logger = logging.getLogger("asimap")
-
-
-####################################################################
-#
-def setup_logging(logdir: str, debug: bool):
-    """
-    Set up the logger. We log either to files in 'logdir'
-    or to stderr.
-
-    NOTE: It does not make sense to log to stderr if we are running in
-          daemon mode.. maybe we should exit with a warning before we
-          try to enter daemon mode if logdir == 'stderr'
-
-    Keyword Arguments:
-    logdir: str --
-    debug: bool --
-    """
-    if debug:
-        level = logging.DEBUG
-    else:
-        level = logging.INFO
-
-    # We define our logging config on the root loggger.
-    #
-    root_logger = logging.getLogger()
-    root_logger.setLevel(level)
-
-    if logdir == "stderr":
-        # Do not log to a file, log to stderr.
-        #
-        h = logging.StreamHandler()
-    else:
-        # Rotate on every 10mb, keep 5 files.
-        #
-        log_file_basename = os.path.join(logdir, "asimapd.log")
-        h = logging.handlers.RotatingFileHandler(
-            log_file_basename, maxBytes=10485760, backupCount=5
-        )
-    h.setLevel(level)
-    formatter = logging.Formatter(
-        "%(asctime)s %(created)s %(process)d "
-        "%(levelname)s %(name)s "
-        "%(message)s"
-    )
-    h.setFormatter(formatter)
-    root_logger.addHandler(h)
+logger = logging.getLogger("asimapd")
 
 
 #############################################################################
@@ -132,9 +85,13 @@ def main():
     # password file in the asimap.auth module.
     #
     if pwfile:
-        setattr(asimap.auth, "PW_FILE_LOCATION", pwfile)
+        setattr(auth, "PW_FILE_LOCATION", pwfile)
 
+    # After we setup our logging handlers and formatters set up for asyncio
+    # logging so that logging calls do not block the asyncio event loop.
+    #
     setup_logging(logdir, debug)
+    setup_asyncio_logging()
     logger.info("Starting")
 
     ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
@@ -177,7 +134,8 @@ def main():
         asyncio.run(server.run())
     except KeyboardInterrupt:
         logger.warning("Keyboard interrupt, exiting")
-    return
+    finally:
+        print("Finally exited asyncio main loop")
 
 
 ############################################################################
@@ -187,6 +145,9 @@ def main():
 #
 if __name__ == "__main__":
     main()
+    print("Shutting down logging")
+    logging.shutdown()
+    print("After logging shutdown")
 #
 #
 ############################################################################

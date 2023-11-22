@@ -1,5 +1,4 @@
 aiofiles
-aiologger[aiofiles]
 aiosqlite
 docopt
 pytz

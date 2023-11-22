@@ -5,6 +5,7 @@ Factories for various objects in the ASIMAP server.
 """
 # system imports
 #
+from pathlib import Path
 from typing import Any, Sequence
 
 # 3rd party imports
@@ -33,7 +34,9 @@ class UserFactory(factory.Factory):
         model = User
 
     username = factory.Faker("email")
-    maildir = factory.LazyAttribute(lambda o: f"/var/tmp/maildirs/{o.username}")
+    maildir = factory.LazyAttribute(
+        lambda o: Path(f"/var/tmp/maildirs/{o.username}")
+    )
     password_hash = "!invalid_pw"  # NOTE: Fixed in post_generation below
 
     @post_generation

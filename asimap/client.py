@@ -6,15 +6,9 @@ single connected IMAP client.
 #
 import asyncio
 import logging
-import os.path
 import sys
 from itertools import count, groupby
-from typing import TYPE_CHECKING, List, Union
-
-# asimapd imports
-#
-import asimap.mbox
-import asimap.throttle
+from typing import TYPE_CHECKING, List, Optional, Union
 
 from .auth import User, authenticate
 from .exceptions import (
@@ -24,6 +18,11 @@ from .exceptions import (
     MailboxLock,
     No,
 )
+from .mbox import Mailbox, NoSuchMailbox
+
+# asimapd imports
+#
+from .throttle import check_allow, login_failed
 
 # Allow circular imports for annotations
 #
@@ -101,8 +100,6 @@ class BaseClientHandler:
         # they are stored here.
         #
         self.pending_expunges: List[str] = []
-
-        return
 
     ##################################################################
     #
@@ -256,11 +253,9 @@ class BaseClientHandler:
         """
         await self.client.push("* BYE %s\r\n" % msg)
         await self.client.close()
-        return
 
     # The following commands are supported in any state.
     #
-
     ##################################################################
     #
     async def do_done(self, cmd):
@@ -395,7 +390,7 @@ class PreAuthenticated(BaseClientHandler):
         self.log = logging.getLogger(
             "%s.%s" % (__name__, self.__class__.__name__)
         )
-        self.user: User
+        self.user: Optional[User] = None
         return
 
     # The following commands are supported in the non-authenticated state.
@@ -430,7 +425,7 @@ class PreAuthenticated(BaseClientHandler):
         # results then we are going to throttle them and not accept their
         # attempt to login.
         #
-        if not asimap.throttle.check_allow(cmd.user_name, self.client.name):
+        if not check_allow(cmd.user_name, self.client.name):
             raise Bad("Too many authentication failures")
 
         # XXX This should poke the authentication mechanism we were passed
@@ -450,10 +445,7 @@ class PreAuthenticated(BaseClientHandler):
             # Even if the user authenticates properly, we can not allow them to
             # login if they have no maildir.
             #
-            if not (
-                os.path.exists(self.user.maildir)
-                and os.path.isdir(self.user.maildir)
-            ):
+            if not (self.user.maildir.exists() and self.user.maildir.is_dir()):
                 raise No("You have no mailbox directory setup")
 
             self.state = "authenticated"
@@ -463,7 +455,7 @@ class PreAuthenticated(BaseClientHandler):
         except AuthenticationException as e:
             # Record this failed authentication attempt
             #
-            asimap.throttle.login_failed(cmd.user_name, self.client.name)
+            login_failed(cmd.user_name, self.client.name)
             raise No(str(e))
         return None
 
@@ -558,13 +550,16 @@ class Authenticated(BaseClientHandler):
         we only notify this client of exists/recent.
         """
         if self.state == "selected" and self.mbox is not None:
-            self.mbox.resync(only_notify=self)
+            try:
+                await self.mbox.resync(only_notify=self)
+            except MailboxLock:
+                pass
         await self.send_pending_expunges()
         return
 
     #########################################################################
     #
-    def do_noop(self, cmd):
+    async def do_noop(self, cmd):
         """
         Do nothing.. but send any pending messages and do a resync.. but when
         doing a resync only send the exists/recent to us (the mailbox might
@@ -577,31 +572,25 @@ class Authenticated(BaseClientHandler):
         # If we have a mailbox and we have commands in the command queue of
         # that mailbox then we can not do the notifies or expunges.
         #
-        if self.mbox and not self.mbox.has_queued_commands(self):
-            try:
-                self.notifies()
-            except MailboxLock:
-                pass
+        if self.mbox:
+            await self.notifies()
         return None
 
     #########################################################################
     #
-    def do_authenticate(self, cmd):
+    async def do_authenticate(self, cmd):
         self.notifies()
         raise Bad("client already is in the authenticated state")
 
     #########################################################################
     #
-    def do_login(self, cmd):
-        try:
-            self.notifies()
-        except MailboxLock:
-            pass
+    async def do_login(self, cmd):
+        await self.notifies()
         raise Bad("client already is in the authenticated state")
 
     ##################################################################
     #
-    def do_select(self, cmd, examine=False):
+    async def do_select(self, cmd, examine=False):
         """
         Select a folder, enter in to 'selected' mode.
 
@@ -622,7 +611,7 @@ class Authenticated(BaseClientHandler):
         if self.state == "selected":
             self.state = "authenticated"
             if self.mbox:
-                self.mbox.unselected(self)
+                self.mbox.unselected(self.client.name)
                 self.mbox = None
 
         # Note the 'selected()' method may fail with an exception and
@@ -668,15 +657,15 @@ class Authenticated(BaseClientHandler):
 
     #########################################################################
     #
-    def do_examine(self, cmd):
+    async def do_examine(self, cmd):
         """
         examine a specific mailbox (just like select, but read only)
         """
-        return self.do_select(cmd, examine=True)
+        return await self.do_select(cmd, examine=True)
 
     ##################################################################
     #
-    def do_create(self, cmd):
+    async def do_create(self, cmd):
         """
         Create the specified mailbox.
 
@@ -686,17 +675,15 @@ class Authenticated(BaseClientHandler):
         # You can create a mailbox while you have commands in the command
         # queue, but no notifies are sent in that case.
         #
-        if self.process_or_queue(cmd, queue=False):
-            try:
-                self.notifies()
-            except MailboxLock:
-                pass
-        asimap.mbox.Mailbox.create(cmd.mailbox_name, self.server)
-        return
+        # XXX with asyncio we no longer have a command queue. Can we still send
+        #     notifies before we create the mailbox?
+        #
+        await self.notifies()
+        await Mailbox.create(cmd.mailbox_name, self.server)
 
     ##################################################################
     #
-    def do_delete(self, cmd):
+    async def do_delete(self, cmd):
         """
         Delete the specified mailbox.
 
@@ -706,17 +693,14 @@ class Authenticated(BaseClientHandler):
         # You can delete a mailbox while you have commands in the command
         # queue, but no notifies are sent in that case.
         #
-        if self.process_or_queue(cmd, queue=False):
-            try:
-                self.notifies()
-            except MailboxLock:
-                pass
-        asimap.mbox.Mailbox.delete(cmd.mailbox_name, self.server)
-        return
+        # XXX with asyncio we no longer have a command queue. Can we still send
+        #     notifies first?
+        await self.notifies()
+        await Mailbox.delete(cmd.mailbox_name, self.server)
 
     ##################################################################
     #
-    def do_rename(self, cmd):
+    async def do_rename(self, cmd):
         """
         Renames a mailbox from one name to another.
 
@@ -733,7 +717,7 @@ class Authenticated(BaseClientHandler):
                 pass
 
         try:
-            asimap.mbox.Mailbox.rename(
+            Mailbox.rename(
                 cmd.mailbox_src_name, cmd.mailbox_dst_name, self.server
             )
         except MailboxLock as e:
@@ -742,7 +726,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    def do_subscribe(self, cmd):
+    async def do_subscribe(self, cmd):
         """
         The SUBSCRIBE command adds the specified mailbox name to the
         server's set of "active" or "subscribed" mailboxes as returned by
@@ -768,7 +752,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    def do_unsubscribe(self, cmd):
+    async def do_unsubscribe(self, cmd):
         """
         The UNSUBSCRIBE command removes the specified mailbox name
         from the server's set of "active" or "subscribed" mailboxes as
@@ -794,7 +778,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    def do_list(self, cmd, lsub=False):
+    async def do_list(self, cmd, lsub=False):
         """
         The LIST command returns a subset of names from the complete
         set of all names available to the client.  Zero or more
@@ -810,20 +794,24 @@ class Authenticated(BaseClientHandler):
         # You can list while you have commands in the command
         # queue, but no notifies are sent in that case.
         #
+        # XXX I think the key is that we can not do notifies while any other
+        #     command maybe running that may generate notifies.
+        #
+        #     Maybe we need a list/dict of all the commands currently in
+        #     operation. Maybe ordered by time so we can know if it is
+        #     permissiable to send notifies.
+        #
         if self.process_or_queue(cmd, queue=False):
-            try:
-                self.notifies()
-            except MailboxLock:
-                pass
+            await self.notifies()
 
         # Handle the special case where the client is basically just probing
         # for the hierarchy sepration character.
         #
         if cmd.mailbox_name == "" and cmd.list_mailbox == "":
-            self.client.push('* LIST (\\Noselect) "/" ""\r\n')
+            await self.client.push(r'* LIST (\Noselect) "/" ""', "\r\n")
             return
 
-        results = asimap.mbox.Mailbox.list(
+        results = await Mailbox.list(
             cmd.mailbox_name, cmd.list_mailbox, self.server, lsub
         )
         res = "LIST"
@@ -831,20 +819,14 @@ class Authenticated(BaseClientHandler):
             res = "LSUB"
 
         for mbox_name, attributes in results:
-            if mbox_name.lower() == "inbox":
-                mbox_name = "INBOX"
+            mbox_name = "INBOX" if mbox_name.lower() == "inbox" else mbox_name
 
             # If the mailbox name has a space in it we need to present
             # it to the client with quotes.
             #
-            if " " in mbox_name:
-                mbox_name = '"%s"' % mbox_name
-            self.client.push(
-                str(
-                    '* %s (%s) "/" %s\r\n'
-                    % (res, " ".join(attributes), mbox_name)
-                )
-            )
+            mbox_name = '"{mbox_name}"' if " " in mbox_name else mbox_name
+            msg = f'* {res} ({" ".join(attributes)}) "/" {mbox_name}\r\n'
+            await self.client.push(msg)
         return None
 
     ####################################################################
@@ -931,7 +913,7 @@ class Authenticated(BaseClientHandler):
         try:
             mbox = self.server.get_mailbox(cmd.mailbox_name, expiry=0)
             uid = mbox.append(cmd.message, cmd.flag_list, cmd.date_time)
-        except asimap.mbox.NoSuchMailbox:
+        except NoSuchMailbox:
             # For APPEND and COPY if the mailbox does not exist we
             # MUST supply the TRYCREATE flag so we catch the generic
             # exception and return the appropriate NO result.
@@ -1084,9 +1066,9 @@ class Authenticated(BaseClientHandler):
         # if not self.process_or_queue(cmd):
         #     return False
 
-        # If self.mbox is None then this mailbox was deleted while this user
-        # had it selected. In that case we disconnect the user and let them
-        # reconnect and relearn mailbox state.
+        # If self.mbox is None then this mailbox was likely deleted while this
+        # user had it selected. In that case we disconnect the user and let
+        # them reconnect and relearn mailbox state.
         #
         if self.mbox is None:
             self.unceremonious_bye("Your selected mailbox no longer exists")
@@ -1364,7 +1346,7 @@ class Authenticated(BaseClientHandler):
             src_uids, dst_uids = self.mbox.copy(
                 cmd.msg_set, dest_mbox, cmd.uid_command
             )
-        except asimap.mbox.NoSuchMailbox:
+        except NoSuchMailbox:
             # For APPEND and COPY if the mailbox does not exist we
             # MUST supply the TRYCREATE flag so we catch the generic
             # exception and return the appropriate NO result.

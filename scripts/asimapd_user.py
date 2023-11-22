@@ -16,7 +16,7 @@ It expects to be run within the directory where the user's asimapd db file for
 their mail spool is.
 
 Usage:
-  asimapd_user.py [--trace] [--logdir=<logdir>] [--debug]
+  asimapd_user.py [--trace] [--logdir=<logdir>] [--debug] <username>
 
 Options:
   --version
@@ -49,9 +49,6 @@ XXX We communicate with the server via localhost TCP sockets. We REALLY should
 #
 import asyncio
 import logging
-import logging.handlers
-import os
-import pwd
 from pathlib import Path
 
 # 3rd party imports
@@ -65,64 +62,35 @@ from rich.traceback import install as rich_install
 import asimap.trace
 from asimap import __version__ as VERSION
 from asimap.user_server import IMAPUserServer
+from asimap.utils import setup_asyncio_logging, setup_logging
 
 rich_install(show_locals=True)
+
+logger = logging.getLogger("asimapd_user")
 
 
 #############################################################################
 #
 def main():
     """
-    Setup our logger.
-
-    Find and open the mail spool's database.
-
-    Setup the asynchat server to listen for connections from the asimapd
-    server.
-
-    Loop.
+    Parse arguments, setup logging, setup tracing, create the user server
+    object and start the asyncio main event loop on the user server.
     """
     load_dotenv()
     args = docopt(__doc__, version=VERSION)
     trace_enabled = args["--trace"]
     debug = args["--debug"]
     logdir = args["--logdir"]
+    username = args["<username>"]
 
-    # If 'options.debug' is true we log at the debug level. Otherwise
-    # log at warning.
+    # After we setup our logging handlers and formatters set up for asyncio
+    # logging so that logging calls do not block the asyncio event loop.
     #
-    if debug:
-        level = logging.DEBUG
-    else:
-        level = logging.INFO
-
-    log = logging.getLogger("asimap")
-    log.setLevel(level)
-
-    if logdir == "stderr":
-        # Do not log to a file, log to stderr.
-        #
-        h = logging.StreamHandler()
-    else:
-        # Rotate on every 10mb, keep 5 files.
-        #
-        p = pwd.getpwuid(os.getuid())
-        log_file_basename = os.path.join(
-            logdir,
-            f"{p.pw_name}-asimapd.log",
-        )
-        h = logging.handlers.RotatingFileHandler(
-            log_file_basename, maxBytes=10485760, backupCount=5
-        )
-    h.setLevel(level)
-    formatter = logging.Formatter(
-        "%(asctime)s %(process)d " "%(levelname)s %(name)s %(message)s"
-    )
-    h.setFormatter(formatter)
-    log.addHandler(h)
+    setup_logging(logdir, debug, username=username)
+    setup_asyncio_logging()
 
     if trace_enabled:
-        log.debug("Tracing enabled")
+        logger.debug("Tracing enabled")
         asimap.trace.TRACE_ENABLED = True
         asimap.trace.enable_tracing(logdir)
         asimap.trace.trace({"trace_format": "1.0"})
@@ -133,7 +101,7 @@ def main():
     try:
         asyncio.run(server.run())
     except KeyboardInterrupt:
-        log.warning("Keyboard interrupt, exiting")
+        logger.warning("Keyboard interrupt, exiting")
 
 
 ############################################################################

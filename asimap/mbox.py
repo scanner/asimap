@@ -270,6 +270,8 @@ class Mailbox:
         #     operating on it causing back to back resyncs.. should we skip
         #     this one?
         #
+        # XXX can not do `await self.resync` in __init__ method. Will need to
+        #     separate this out and call resync directly after creating an mbox.
         self.resync(force=not force_resync, optional=False)
         return
 
@@ -297,38 +299,38 @@ class Mailbox:
 
     ##################################################################
     #
-    def resync(
+    async def resync(
         self,
-        force=False,
-        notify=True,
+        force: bool = False,
+        notify: bool = True,
         only_notify=None,
         dont_notify=None,
-        publish_uids=False,
-        optional=True,
+        publish_uids: bool = False,
+        optional: bool = True,
     ):
-        """
+        r"""
         This will go through the mailbox on disk and make sure all of the
         messages have proper uuid's, make sure we have a .mh_sequences file
         and that it is up to date with what messages are in the 'seen'
         sequence.
 
-        This is also what controls setting the '\\Marked' and '\\Unmarked' flags
-        on the mailbox as well as marking individual messages as '\\Recent'
+        This is also what controls setting the '\Marked' and '\Unmarked' flags
+        on the mailbox as well as marking individual messages as '\Recent'
 
-        We have a '\\Seen' flag and we derive this by seeing what messages are
+        We have a '\Seen' flag and we derive this by seeing what messages are
         in the unseen sequence.
 
-        Since the definition of '\\Recent' in rfc3501 is a bit vague on when the
-        \\Recent flag is reset (when you select the folder they all get reset?
+        Since the definition of '\Recent' in rfc3501 is a bit vague on when the
+        \Recent flag is reset (when you select the folder they all get reset?
         But then how do you find them? It makes little sense) I am going to
-        define a \\Recent message as any message whose mtime is at least one
+        define a \Recent message as any message whose mtime is at least one
         hour before the mtime of the folder.
 
-        This way all new messages are marked '\\Recent' and eventually as the
+        This way all new messages are marked '\Recent' and eventually as the
         folder's mtime moves forward with new messages messages will lose their
-        '\\Recent' flag.
+        '\Recent' flag.
 
-        Any folder with unseen messages will be tagged with '\\Marked.' That is
+        Any folder with unseen messages will be tagged with '\Marked.' That is
         how we are going to treat that flag.
 
         Calling this method will cause 'EXISTS' and 'RECENT' messages to be
@@ -385,7 +387,7 @@ class Mailbox:
         # We do NOT resync mailboxes marked '\Noselect'. These mailboxes
         # essentially do not exist as far as any IMAP client can really tell.
         #
-        if "\\Noselect" in self.attributes:
+        if r"\Noselect" in self.attributes:
             self.mtime = asimap.mbox.Mailbox.get_actual_mtime(
                 self.server.mailbox, self.name
             )
@@ -2885,7 +2887,7 @@ class Mailbox:
     ####################################################################
     #
     @classmethod
-    def list(cls, ref_mbox_name, mbox_match, server, lsub=False):
+    async def list(cls, ref_mbox_name, mbox_match, server, lsub=False):
         """
         This returns a list of tuples of mailbox names and that mailboxes
         attributes. The list is generated from the mailboxes db shelf. The

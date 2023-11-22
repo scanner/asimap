@@ -7,6 +7,8 @@ A utility script to manage the asimap simple authentication file
 
 XXX We really need to do some sort of locking on the pw file to prevent
     conflicts.
+
+XXX This needs to be updated to use the new password hashing and format.
 """
 
 import getpass

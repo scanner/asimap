@@ -27,6 +27,7 @@ import trustme
 import asimap.auth
 
 from ..server import IMAPServer
+from ..user_server import set_user_server_program
 from .factories import UserFactory
 
 
@@ -64,7 +65,7 @@ def user_factory(mailbox_dir):
         if "maildir" not in kwargs:
             maildir = mailbox_dir / user.username
             maildir.mkdir(parents=True, exist_ok=True)
-            user.maildir = str(maildir)
+            user.maildir = maildir
         return user
 
     yield make_user
@@ -206,3 +207,17 @@ def imap_server(faker, ssl_certs, user_factory, password_file_factory):
     except Exception as exc:
         print(f"server exception: {exc}")
     server_thread.join(timeout=5.0)
+
+
+####################################################################
+#
+@pytest.fixture()
+def imap_user_server():
+    """
+    When running integration tests that need to log in as a user we need to
+    say where the user server program is.
+    """
+    asimapd_user_prg = (
+        Path(__file__).parent.parent.parent / "scripts/asimapd_user.py"
+    )
+    set_user_server_program(asimapd_user_prg)

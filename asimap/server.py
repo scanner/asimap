@@ -4,6 +4,7 @@ network connections, authenticates users, spawns userserver's, and
 relays IMAP messages between an IMAP client and a userserver.
 """
 import asyncio
+import logging
 import os
 import random
 import re
@@ -20,7 +21,6 @@ from typing import Dict, List, Optional, Union
 # 3rd party imports
 #
 import sentry_sdk
-from aiologger import Logger
 from sentry_sdk.integrations.asyncio import AsyncioIntegration
 
 # asimap imports
@@ -31,8 +31,7 @@ from .auth import User
 from .client import CAPABILITIES, PreAuthenticated
 from .parse import BadCommand, parse_cmd_from_msg
 
-# logger = logging.getLogger("asimap.server")
-logger = Logger.with_default_handlers(name="asimap.server")
+logger = logging.getLogger("asimap.server")
 
 BACKLOG = 5
 
@@ -126,19 +125,18 @@ class IMAPSubprocess:
             args.append("--trace")
         if self.trace_file:
             args.append(f"--trace_file={self.options.trace_file}")
+        args.append(self.user.username)
 
         sys.stderr.write(f"Starting subprocess: {cmd} {args}\n")
         logger.info(
-            "Starting user server, cmd: %s, as user: '%s', in "
-            "directory '%s'"
-            % (repr(cmd), self.user.username, self.user.maildir)
+            f"Starting user server, cmd: '{cmd} {' '.join(args)}', in "
+            f"directory '{self.user.maildir}'"
         )
         self.subprocess = await asyncio.create_subprocess_exec(
             cmd,
             *args,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
-            # stderr=asyncio.subprocess.STDOUT,
             close_fds=True,
             cwd=self.user.maildir,
         )
@@ -173,7 +171,7 @@ class IMAPSubprocess:
         sys.stderr.write(" .... waiting on closing subprocess stdin\n")
         await self.subprocess.stdin.wait_closed()
         sys.stderr.write(" .... waiting on reading port from subprocess\n")
-        # await logger.debug("Reading port from subprocess.")
+        logger.debug("Reading port from subprocess.")
         try:
             sys.stderr.write("  **** BEFORE SUBPROCESS READ\n")
             m = await self.subprocess.stdout.readline()
@@ -189,7 +187,7 @@ class IMAPSubprocess:
             # failed and we need to tell our caller so they can deal with it.
             #
             raise
-        await logger.debug("Subprocess is listening on port: %d" % self.port)
+        logger.debug("Subprocess is listening on port: %d" % self.port)
 
     ####################################################################
     #
@@ -293,6 +291,7 @@ class IMAPServer:
             #     do when shutting down the server will likely grow and we need
             #     to catch exceptions.
             #
+            print("IMAP Server exiting for some reason")
             logger.debug("IMAP Server exiting for some reason")
             clients = [c.close() for c in self.imap_client_tasks.values()]
             tasks = [task for task in self.imap_client_tasks.keys()]
@@ -301,7 +300,6 @@ class IMAPServer:
             for subp in USER_IMAP_SUBPROCESSES.values():
                 if subp.is_alive:
                     subp.terminate()
-            await logger.shutdown()
 
     ####################################################################
     #
@@ -583,7 +581,10 @@ class IMAPSubprocessInterface:
         A bit of DRY: returns a string with common information that we like to
         have in our log messages.
         """
-        return f"{self.client_handler.user} from {self.peername}"
+        if self.client_handler.user:
+            return f"{self.client_handler.user} from {self.peername}"
+        else:
+            return f"unauthenticated from {self.peername}"
 
     ####################################################################
     #

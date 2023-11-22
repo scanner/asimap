@@ -10,7 +10,7 @@ import pytest
 
 # Project imports
 #
-from ..auth import authenticate, logger
+from ..auth import authenticate
 from ..exceptions import BadAuthentication, NoSuchUser
 
 
@@ -25,7 +25,6 @@ async def test_authenticate(faker, user_factory, password_file_factory):
     assert auth_user.username == user.username
     assert auth_user.pw_hash == user.pw_hash
     assert auth_user.maildir == user.maildir
-    await logger.shutdown()
 
     with pytest.raises(BadAuthentication):
         _ = await authenticate(user.username, faker.password())

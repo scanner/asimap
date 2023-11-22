@@ -20,7 +20,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import TYPE_CHECKING, Dict, Optional, Union
 
 # 3rd party imports
 #
@@ -38,10 +38,13 @@ from asimap.db import Database
 from asimap.exceptions import MailboxInconsistency, MailboxLock
 from asimap.trace import trace
 
+if TYPE_CHECKING:
+    from _typeshed import StrPath
+
 # By default every file is its own logging module. Kind of simplistic
 # but it works for now.
 #
-logger = logging.getLogger(f"asimap.{__name__}")
+logger = logging.getLogger("asimap.user_server")
 
 BACKLOG = 5
 USER_SERVER_PROGRAM: str = ""
@@ -50,7 +53,7 @@ RE_LITERAL_STRING_START = re.compile(rb"\{(\d+)(\+)?\}$")
 
 ####################################################################
 #
-def set_user_server_program(prg):
+def set_user_server_program(prg: "StrPath"):
     """
     Sets the 'USER_SERVER_PROGRAM' attribute on this module (so other modules
     will known how to launch the user server.)
@@ -58,9 +61,11 @@ def set_user_server_program(prg):
     Arguments:
     - `prg`: An absolute path to the user server program.
     """
+    prg = Path(prg)
+    if not prg.is_file():
+        raise ValueError(f"User server '{prg}' does not exist.")
     module = sys.modules[__name__]
-    setattr(module, "USER_SERVER_PROGRAM", prg)
-    return
+    setattr(module, "USER_SERVER_PROGRAM", str(prg))
 
 
 ##################################################################

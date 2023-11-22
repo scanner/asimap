@@ -8,29 +8,31 @@ class or module. This started with the utilities to pass an fd betwene
 processes. If we build a decently sized set of messaging routines many of these
 may move over in to a module dedicated for that.
 """
-import asyncio
-
 # system imports
 #
+import asyncio
+import atexit
 import calendar
 import datetime
 import email.utils
-import hashlib
 import logging
-import os
-import pwd
-import random
+import logging.handlers
 import re
-import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
+from queue import SimpleQueue
+from typing import TYPE_CHECKING, List, Optional, Union
 
+# 3rd party module imports
+#
 import pytz
 
-# asimap imports
+# Project imports
 #
 from .exceptions import Bad
 
-LOG = logging.getLogger("%s" % (__name__,))
+if TYPE_CHECKING:
+    from _typeshed import StrPath
 
 # RE used to suss out the digits of the uid_vv/uid header in an email
 # message
@@ -124,6 +126,125 @@ class UpgradeableReadWriteLock:
             yield
 
 
+##################################################################
+##################################################################
+#
+class LocalQueueHandler(logging.handlers.QueueHandler):
+    """
+    Customise the QueueHandler class a little, but only minimally so: there
+    is no need to prepare records that go into a local, in-process queue, we
+    can skip that process and minimise the cost of logging further.
+
+    This is cribbed from:
+         https://www.zopatista.com/python/2019/05/11/asyncio-logging/
+    """
+
+    def emit(self, record: logging.LogRecord) -> None:
+        # Removed the call to self.prepare(), handle task cancellation
+        try:
+            self.enqueue(record)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            self.handleError(record)
+
+
+############################################################################
+#
+# Tried to use aiologger but it raised a bunch of problems (like how to setup
+# of formatters, exceptions in the main logging module due to non-awaited
+# coroutines) and that it is no longer backwards compatible with the standard
+# logging call format.
+#
+def setup_asyncio_logging() -> None:
+    """
+    Call this after you have configured all of your log handlers.
+
+    This moves all log handlers to a separate thread.
+
+    The QueueListener enqueues log messages with no-wait so it is safe to call
+    from asyncio and will not block.
+
+    Replace handlers on the root logger with a LocalQueueHandler,
+    and start a logging.QueueListener holding the original
+    handlers.
+
+    This is cribbed from:
+         https://www.zopatista.com/python/2019/05/11/asyncio-logging/
+    """
+    queue: SimpleQueue = SimpleQueue()
+    root = logging.getLogger()
+
+    handlers: List[logging.Handler] = []
+
+    handler = LocalQueueHandler(queue)
+    root.addHandler(handler)
+    for h in root.handlers[:]:
+        if h is not handler:
+            root.removeHandler(h)
+            handlers.append(h)
+
+    listener = logging.handlers.QueueListener(
+        queue, *handlers, respect_handler_level=True
+    )
+    listener.start()
+
+    # NOTE: to make sure that all queued records get logged on program exit
+    #       stop the listener.
+    #
+    atexit.register(lambda: listener.stop())
+
+
+####################################################################
+#
+def setup_logging(
+    logdir: "StrPath", debug: bool, username: Optional[str] = None
+):
+    """
+    Set up the logger. We log either to files in 'logdir'
+    or to stderr.
+
+    NOTE: It does not make sense to log to stderr if we are running in
+          daemon mode.. maybe we should exit with a warning before we
+          try to enter daemon mode if logdir == 'stderr'
+
+    XXX Move this to use a logging config file if one is provided.
+        ie: log to stderr normally, but if there is a logging config file
+        use that.
+    """
+    if debug:
+        level = logging.DEBUG
+    else:
+        level = logging.INFO
+
+    # We define our logging config on the root loggger.
+    #
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
+
+    h: Union[logging.StreamHandler, logging.handlers.RotatingFileHandler]
+    if logdir == "stderr":
+        # Do not log to a file, log to stderr.
+        #
+        h = logging.StreamHandler()
+    else:
+        # Rotate on every 10mb, keep 5 files.
+        #
+        logdir = Path(logdir)
+        log_file_name = f"{username}-asimapd.log" if username else "asimapd.log"
+        log_file_basename = logdir / log_file_name
+        h = logging.handlers.RotatingFileHandler(
+            log_file_basename, maxBytes=10485760, backupCount=5
+        )
+    h.setLevel(level)
+    formatter = logging.Formatter(
+        "%(asctime)s %(process)d %(module)s.%(funcName)s %(levelname)s: "
+        "%(message)s"
+    )
+    h.setFormatter(formatter)
+    root_logger.addHandler(h)
+
+
 ############################################################################
 #
 def parsedate(date_time_str):
@@ -211,144 +332,6 @@ def sequence_set_to_list(seq_set, seq_max, uid_cmd=False):
             else:
                 result.extend(list(range(start, end + 1)))
     return sorted(set(result))
-
-
-############################################################################
-#
-# This was copied from django's daemonize module,
-#
-# http://www.djangoproject.org/
-#
-if os.name == "posix":
-
-    def daemonize(our_home_dir=".", out_log="/dev/null", err_log="/dev/null"):
-        "Robustly turn into a UNIX daemon, running in our_home_dir."
-        # First fork
-        try:
-            if os.fork() > 0:
-                sys.exit(0)  # kill off parent
-        except OSError as e:
-            sys.stderr.write(f"fork #1 failed: ({e.errno}) {e.strerror}\n")
-            sys.exit(1)
-        os.setsid()
-        os.chdir(our_home_dir)
-        os.umask(0)
-
-        # Second fork
-        try:
-            if os.fork() > 0:
-                os._exit(0)
-        except OSError as e:
-            sys.stderr.write(f"fork #2 failed: {e.errno} {e.strerror}\n")
-            os._exit(1)
-
-        si = open("/dev/null", "r")
-        so = open(out_log, "a+", 0)
-        se = open(err_log, "a+", 0)
-        os.dup2(si.fileno(), sys.stdin.fileno())
-        os.dup2(so.fileno(), sys.stdout.fileno())
-        os.dup2(se.fileno(), sys.stderr.fileno())
-        # Set custom file descriptors so that they get proper buffering.
-        sys.stdout, sys.stderr = so, se
-
-else:
-
-    def daemonize(our_home_dir=".", out_log=None, err_log=None):
-        """
-        If we're not running under a POSIX system, just simulate the daemon
-        mode by doing redirections and directory changing.
-        """
-        os.chdir(our_home_dir)
-        os.umask(0)
-        sys.stdin.close()
-        sys.stdout.close()
-        sys.stderr.close()
-        if err_log:
-            sys.stderr = open(err_log, "a", 0)
-        else:
-            sys.stderr = NullDevice()
-        if out_log:
-            sys.stdout = open(out_log, "a", 0)
-        else:
-            sys.stdout = NullDevice()
-
-    class NullDevice:
-        "A writeable object that writes to nowhere -- like /dev/null."
-
-        def write(self, s):
-            pass
-
-
-############################################################################
-#
-def become_user(user=None):
-    """
-    Change to run as the specified user. If 'None' then we just return.
-    If we are already running as the given user, also do nothing and return.
-    """
-    if user is None:
-        return
-
-    current_user = pwd.getpwuid(os.getuid())
-    if current_user[0] == user:
-        return
-
-    pwinfo = pwd.getpwnam(user)
-    os.setregid(pwinfo[3], pwinfo[3])
-    os.setreuid(pwinfo[2], pwinfo[2])
-    return
-
-
-############################################################################
-#
-def get_hexdigest(algorithm, salt, raw_password):
-    """
-    Returns a string of the hexdigest of the given plaintext password and salt
-    using the given algorithm ('md5', 'sha1' or 'crypt').
-
-    Borrowed from the django User auth model.
-    """
-    if algorithm == "crypt":
-        try:
-            import crypt
-        except ImportError:
-            raise ValueError(
-                '"crypt" password algorithm not supported in '
-                "this environment"
-            )
-        return crypt.crypt(raw_password, salt)
-
-    if algorithm == "md5":
-        return hashlib.md5(salt + raw_password).hexdigest()
-    elif algorithm == "sha1":
-        return hashlib.sha1(salt + raw_password).hexdigest()
-    raise ValueError("Got unknown password algorithm type in password.")
-
-
-############################################################################
-#
-def check_password(raw_password, enc_password):
-    """
-    Returns a boolean of whether the raw_password was correct. Handles
-    encryption formats behind the scenes.
-    """
-    algo, salt, hsh = enc_password.split("$")
-    return hsh == get_hexdigest(algo, salt, raw_password)
-
-
-####################################################################
-#
-def hash_password(raw_password):
-    """
-    Convert the given raw password in to the hex digest we store.
-
-    Arguments:
-    - `raw_password`: The plain text password
-    """
-    algo = "sha1"
-    salt = get_hexdigest(algo, str(random.random()), str(random.random()))[:5]
-    hsh = get_hexdigest(algo, salt, raw_password)
-    return f"{algo}${salt}${hsh}"
 
 
 ####################################################################
