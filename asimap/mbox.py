@@ -2255,8 +2255,8 @@ class Mailbox:
         #
         # store() logic begins here:
         #
-        if "\\Recent" in flags:
-            raise No("You can not add or remove the '\\Recent' flag")
+        if r"\Recent" in flags:
+            raise No(r"You can not add or remove the '\Recent' flag")
         try:
             # self.mailbox.lock()
 

@@ -7,13 +7,13 @@ LATEST_TAG := $(shell git describe --abbrev=0)
 .PHONY: clean lint test test_units test_integrations mypy logs shell restart delete down up build dirs help
 
 test_integrations: venv
-	$(ACTIVATE) pytest -m integration
+	PYTHONPATH=`pwd` $(ACTIVATE) pytest -m integration
 
 test_units: venv
-	$(ACTIVATE) pytest -m "not integration"
+	PYTHONPATH=`pwd` $(ACTIVATE) pytest -m "not integration"
 
 test: venv
-	$(ACTIVATE) pytest
+	PYTHONPATH=`pwd` $(ACTIVATE) pytest
 
 build: requirements/production.txt requirements/development.txt	## `docker build` for both `prod` and `dev` targets
 	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --target prod

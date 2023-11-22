@@ -13,12 +13,12 @@ may move over in to a module dedicated for that.
 import asyncio
 import atexit
 import calendar
-import datetime
 import email.utils
 import logging
 import logging.handlers
 import re
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 from queue import SimpleQueue
 from typing import TYPE_CHECKING, List, Optional, Union
@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, List, Optional, Union
 # 3rd party module imports
 #
 import pytz
+from typing_extensions import TypeAlias
 
 # Project imports
 #
@@ -37,7 +38,7 @@ if TYPE_CHECKING:
 # RE used to suss out the digits of the uid_vv/uid header in an email
 # message
 #
-uid_re = re.compile(r"(\d+)\s*\.\s*(\d+)")
+UID_RE = re.compile(r"(\d+)\s*\.\s*(\d+)")
 
 
 ##################################################################
@@ -249,13 +250,13 @@ def setup_logging(
 #
 def parsedate(date_time_str):
     """
-    All date time data is stored as a datetime.datetime object in UTC.
+    All date time data is stored as a datetime object in UTC.
     This routine uses common routines provided by python to parse a rfc822
-    formatted date time in to a datetime.datetime object.
+    formatted date time in to a datetime object.
 
     It is pretty simple, but makes the code a lot shorter and easier to read.
     """
-    return datetime.datetime.fromtimestamp(
+    return datetime.fromtimestamp(
         email.utils.mktime_tz(email.utils.parsedate_tz(date_time_str)),
         pytz.UTC,
     )
@@ -263,22 +264,43 @@ def parsedate(date_time_str):
 
 ############################################################################
 #
-def formatdate(datetime, localtime=False, usegmt=False):
+def formatdate(dt: datetime, localtime: bool = False, usegmt: bool = False):
     """
     This is the reverse. It will take a datetime object and format
     and do the deconversions necessary to pass it to email.utils.formatdate()
     and thus return a string properly formatted as an RFC822 date.
     """
     return email.utils.formatdate(
-        calendar.timegm(datetime.utctimetuple()),
+        calendar.timegm(dt.utctimetuple()),
         localtime=localtime,
         usegmt=usegmt,
     )
 
 
+# To make the `sequence_set_to_list` type declarations a bit easier to read we
+# create this TypeAlias to use below. (I could not find a more succinct way to
+# say that something was a List or a Tuple with expected contents.)
+#
+SeqSequence: TypeAlias = (
+    list[int | tuple[str | int, str | int] | str]
+    | tuple[int | tuple[str | int, str | int] | str]
+)
+
+
 ####################################################################
 #
-def sequence_set_to_list(seq_set, seq_max, uid_cmd=False):
+# XXX Need to validate how we treat `uid_cmd`. RFC3501 says:
+#
+#       The server should respond with a tagged BAD response to a command that
+#       uses a message sequence number greater than the number of messages in
+#       the selected mailbox.  This includes "*" if the selected mailbox is
+#       empty.
+#
+def sequence_set_to_list(
+    seq_set: tuple | list,
+    seq_max: int,
+    uid_cmd: bool = False,
+):
     """
     Convert a squence set in to a list of numbers.
 
@@ -291,34 +313,34 @@ def sequence_set_to_list(seq_set, seq_max, uid_cmd=False):
     Arguments:
     - `seq_set`: The sequence set we want to convert to a list of numbers.
     - `seq_max`: The largest possible number in the sequence. We
-      replace '*' with this value.
-    - `uid_cmd`: This is a UID command sequence and it can include
-      numbers larger than seq_max.
+                 replace '*' with this value.
+    - `uid_cmd`: This is a UID command sequence and the sequence set can include
+                 numbers larger than seq_max.
     """
     result = []
     for elt in seq_set:
         # Any occurences of '*' we can just swap in the sequence max value.
         #
-        if str(elt) == "*":
+        if elt == "*":
             if seq_max == 0 and not uid_cmd:
                 raise Bad(
-                    "Message index '*' is greater than the size of "
-                    "the mailbox"
+                    "Message index '*' is greater than the size of the mailbox"
                 )
             result.append(seq_max)
         elif isinstance(elt, int):
             if elt > seq_max and not uid_cmd:
                 raise Bad(
-                    f"Message index '{elt}' is greater than the size of "
-                    "the mailbox"
+                    f"Message index '{elt}' is greater than the size of the mailbox"
                 )
             result.append(elt)
         elif isinstance(elt, tuple):
             start, end = elt
-            if str(start) == "*":
+            if start == "*":
                 start = seq_max
-            if str(end) == "*":
+            if end == "*":
                 end = seq_max
+            assert isinstance(start, int)  # These are really here for mypy
+            assert isinstance(end, int)  # so it knows that they are ints now
             if (
                 start == 0 or end == 0 or start > seq_max or end > seq_max
             ) and not uid_cmd:
@@ -354,7 +376,7 @@ def get_uidvv_uid(hdr):
     - `hdr`: A string that is the contents of the 'x-asimapd-uid' header from
              an email message.
     """
-    s = uid_re.search(hdr)
+    s = UID_RE.search(hdr)
     if s:
         return tuple((int(x) for x in s.groups()))
     return (None, None)
