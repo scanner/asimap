@@ -7,10 +7,9 @@ steps:
     image: "python:3.11"
     environment:
       PYTHONUNBUFFERED: 1
-      PYTHONPATH: /
+      PYTHONPATH: /drone/src
       DEBUG: true
     commands:
-      - pwd
       - pip install -U pip
       - pip install -r ./requirements/development.txt
       - pytest
