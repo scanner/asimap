@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, List, Optional, Union
 # 3rd party module imports
 #
 import pytz
+from async_timeout import timeout
 from typing_extensions import TypeAlias
 
 # Project imports
@@ -68,6 +69,44 @@ class UpgradeableReadWriteLock:
         #
         self._want_write = 0
 
+        # Track which task has the write lock, if any. This is how we can query
+        # to see if the currently running task is the one that has the write
+        # lock.
+        #
+        # This potentially could be leveraged for allowing nestable write locks.
+        #
+        self._write_lock_task: Optional[asyncio.Task] = None
+
+    ####################################################################
+    #
+    def is_write_locked(self) -> bool:
+        """
+        Returns True if the write lock has been acquired.
+        """
+        # The read ready is only held in two states: when we are
+        # incrementing/decrementing the `self._readers` attribute and when the
+        # write lock has been acquired.
+        #
+        # Since no other task can be running and the incr/decr only happens
+        # inside the code in the class the only time `self._read_ready` will be
+        # locked outside of this class is when the write lock has been
+        # acquired.
+        #
+        return self._read_ready.locked()
+
+    ####################################################################
+    #
+    def this_task_has_write_lock(self):
+        """
+        Returns True if the current task is the task that has the write
+        lock.  If no one has the write lock it raises a RuntimeError.  So the
+        correct sequence is test if the write lock is held by someone. Then
+        test if this task is the one that holds the write lock.
+        """
+        if not self._read_ready.locked():
+            raise RuntimeError("{self}: No one holds the write lock")
+        return self._write_lock_task == asyncio.current_task()
+
     ####################################################################
     #
     @asynccontextmanager
@@ -87,7 +126,7 @@ class UpgradeableReadWriteLock:
                 #
                 self._readers -= 1
                 if self._readers == self._want_write:
-                    self._read_ready.notify_all()
+                    self._read_ready.notify()
 
     ####################################################################
     #
@@ -110,7 +149,7 @@ class UpgradeableReadWriteLock:
             # We will now wait to be notified when the only read locks that are
             # held are ones that want to upgrade to a write lock.
             #
-            await self._read_ready.await_for(
+            await self._read_ready.wait_for(
                 lambda: self._readers == self._want_write
             )
             # We can decrement that the number of read locks wanting a write
@@ -124,7 +163,11 @@ class UpgradeableReadWriteLock:
             # anything until we release our read lock (and send another
             # notify.)
             #
-            yield
+            try:
+                self._write_lock_task = asyncio.current_task()
+                yield
+            finally:
+                self._write_lock_task = None
 
 
 ##################################################################
@@ -380,3 +423,22 @@ def get_uidvv_uid(hdr):
     if s:
         return tuple((int(x) for x in s.groups()))
     return (None, None)
+
+
+####################################################################
+#
+def with_timeout(t):
+    """
+    A decorator that makes sure that the wrapped async function times out
+    after the specified delay in seconds. Raises the asyncio.TimeoutError
+    exception.
+    """
+
+    def wrapper(corofunc):
+        async def run(*args, **kwargs):
+            async with timeout(t):
+                return await corofunc(*args, **kwargs)
+
+        return run
+
+    return wrapper

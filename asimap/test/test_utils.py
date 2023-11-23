@@ -3,6 +3,7 @@ Test our util functions
 """
 # System imports
 #
+import asyncio
 
 # 3rd party imports
 #
@@ -11,7 +12,12 @@ import pytest
 # Project imports
 #
 from ..exceptions import Bad
-from ..utils import get_uidvv_uid, sequence_set_to_list
+from ..utils import (
+    UpgradeableReadWriteLock,
+    get_uidvv_uid,
+    sequence_set_to_list,
+    with_timeout,
+)
 
 
 ####################################################################
@@ -127,3 +133,230 @@ def test_sequence_set_to_list(faker):
     for (seq_set, seq_max), exp in zip(bad_seq_sets, expected):
         coalesced = sequence_set_to_list(seq_set, seq_max, uid_cmd=True)
         assert coalesced == exp
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+@with_timeout(2)
+async def test_rwlock_basic():
+    """
+    oh goody. Testing locking code.  The UpgradeableReadWriteLock is a
+    asyncio locking tool. Many tasks can have the read lock, but if any of them
+    wants to upgrade their existing read lock to a write lock, no one else can
+    have a read lock.
+    """
+    urw_lock = UpgradeableReadWriteLock()
+
+    # Make sure basic counting code works
+    #
+    async with urw_lock.read_lock():
+        assert urw_lock._readers == 1
+        assert urw_lock._want_write == 0
+        assert not urw_lock.is_write_locked()
+        async with urw_lock.write_lock():
+            assert urw_lock._want_write == 0
+            assert urw_lock.is_write_locked()
+            assert urw_lock.this_task_has_write_lock()
+
+    assert urw_lock._readers == 0
+    assert urw_lock._want_write == 0
+
+    # Exception if we see if this task has the write lock when no one has the
+    # write lock.
+    #
+    with pytest.raises(RuntimeError):
+        assert not urw_lock.is_write_locked()
+        urw_lock.this_task_has_write_lock()
+
+    # Can not get a write lock unless you already have a read lock
+    #
+    with pytest.raises(RuntimeError):
+        async with urw_lock.write_lock():
+            print("write lock")
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+@with_timeout(2)
+async def test_rwlock_exceptions():
+    """
+    Make sure if we get an exception while holding a lock things are
+    released properly.
+    """
+    urw_lock = UpgradeableReadWriteLock()
+    try:
+        async with urw_lock.read_lock():
+            assert urw_lock._readers == 1
+            raise RuntimeError("whoop")
+    except RuntimeError as exc:
+        assert exc.args[0] == "whoop"
+    assert urw_lock._readers == 0
+
+    try:
+        async with urw_lock.read_lock():
+            async with urw_lock.write_lock():
+                raise RuntimeError("whoop")
+    except RuntimeError as exc:
+        assert exc.args[0] == "whoop"
+    assert urw_lock._readers == 0
+    assert urw_lock._want_write == 0
+    assert urw_lock._write_lock_task is None
+    assert not urw_lock.is_write_locked()
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+@with_timeout(2)
+async def test_rwlock_two_read_locks():
+    """
+    Make sure multiple tasks can have the read lock at the same time
+    """
+
+    async def parallel_read_locks(
+        start_event: asyncio.Event,
+        done_event: asyncio.Event,
+        urw: UpgradeableReadWriteLock,
+    ):
+        """
+        Acquire the read lock. Signal via an event when we have acquired
+        the read lock.
+        """
+        async with urw.read_lock():
+            start_event.set()
+            await done_event.wait()
+        start_event.set()
+
+    urw_lock = UpgradeableReadWriteLock()
+    start_event = asyncio.Event()
+    done_event = asyncio.Event()
+    read_lock_task = asyncio.create_task(
+        parallel_read_locks(start_event, done_event, urw_lock)
+    )
+
+    # Get the read lock and then wait for our parallel task to also get the
+    # read lock.
+    async with urw_lock.read_lock():
+        await start_event.wait()
+
+        # At this point two tasks have the read lock.
+        #
+        assert urw_lock._readers == 2
+
+        # Clear the start_event so we can wait on it again, and signal the
+        # done_event so our other task clears the read lock (and then signals
+        # that it is done with the read lock.)
+        #
+        start_event.clear()
+        done_event.set()
+
+        # and we wait for the other task to release its read lock.
+        #
+        await start_event.wait()
+        assert urw_lock._readers == 1
+    assert urw_lock._readers == 0
+    await read_lock_task
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+@with_timeout(5)
+async def test_rwlock_only_one_write_lock():
+    """
+    There Can Be Only One Task (that holds the write lock)
+    """
+
+    async def get_and_hold_the_write_lock(
+        start_event: asyncio.Event,
+        done_event: asyncio.Event,
+        urw: UpgradeableReadWriteLock,
+    ):
+        async with urw.read_lock():
+            start_event.set()  # se #1
+
+            # Wait for the done event which tells us the other task at least
+            # acquired the read lock.
+            #
+            await done_event.wait()  # de #1
+            done_event.clear()
+
+            # At this point both tasks have acquired the read lock. Signal the
+            # other task to continue by setting the start_event again. This
+            # task will try to acquire the write lock and hit the `wait_for` in
+            # the lock acquiring code. This will allow the other task to wake
+            # up, try to acquire the write lock, succeed (because now all tasks
+            # that have read locks are trying to get write locks)
+            #
+            # The other task will finish the code in the write lock. Release
+            # it. At this point there are two read locks and one task wants the
+            # write lock, so this task will not be able to acquire the write
+            # lock and stay in the `wait_for`. The other task will finish,
+            # release the read lock. Then this task will wake up, finish the
+            # `wait_for` because there is now 1 read lock and 1 task (this
+            # task) wants the write lock.
+            #
+            # It will get the write lock, finish the write lock clause, release
+            # it... finish the read lock clause. Release it. Done.
+            #
+            assert urw._readers == 2
+            start_event.set()  # se #2
+
+            async with urw.write_lock():
+                assert urw.is_write_locked()
+                assert urw.this_task_has_write_lock()
+            assert not urw.is_write_locked()
+
+    urw_lock = UpgradeableReadWriteLock()
+    start_event = asyncio.Event()
+    done_event = asyncio.Event()
+    lock_task = asyncio.create_task(
+        get_and_hold_the_write_lock(start_event, done_event, urw_lock)
+    )
+
+    # Get the read lock and now wait for the other task to get and hold the
+    # write lock (in addition to the read lock)
+    #
+    await start_event.wait()  # se #1
+    start_event.clear()
+    async with urw_lock.read_lock():
+        # Signal the other task that we have our read lock and it can proceed
+        # toget teh write lock. We will wait on start_event until it is done
+        # and released the write lock.
+        #
+        done_event.set()  # de #1
+        await start_event.wait()  # se #2
+        start_event.clear()
+
+        # At this point the other task is waiting to get the write lock.  It
+        # needs the number of tasks wanting the write lock to equal the number
+        # of readers that have a read lock.
+        #
+        # However, it is in `wait_for`. This task will proceed, acquire the
+        # write lock (because number of readers is 2, and number of tasks
+        # wanting the write lock is 2.)
+        #
+        assert not urw_lock.is_write_locked()
+        assert urw_lock._readers == 2
+
+        async with urw_lock.write_lock():
+            # The other task is stuck in the `wait_for` and will not get the
+            # write lock until this task exits the read lock.
+            #
+            assert urw_lock.is_write_locked()
+            assert urw_lock.this_task_has_write_lock()
+            assert urw_lock._readers == 2
+
+        # At this point still two readers, one task wants the write lock so it
+        # can not wake up yet.
+        #
+        assert not urw_lock.is_write_locked()
+
+    # We now release one of the read locks, this will `notify` and the other
+    # task stuck in `wait_for` will wake up.. get the write lock.. and finish.
+    #
+    # And now wait for the other task to finish.
+    #
+    await lock_task

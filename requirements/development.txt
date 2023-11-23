@@ -12,6 +12,8 @@ appnope==0.1.3
     # via ipython
 asttokens==2.4.1
     # via stack-data
+async-timeout==4.0.3
+    # via -r development.in
 autopep8==2.0.4
     # via -r lint.txt
 black==23.11.0
