@@ -27,7 +27,6 @@ from typing import TYPE_CHECKING, List, Optional, Union
 #
 import pytz
 from async_timeout import timeout
-from typing_extensions import TypeAlias
 
 # Project imports
 #
@@ -136,6 +135,13 @@ class UpgradeableReadWriteLock:
         Upgrade a read lock to a read/write lock. This MUST ONLY be called
         when you already have a readlock, otherwise the logic will not work.
         """
+        # we do not support nesting of write locks. Luckily since we know who
+        # has the write lock and through the power of asyncio's cooperative
+        # tasking we can raise an exception if someone tries to acquire a write
+        # lock more than once.
+        #
+        if self.is_write_locked() and self.this_task_has_write_lock():
+            raise RuntimeError("attempt to acquire write-lock multiple times")
         async with self._read_ready:
             # While we have the ready_ready lock increment the number of read
             # lock holders that want to upgrade to a write lock.
@@ -320,16 +326,6 @@ def formatdate(dt: datetime, localtime: bool = False, usegmt: bool = False):
     )
 
 
-# To make the `sequence_set_to_list` type declarations a bit easier to read we
-# create this TypeAlias to use below. (I could not find a more succinct way to
-# say that something was a List or a Tuple with expected contents.)
-#
-SeqSequence: TypeAlias = (
-    list[int | tuple[str | int, str | int] | str]
-    | tuple[int | tuple[str | int, str | int] | str]
-)
-
-
 ####################################################################
 #
 # XXX Need to validate how we treat `uid_cmd`. RFC3501 says:
@@ -401,7 +397,7 @@ def sequence_set_to_list(
 
 ####################################################################
 #
-def get_uidvv_uid(hdr):
+def get_uidvv_uid(hdr: str) -> tuple:
     """
     Given a string that is supposedly the value of the 'x-asimapd-uid'
     header from an email message return a tuple comprised of the
@@ -427,7 +423,7 @@ def get_uidvv_uid(hdr):
 
 ####################################################################
 #
-def with_timeout(t):
+def with_timeout(t: int):
     """
     A decorator that makes sure that the wrapped async function times out
     after the specified delay in seconds. Raises the asyncio.TimeoutError

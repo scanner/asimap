@@ -31,6 +31,8 @@ def test_uidvv_uid(faker):
     for x, y in zip(uid_vals, uids):
         assert get_uidvv_uid(y) == x
 
+    get_uidvv_uid("  012345.6789   ") == (12345, 6789)
+
 
 ####################################################################
 #
@@ -360,3 +362,56 @@ async def test_rwlock_only_one_write_lock():
     # And now wait for the other task to finish.
     #
     await lock_task
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_rwlock_can_not_nest_write_locks():
+    urw_lock = UpgradeableReadWriteLock()
+    async with urw_lock.read_lock():
+        async with urw_lock.write_lock():
+            with pytest.raises(RuntimeError):
+                async with urw_lock.write_lock():
+                    pass
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+@with_timeout(5)
+async def test_rwlock_only_one_write_lock_delayed():
+    """
+    When we have two tasks, and one already has a write lock, the other
+    one, only going for a read lock, blocks until the write lock is released.
+    """
+
+    async def get_write_lock(
+        event_one: asyncio.Event,
+        event_two: asyncio.Event,
+        urw: UpgradeableReadWriteLock,
+    ):
+        pass
+
+    async def get_read_lock(
+        event_one: asyncio.Event,
+        event_two: asyncio.Event,
+        urw: UpgradeableReadWriteLock,
+    ):
+        # We wait until the first event is set before attempting to get a read
+        # lock.
+        await event_one.wait()
+        pass
+
+    urw_lock = UpgradeableReadWriteLock()
+    event_one = asyncio.Event()
+    event_two = asyncio.Event()
+    write_lock_task = asyncio.create_task(
+        get_write_lock(event_one, event_two, urw_lock)
+    )
+    read_lock_task = asyncio.create_task(
+        get_read_lock(event_one, event_two, urw_lock)
+    )
+
+    await write_lock_task
+    await read_lock_task
