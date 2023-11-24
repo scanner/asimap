@@ -8,6 +8,7 @@ import asyncio
 # 3rd party imports
 #
 import pytest
+from async_timeout import timeout
 
 # Project imports
 #
@@ -379,7 +380,41 @@ async def test_rwlock_can_not_nest_write_locks():
 ####################################################################
 #
 @pytest.mark.asyncio
-@with_timeout(5)
+@with_timeout(2)
+async def test_rwlock_nesting_read_locks():
+    """
+    You can nest read locks ONLY if they do not try to upgrade to a write
+    lock.
+    """
+    urw_lock = UpgradeableReadWriteLock()
+    async with urw_lock.read_lock():
+        async with urw_lock.read_lock():
+            async with urw_lock.read_lock():
+                pass
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+@with_timeout(2)
+async def test_rwlock_nesting_read_locks_w_write_lock():
+    """
+    This is going to fail with a deadlock because the writelock can never
+    be obtained with how the UpgradeableReadWriteLock is written.
+    """
+    urw_lock = UpgradeableReadWriteLock()
+    async with urw_lock.read_lock():
+        async with urw_lock.read_lock():
+            with pytest.raises(asyncio.TimeoutError):
+                async with timeout(1):
+                    async with urw_lock.write_lock():
+                        pass
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+@with_timeout(2)
 async def test_rwlock_only_one_write_lock_delayed():
     """
     When we have two tasks, and one already has a write lock, the other
