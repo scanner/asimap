@@ -4,6 +4,7 @@ Test our util functions
 # System imports
 #
 import asyncio
+from queue import SimpleQueue
 
 # 3rd party imports
 #
@@ -419,34 +420,65 @@ async def test_rwlock_only_one_write_lock_delayed():
     """
     When we have two tasks, and one already has a write lock, the other
     one, only going for a read lock, blocks until the write lock is released.
+
+    We use a SimpleQueue to record the order in which things happened in our
+    two async tasks to make sure the order is as expected.
     """
 
     async def get_write_lock(
+        sq: SimpleQueue,
         event_one: asyncio.Event,
         event_two: asyncio.Event,
         urw: UpgradeableReadWriteLock,
     ):
-        pass
+        # Get a read lock. Get the write lock. Send a signal on `event_one`
+        # once we have gotten the write lock.
+        async with urw_lock.read_lock():
+            async with urw_lock.write_lock():
+                event_one.set()
+                await event_two.wait()
+                event_two.clear()
+                sq.put(1)
 
     async def get_read_lock(
-        event_one: asyncio.Event,
-        event_two: asyncio.Event,
+        sq: SimpleQueue,
         urw: UpgradeableReadWriteLock,
     ):
-        # We wait until the first event is set before attempting to get a read
-        # lock.
-        await event_one.wait()
-        pass
+        async with urw_lock.read_lock():
+            sq.put(2)
 
     urw_lock = UpgradeableReadWriteLock()
     event_one = asyncio.Event()
     event_two = asyncio.Event()
+    sq: SimpleQueue = SimpleQueue()
+
+    # Start the task that immediately goes for a write lock and wait for the
+    # event that signals that it has gotten that write lock.
+    #
     write_lock_task = asyncio.create_task(
-        get_write_lock(event_one, event_two, urw_lock)
+        get_write_lock(sq, event_one, event_two, urw_lock)
     )
-    read_lock_task = asyncio.create_task(
-        get_read_lock(event_one, event_two, urw_lock)
-    )
+    await event_one.wait()
+    event_one.clear()
+
+    # At this point task-1 has a write lock. It will be waiting until event_two
+    # is signaled. Even if task-2 starts to run immediately it will block
+    # attempting to get the read lock (since task-1 has the write lock)
+    #
+    read_lock_task = asyncio.create_task(get_read_lock(sq, urw_lock))
+
+    # Now unblock task-1 waiting on event_two. This will push `1` on to our
+    # SimpleQueue `sq`, release the write lock, and release the read
+    # lock. Which should unblock task-2 to letting it push `2` on to `sq`.
+    #
+    event_two.set()
 
     await write_lock_task
     await read_lock_task
+
+    # `sq` should have a size of 2. The elements should be `1` and `2` in that
+    # order.
+    #
+    assert sq.qsize() == 2
+    assert sq.get() == 1
+    assert sq.get() == 2
