@@ -16,6 +16,7 @@ import logging.handlers
 import os
 import pwd
 import time
+from typing import Union
 
 log = logging.getLogger("%s" % __name__)
 trace_logger = logging.getLogger("asimap.trace")
@@ -65,6 +66,7 @@ def enable_tracing(logdir, trace_file=None):
     """
     trace_logger.setLevel(logging.INFO)
 
+    h: Union[logging.StreamHandler, logging.handlers.RotatingFileHandler]
     if logdir == "stderr" and not trace_file:
         # Do not write traces to a file - write them to stderr.
         #
