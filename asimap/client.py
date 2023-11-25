@@ -425,7 +425,12 @@ class PreAuthenticated(BaseClientHandler):
         # results then we are going to throttle them and not accept their
         # attempt to login.
         #
-        if not check_allow(cmd.user_name, self.client.name):
+        if not check_allow(cmd.user_name, self.client.rem_addr):
+            # Sleep for a bit before we return this failure. If they are
+            # failing too often then we provide a bit of a mud room slowing
+            # down our responses to them.
+            #
+            await asyncio.sleep(10)
             raise Bad("Too many authentication failures")
 
         # XXX This should poke the authentication mechanism we were passed
@@ -455,7 +460,7 @@ class PreAuthenticated(BaseClientHandler):
         except AuthenticationException as e:
             # Record this failed authentication attempt
             #
-            login_failed(cmd.user_name, self.client.name)
+            login_failed(cmd.user_name, self.client.rem_addr)
             raise No(str(e))
         return None
 

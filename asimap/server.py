@@ -316,7 +316,7 @@ class IMAPServer:
         rem_addr, port = writer.get_extra_info("peername")
         peer_name = f"{rem_addr}:{port}"
         logger.debug(f"New client: {peer_name}")
-        client_handler = IMAPClient(self, peer_name, reader, writer)
+        client_handler = IMAPClient(self, peer_name, rem_addr, reader, writer)
         task = asyncio.create_task(client_handler.start(), name=peer_name)
         task.add_done_callback(self.client_done)
         self.imap_client_tasks[task] = client_handler
@@ -370,10 +370,12 @@ class IMAPClient:
         self,
         imap_server: IMAPServer,
         name: str,
+        rem_addr: str,
         reader: asyncio.StreamReader,
         writer: asyncio.StreamWriter,
     ):
         self.name = name
+        self.rem_addr = rem_addr
         self.reader = reader
         self.writer = writer
         self.imap_server = imap_server
@@ -758,6 +760,9 @@ class IMAPSubprocessInterface:
         # # We have an authentication key for talking to this subprocess. The
         # # first message we send to the subprocess is that authentication key
         # # and we expect to get back the string "accepted\n"
+        # #
+        # # We should also take this opportunity to write the remote address
+        # # and socket for this client.
         # #
         # writer.write(self.subprocess.subprocess_key + b"\n")
         # await writer.drain()

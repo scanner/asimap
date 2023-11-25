@@ -33,13 +33,13 @@ import time
 # timeout period, and the last time they tried to authenticate this user and
 # failed.
 #
-BAD_USER_AUTHS = {}
+BAD_USER_AUTHS: dict[str, tuple[int, float]] = {}
 
 # Key is the ip address of the IMAP client, value is a tuple of number of
 # attempts within the timeout period, and the last time they tried to
 # authenticate this and failed for any reason.
 #
-BAD_IP_AUTHS = {}
+BAD_IP_AUTHS: dict[str, tuple[int, float]] = {}
 
 # How many seconds before we purge an entry from the dicts.
 #
@@ -58,7 +58,7 @@ log = logging.getLogger(__name__)
 
 ####################################################################
 #
-def login_failed(user, addr):
+def login_failed(user: str, addr: str):
     """
     We had a login attempt that failed, likely due to a bad password.
     Record this attempt.
@@ -97,7 +97,7 @@ def login_failed(user, addr):
 
 ####################################################################
 #
-def check_allow(user, addr):
+def check_allow(user: str, addr: str):
     """
     Check the given user and client address to see if they are ones
     that are currently being throttled. Retrun True if either the
@@ -132,7 +132,7 @@ def check_allow(user, addr):
     if user not in BAD_USER_AUTHS and addr not in BAD_IP_AUTHS:
         return True
 
-    # They entries are still in the dict and not expired (ie: older than the
+    # The entries are still in the dict and not expired (ie: older than the
     # PURGE_TIME). See if they have exceeded the number of allowable attempts.
     #
     if user in BAD_USER_AUTHS and BAD_USER_AUTHS[user][0] > MAX_USER_ATTEMPTS:

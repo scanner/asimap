@@ -101,12 +101,14 @@ class IMAPClientProxy:
         self,
         server: "IMAPUserServer",
         name: str,
+        rem_addr: str,
         reader: asyncio.StreamReader,
         writer: asyncio.StreamWriter,
     ):
         self.log = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
         self.name = name
+        self.rem_addr = rem_addr
         self.reader = reader
         self.writer = writer
         self.server = server
@@ -473,10 +475,10 @@ class IMAPUserServer:
         future communications with the new client.
         """
         rem_addr, port = writer.get_extra_info("peername")
-        peer_name = f"{rem_addr}:{port}"
-        self.log.debug(f"New IMAP client proxy: {peer_name}")
-        client_handler = IMAPClientProxy(self, peer_name, reader, writer)
-        task = asyncio.create_task(client_handler.start(), name=peer_name)
+        name = f"{rem_addr}:{port}"
+        self.log.debug(f"New IMAP client proxy: {name}")
+        client_handler = IMAPClientProxy(self, name, rem_addr, reader, writer)
+        task = asyncio.create_task(client_handler.start(), name=name)
         task.add_done_callback(self.client_done)
         self.clients[task] = client_handler
         self.expiry = None
