@@ -960,6 +960,21 @@ class Authenticated(BaseClientHandler):
         if self.process_or_queue(cmd, queue=False):
             self.mbox.resync()
 
+        # XXX I think the key going forward for when we can or can not send
+        #     expunges is if a write lock is held. ie: we can only send
+        #     expunges if the write lock is not held. But if our code is
+        #     running, and we are inside the read lock then we know that no one
+        #     has the write lock.
+        #
+        #     Need to double check "does not have commands in the mailbox's
+        #     command queue" was probably an over generalization. If not, then
+        #     we need some state that lets us know what other commands _are
+        #     currently executing_ with this mailbox as their target, and that
+        #     we can not send expunges until known of them are running.
+        #
+        #     I *think* it is good enough as long as no other command is able
+        #     to modify this mailbox (ie: has the write lock.)
+        #
         if not self.mbox.has_queued_commands(self):
             self.send_pending_expunges()
         return

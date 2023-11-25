@@ -221,3 +221,19 @@ def imap_user_server():
         Path(__file__).parent.parent.parent / "scripts/asimapd_user.py"
     )
     set_user_server_program(asimapd_user_prg)
+
+
+####################################################################
+#
+@pytest.fixture
+def mock_time(mocker):
+    """
+    in the throttle module mock out `time.time()` to return the values we
+    want it to.
+
+    This fixture is intended to let the user define the values that are
+    returned whenver `time()` is called in the throttle module.
+    """
+    mck_time = mocker.Mock("asimap.throttle.time.time")
+    mocker.patch("asimap.throttle.time.time", new=mck_time)
+    return mck_time
