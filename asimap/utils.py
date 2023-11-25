@@ -64,6 +64,12 @@ class UpgradeableReadWriteLock:
         #
         self._readers = 0
 
+        # A list of the task names that are holding read locks. Whenever a task
+        # gets a read lock it is prepended to this list. Whenever a task
+        # releases a read lock it is removed from this list.
+        #
+        self._readers_tasks: List[asyncio.Task] = []
+
         # How many read locks want to upgrade to a write lock
         #
         self._want_write = 0
@@ -95,7 +101,7 @@ class UpgradeableReadWriteLock:
 
     ####################################################################
     #
-    def this_task_has_write_lock(self):
+    def this_task_has_write_lock(self) -> bool:
         """
         Returns True if the current task is the task that has the write
         lock.  If no one has the write lock it raises a RuntimeError.  So the
@@ -108,10 +114,24 @@ class UpgradeableReadWriteLock:
 
     ####################################################################
     #
+    def this_task_has_read_lock(self) -> bool:
+        """
+        Returns True if the current task has a read lock. Due to the power
+        of asyncio being cooperative multitasking we do not need to acquire
+        _ready_ready to make this check.
+        """
+        return asyncio.current_task() in self._readers_tasks
+
+    ####################################################################
+    #
     @asynccontextmanager
     async def read_lock(self):
+        cur_task = asyncio.current_task()
+        assert cur_task  # Can not use the lock outside of asyncio.
+
         async with self._read_ready:
             self._readers += 1
+            self._readers_tasks.insert(0, cur_task)
         try:
             yield
         finally:
@@ -124,6 +144,7 @@ class UpgradeableReadWriteLock:
                 # -- num read locks == num waiting for a write lock.)
                 #
                 self._readers -= 1
+                self._readers_tasks.remove(cur_task)
                 if self._readers == self._want_write:
                     self._read_ready.notify()
 

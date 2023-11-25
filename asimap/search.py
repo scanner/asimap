@@ -105,7 +105,10 @@ class SearchContext(object):
         #
         self._msg = self.mailbox.get_and_cache_msg(self.msg_key)
 
-        # If the uid is not set, then set it also at the same time.
+        # If the uid is not set, then set it by reading it from the message.
+        # If attempting to set it fails then something is wrong with this
+        # message since it had a `x-asimapd-uid` header, but it could not be
+        # parsed.
         #
         if self._uid is None:
             self._uid_vv, self._uid = asimap.utils.get_uidvv_uid(
@@ -118,7 +121,10 @@ class SearchContext(object):
         else:
             # If, after we get the message and if the UID is defined and if the
             # UID in the message does NOT match the UID we have then raise a
-            # mailboxinconsistency error.
+            # mailboxinconsistency error. Probably means that the mailbox has
+            # been re-arranged since we started. This should not happen with
+            # coperative locking but something out of our control has
+            # apparently happened.
             #
             uid_vv, uid = asimap.utils.get_uidvv_uid(self.msg["x-asimapd-uid"])
             if self._uid != uid or uid is None:

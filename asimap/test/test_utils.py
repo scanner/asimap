@@ -482,3 +482,28 @@ async def test_rwlock_only_one_write_lock_delayed():
     assert sq.qsize() == 2
     assert sq.get() == 1
     assert sq.get() == 2
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_rwlock_check_read_lock():
+    """
+    We can test if a task currently has a read lock.
+    """
+    urw_lock = UpgradeableReadWriteLock()
+    assert urw_lock.this_task_has_read_lock() is False
+
+    async with urw_lock.read_lock():
+        assert urw_lock.this_task_has_read_lock() is True
+        # We make sure that exceptions while processing do not mess up the task
+        # lock tracking.
+        #
+        try:
+            async with urw_lock.read_lock():
+                assert urw_lock.this_task_has_read_lock() is True
+                raise Exception("hey!")
+        except Exception:
+            pass
+        assert urw_lock.this_task_has_read_lock() is True
+    assert urw_lock.this_task_has_read_lock() is False
