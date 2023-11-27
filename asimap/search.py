@@ -98,6 +98,12 @@ class SearchContext(object):
         """
         The message parsed in to a MHMessage object
         """
+        # In preparation for all of our necessary locking support we are adding
+        # this so we can catch places where we do not have a read lock but we
+        # should
+        #
+        assert self.mailbox.rw_lock.this_task_has_read_lock()
+
         if self._msg:
             return self._msg
 

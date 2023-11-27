@@ -11,7 +11,6 @@ import asyncio
 import email
 import errno
 import logging
-import mailbox
 import os
 import os.path
 import re
@@ -37,6 +36,9 @@ from asimap.client import Authenticated
 from asimap.db import Database
 from asimap.exceptions import MailboxInconsistency, MailboxLock
 from asimap.trace import trace
+
+from .mh import MH
+from .utils import UpgradeableReadWriteLock
 
 if TYPE_CHECKING:
     from _typeshed import StrPath
@@ -324,7 +326,7 @@ class IMAPUserServer:
         # (instead of MHMessage's). Lets us use the most modern email model at
         # this time.
         #
-        self.mailbox = mailbox.MH(
+        self.mailbox = MH(
             self.maildir,
             factory=lambda x: email.message_from_binary_file(
                 x, policy=email.policy.default
@@ -353,6 +355,11 @@ class IMAPUserServer:
         # The key is the mailbox name.
         #
         self.active_mailboxes: Dict[str, asimap.mbox.Mailbox] = {}
+
+        # Need to acquire the lock if we are adding or removing a mailbox from
+        # the active mailboxes.
+        #
+        self.active_mailboxes_lock = UpgradeableReadWriteLock()
 
         # A dict of the active IMAP clients that are talking to us.
         #
@@ -612,14 +619,16 @@ class IMAPUserServer:
         #
         if name.lower() == "inbox":
             name = "inbox"
-        if name in self.active_mailboxes:
-            return self.active_mailboxes[name]
 
-        # otherwise.. make an instance of this mailbox.
-        #
-        mbox = asimap.mbox.Mailbox(name, self, expiry=expiry)
-        self.active_mailboxes[name] = mbox
-        return mbox
+        async with self.active_mailboxes_lock.read_lock():
+            if name in self.active_mailboxes:
+                return self.active_mailboxes[name]
+            async with self.active_mailboxes_lock.write_lock():
+                # otherwise.. make an instance of this mailbox.
+                #
+                mbox = asimap.mbox.Mailbox(name, self, expiry=expiry)
+                self.active_mailboxes[name] = mbox
+                return mbox
 
     ##################################################################
     #
@@ -628,20 +637,20 @@ class IMAPUserServer:
         Like 'check_all_folders' except this only checks folders that are
         active and have clients in IDLE listening to them.
         """
-        for name, mbox in self.active_mailboxes.items():
-            if any(x.idling for x in mbox.clients.values()):
-                try:
-                    await mbox.resync()
-                except (MailboxLock, MailboxInconsistency) as e:
-                    # If hit one of these exceptions they are usually
-                    # transient.  we will skip it. The command processor in
-                    # client.py knows how to handle these better.
-                    #
-                    self.log.warn(
-                        "check-all-active: skipping '%s' due to: "
-                        "%s" % (name, str(e))
-                    )
-        return
+        async with self.active_mailboxes_lock.read_lock():
+            for name, mbox in self.active_mailboxes.items():
+                if any(x.cmd_processor.idling for x in mbox.clients.values()):
+                    try:
+                        await mbox.resync()
+                    except (MailboxLock, MailboxInconsistency) as e:
+                        # If hit one of these exceptions they are usually
+                        # transient.  we will skip it. The command processor in
+                        # client.py knows how to handle these better.
+                        #
+                        self.log.warn(
+                            "check-all-active: skipping '%s' due to: "
+                            "%s" % (name, str(e))
+                        )
 
     ##################################################################
     #
@@ -654,18 +663,19 @@ class IMAPUserServer:
         # and are beyond their expiry time.
         #
         expired = []
-        for mbox_name, mbox in self.active_mailboxes.items():
-            if (
-                len(mbox.clients) == 0
-                and mbox.expiry is not None
-                and mbox.expiry < time.time()
-            ):
-                expired.append(mbox_name)
-
-        for mbox_name in expired:
-            await self.active_mailboxes[mbox_name].commit_to_db()
-            del self.active_mailboxes[mbox_name]
-            self.msg_cache.clear_mbox(mbox_name)
+        async with self.active_mailboxes_lock.read_lock():
+            for mbox_name, mbox in self.active_mailboxes.items():
+                if (
+                    len(mbox.clients) == 0
+                    and mbox.expiry is not None
+                    and mbox.expiry < time.time()
+                ):
+                    expired.append(mbox_name)
+            async with self.active_mailboxes_lock.write_lock():
+                for mbox_name in expired:
+                    await self.active_mailboxes[mbox_name].commit_to_db()
+                    del self.active_mailboxes[mbox_name]
+                    self.msg_cache.clear_mbox(mbox_name)
 
     ##################################################################
     #
@@ -754,7 +764,7 @@ class IMAPUserServer:
             #
             if mbox_name in self.active_mailboxes and (
                 any(
-                    x.idling
+                    x.cmd_processor.idling
                     for x in self.active_mailboxes[mbox_name].clients.values()
                 )
             ):

@@ -8,20 +8,26 @@ that holds all the folders.)
 #
 import errno
 import logging
-import mailbox
 import os.path
 import re
 import shutil
 import stat
 import time
 from email.parser import HeaderParser
+from mailbox import FormatError, MHMessage, NoSuchMailboxError, NotEmptyError
+from pathlib import Path
 from typing import TYPE_CHECKING, Dict
+
+# 3rd party imports
+#
+import aiofiles
 
 # Project imports
 #
 import asimap.search
 import asimap.utils
-from asimap.constants import (
+
+from .constants import (
     PERMANENT_FLAGS,
     REVERSE_SYSTEM_FLAG_MAP,
     SYSTEM_FLAG_MAP,
@@ -29,18 +35,23 @@ from asimap.constants import (
     flag_to_seq,
     seq_to_flag,
 )
-from asimap.exceptions import Bad, MailboxInconsistency, MailboxLock, No
-from asimap.fetch import FetchAtt
-from asimap.parse import ADD_FLAGS, REMOVE_FLAGS, REPLACE_FLAGS
+from .exceptions import Bad, MailboxInconsistency, MailboxLock, No
+from .fetch import FetchAtt
+from .mh import MH
+from .parse import ADD_FLAGS, REMOVE_FLAGS, REPLACE_FLAGS
+from .utils import UpgradeableReadWriteLock, sequence_set_to_list
 
 # Allow circular imports for annotations
 #
 if TYPE_CHECKING:
     from .user_server import IMAPClientProxy
 
+
+logger = logging.getLogger("asimap.mbox")
+
 # RE used to see if a mailbox being created is just digits.
 #
-digits_re = re.compile(r"^[0-9]+$")
+DIGITS_RE = re.compile(r"^[0-9]+$")
 
 # How many seconds after a mailbox instance has no clients before we
 # expire it from the list of active mailboxes
@@ -50,7 +61,7 @@ MBOX_EXPIRY_TIME = 900
 
 ####################################################################
 #
-def mbox_msg_path(mbox, x=""):
+def mbox_msg_path(mbox: MH, x: str = "") -> Path:
     """
     Helper function for the common operation of getting the path to a
     file inside a mbox.
@@ -61,7 +72,7 @@ def mbox_msg_path(mbox, x=""):
          integer representing a message by number inside the mailbox.
          default: '' (ie: nothing.. just return the path to the mailbox.)
     """
-    return os.path.join(mbox._path, str(x))
+    return Path(mbox._path) / x
 
 
 ##################################################################
@@ -161,6 +172,7 @@ class Mailbox:
         self.num_recent = 0
         self.uids = []
         self.subscribed = False
+        self.lock = UpgradeableReadWriteLock()
 
         # Some commands can take a significant amount of time to run.  Like
         # when some client asks for detailed information from message headers
@@ -196,7 +208,7 @@ class Mailbox:
         #
         self.last_resync = 0
 
-        # It is important to note that self.sequences is the value of the
+        # NOTE: It is important to note that self.sequences is the value of the
         # sequences we stored in the db from the end of the last resync. As
         # such they are useful for measuring what has changed in various
         # sequences between resync() runs. NOT as a definitive set of what the
@@ -211,23 +223,13 @@ class Mailbox:
         #
         try:
             self.mailbox = server.mailbox.get_folder(name)
-        except mailbox.NoSuchMailboxError:
+        except NoSuchMailboxError:
             raise NoSuchMailbox("No such mailbox: '%s'" % name)
-
-        # If the .mh_sequence file does not exist create it.
-        #
-        # XXX Bad that we are reaching in to the mailbox.MH object to
-        #     find thepath to the sequences file.
-        #
-        mh_seq_fname = mbox_msg_path(self.mailbox, ".mh_sequences")
-        if not os.path.exists(mh_seq_fname):
-            open(mh_seq_fname, "a").close()
-            os.chmod(mh_seq_fname, stat.S_IRUSR | stat.S_IWUSR)
 
         # The list of attributes on this mailbox (this is things such as
         # '\Noselect'
         #
-        self.attributes = {"\\Unmarked"}
+        self.attributes = {r"\Unmarked"}
 
         # When a mailbox is no longer selected by _any_ client, then after a
         # period of time we destroy this instance of the Mailbox object (NOT
@@ -253,49 +255,112 @@ class Mailbox:
         #
         self.clients: Dict[str, "IMAPClientProxy"] = {}
 
-        # After initial setup fill in any persistent values from the database
-        # (and if there are no, then create an entry in the db for this
-        # mailbox.
-        #
-        # NOTE: If we get back 'False' from _restore_from_db() that means there
-        #       was no entry for this mailbox in the db which means that we
-        #       need to force a full resync of the mailbox since it is new.
-        #
-        force_resync = self._restore_from_db()
+    ####################################################################
+    #
+    @classmethod
+    async def new(cls, *args, **kwargs):
+        """
+        We can not have __init__() be an async function, yet we need to do
+        some async operations when we instantiate a mailbox. This code is for
+        doing both. So this is the entry point to instantiate a mailbox.
+        """
+        mbox = cls(*args, **kwargs)
 
-        # And make sure our mailbox on disk state is up to snuff and update
-        # our db if we need to.
+        # If the .mh_sequence file does not exist create it.
         #
-        # XXX We almost always call resync after getting a mailbox and
-        #     operating on it causing back to back resyncs.. should we skip
-        #     this one?
+        # XXX Bad that we are reaching in to the MH object to
+        #     find thepath to the sequences file.
         #
-        # XXX can not do `await self.resync` in __init__ method. Will need to
-        #     separate this out and call resync directly after creating an mbox.
-        self.resync(force=not force_resync, optional=False)
-        return
+        mh_seq_fname = mbox_msg_path(mbox.mailbox, ".mh_sequences")
+        if not await aiofiles.os.path.exists(mh_seq_fname):
+            f = await aiofiles.open(mh_seq_fname, "rb+")
+            await f.close()
+            open(mh_seq_fname, "a").close()
+            os.chmod(mh_seq_fname, stat.S_IRUSR | stat.S_IWUSR)
+
+        async with mbox.lock.read_lock():
+            async with mbox.lock.write_lock():
+                # After initial setup fill in any persistent values from the
+                # database (and if there are none, then create an entry in the
+                # db for this mailbox.)
+                #
+                force_resync = await mbox._restore_from_db()
+
+            # And make sure our mailbox on disk state is up to snuff and update
+            # our db if we need to.
+            #
+            await mbox.resync(force=not force_resync, optional=False)
 
     ##################################################################
     #
     def marked(self, bool):
-        """
-        A helper function that toggles the '\\Marked' or '\\Unmarked' flags on a
+        r"""
+        A helper function that toggles the '\Marked' or '\Unmarked' flags on a
         folder (another one of those annoying things in the RFC you really only
         need one of these flags.)
 
         Arguments:
-        - `bool`: if True the \\Marked attribute is added to the folder. If
-                  False the \\Unmarked attribute is added to the folder.
+        - `bool`: if True the \Marked attribute is added to the folder. If
+                  False the \Unmarked attribute is added to the folder.
         """
         if bool:
-            if "\\Unmarked" in self.attributes:
-                self.attributes.remove("\\Unmarked")
-                self.attributes.add("\\Marked")
+            if r"\Unmarked" in self.attributes:
+                self.attributes.remove(r"\Unmarked")
+                self.attributes.add(r"\Marked")
         else:
-            if "\\Marked" in self.attributes:
-                self.attributes.remove("\\Marked")
-                self.attributes.add("\\Unmarked")
+            if r"\Marked" in self.attributes:
+                self.attributes.remove(r"\Marked")
+                self.attributes.add(r"\Unmarked")
         return
+
+    ####################################################################
+    #
+    def _update_seen_from_unseen(self, msgs) -> dict[str, list[int]]:
+        """
+        The sequence 'Seen' is not updated by the maillib.MH class. We have
+        to update it manually.
+
+        This function updates or creates the `Seen` sequence based on the
+        `unseen` sequence (messages that are not `unseen` are `Seen`)
+
+        Returns the sequences for this folder.
+
+        Presumes that the the folder lock has been acquired.
+
+        Raises a MailboxInconsistency exception if we are unable to read the
+        .mh_sequences file.
+        """
+        try:
+            seq = self.mailbox.get_sequences()
+        except FormatError as exc:
+            logger.exception(
+                "Bad `.mh_sequences` for mailbox %s: %s",
+                self.mailbox._path,
+                exc,
+            )
+            raise MailboxInconsistency(str(exc))
+
+        if "unseen" in seq:
+            # Create the 'Seen' sequence by the difference between all
+            # the messages in the mailbox and the unseen ones.
+            #
+            seq["Seen"] = list(set(msgs) - set(seq["unseen"]))
+        else:
+            # There are no unseen messages in the mailbox thus the Seen
+            # sequence mirrors the set of all messages.
+            #
+            seq["Seen"] = msgs
+
+        # A mailbox gets '\Marked' if it has any unseen messages or
+        # '\Recent' messages.
+        #
+        if "unseen" in seq or "Recent" in seq:
+            self.marked(True)
+        else:
+            self.marked(False)
+
+        self.mailbox.set_sequences(seq)
+        return seq
 
     ##################################################################
     #
@@ -378,7 +443,7 @@ class Mailbox:
           send FETCH's to clients listening to this mailbox is an example of
           this.
         """
-
+        assert self.lock.this_task_has_read_lock()  # XXX remove when confident
         # see if we need to do a full scan we have this value before anything
         # we have done in this routine has a chance to modify it.
         #
@@ -388,15 +453,17 @@ class Mailbox:
         # essentially do not exist as far as any IMAP client can really tell.
         #
         if r"\Noselect" in self.attributes:
-            self.mtime = asimap.mbox.Mailbox.get_actual_mtime(
-                self.server.mailbox, self.name
-            )
-            self.commit_to_db()
+            # We get the write lock because we are updating the db.
+            async with self.lock.write_lock():
+                self.mtime = await self.get_actual_mtime(
+                    self.server.mailbox, self.name
+                )
+                await self.commit_to_db()
             return
 
         # Get the mtime of the folder at the start so when we need to check to
         #
-        start_mtime = asimap.mbox.Mailbox.get_actual_mtime(
+        start_mtime = await self.get_actual_mtime(
             self.server.mailbox, self.name
         )
 
@@ -411,47 +478,22 @@ class Mailbox:
         if only_notify is not None:
             notify = False
 
-        try:
-            try:
-                self.mailbox.lock()
-            except mailbox.ExternalClashError:
-                self.log.warn("resync: unable to get mailbox lock")
-                raise MailboxLock(mbox=self)
-            # Whenever we resync the mailbox we update the sequence for 'seen'
-            # based on 'seen' are all the messages that are NOT in the
-            # 'unseen' sequence.
+        async with (self.lock.write_lock(), self.mailbox.lock_folder()):
+            # Whenever we resync the mailbox we update the sequence for
+            # 'seen' based on 'seen' are all the messages that are NOT in
+            # the 'unseen' sequence.
             #
-            msgs = list(self.mailbox.keys())
-            seq = self.mailbox.get_sequences()
-
-            if "unseen" in seq:
-                # Create the 'Seen' sequence by the difference between all the
-                # messages in the mailbox and the unseen ones.
-                #
-                seq["Seen"] = list(set(msgs) - set(seq["unseen"]))
-            else:
-                # There are no unseen messages in the mailbox thus the Seen
-                # sequence mirrors the set of all messages.
-                #
-                seq["Seen"] = msgs
-
-            # A mailbox gets '\Marked' if it has any unseen messages or
-            # '\Recent' messages.
-            #
-            if "unseen" in seq or "Recent" in seq:
-                self.marked(True)
-            else:
-                self.marked(False)
-
-            self.mailbox.set_sequences(seq)
+            msgs: list[int] = await self.mailbox.keys()
+            seq = self._update_seen_from_unseen(msgs)
 
             # If the list of uids is empty but the list of messages is not then
             # force a full resync of the mailbox.. likely this is just an
-            # initial data problem and does not require rewriting every
-            # message.
+            # initial data problem for when a `Mailbox` instance is first
+            # instantiated and does not require rewriting every message (but
+            # requires reading every message)
             #
-            if len(self.uids) == 0 and len(msgs) > 0:
-                self.log.debug(
+            if not self.uids and msgs:
+                logger.debug(
                     "resync: len uids: %d, len msgs: %d, forcing "
                     "resync" % (len(self.uids), len(msgs))
                 )
@@ -464,7 +506,7 @@ class Mailbox:
             #
             found_uids = self.uids
             start_idx = 0
-            if len(msgs) > 0:
+            if msgs:
                 # NOTE: We handle a special case where the db was reset.. if
                 #       the last message in the folder has a uid greater than
                 #       what is stored in the folder then set that plus to be
@@ -477,10 +519,11 @@ class Mailbox:
                     and uid_vv == self.uid_vv
                     and uid >= self.next_uid
                 ):
-                    self.log.warn(
+                    logger.warning(
                         "resync: last message uid: %d, next_uid: "
-                        "%d - mismatch forcing full resync"
-                        % (uid, self.next_uid)
+                        "%d - mismatch forcing full resync",
+                        uid,
+                        self.next_uid,
                     )
                     self.next_uid = uid + 1
                     force = True
@@ -496,10 +539,12 @@ class Mailbox:
                 # EXPUNGE messages.
                 #
                 if len(msgs) < len(self.uids):
-                    self.log.warn(
+                    logger.warning(
                         "resync: number of messages in folder (%d) "
                         "is less than list of cached uids: %d. "
-                        "Forcing resync." % (len(msgs), len(self.uids))
+                        "Forcing resync.",
+                        len(msgs),
+                        len(self.uids),
                     )
                     force = True
 
@@ -509,18 +554,18 @@ class Mailbox:
                     # messages for this folder and insures that the
                     # self.uid's array is properly filled.
                     #
-                    self.log.debug(
-                        "resync: Forced rescanning all %d "
-                        "messages" % len(msgs)
+                    logger.debug(
+                        "resync: Forced rescanning all %d " "messages",
+                        len(msgs),
                     )
                     self.server.msg_cache.clear_mbox(self.name)
-                    found_uids = self._update_msg_uids(msgs, seq)
+                    found_uids = await self._update_msg_uids(msgs, seq)
 
                     # Calculate what UID's were deleted and what order they
                     # were deleted in and send expunges as necessary to all
                     # connected clients.
                     #
-                    self.send_expunges(found_uids)
+                    await self.send_expunges(found_uids)
                 else:
                     # Usually we ONLY need to rescan the new messages that have
                     # been added to the folder.
@@ -656,22 +701,6 @@ class Mailbox:
             #
             self.sequences = seq
             self._pack_if_necessary(msgs)
-        except mailbox.FormatError as e:
-            self.log.error("Had problem reading mailbox on disk: %s" % str(e))
-            raise MailboxInconsistency
-        except OSError as e:
-            # handle cases where a file was missing by logging a message and
-            # returning immediately. A retry should make everything better.
-            #
-            # XXX Maybe we should disconnect or send BAD to connected clients
-            #     when this happens?
-            #
-            if e.errno == errno.ENOENT:
-                self.log.error("missing file during resync: %s" % str(e))
-                return
-            raise e
-        finally:
-            self.mailbox.unlock()
 
         # And update the mtime before we leave..
         #
@@ -822,7 +851,7 @@ class Mailbox:
 
     ##################################################################
     #
-    def send_expunges(self, uids):
+    async def send_expunges(self, uids):
         """
         This is called as part of resync()
 
@@ -847,13 +876,13 @@ class Mailbox:
         # passed in and return. No EXPUNGE's need to be sent. At most we only
         # have new UID's added to our list.
         #
-        if len(missing_uids) == 0:
+        if not missing_uids:
             self.uids = uids
             return
 
-        self.log.debug(
-            "send_expunges: %d UID's missing. Sending EXPUNGEs."
-            % len(missing_uids)
+        logger.debug(
+            "send_expunges: %d UID's missing. Sending EXPUNGEs.",
+            len(missing_uids),
         )
 
         # Construct the set of clients we can send EXPUNGE's to immediately
@@ -873,9 +902,9 @@ class Mailbox:
         for uid in missing_uids:
             which = self.uids.index(uid) + 1
             self.uids.remove(uid)
-            exp = "* %d EXPUNGE\r\n" % which
+            exp = f"* {which} EXPUNGE\r\n"
             for c in clients_to_notify:
-                c.client.push(exp)
+                await c.client.push(exp)
             for c in clients_to_pend:
                 c.pending_expunges.append(exp)
 
@@ -883,7 +912,6 @@ class Mailbox:
         # found uid's.
         #
         self.uids = uids
-        return
 
     ##################################################################
     #
@@ -936,7 +964,7 @@ class Mailbox:
     def set_uid_in_msg(self, msg, new_uid):
         """
         A faster method of setting the uid header in a message than using
-        the message parsing routines from mailbox.MHMessage
+        the message parsing routines from MHMessage
 
         Arguments:
         - `msg`: The message key
@@ -1123,7 +1151,7 @@ class Mailbox:
 
     ##################################################################
     #
-    def _update_msg_uids(self, msgs, seq):
+    async def _update_msg_uids(self, msgs, seq):
         """
         This will loop through all of the msgs whose keys were passed in the
         msgs list. We assume these keys are in order. We see if they have
@@ -1140,15 +1168,6 @@ class Mailbox:
               The downside is that we need to pick at every message to find
               this header information but we will try to do this as efficiently
               as possible.
-
-        NOTE: My big worry is the spam mailboxes which get many many messages
-              per minute which means we will be scanning that directory
-              constantly and that load may be just too much even for our
-              'acceptably slow server'.
-
-              We may need to add an attribute to a mailbox like "do not scan"
-              so that it is never looked at. We generally do not care if we get
-              new mail in the spam folder anyways.
 
         Arguments:
         - `msgs`: A list of the message keys that we need to check. NOTE: This
@@ -1265,7 +1284,7 @@ class Mailbox:
 
     ##################################################################
     #
-    def _restore_from_db(self):
+    async def _restore_from_db(self):
         """
         Restores this mailbox's persistent state from the database.  If this
         mailbox does not exist in the db we create an entry for it with
@@ -1366,7 +1385,7 @@ class Mailbox:
 
     ##################################################################
     #
-    def commit_to_db(self):
+    async def commit_to_db(self):
         """
         Write the state of the mailbox back to the database for persistent
         storage.
@@ -1432,7 +1451,6 @@ class Mailbox:
             )
         c.close()
         self.server.db.commit()
-        return
 
     ##################################################################
     #
@@ -1448,7 +1466,7 @@ class Mailbox:
         instance and it will check to see if this folder has any children and
         update the attributes as appropriate.
 
-        XXX The biggest downside is that we use mailbox.MH.list_folders() and I
+        XXX The biggest downside is that we use MH.list_folders() and I
             have a feeling that this can be slow at times.
         """
         if len(self.mailbox.list_folders()) > 0:
@@ -1481,7 +1499,7 @@ class Mailbox:
     ##################################################################
     #
     def selected(self, client):
-        """
+        r"""
         This mailbox is being selected by a client.
 
         Add the client to the dict of clients that have this mailbox selected.
@@ -1499,7 +1517,7 @@ class Mailbox:
               <n> EXISTS  The number of messages in the mailbox.  See the
                           description of the EXISTS response for more detail.
 
-              <n> RECENT  The number of messages with the \\Recent flag set.
+              <n> RECENT  The number of messages with the \Recent flag set.
                           See the description of the RECENT response for more
                           detail.
 
@@ -1533,7 +1551,7 @@ class Mailbox:
         if client.client.port in self.clients:
             raise No("Mailbox '%s' is already selected" % self.name)
 
-        if "\\Noselect" in self.attributes:
+        if r"\Noselect" in self.attributes:
             raise No("You can not select the mailbox '%s'" % self.name)
 
         # A client has us selected. Turn of the expiry time.
@@ -1644,10 +1662,10 @@ class Mailbox:
 
     ##################################################################
     #
-    def append(self, message, flags=[], date_time=None):
-        """
+    def append(self, msg: MHMessage, flags=[], date_time=None):
+        r"""
         Append the given message to this mailbox.
-        Set the flags given. We also set the \\Recent flag.
+        Set the flags given. We also set the \Recent flag.
         If date_time is not given set it to 'now'.
         The internal date on the message is set to date_time.
 
@@ -1656,7 +1674,6 @@ class Mailbox:
         - `flags`: A list of flags to set on this message
         - `date_time`: The internal date on this message
         """
-        msg = mailbox.MHMessage(message)
         for flag in flags:
             # We need to translate some flags in to the equivalent MH mailbox
             # sequence name.
@@ -1982,7 +1999,7 @@ class Mailbox:
                 # If we are doing a 'UID FETCH' command we need to use the max
                 # uid for the sequence max.
                 #
-                uid_list = asimap.utils.sequence_set_to_list(
+                uid_list = sequence_set_to_list(
                     msg_set, uid_max, cmd.uid_command
                 )
 
@@ -2017,7 +2034,7 @@ class Mailbox:
                 cmd.msg_idxs = msg_idxs[:]
 
             else:
-                msg_idxs = asimap.utils.sequence_set_to_list(msg_set, seq_max)
+                msg_idxs = sequence_set_to_list(msg_set, seq_max)
 
                 # Store the set of mesage indices in the IMAP command in case
                 # this becomes a continuation.
@@ -2144,10 +2161,10 @@ class Mailbox:
     ##################################################################
     #
     def store(self, msg_set, action, flags, cmd):
-        """
+        r"""
         Update the flags (sequences) of the messages in msg_set.
 
-        NOTE: No matter what flags are set/reset etc. \\Recent is not affected.
+        NOTE: No matter what flags are set/reset etc. \Recent is not affected.
 
         Arguments:
         - `msg_set`: The set of messages to modify the flags on
@@ -2282,7 +2299,7 @@ class Mailbox:
                 # uid for the sequence max.
                 #
                 uid_vv, uid_max = self.get_uid_from_msg(msg_keys[-1])
-                uid_list = asimap.utils.sequence_set_to_list(
+                uid_list = sequence_set_to_list(
                     msg_set, uid_max, cmd.uid_command
                 )
 
@@ -2309,7 +2326,7 @@ class Mailbox:
                 #
                 cmd.msg_idxs = msg_idxs[:]
             else:
-                msg_idxs = asimap.utils.sequence_set_to_list(msg_set, seq_max)
+                msg_idxs = sequence_set_to_list(msg_set, seq_max)
                 # Store the set of mesage indices in the IMAP command in case
                 # this becomes a continuation.
                 #
@@ -2382,10 +2399,10 @@ class Mailbox:
     ##################################################################
     #
     def copy(self, msg_set, dest_mbox, uid_command=False):
-        """
+        r"""
         Copy the messages in msg_set to the destination mailbox.
         Flags (sequences), and internal date are preserved.
-        Messages get the '\\Recent' flag in the new mailbox.
+        Messages get the '\Recent' flag in the new mailbox.
         Arguments:
         - `msg_set`: Set of messages to copy.
         - `dest_mbox`: mailbox instance messages are being copied to
@@ -2405,14 +2422,12 @@ class Mailbox:
             #
             msgs = list(self.mailbox.keys())
             uid_vv, uid_max = self.get_uid_from_msg(msgs[-1])
-            seq_max = len(self.mailbox)
+            seq_max = len(self.mailbox)  # XXX same as len(msgs), no?
             if uid_command:
                 # If we are doing a 'UID COPY' command we need to use the max
                 # uid for the sequence max.
                 #
-                uid_list = asimap.utils.sequence_set_to_list(
-                    msg_set, uid_max, uid_command
-                )
+                uid_list = sequence_set_to_list(msg_set, uid_max, uid_command)
 
                 # We want to convert this list of UID's in to message indices
                 # So for every uid we we got out of the msg_set we look up its
@@ -2433,7 +2448,7 @@ class Mailbox:
                         #           (mi, msgs[mi-1],uid, muid))
                         #     self.resync(force = True, optional = False)
             else:
-                msg_idxs = asimap.utils.sequence_set_to_list(msg_set, seq_max)
+                msg_idxs = sequence_set_to_list(msg_set, seq_max)
 
             src_uids = []
             dst_keys = []
@@ -2463,6 +2478,38 @@ class Mailbox:
                 # NOTE: We do NOT get and cache this new message. It has the
                 #       uid_vv/uid from the source mailbox. It will need to
                 #       re-written by resync() first.
+                #
+                # XXX Oh, we are getting the message and then using __setitem__
+                #     so that we can add this message to the sequence `Recent`
+                #     on the destination mailbox.
+                #
+                #     Since we want to avoid __setitem__ since it is not async
+                #     we can instead do dest_mbox.mailbox.get_sequence(),
+                #     update the sequence and then set_sequence().
+                #
+                # XXX This involves us getting a write lock on the destination
+                #     mailbox. If a separate task is trying to copy a message
+                #     to this mailbox we will hit a deadlock as both try to
+                #     upgrade their read locks to write locks.  Maybe we should
+                #     create a task that does the work to add this message to
+                #     the other mailbox, and _outside of our mailbox read lock_
+                #     we await that task.
+                #
+                #     we have been assuming that we would be getting the mbox
+                #     readlock in the client command doing the copy. So we need
+                #     to either pass the awaitable back to the caller or do the
+                #     read lock in here. (I am leaning towards passing the
+                #     awaitable back to the caller.)
+                #
+                #     Okay.. we split this command up in to the "get the
+                #     messages to copy" and then "a task that writes those
+                #     messages to the dest mailbox"
+                #
+                #     this command returns a task. That task will get the
+                #     readlock and then write lock on the dest mailbox, write
+                #     the messages to the new mailbox, add all the written
+                #     messages to `Recent` sequence. then call resync on the
+                #     destination mbox.
                 #
                 new_msg = dest_mbox.mailbox.get_message(new_key)
                 new_msg.add_sequence("Recent")
@@ -2502,7 +2549,7 @@ class Mailbox:
     ##################################################################
     #
     @classmethod
-    def get_actual_mtime(cls, mh, name):
+    async def get_actual_mtime(cls, mh: MH, name: str) -> int:
         """
         Get the max of the mtimes of the actual folder directory and its
         .mh_sequences file.
@@ -2514,18 +2561,19 @@ class Mailbox:
         to needed to be DRY'.d
 
         Arguments:
-        - `mh`: The top mailbox.MH folder.
+        - `mh`: The top MH folder.
         - `name`: The name of the mbox we are checking
         """
         path = mbox_msg_path(mh, name)
-        seq_path = os.path.join(path, ".mh_sequences")
+        seq_path = path / ".mh_sequences"
 
-        if not os.path.exists(seq_path):
-            # XXX We should set the mode bits on the file after this.
-            #
-            open(seq_path, "w+").close()
+        if not await aiofiles.os.path.exists(str(seq_path)):
+            f = await aiofiles.open(str(seq_path), "w+")
+            await f.close()
+        path_mtime = await aiofiles.os.path.getmtime(str(path))
+        seq_mtime = await aiofiles.os.path.getmtime(str(seq_path))
 
-        return max(int(os.path.getmtime(path)), int(os.path.getmtime(seq_path)))
+        return max(int(path_mtime), int(seq_mtime))
 
     #########################################################################
     #
@@ -2540,7 +2588,7 @@ class Mailbox:
         #
         if name.lower() == "inbox":
             raise InvalidMailbox("Can not create a mailbox named 'inbox'")
-        if digits_re.match(name):
+        if DIGITS_RE.match(name):
             raise InvalidMailbox(
                 "Due to MH restrictions you can not create a "
                 "mailbox that is just digits: '%s'" % name
@@ -2561,8 +2609,8 @@ class Mailbox:
         # will basically make the mailbox selectable again.
         #
         if mbox:
-            if "\\Noselect" in mbox.attributes:
-                mbox.attributes.remove("\\Noselect")
+            if r"\Noselect" in mbox.attributes:
+                mbox.attributes.remove(r"\Noselect")
                 mbox.check_set_haschildren_attr()
                 mbox.commit_to_db()
             else:
@@ -2584,7 +2632,7 @@ class Mailbox:
         mboxes_created = []
         mbox_chain.reverse()
         for m in mbox_chain:
-            mbox = mailbox.MH(m, create=True)
+            mbox = MH(m, create=True)
             mbox = server.get_mailbox(m, expiry=0)
             mboxes_created.append(mbox)
 
@@ -2725,7 +2773,7 @@ class Mailbox:
         if do_delete:
             try:
                 server.mailbox.remove_folder(name)
-            except mailbox.NotEmptyError as e:
+            except NotEmptyError as e:
                 log.warn("mailbox %s 'not empty', %s" % (name, str(e)))
                 path = mbox_msg_path(server.mailbox, name)
                 log.info("using shutil to delete '%s'" % path)
@@ -2757,7 +2805,7 @@ class Mailbox:
         #
         try:
             server.mailbox.get_folder(new_name)
-        except mailbox.NoSuchMailboxError:
+        except NoSuchMailboxError:
             pass
         else:
             raise MailboxExists("Destination mailbox '%s' exists" % new_name)
@@ -2862,7 +2910,7 @@ class Mailbox:
                 for key in mbox.mailbox.keys():
                     try:
                         fp = mbox.mailbox.get_file(key)
-                        full_msg = mailbox.MHMessage(HeaderParser().parse(fp))
+                        full_msg = MHMessage(HeaderParser().parse(fp))
                     finally:
                         fp.close()
                     new_uid = "%010d.%010d" % (

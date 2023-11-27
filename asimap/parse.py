@@ -10,8 +10,8 @@ commands in other parts of the server.
 # system imports
 #
 import datetime
-import email
 import logging
+import mailbox
 import os.path
 import re
 from typing import Union
@@ -676,7 +676,8 @@ class IMAPClientCommand(object):
         # as a message structure right away (I hope this works in all cases,
         # even with draft messages.)
         #
-        self.message = email.message_from_string(self._p_string())
+        # self.message = email.message_from_string(self._p_string())
+        self.message = mailbox.MHMessage(self._p_string())
         return
 
     #######################################################################
