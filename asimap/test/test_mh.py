@@ -19,63 +19,71 @@ from ..mh import MH
 async def test_mh_akeys(bunch_of_email_in_folder):
     mh_dir = bunch_of_email_in_folder()
     mh = MH(str(mh_dir))
-    inbox = mh_dir / "inbox"
-    for msg in inbox.iterdir():
-        print(f"Message: {msg}, exists: {msg.exists()}")
-    keys = await mh.akeys()
-    print(f"Keys: {keys}")
-    assert False
+    inbox_folder = mh.get_folder("inbox")
+    inbox_dir = mh_dir / "inbox"
+    dir_keys = sorted([int(x.name) for x in inbox_dir.iterdir()])
+    folder_keys = await inbox_folder.akeys()
+    assert dir_keys == folder_keys
 
 
 ####################################################################
 #
+@pytest.mark.asyncio
 async def test_mh_lock_folder():
     pass
 
 
 ####################################################################
 #
+@pytest.mark.asyncio
 async def test_mh_aget_message():
     pass
 
 
 ####################################################################
 #
+@pytest.mark.asyncio
 async def test_mh_aget_bytes():
     pass
 
 
 ####################################################################
 #
+@pytest.mark.asyncio
 async def test_mh_aadd():
     pass
 
 
 ####################################################################
 #
+@pytest.mark.asyncio
 async def test_mh_aremove():
     pass
 
 
 ####################################################################
 #
+@pytest.mark.asyncio
 async def test_mh_aget_sequences():
     pass
 
 
 ####################################################################
 #
+@pytest.mark.asyncio
 async def test_mh_aset_sequences():
     pass
 
 
 ####################################################################
 #
+@pytest.mark.asyncio
 async def test_mh_aremove_folder():
     pass
 
 
 ####################################################################
 #
+@pytest.mark.asyncio
 async def test_mh_apack():
     pass

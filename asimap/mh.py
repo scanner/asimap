@@ -36,6 +36,16 @@ class MH(mailbox.MH):
 
     ####################################################################
     #
+    def get_folder(self, folder):
+        """Return an MH instance for the named folder."""
+        return MH(
+            os.path.join(self._path, folder),
+            factory=self._factory,
+            create=False,
+        )
+
+    ####################################################################
+    #
     @asynccontextmanager
     async def lock_folder(
         self,
