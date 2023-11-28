@@ -6,6 +6,7 @@ pytest fixtures for testing `asimap`
 import asyncio
 import imaplib
 import json
+import mailbox
 import ssl
 import threading
 import time
@@ -26,6 +27,48 @@ import asimap.auth
 from ..server import IMAPServer
 from ..user_server import set_user_server_program
 from .factories import UserFactory
+
+
+####################################################################
+#
+def assert_email_equal(msg1, msg2, ignore_headers=False):
+    """
+    Because we can not directly compare a Message and EmailMessage object
+    we need to compare their parts. Since an EmailMessage is a sub-class of
+    Message it will have all the same methods necessary for comparison.
+    """
+    # Compare all headers, unless we are ignoring them.
+    #
+    if ignore_headers is False:
+        assert len(msg1.items()) == len(msg2.items())
+        for header, value in msg1.items():
+            value = value.replace("\n", "")
+            assert msg2[header].replace("\n", "") == value
+
+    # If we are ignoring only some headers, then skip those.
+    #
+    if isinstance(ignore_headers, list):
+        ignore_headers = [x.lower() for x in ignore_headers]
+        for header, value in msg1.items():
+            if header.lower() in ignore_headers:
+                continue
+            assert msg2[header] != value
+
+    assert msg1.is_multipart() == msg2.is_multipart()
+
+    # If not multipart, the payload should be the same.
+    #
+    if not msg1.is_multipart():
+        assert msg1.get_payload() == msg2.get_payload()
+
+    # Otherwise, compare each part.
+    #
+    parts1 = msg1.get_payload()
+    parts2 = msg2.get_payload()
+    assert len(parts1) == len(parts2)
+
+    for part1, part2 in zip(parts1, parts2):
+        assert part1.get_payload() == part2.get_payload()
 
 
 ####################################################################
@@ -254,15 +297,14 @@ def bunch_of_email_in_folder(email_factory, tmp_path):
         folder: str = "inbox",
         sequence: Optional[Union[list, tuple, Iterable]] = None,
     ):
-        folder_path = mh_dir / folder
-        folder_path.mkdir(parents=True, exist_ok=True)
+        mh = mailbox.MH(mh_dir)
+        mh_folder = mh.add_folder(folder)
         if sequence is None:
             sequence = list(range(1, num_emails + 1))
         for i, key in zip(range(num_emails), sequence):
-            msg = email_factory()
-            msg_file = folder_path / str(key)
-            msg_file.write_bytes(msg.as_bytes())
-
+            msg = mailbox.MHMessage(email_factory())
+            msg.add_sequence("unseen")
+            mh_folder.add(msg)
         return mh_dir
 
     return create_emails
