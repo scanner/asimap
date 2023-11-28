@@ -86,7 +86,7 @@ class MH(mailbox.MH):
     async def aget_message(self, key: int) -> MHMessage:
         """
         Use aiofiles to get a message from disk and return it as an
-        EmailMessage.
+        MHMessage.
         """
         path = os.path.join(self._path, str(key))
         try:
@@ -104,6 +104,42 @@ class MH(mailbox.MH):
             if key in key_list:
                 msg.add_sequence(name)
         return msg
+
+    ####################################################################
+    #
+    async def aget_bytes(self, key: int) -> bytes:
+        """
+        Use aiofiles to get a message from disk and return it as bytes.
+        """
+        path = os.path.join(self._path, str(key))
+        try:
+            async with aiofiles.open(path, mode="rb") as f:
+                contents = await f.read()
+        except OSError as e:
+            if e.errno == errno.ENOENT:
+                raise KeyError("No message with key: %s" % key)
+            else:
+                raise
+        return contents
+
+    ####################################################################
+    #
+    async def aremove(self, key: int):
+        """Remove the keyed message; raise KeyError if it doesn't exist."""
+        path = os.path.join(self._path, str(key))
+        try:
+            # Why do calls for "exists", "isfile", and "access" when we can
+            # just try to open the file for reading.
+            #
+            async with aiofiles.open(path, "rb+"):
+                pass
+        except OSError as e:
+            if e.errno == errno.ENOENT:
+                raise KeyError("No message with key: %s" % key)
+            else:
+                raise
+        else:
+            await aiofiles.os.remove(path)
 
     ####################################################################
     #

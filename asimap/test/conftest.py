@@ -1,7 +1,3 @@
-#!/usr/bin/env python
-#
-# File: $Id$
-#
 """
 pytest fixtures for testing `asimap`
 """
@@ -16,6 +12,7 @@ import time
 from email.headerregistry import Address
 from email.message import EmailMessage
 from pathlib import Path
+from typing import Iterable, Optional, Union
 
 # 3rd party imports
 #
@@ -237,3 +234,35 @@ def mock_time(mocker):
     mck_time = mocker.Mock("asimap.throttle.time.time")
     mocker.patch("asimap.throttle.time.time", new=mck_time)
     return mck_time
+
+
+####################################################################
+#
+@pytest.fixture
+def bunch_of_email_in_folder(email_factory, tmp_path):
+    """
+    Create a function that will create a specified number of emails in the
+    specified folder. You can also supply a function that generates the keys to
+    use for the messages (so you can test things like 'pack')
+
+    Returns the path to the maildir (the parent of all the folders)
+    """
+    mh_dir = tmp_path / "Mail"
+
+    def create_emails(
+        num_emails: int = 20,
+        folder: str = "inbox",
+        sequence: Optional[Union[list, tuple, Iterable]] = None,
+    ):
+        folder_path = mh_dir / folder
+        folder_path.mkdir(parents=True, exist_ok=True)
+        if sequence is None:
+            sequence = list(range(1, num_emails + 1))
+        for i, key in zip(range(num_emails), sequence):
+            msg = email_factory()
+            msg_file = folder_path / str(key)
+            msg_file.write_bytes(msg.as_bytes())
+
+        return mh_dir
+
+    return create_emails
