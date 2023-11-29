@@ -107,6 +107,17 @@ class MH(mailbox.MH):
 
     ####################################################################
     #
+    async def alist_folders(self):
+        """Return a list of folder names."""
+        result = []
+        entries = await aiofiles.os.listdir(self._path)
+        for entry in entries:
+            if await aiofiles.os.path.isdir(os.path.join(self._path, entry)):
+                result.append(entry)
+        return result
+
+    ####################################################################
+    #
     async def aget_message(self, key: int) -> MHMessage:
         """
         Use aiofiles to get a message from disk and return it as an

@@ -34,6 +34,20 @@ async def test_mh_akeys(bunch_of_email_in_folder):
 ####################################################################
 #
 @pytest.mark.asyncio
+async def test_mh_listdirs(tmp_path, faker):
+    mh_dir = tmp_path / "Mail"
+    mh = MH(mh_dir)
+    folders = sorted([faker.word() for _ in range(10)])
+    for folder in folders:
+        mh.add_folder(folder)
+
+    found_folders = sorted(await mh.alist_folders())
+    assert folders == found_folders
+
+
+####################################################################
+#
+@pytest.mark.asyncio
 async def test_mh_lock_folder(tmp_path):
     """
     XXX To do a proper test we need to fork a separate process and validate
