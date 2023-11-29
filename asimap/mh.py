@@ -1,14 +1,13 @@
 """
 Re-implement some of the methods on mailbox.MH using aiofiles for async access
 """
+# System imports
+#
 import asyncio
 import email
 import email.generator
 import errno
 import mailbox
-
-# System imports
-#
 import os
 from contextlib import asynccontextmanager
 from mailbox import FormatError, MHMessage, NotEmptyError

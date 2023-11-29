@@ -282,7 +282,24 @@ def mock_time(mocker):
 ####################################################################
 #
 @pytest.fixture
-def bunch_of_email_in_folder(email_factory, tmp_path):
+def mh_folder(tmp_path):
+    """
+    Create the Mail dir and the inbox dir inside that mail dir.
+    """
+    mh_dir = tmp_path / "Mail"
+
+    def mk_folder(folder: str = "inbox"):
+        mh = mailbox.MH(mh_dir)
+        m_folder = mh.add_folder(folder)
+        return (mh_dir, mh, m_folder)
+
+    return mk_folder
+
+
+####################################################################
+#
+@pytest.fixture
+def bunch_of_email_in_folder(email_factory, mh_folder):
     """
     Create a function that will create a specified number of emails in the
     specified folder. You can also supply a function that generates the keys to
@@ -290,21 +307,19 @@ def bunch_of_email_in_folder(email_factory, tmp_path):
 
     Returns the path to the maildir (the parent of all the folders)
     """
-    mh_dir = tmp_path / "Mail"
 
     def create_emails(
         num_emails: int = 20,
         folder: str = "inbox",
         sequence: Optional[Union[list, tuple, Iterable]] = None,
     ):
-        mh = mailbox.MH(mh_dir)
-        mh_folder = mh.add_folder(folder)
+        (mh_dir, _, m_folder) = mh_folder(folder)
         if sequence is None:
             sequence = list(range(1, num_emails + 1))
         for i, key in zip(range(num_emails), sequence):
             msg = mailbox.MHMessage(email_factory())
             msg.add_sequence("unseen")
-            mh_folder.add(msg)
+            m_folder.add(msg)
         return mh_dir
 
     return create_emails

@@ -8,7 +8,6 @@ connections on localhost.
 # system imports
 #
 import asyncio
-import email
 import errno
 import logging
 import os
@@ -328,9 +327,6 @@ class IMAPUserServer:
         #
         self.mailbox = MH(
             self.maildir,
-            factory=lambda x: email.message_from_binary_file(
-                x, policy=email.policy.default
-            ),
             create=True,
         )
 
@@ -339,11 +335,6 @@ class IMAPUserServer:
         # they need a new uid_vv.
         #
         self.uid_vv = 0
-
-        # A handle to the sqlite3 database where we store our persistent
-        # information.
-        #
-        self.db = Database(maildir)
 
         # A dict of the active mailboxes. An active mailbox is one that has an
         # instance of an asimap.mbox.Mailbox class.
@@ -377,15 +368,13 @@ class IMAPUserServer:
         #
         self.expiry: Optional[float] = time.time() + 1800
 
-        # and finally restore any pesistent state stored in the db for the user
-        # server.
+        # `self.db` will be setup in the `new()` class method.
         #
-        self._restore_from_db()
-        return
+        self.db: Database
 
     ##################################################################
     #
-    def _restore_from_db(self):
+    async def _restore_from_db(self):
         """
         Restores any user server persistent state we may have in the db.
         If there is none saved yet then we save a bunch of default values.
@@ -409,6 +398,24 @@ class IMAPUserServer:
 
     ####################################################################
     #
+    @classmethod
+    async def new(
+        cls,
+        maildir: Path,
+        debug: Optional[bool] = False,
+        trace_enabled: Optional[bool] = False,
+    ) -> "IMAPUserServer":
+        user_server = cls(maildir, debug=debug, trace_enabled=trace_enabled)
+
+        # A handle to the sqlite3 database where we store our persistent
+        # information.
+        #
+        user_server.db = await Database.new(maildir)
+        await user_server._restore_from_db()
+        return user_server
+
+    ####################################################################
+    #
     async def run(self):
         """
         Create and start the asyncio server to handle IMAP clients proxied
@@ -429,6 +436,7 @@ class IMAPUserServer:
             )
         else:
             sys.stderr.write("***** SENTRY_DSN not in enviornment")
+
         self.asyncio_server = await asyncio.start_server(
             self.new_client, "127.0.0.1"
         )
