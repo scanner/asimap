@@ -73,7 +73,9 @@ def regexp(expr, item):
 #
 class Database:
     """
-    The interface to the database.
+    A narrow interface over aiosqlite. The main thing this accomplishes is
+    the central connection to the sqlite db and executing necessary migrations
+    when the db is first opened.
     """
 
     ##################################################################
@@ -110,7 +112,7 @@ class Database:
         # we have to supply it with a regexp function.
         #
         await db.conn.create_function("REGEXP", 2, regexp, deterministic=True)
-        await db.conn.execute("vacuum")
+        await db.execute("vacuum")
 
         # Set up the database if necessary. Apply any migrations that
         # we need to.
@@ -130,12 +132,10 @@ class Database:
         """
         version = 0
         try:
-            async with self.conn.execute(
+            row = await self.fetchone(
                 "select version from versions order by version desc limit 1"
-            ) as cursor:
-                async for row in cursor:
-                    version = int(row["version"]) + 1
-                    break
+            )
+            version = int(row["version"]) + 1
         except aiosqlite.OperationalError as e:
             # if we have no versions table then our first migration is 0.
             #
@@ -149,21 +149,65 @@ class Database:
                 "Applying migration version %d (%s)" % (idx, migration.__name__)
             )
             await migration(self.conn)
-            await self.conn.execute(
-                "insert into versions (version) values (?)", str(idx)
+            await self.execute(
+                "insert into versions (version) values (?)",
+                str(idx),
+                commit=True,
             )
-            await self.commit()
 
-    ##################################################################
+    ####################################################################
     #
-    async def close(self):
-        await self.conn.close()
+    async def fetchone(self, sql: str, *args, **kwargs):
+        """
+        Sometimes we want just the first row of a query. This helper makes
+        that simpler.
+
+        The args and kwargs are passed to sqlite's `execute()`
+
+        We have a function separate from `query` because we can not have a
+        `return` with a value inside an async generator (ie: once we use
+        `yield` we can not use `return <anything>`)
+        """
+        async with self.conn.execute(sql, *args, **kwargs) as cursor:
+            async for row in cursor:
+                return row
+
+    ####################################################################
+    #
+    async def query(self, sql: str, *args, **kwargs):
+        """
+        An async context manager that yields the rows from the query.
+
+        The args and kwargs are passed to sqlite's `execute()`
+        """
+        async with self.conn.execute(sql, *args, **kwargs) as cursor:
+            async for row in cursor:
+                yield row
+
+    ####################################################################
+    #
+    async def execute(self, sql: str, *args, commit=True, **kwargs):
+        """
+        This is for operations that will update the db. INSERT, UPDATE,
+        DELETE, etc.
+
+        If `commit` is True we do a commit on the db after the successful
+        execute. If `commit` is False we assume our caller is going to handle
+        when to do the commit.
+        """
+        await self.conn.execute(sql, *args, **kwargs)
+        if commit:
+            await self.conn.commit()
 
     ##################################################################
     #
     async def commit(self):
         await self.conn.commit()
-        return
+
+    ##################################################################
+    #
+    async def close(self):
+        await self.conn.close()
 
 
 ##################################################################
@@ -207,7 +251,6 @@ async def initial_migration(c: aiosqlite.Connection):
         "create unique index seq_name_mbox on sequences " "(name,mailbox_id)"
     )
     await c.execute("create index seq_mbox_id on sequences (mailbox_id)")
-    return
 
 
 ####################################################################

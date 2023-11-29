@@ -19,23 +19,30 @@ from ..db import Database
 #
 @pytest.mark.asyncio
 async def test_db_init_migrate(tmp_path):
+    """
+    This actually tests all of the db methods so until we need to test
+    something more complex this is good enough unit test for the Database and
+    its methods.
+
+    The `new()` method runs the migrations and tests fetchone, execute,
+    commit. we check the results via the `query` method as an
+    asynccontextmanager.
+    """
+    db = None
     try:
         async with timeout(1):
             db = await Database.new(tmp_path)
         assert db
         schema: Dict[str, Dict[str, str]] = {}
-        async with db.conn.execute(
+        async for table in db.query(
             "SELECT name FROM sqlite_schema WHERE type='table'"
-        ) as tables:
-            async for table in tables:
-                table_name = table[0]
-                schema[table_name] = {}
-                async with db.conn.execute(
-                    f"PRAGMA table_info({table_name})"
-                ) as table_infos:
-                    async for table_info in table_infos:
-                        schema[table_name][table_info[1]] = table_info[2]
-
+        ):
+            table_name = table[0]
+            schema[table_name] = {}
+            async for table_info in db.query(
+                f"PRAGMA table_info({table_name})"
+            ):
+                schema[table_name][table_info[1]] = table_info[2]
         # NOTE: This requires we update our expected results whenever
         #       migrations change this pseudo-schema we generate.
         expected = {
@@ -69,4 +76,5 @@ async def test_db_init_migrate(tmp_path):
         }
         assert schema == expected
     finally:
-        await db.close()
+        if db:
+            await db.close()
