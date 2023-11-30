@@ -13,7 +13,6 @@ import re
 import shutil
 import stat
 import time
-from email.parser import HeaderParser
 from mailbox import FormatError, MHMessage, NoSuchMailboxError, NotEmptyError
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict
@@ -44,7 +43,7 @@ from .utils import UpgradeableReadWriteLock, sequence_set_to_list
 # Allow circular imports for annotations
 #
 if TYPE_CHECKING:
-    from .user_server import IMAPClientProxy
+    from .user_server import IMAPClientProxy, IMAPUserServer
 
 
 logger = logging.getLogger("asimap.mbox")
@@ -146,22 +145,6 @@ class Mailbox:
         self.log = logging.getLogger(
             "{}.{}.{}".format(__name__, self.__class__.__name__, name)
         )
-        # XXX we appear to use the self.server for 3 things:
-        #     1) get the unix path to the mbox so we can get its mtime,
-        #     2) get the message cache
-        #     3) get a cursor from the open db object
-        #     4) get the open db object so we can call commit()
-        #     5) get the next uid_vv value
-        #
-        #     If we can remove the server object we make unit testing
-        #     the mailbox easier.
-        #
-        #     Only one of the above that is remotely tricky is the
-        #     'get_next_uid_vv()' function
-        #
-        #    Maybe we only need to make a mock server object for
-        #    testing instead of pulling everything out?
-        #
         self.server = server
         self.name = name
         self.id = None
@@ -1295,14 +1278,12 @@ class Mailbox:
         We return False if we had to create the record for this mailbox in the
         db.
         """
-        c = self.server.db.cursor()
-        c.execute(
+        results = await self.server.db.fetchone(
             "select id, uid_vv,attributes,mtime,next_uid,num_msgs,"
             "num_recent,uids,last_resync,subscribed from mailboxes "
             "where name=?",
             (self.name,),
         )
-        results = c.fetchone()
 
         # If we got back no results than this mailbox does not exist in the
         # database so we need to create it.
@@ -1312,14 +1293,14 @@ class Mailbox:
             # far as we know.
             #
             self.check_set_haschildren_attr()
-            self.mtime = asimap.mbox.Mailbox.get_actual_mtime(
+            self.mtime = await Mailbox.get_actual_mtime(
                 self.server.mailbox, self.name
             )
-            self.uid_vv = self.server.get_next_uid_vv()
-            c.execute(
-                "insert into mailboxes (id, name, uid_vv, attributes, "
+            self.uid_vv = await self.server.get_next_uid_vv()
+            await self.server.db.execute(
+                "INSERT INTO mailboxes (id, name, uid_vv, attributes, "
                 "mtime, next_uid, num_msgs, num_recent) "
-                "values (NULL,?,?,?,?,?,?,0)",
+                "VALUES (NULL,?,?,?,?,?,?,0)",
                 (
                     self.name,
                     self.uid_vv,
@@ -1333,22 +1314,22 @@ class Mailbox:
             # After we insert the record we pull it out again because we need
             # the mailbox id to relate the mailbox to its sequences.
             #
-            c.execute("select id from mailboxes where name=?", (self.name,))
-            results = c.fetchone()
+            results = await self.server.db.fetchone(
+                "SELECT id FROM mailboxes WHERE name=?", (self.name,)
+            )
             self.id = results[0]
 
             # For every sequence we store it in the db also so we can later on
             # do smart diffs of sequence changes between mailbox resyncs.
             #
-            self.sequences = self.mailbox.get_sequences()
+            self.sequences = await self.mailbox.aget_sequences()
             for name, values in self.sequences.items():
-                c.execute(
-                    "insert into sequences (id,name,mailbox_id,sequence)"
-                    " values (NULL,?,?,?)",
+                await self.server.db.execute(
+                    "INSERT INTO sequences (id,name,mailbox_id,sequence)"
+                    " VALUES (NULL,?,?,?)",
                     (name, self.id, ",".join([str(x) for x in values])),
                 )
-            c.close()
-            self.server.db.commit()
+            await self.server.db.commit()
             return False
         else:
             # We got back an actual result. Fill in the values in the mailbox.
@@ -1373,14 +1354,12 @@ class Mailbox:
 
             # And fill in the sequences we find for this mailbox.
             #
-            results = c.execute(
-                "select name, sequence from sequences where " "mailbox_id=?",
+            async for row in self.server.db.query(
+                "SELECT name, sequence FROM sequences WHERE mailbox_id=?",
                 (self.id,),
-            )
-            for row in results:
+            ):
                 name, values = row
                 self.sequences[name] = {int(x) for x in values.split(",")}
-            c.close()
         return True
 
     ##################################################################
@@ -1402,11 +1381,10 @@ class Mailbox:
             self.subscribed,
             self.id,
         )
-        c = self.server.db.cursor()
-        c.execute(
-            "update mailboxes set uid_vv=?, attributes=?, next_uid=?,"
+        await self.server.db.execute(
+            "UPDATE mailboxes SET uid_vv=?, attributes=?, next_uid=?,"
             "mtime=?, num_msgs=?, num_recent=?, uids=?, last_resync=?, "
-            "subscribed=? where id=?",
+            "subscribed=? WHERE id=?",
             values,
         )
 
@@ -1415,24 +1393,24 @@ class Mailbox:
         # are no longer in this mailbox's list of sequences.
         #
         old_names = set()
-        r = c.execute(
-            "select name from sequences where mailbox_id=?", (self.id,)
-        )
-        for row in r:
+        async for row in self.server.db.query(
+            "SELECT name FROM sequences WHERE mailbox_id=?", (self.id,)
+        ):
             old_names.add(row[0])
+
         new_names = set(self.sequences.keys())
         names_to_delete = old_names.difference(new_names)
         names_to_insert = new_names.difference(old_names)
         names_to_update = new_names.intersection(old_names)
         for name in names_to_delete:
-            c.execute(
-                "delete from sequences where mailbox_id=? and name=?",
+            await self.server.db.execute(
+                "DELETE FROM sequences WHERE mailbox_id=? AND name=?",
                 (self.id, name),
             )
         for name in names_to_insert:
-            c.execute(
-                "insert into sequences (id,name,mailbox_id,sequence) "
-                "values (NULL,?,?,?)",
+            await self.server.db.execute(
+                "INSERT INTO sequences (id,name,mailbox_id,sequence) "
+                "VALUES (NULL,?,?,?)",
                 (
                     name,
                     self.id,
@@ -1440,21 +1418,19 @@ class Mailbox:
                 ),
             )
         for name in names_to_update:
-            c.execute(
-                "update sequences set sequence=? where mailbox_id=? "
-                "and name=?",
+            await self.server.db.execute(
+                "UPDATE sequences SET sequence=? WHERE mailbox_id=? AND name=?",
                 (
                     ",".join([str(x) for x in self.sequences[name]]),
                     self.id,
                     name,
                 ),
             )
-        c.close()
-        self.server.db.commit()
+        await self.server.db.commit()
 
     ##################################################################
     #
-    def check_set_haschildren_attr(self):
+    async def check_set_haschildren_attr(self):
         """
         In order to support RFC3348 we need to know if a given folder has
         children folders or not.
@@ -1469,7 +1445,7 @@ class Mailbox:
         XXX The biggest downside is that we use MH.list_folders() and I
             have a feeling that this can be slow at times.
         """
-        if len(self.mailbox.list_folders()) > 0:
+        if len(await self.mailbox.alist_folders()) > 0:
             self.attributes.add(r"\HasChildren")
             if r"\HasNoChildren" in self.attributes:
                 self.attributes.remove(r"\HasNoChildren")
@@ -1477,7 +1453,6 @@ class Mailbox:
             self.attributes.add(r"\HasNoChildren")
             if r"\HasChildren" in self.attributes:
                 self.attributes.remove(r"\HasChildren")
-        return
 
     ##################################################################
     #
@@ -2578,7 +2553,7 @@ class Mailbox:
     #########################################################################
     #
     @classmethod
-    def create(cls, name, server):
+    async def create(cls, name: str, server: "IMAPUserServer"):
         """
         Creates a mailbox on disk that does not already exist and
         instantiates a Mailbox object for it.
@@ -2649,7 +2624,7 @@ class Mailbox:
     ####################################################################
     #
     @classmethod
-    def delete(cls, name, server):
+    async def delete(cls, name: str, server: "IMAPUserServer"):
         r"""
         Delete the specified mailbox.
 
@@ -2681,15 +2656,10 @@ class Mailbox:
             raise InvalidMailbox("You are not allowed to delete the inbox")
 
         mbox = server.get_mailbox(name, expiry=0)
-
-        # Remember to delete this mailbox from the message cache..
-        #
-        server.msg_cache.clear_mbox(name)
-
         do_delete = False
-        try:
-            # mailbox.mailbox.lock()
-            inferior_mailboxes = mbox.mailbox.list_folders()
+        server.msg_cache.clear_mbox(name)
+        async with (mbox.mailbox.lock_folder(), mbox.lock.read_lock()):
+            inferior_mailboxes = await mbox.mailbox.alist_folders()
 
             # You can not delete a mailbox that has the '\Noselect' attribute
             # and has inferior mailboxes.
@@ -2699,65 +2669,70 @@ class Mailbox:
                     "The mailbox '%s' is already deleted" % name
                 )
             # You can not delete a mailbox that has the '\Noselect' attribute
-            # and is subscribed.
+            # and is subscribed. (BTW: This means that this mailbox was already
+            # deleted, but not removed because it still has subscribers.)
             #
             if r"\Noselect" in mbox.attributes and mbox.subscribed:
                 raise InvalidMailbox(
                     "The mailbox '%s' is still subscribed" % name
                 )
 
-            # When deleting a mailbox it will cause to be deleted every
-            # message in that mailbox to be deleted.
-            #
-            mbox.mailbox.clear()
-
-            # If the mailbox has any active clients we set their selected
-            # mailbox to None. client.py will know if they try to do any
-            # operations that require they have a mailbox selected that this
-            # mailbox no longer exists and it will disconnect those clients.
-            #
-            # A bit rude, but it is the simplest accepted action in this case.
-            #
-            for client in mbox.clients.values():
-                client.mbox = None
-            mbox.clients = {}
-
-            # If the mailbox has inferior mailboxes then we do not actually
-            # delete it. It gets the '\Noselect' flag though. It also gets a
-            # new uid_vv so that if it is recreated before being fully removed
-            # from the db no imap client will confuse it with the existing
-            # mailbox.
-            #
-            if len(inferior_mailboxes) > 0 or mbox.subscribed:
-                mbox.attributes.add(r"\Noselect")
-                mbox.uid_vv = server.get_next_uid_vv()
-                mbox.commit_to_db()
-            else:
-                # We have no inferior mailboxes. This mailbox is gone. If it
-                # is active we remove it from the list of active mailboxes
-                # and if it has any clients that have it selected they are
-                # moved back to the unauthenticated state.
+            async with mbox.lock.write_lock():
+                # When deleting a mailbox every message in that mailbox will be
+                # deleted.
                 #
-                del server.active_mailboxes[name]
+                await mbox.mailbox.aclear()
 
-                # Delete all traces of the mailbox from our db.
+                # If the mailbox has any active clients we set their selected
+                # mailbox to None. client.py will know if they try to do any
+                # operations that require they have a mailbox selected that
+                # this mailbox no longer exists and it will disconnect those
+                # clients.
                 #
-                c = server.db.cursor()
-                c.execute("delete from mailboxes where id = ?", (mbox.id,))
-                c.execute(
-                    "delete from sequences where mailbox_id = ?", (mbox.id,)
-                )
-                c.close()
-                server.db.commit()
+                # A bit rude, but it is the simplest accepted action in this
+                # case.
+                #
+                for client in mbox.clients.values():
+                    client.mbox = None
+                mbox.clients = {}
 
-                # We need to delay the 'delete' of the actual mailbox until
-                # after we release the lock.. but we only delete the actual
-                # mailbox outside of the try/finally close if we are actually
-                # deleting it.
+                # If the mailbox has inferior mailboxes then we do not actually
+                # delete it. It gets the '\Noselect' flag though. It also gets
+                # a new uid_vv so that if it is recreated before being fully
+                # removed from the db no imap client will confuse it with the
+                # existing mailbox.
                 #
-                do_delete = True
-        finally:
-            mbox.mailbox.close()
+                if inferior_mailboxes or mbox.subscribed:
+                    mbox.attributes.add(r"\Noselect")
+                    mbox.uid_vv = server.get_next_uid_vv()
+                    await mbox.commit_to_db()
+                else:
+                    # We have no inferior mailboxes. This mailbox is gone. If
+                    # it is active we remove it from the list of active
+                    # mailboxes and if it has any clients that have it selected
+                    # they are moved back to the unauthenticated state.
+                    #
+                    async with server.active_mailboxes_lock.read_lock():
+                        if name in server.active_mailboxes:
+                            async with server.active_mailboxes_lock.write_lock():
+                                del server.active_mailboxes[name]
+
+                    # Delete all traces of the mailbox from our db.
+                    #
+                    await server.db.execute(
+                        "DELETE FROM mailboxes WHERE id = ?", (mbox.id,)
+                    )
+                    await server.db.execute(
+                        "DELETE FROM sequences WHERE mailbox_id = ?", (mbox.id,)
+                    )
+                    await server.db.commit()
+
+                    # We need to delay the 'delete' of the actual mailbox until
+                    # after we release the lock but we only delete the actual
+                    # mailbox outside of the lock context manager if we are
+                    # actually deleting it.
+                    #
+                    do_delete = True
 
         # if this mailbox was the child of another mailbox than we may need to
         # update that mailbox's 'has children' attributes.
@@ -2765,25 +2740,28 @@ class Mailbox:
         parent_name = os.path.dirname(name)
         if parent_name != "":
             parent_mbox = server.get_mailbox(parent_name, expiry=0)
-            parent_mbox.check_set_haschildren_attr()
-            parent_mbox.commit_to_db()
+            async with (
+                parent_mbox.lock.read_lock(),
+                parent_mbox.lock.write_lock(),
+            ):
+                parent_mbox.check_set_haschildren_attr()
+                parent_mbox.commit_to_db()
 
         # And remove the mailbox from the filesystem.
         #
         if do_delete:
             try:
-                server.mailbox.remove_folder(name)
+                await server.mailbox.aremove_folder(name)
             except NotEmptyError as e:
                 log.warn("mailbox %s 'not empty', %s" % (name, str(e)))
                 path = mbox_msg_path(server.mailbox, name)
                 log.info("using shutil to delete '%s'" % path)
                 shutil.rmtree(path)
-        return
 
     ####################################################################
     #
     @classmethod
-    def rename(cls, old_name, new_name, server):
+    def rename(cls, old_name: str, new_name: str, server: "IMAPUserServer"):
         """
         Rename a mailbox from odl_name to new_name.
 
@@ -2798,8 +2776,7 @@ class Mailbox:
         - `new_name`: the new name of the mailbox
         - `server`: the user server object
         """
-        log = logging.getLogger("%s.%s.rename()" % (__name__, cls.__name__))
-        mbox = server.get_mailbox(old_name, expiry=0)
+        mbox = await server.get_mailbox(old_name)
 
         # The mailbox we are moving to must not exist.
         #
@@ -2813,124 +2790,9 @@ class Mailbox:
         # Inbox is handled specially.
         #
         if mbox.name.lower() != "inbox":
-            c = server.db.cursor()
-
-            # Get all of the mailboxes that either have the name we are
-            # changing or are children of the mailbox whose name we are
-            # changing and change their names to reflect the rename.
-            #
-            affected_mailboxes = []
-            to_change = []
-            r = c.execute(
-                "select name,id from mailboxes where name=? " "or name like ?",
-                (old_name, "%s/%%" % old_name),
-            )
-            for mbox_old_name, mbox_id in r:
-                # Compute the mailbox's changed name.
-                #
-                old_name_len = len(old_name)
-                mbox_new_name = new_name + mbox_old_name[old_name_len:]
-                to_change.append((mbox_new_name, mbox_old_name, mbox_id))
-
-                # If this mailbox is also an active mailbox hold on to its old
-                # name and new name so we can update all the active mailboxes.
-                #
-                if mbox_old_name in server.active_mailboxes:
-                    affected_mailboxes.append((mbox_old_name, mbox_new_name))
-
-            # Change all of the affected old names to their new names.
-            #
-            for new_mbox_name, old_mbox_name, mbox_id in to_change:
-                c.execute(
-                    "update mailboxes set name=? where id=?",
-                    (new_mbox_name, mbox_id),
-                )
-
-            # Rename the top folder in the file system.
-            #
-            old_dir = mbox_msg_path(server.mailbox, old_name)
-            new_dir = mbox_msg_path(server.mailbox, new_name)
-            log.debug(
-                "rename(): renaming dir '%s' to '%s'" % (old_dir, new_dir)
-            )
-            os.rename(old_dir, new_dir)
-
-            # Go through all of the active mailboxes whose name changed and
-            # update the key they are stored under in the active_mailboxes
-            # dict, their name, and their mailbox.MH reference to the
-            # underlying MH mail folder.
-            #
-            for mbox_old_name, mbox_new_name in affected_mailboxes:
-                mb = server.active_mailboxes[mbox_old_name]
-                del server.active_mailboxes[mbox_old_name]
-                mb.name = mbox_new_name
-                mb.mailbox = server.mailbox.get_folder(mbox_new_name)
-                server.active_mailboxes[mbox_new_name] = mb
-
-                # Flush the old name from the message cache..
-                #
-                server.msg_cache.clear_mbox(mbox_old_name)
-
-            c.close()
-            server.db.commit()
-
-            # See if the mailbox HAD a parent mailbox and update that parent
-            # mailbox's children flags.
-            #
-            old_p_name = os.path.dirname(old_name)
-            if old_p_name != "":
-                m = server.get_mailbox(old_p_name, expiry=0)
-                m.check_set_haschildren_attr()
-                m.commit_to_db()
-
-            # See if the mailbox under its new name has a parent and if it does
-            # update that parent's children flags.
-            #
-            new_p_name = os.path.dirname(new_name)
-            if new_p_name != "":
-                m = server.get_mailbox(new_p_name, expiry=0)
-                m.check_set_haschildren_attr()
-                m.commit_to_db()
-
-            return
+            await _helper_rename_folder(mbox, new_name)
         else:
-            # when you rename 'inbox' what happens is you create a new mailbox
-            # with the new name and all messages in 'inbox' are moved to this
-            # new mailbox. Inferior mailboxes of 'inbox' are unchanged and not
-            # copied.
-            #
-            cls.create(new_name, server)
-
-            # Now move all the messages currently in inbox to the new mailbox.
-            #
-            new_mbox = server.get_mailbox(new_name, expiry=0)
-            try:
-                # mbox.mailbox.lock()
-                # new_mbox.mailbox.lock()
-                for key in mbox.mailbox.keys():
-                    try:
-                        fp = mbox.mailbox.get_file(key)
-                        full_msg = MHMessage(HeaderParser().parse(fp))
-                    finally:
-                        fp.close()
-                    new_uid = "%010d.%010d" % (
-                        new_mbox.uid_vv,
-                        new_mbox.next_uid,
-                    )
-                    new_mbox.next_uid += 1
-                    del full_msg["X-asimapd-uid"]
-                    full_msg["X-asimapd-uid"] = new_uid
-                    new_mbox.add(full_msg)
-
-                mbox.clear()
-                mbox.resync()
-                new_mbox.resync()
-            finally:
-                # mbox.mailbox.unlock()
-                # new_mbox.mailbox.unlock()
-                pass
-
-        return
+            await _helper_rename_inbox(mbox, new_name)
 
     ####################################################################
     #
@@ -3025,3 +2887,166 @@ class Mailbox:
             results.append((mbox_name, attributes))
         c.close()
         return results
+
+
+####################################################################
+#
+async def _helper_rename_folder(mbox: Mailbox, new_name: str):
+    """
+    Breaking the logic for renaming a folder that is NOT the `inbox` out
+    from the class method.
+
+    Nothing about the logic needs to be in the class (and we can break out unit
+    tests out a little bit as well.)
+
+    This function will rename a mailbox, and rename all of its children
+    mailboxes.
+
+    The checks to see if this mailbox can be renamed have already been done.
+    """
+    # NOTE: Make it easier to refer to the server down below
+    #
+    srvr = mbox.server
+
+    # Even more helpers to make code in our locks simpler.
+    #
+    def _do_rename_folder(old_mbox: Mailbox, old_id: int, mbox_new_name: str):
+        """
+        Helper routine for the helper routine that makes the changes to the
+        db and active mailboxes once we have the mbox write lock.
+        """
+        mbox_old_name = old_mbox.name
+        async with (
+            srvr.active_mailboxes_lock.read_lock(),
+            srvr.active_mailboxes_lock.write_lock(),
+        ):
+            await srvr.db.execute(
+                "UPDATE mailboxes SET name=? WHERE id=?",
+                (new_name, old_id),
+            )
+
+            mb = srvr.active_mailboxes[mbox_old_name]
+            del srvr.active_mailboxes[mbox_old_name]
+            mb.name = mbox_new_name
+            mb.mailbox = srvr.mailbox.get_folder(mbox_new_name)
+            srvr.active_mailboxes[mbox_new_name] = mb
+        srvr.msg_cache.clear_mbox(mbox_old_name)
+
+    # Make a hard link to where the new mbox is going to be. This way as we
+    # move any subordinate folders if they get activity before we have finished
+    # the entire move they will not just fail. When done all we need to do is
+    # remove the old mbox dir.
+    #
+    old_name = mbox.name
+    old_dir = mbox_msg_path(srvr.mailbox, old_name)
+    new_dir = mbox_msg_path(srvr.mailbox, new_name)
+
+    async with mbox.lock.read_lock():
+        await aiofiles.os.link(old_dir, new_dir)
+
+        # Get all the mailboxes we have to rename (this mbox may have children)
+        #
+        to_change = {}
+        async for mbox_old_name, mbox_id in srvr.db.query(
+            "SELECT name,id FROM mailboxes WHERE name=? " "OR name LIKE ?",
+            (old_name, f"{old_name}/%"),
+        ):
+            mbox_new_name = new_name + mbox_old_name[len(old_name) :]
+            to_change[mbox_old_name] = (mbox_new_name, mbox_id)
+
+        for old, new_data in to_change.items():
+            # If this is the mbox we were passed in, we already have a read
+            # lock so we do not need to acquire it.
+            #
+            old_mbox = await srvr.get_mailbox(old, expiry=10)
+            if old_mbox.name == mbox.name:
+                async with old_mbox.lock.write_lock():
+                    _do_rename_folder()
+            else:
+                async with (
+                    old_mbox.lock.read_lock(),
+                    old_mbox.lock.write_lock(),
+                ):
+                    _do_rename_folder()
+
+        srvr.db.commit()
+
+        # And now we can remove the link to the old directory.
+        #
+        await aiofiles.os.rmdir(old_dir)
+
+    # If this mailbox we just renamed had a parent, that parent mailbox might
+    # no longer have any children after this rename, so we have to update its
+    # children flags.
+    #
+    old_p_name = os.path.dirname(old_name)
+    if old_p_name != "":
+        m = await srvr.get_mailbox(old_p_name, expiry=10)
+        async with (m.lock.read_lock(), m.lock.write_lock()):
+            await m.check_set_haschildren_attr()
+            await m.commit_to_db()
+
+    # See if the mailbox under its new name has a parent and if it does update
+    # that parent's children flags.
+    #
+    new_p_name = os.path.dirname(new_name)
+    if new_p_name != "":
+        m = srvr.get_mailbox(new_p_name, expiry=0)
+        async with (m.lock.read_lock(), m.lock.write_lock()):
+            await m.check_set_haschildren_attr()
+            await m.commit_to_db()
+
+
+####################################################################
+#
+async def _helper_rename_inbox(mbox: Mailbox, new_name: str):
+    """
+    When the `inbox` gets renamed what happens is all messages in the inbox
+    get moved to the new mailbox (and removed from the inbox.)
+
+    Sub-folders of the inbox are not affected.
+    """
+    # when you rename 'inbox' what happens is you create a new mailbox
+    # with the new name and all messages in 'inbox' are moved to this
+    # new mailbox. Inferior mailboxes of 'inbox' are unchanged and not
+    # copied.
+    #
+    server = mbox.server
+    await Mailbox.create(new_name, server)
+
+    # We will get all the keys, fetch them one by one. If they are not there
+    # when we try to fetch them because something else deleted them.. do not
+    # care. Just move on.
+    #
+    # NOTE: Message flags are preserved.
+    #
+    new_mbox = await server.get_mailbox(new_name)
+
+    async with mbox.mailbox.lock_folder():
+        async with (mbox.lock.read_lock(), mbox.lock.write_lock):
+            async with (new_mbox.lock.read_lock(), new_mbox.lock.write_lock):
+                for key in await mbox.mailbox.akeys():
+                    try:
+                        msg = await mbox.mailbox.aget_message(key)
+                    except KeyError:
+                        continue
+
+                    # Replace the asimap uid since this is a new folder.
+                    #
+                    uid = f"{new_mbox.uid_vv:010d}.{new_mbox.new_uid:010d}"
+                    new_mbox.next_uid += 1
+                    del msg["X-asimapd-uid"]
+                    msg["X-asimapd-uid"] = uid
+                    await new_mbox.aadd(msg)
+                    try:
+                        await mbox.aremove(key)
+                    except KeyError:
+                        pass
+            new_mbox.sequences = await new_mbox.mailbox.aget_sequences()
+            await new_mbox.commit_to_db()
+
+    async with mbox.lock.read_lock():
+        await mbox.resync()
+
+    async with new_mbox.lock.read_lock():
+        await new_mbox.resync()

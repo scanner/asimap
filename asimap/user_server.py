@@ -18,7 +18,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 # 3rd party imports
 #
@@ -32,10 +32,10 @@ import asimap.mbox
 import asimap.message_cache
 import asimap.parse
 from asimap.client import Authenticated
-from asimap.db import Database
 from asimap.exceptions import MailboxInconsistency, MailboxLock
 from asimap.trace import trace
 
+from .db import Database
 from .mh import MH
 from .utils import UpgradeableReadWriteLock
 
@@ -332,7 +332,9 @@ class IMAPUserServer:
 
         # A global counter for the next available uid_vv is stored in the user
         # server object. Mailboxes will get this value and increment it when
-        # they need a new uid_vv.
+        # they need a new uid_vv. NOTE: This value is stored in the database
+        # and set when the `user_server` is restored from the db. (If it has
+        # never been set its initial value will be 0)
         #
         self.uid_vv = 0
 
@@ -379,22 +381,17 @@ class IMAPUserServer:
         Restores any user server persistent state we may have in the db.
         If there is none saved yet then we save a bunch of default values.
         """
-        # c = await self.db.execute("select uid_vv from user_server order by id desc limit 1")
-        # results = await c.fetchone()
-
-        c = self.db.cursor()
-        c.execute("select uid_vv from user_server order by id desc limit 1")
-        results = c.fetchone()
+        results = await self.db.fetchone(
+            "SELECT uid_vv FROM user_server ORDER BY id DESC LIMIT 1"
+        )
         if results is None:
-            c.execute(
-                "insert into user_server (uid_vv) values (?)", str(self.uid_vv)
+            await self.db.execute(
+                "insert into user_server (uid_vv) values (?)",
+                str(self.uid_vv),
+                commit=True,
             )
-            c.close()
-            self.db.commit()
         else:
             self.uid_vv = int(results[0])
-            c.close()
-        return
 
     ####################################################################
     #
@@ -575,35 +572,12 @@ class IMAPUserServer:
         so that its uid_vv state remains up to date.
         """
         self.uid_vv += 1
-        c = self.db.cursor()
-        c.execute("update user_server set uid_vv = ?", (str(self.uid_vv),))
-        c.close()
-        self.db.commit()
+        await self.db.execute(
+            "UPDATE user_server SET uid_vv = ?",
+            (str(self.uid_vv),),
+            commit=True,
+        )
         return self.uid_vv
-
-    ##################################################################
-    #
-    def log_info(self, message, type="info"):
-        """
-        Replace the log_info method with one that uses our stderr logger
-        instead of trying to write to stdout.
-
-        Arguments:
-        - `message`:
-        - `type`:
-        """
-        if type not in self.ignore_log_types:
-            if type == "info":
-                self.log.info(message)
-            elif type == "error":
-                self.log.error(message)
-            elif type == "warning":
-                self.log.warning(message)
-            elif type == "debug":
-                self.log.debug(message)
-            else:
-                self.log.info(message)
-        return
 
     ##################################################################
     #
@@ -681,9 +655,10 @@ class IMAPUserServer:
                     expired.append(mbox_name)
             async with self.active_mailboxes_lock.write_lock():
                 for mbox_name in expired:
-                    await self.active_mailboxes[mbox_name].commit_to_db()
-                    del self.active_mailboxes[mbox_name]
-                    self.msg_cache.clear_mbox(mbox_name)
+                    if mbox_name in self.active_mailboxes:
+                        await self.active_mailboxes[mbox_name].commit_to_db()
+                        del self.active_mailboxes[mbox_name]
+                        self.msg_cache.clear_mbox(mbox_name)
 
     ##################################################################
     #
@@ -698,12 +673,11 @@ class IMAPUserServer:
         start_time = time.time()
         extant_mboxes = {}
         mboxes_to_create = []
-        c = self.db.cursor()
-        c.execute("select name, mtime from mailboxes order by name")
-        for row in c:
+        async for row in self.db.query(
+            "SELECT name, mtime FROM mailboxes ORDER BY name"
+        ):
             name, mtime = row
             extant_mboxes[name] = mtime
-        c.close()
 
         # The user_server's CWD is the root of our mailboxes.
         #
@@ -749,15 +723,12 @@ class IMAPUserServer:
         # grand scheme of things) but it gives the answers in one go-round to
         # the db and we get to deal with the data in an easier format.
         #
-        mboxes = []
-        c = self.db.cursor()
-        c.execute(
+        mboxes: List[Tuple[str, float]] = []
+        async for row in self.db.query(
             "select name, mtime from mailboxes where attributes "
             "not like '%%ignored%%' order by name"
-        )
-        for row in c:
+        ):
             mboxes.append(row)
-        c.close()
 
         # Now go through all of the extant mailboxes and see
         # if their mtimes have changed warranting us to force them to resync.

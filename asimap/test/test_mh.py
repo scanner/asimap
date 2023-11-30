@@ -123,6 +123,27 @@ async def test_mh_aadd(tmp_path, email_factory):
 ####################################################################
 #
 @pytest.mark.asyncio
+async def test_mh_aclear(bunch_of_email_in_folder):
+    mh_dir = bunch_of_email_in_folder()
+    mh = MH(mh_dir)
+    inbox_folder = mh.get_folder("inbox")
+    inbox_dir = mh_dir / "inbox"
+    dir_keys = sorted(
+        [int(x.name) for x in inbox_dir.iterdir() if x.name.isdigit()]
+    )
+    assert dir_keys
+
+    await inbox_folder.aclear()
+
+    dir_keys = sorted(
+        [int(x.name) for x in inbox_dir.iterdir() if x.name.isdigit()]
+    )
+    assert len(dir_keys) == 0
+
+
+####################################################################
+#
+@pytest.mark.asyncio
 async def test_mh_aremove(bunch_of_email_in_folder):
     mh_dir = bunch_of_email_in_folder()
     mh = MH(mh_dir)
