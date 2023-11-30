@@ -16,6 +16,7 @@ import calendar
 import email.utils
 import logging
 import logging.handlers
+import os
 import re
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -26,6 +27,7 @@ from typing import TYPE_CHECKING, List, Optional, Union
 # 3rd party module imports
 #
 import pytz
+from aiofiles.ospath import wrap as aiofiles_wrap
 from async_timeout import timeout
 
 # Project imports
@@ -39,6 +41,13 @@ if TYPE_CHECKING:
 # message
 #
 UID_RE = re.compile(r"(\d+)\s*\.\s*(\d+)")
+
+
+####################################################################
+#
+# Provide os.utime as an asyncio function via aiosfiles `wrap` async decorator
+#
+utime = aiofiles_wrap(os.utime)
 
 
 ##################################################################
@@ -357,7 +366,7 @@ def formatdate(dt: datetime, localtime: bool = False, usegmt: bool = False):
 #       empty.
 #
 def sequence_set_to_list(
-    seq_set: tuple | list,
+    seq_set: tuple | list | set,
     seq_max: int,
     uid_cmd: bool = False,
 ):

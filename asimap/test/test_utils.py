@@ -8,6 +8,7 @@ from queue import SimpleQueue
 
 # 3rd party imports
 #
+import aiofiles.os
 import pytest
 from async_timeout import timeout
 
@@ -18,8 +19,31 @@ from ..utils import (
     UpgradeableReadWriteLock,
     get_uidvv_uid,
     sequence_set_to_list,
+    utime,
     with_timeout,
 )
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_asyncio_utime(tmp_path):
+    """
+    We use aiofile's `wrap` to make our own asyncio version of os.utime.
+    """
+    test_file = tmp_path / "test_file.txt"
+    with open(test_file, "w") as f:
+        f.write("hello\n")
+    mtime = await aiofiles.os.path.getmtime(str(test_file))
+
+    # Set the mtime to 10 seconds ago.
+    #
+    new_mtime = mtime - 10.0
+
+    await utime(str(test_file), (new_mtime, new_mtime))
+    changed_mtime = await aiofiles.os.path.getmtime(str(test_file))
+
+    assert changed_mtime == new_mtime
 
 
 ####################################################################
