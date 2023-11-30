@@ -213,18 +213,40 @@ class MH(mailbox.MH):
             # So, when we write it, we have to update the `.mh_sequences` file
             # such that this message's sequences are saved.
             #
-            pending_sequences = message.get_sequences()
-            all_sequences = await self.aget_sequences()
-            for name, key_list in all_sequences.items():
-                if name in pending_sequences:
-                    key_list.append(new_key)
-                elif new_key in key_list:
-                    key_list.remove(new_key)
-            for sequence in pending_sequences:
-                if sequence not in all_sequences:
-                    all_sequences[sequence] = [new_key]
-            await self.aset_sequences(all_sequences)
+            await self._adump_sequences(message, new_key)
             return new_key
+
+    ####################################################################
+    #
+    async def asetitem(self, key, message) -> None:
+        """Replace the keyed message; raise KeyError if it doesn't exist."""
+        async with self.lock_folder():
+            path = os.path.join(self._path, str(key))
+            if not await aiofiles.os.path.exists():
+                raise KeyError(f"No message with key: {key}")
+
+            data = message.as_bytes(policy=email.policy.default)
+            async with aiofiles.open(path, "wb") as f:
+                await f.write(data)
+                if not data.endswith(mailbox.linesep):
+                    await f.write(mailbox.linesep)
+            await self._adump_sequences(message, key)
+
+    ####################################################################
+    #
+    async def _adump_sequences(self, message: MHMessage, key: int):
+        """Inspect a new MHMessage and update sequences appropriately."""
+        pending_sequences = message.get_sequences()
+        all_sequences = await self.aget_sequences()
+        for name, key_list in all_sequences.items():
+            if name in pending_sequences:
+                key_list.append(key)
+            elif key in key_list:
+                key_list.remove(key)
+        for sequence in pending_sequences:
+            if sequence not in all_sequences:
+                all_sequences[sequence] = [key]
+        await self.aset_sequences(all_sequences)
 
     ####################################################################
     #
