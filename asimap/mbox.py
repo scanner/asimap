@@ -2688,7 +2688,9 @@ class Mailbox:
     ####################################################################
     #
     @classmethod
-    def rename(cls, old_name: str, new_name: str, server: "IMAPUserServer"):
+    async def rename(
+        cls, old_name: str, new_name: str, server: "IMAPUserServer"
+    ):
         """
         Rename a mailbox from odl_name to new_name.
 
@@ -2832,7 +2834,9 @@ async def _helper_rename_folder(mbox: Mailbox, new_name: str):
 
     # Even more helpers to make code in our locks simpler.
     #
-    def _do_rename_folder(old_mbox: Mailbox, old_id: int, mbox_new_name: str):
+    async def _do_rename_folder(
+        old_mbox: Mailbox, old_id: int, mbox_new_name: str
+    ):
         """
         Helper routine for the helper routine that makes the changes to the
         db and active mailboxes once we have the mbox write lock.
@@ -2876,20 +2880,20 @@ async def _helper_rename_folder(mbox: Mailbox, new_name: str):
             mbox_new_name = new_name + mbox_old_name[len(old_name) :]
             to_change[mbox_old_name] = (mbox_new_name, mbox_id)
 
-        for old, new_data in to_change.items():
+        for old, (new_mbox_name, old_id) in to_change.items():
             # If this is the mbox we were passed in, we already have a read
             # lock so we do not need to acquire it.
             #
             old_mbox = await srvr.get_mailbox(old, expiry=10)
             if old_mbox.name == mbox.name:
                 async with old_mbox.lock.write_lock():
-                    _do_rename_folder()
+                    await _do_rename_folder(old_mbox, old_id, new_mbox_name)
             else:
                 async with (
                     old_mbox.lock.read_lock(),
                     old_mbox.lock.write_lock(),
                 ):
-                    _do_rename_folder()
+                    await _do_rename_folder(old_mbox, old_id, new_mbox_name)
 
         srvr.db.commit()
 

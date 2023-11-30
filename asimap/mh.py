@@ -222,7 +222,7 @@ class MH(mailbox.MH):
         """Replace the keyed message; raise KeyError if it doesn't exist."""
         async with self.lock_folder():
             path = os.path.join(self._path, str(key))
-            if not await aiofiles.os.path.exists():
+            if not await aiofiles.os.path.exists(path):
                 raise KeyError(f"No message with key: {key}")
 
             data = message.as_bytes(policy=email.policy.default)

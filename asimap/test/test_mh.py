@@ -118,6 +118,31 @@ async def test_mh_aadd(tmp_path, email_factory):
     with open(inbox_dir / str(key), "rb") as f:
         dir_msg = MHMessage(f.read())
     assert_email_equal(msg, dir_msg)
+    sequences = await inbox.aget_sequences()
+    assert key in sequences["unseen"]
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mh_asetitem(bunch_of_email_in_folder, email_factory):
+    mh_dir = bunch_of_email_in_folder()
+    mh = MH(mh_dir)
+    inbox = mh.get_folder("inbox")
+    keys = await inbox.akeys()
+    msg = MHMessage(email_factory())
+    msg.add_sequence("Seen")
+    msg.remove_sequence("unseen")
+    key = keys[0]
+    await inbox.asetitem(key, msg)
+
+    inbox_dir = mh_dir / "inbox"
+    with open(inbox_dir / str(key), "rb") as f:
+        dir_msg = MHMessage(f.read())
+    assert_email_equal(msg, dir_msg)
+    sequences = await inbox.aget_sequences()
+    assert key in sequences["Seen"]
+    assert key not in sequences["unseen"]
 
 
 ####################################################################
