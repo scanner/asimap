@@ -159,6 +159,15 @@ class MH(mailbox.MH):
 
     ####################################################################
     #
+    async def aclear(self):
+        for key in await self.akeys():
+            try:
+                await self.aremove(key)
+            except KeyError:
+                pass
+
+    ####################################################################
+    #
     async def aremove(self, key: int):
         """Remove the keyed message; raise KeyError if it doesn't exist."""
         path = os.path.join(self._path, str(key))

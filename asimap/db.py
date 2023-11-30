@@ -73,9 +73,9 @@ def regexp(expr, item):
 #
 class Database:
     """
-    A narrow interface over aiosqlite. The main thing this accomplishes is
-    the central connection to the sqlite db and executing necessary migrations
-    when the db is first opened.
+    A relatively shallow interface over aiosqlite. The main thing this
+    class manages is the central connection to the sqlite db and executing
+    necessary migrations when the db is first opened.
     """
 
     ##################################################################
@@ -186,7 +186,7 @@ class Database:
 
     ####################################################################
     #
-    async def execute(self, sql: str, *args, commit=True, **kwargs):
+    async def execute(self, sql: str, *args, commit=False, **kwargs):
         """
         This is for operations that will update the db. INSERT, UPDATE,
         DELETE, etc.
