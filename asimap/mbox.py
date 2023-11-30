@@ -15,7 +15,7 @@ import stat
 import time
 from mailbox import FormatError, MHMessage, NoSuchMailboxError, NotEmptyError
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 # 3rd party imports
 #
@@ -47,6 +47,10 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger("asimap.mbox")
+
+# The header that is used for holding a messages uid.
+#
+UID_HDR = "X-asimapd-uid"
 
 # RE used to see if a mailbox being created is just digits.
 #
@@ -148,7 +152,7 @@ class Mailbox:
         self.server = server
         self.name = name
         self.id = None
-        self.uid_vv = None
+        self.uid_vv = 0
         self.mtime = 0
         self.next_uid = 1
         self.num_msgs = 0
@@ -898,10 +902,12 @@ class Mailbox:
 
     ##################################################################
     #
-    def get_uid_from_msg(self, msg):
+    async def get_uid_from_msg(
+        self, msg_key: int, cache: bool = True
+    ) -> Tuple[Optional[int], Optional[int]]:
         """
-        Get the uid from the given message (where msg is the integer key into
-        the folder.)
+        Get the uid from the given message (where msg_key is the integer
+        key into the folder.)
 
         We return the tuple of (uid_vv,uid)
 
@@ -909,143 +915,61 @@ class Mailbox:
         elements in the tuple.
 
         Arguments:
-        - `msg`: the message key in the folder we want the uid_vv/uid for.
+        - `msg_key`: the message key in the folder we want the uid_vv/uid for.
+        - `cache`: if True then also cache this message in the message cache.
         """
         try:
-            fp = self.mailbox.get_file(msg)
+            msg = await self.get_and_cache_msg(msg_key, cache=cache)
         except KeyError:
-            raise Bad("Unable to retrieve message. Deleted apparently.")
-        try:
-            # Look through the header for the 'x-asimapd-uid' header. If we
-            # encounter a blank line then we have reached the end of the
-            # header.
+            # Our caller should have locked the mailbox, but it may happen..
             #
-            for line in fp:
-                if line[0:15].lower() == "x-asimapd-uid: ":
-                    try:
-                        # Convert the strings we parse out of the header to
-                        # ints.
-                        #
-                        uid_vv, uid = [
-                            int(x) for x in (line[15:].strip().split("."))
-                        ]
-                        return (uid_vv, uid)
-                    except ValueError:
-                        self.log.info(
-                            "get_uid_from_msg: msg %s had malformed "
-                            "uid header: %s" % (msg, line)
-                        )
-                        return (None, None)
-                elif len(line.strip()) == 0:
-                    return (None, None)
-        finally:
-            fp.close()
-        return (None, None)
+            raise Bad("Unable to retrieve message. Deleted apparently.")
+
+        if UID_HDR not in msg:
+            return (None, None)
+
+        try:
+            uid_vv, uid = [int(x) for x in msg[UID_HDR].strip().split(".")]
+            return (uid_vv, uid)
+        except ValueError:
+            logger.warning(
+                "get_uid_from_msg: msg %s had malformed uid header: " "%s",
+                msg_key,
+                msg[UID_HDR],
+            )
+            return (None, None)
 
     ##################################################################
     #
-    def set_uid_in_msg(self, msg, new_uid):
+    async def set_uid_in_msg(
+        self, msg_key: int, new_uid: int, cache=False
+    ) -> Tuple[int, int]:
         """
-        A faster method of setting the uid header in a message than using
-        the message parsing routines from MHMessage
-
-        Arguments:
-        - `msg`: The message key
-        - `uid`: The uid we are going to write in to this message.
+        Update the UID in the message with the new value.
+        IF `cache` is True then also cache this message in the message cache.
         """
-        old_name = mbox_msg_path(self.mailbox, msg)
-        new_name = old_name + ".tmp"
-
-        old = open(old_name, "r")
-        new = open(new_name, "wb")
-        try:
-            # We are fast because we do no header or message parsing. We know
-            # this:
-            # o the header ends when we hit our first blank line.
-            # o if we encounter an existing uid header we skip it.
-            # o when we hit the blank line we write out our new uid header
-            #   before writing the blank line.
-            #
-            # So we read a line. If it is an empty line and we have NOT written
-            # our UID header yet, write our UID header, and then write the
-            # empty line. Set that we have written our UID header.
-            #
-            # If we read a line and it is the UID header then instead of
-            # writing the line out, write a line with the new UID header. Set
-            # that we have written our UID header.
-            #
-            uid = None
-            uid_vv = None
-            wrote_header = False
-            for line in old:
-                if len(line.strip()) == 0:
-                    new.write(
-                        "X-asimapd-uid: %010d.%010d\n" % (self.uid_vv, new_uid)
-                    )
-                    new.write(line)
-                    wrote_header = True
-                    break
-                elif line[0:15].lower() == "x-asimapd-uid: ":
-                    try:
-                        # Convert the strings we parse out of the header to
-                        # ints.
-                        #
-                        uid_vv, uid = [
-                            int(x) for x in (line[15:].strip().split("."))
-                        ]
-                    except ValueError:
-                        self.log.info(
-                            "set_uid_in_msg: msg %s had "
-                            "malformed uid header: %s" % (msg, line)
-                        )
-
-                    new.write(
-                        "X-asimapd-uid: %010d.%010d\n" % (self.uid_vv, new_uid)
-                    )
-                    wrote_header = True
-
-                elif "\r" in line:
-                    # Sometimes junk mail will come in with \r's in the headers
-                    # Since our files stored on disk never have \r\n's as their
-                    # line ends, if we get a message with a \r in the header
-                    # then this is garbage (and will cause MHMessage to fail to
-                    # parse the whole message) sooo.... we remove the '\r's and
-                    # write out a fixed line instead. But we ONLY do this
-                    # in the header.
-                    #
-                    new.write(line.replace("\r", ""))
-                else:
-                    new.write(line)
-
-            # If we have reached the end of the file and we did NOT hit a
-            # newline then we curiously have an email that is ONLY
-            # header. Which is okay. We write our uid header.
-            #
-            if not wrote_header:
-                new.write(
-                    "X-asimapd-uid: %010d.%010d\n" % (self.uid_vv, new_uid)
-                )
-
-            # write out the rest of the old file.
-            #
-            for line in old:
-                new.write(line)
-        finally:
-            new.close()
-            old.close()
-
         # Get the mtime of the old message. We need to preserve this
         # because we use the mtime of the file as our IMAP 'internal-date'
         # value.
         #
-        mtime = os.path.getmtime(old_name)
+        path = os.path.join(self.mailbox._path, str(msg_key))
+        try:
+            mtime = await aiofiles.os.path.getmtime(path)
+        except OSError as e:
+            if e.errno == errno.ENOENT:
+                raise KeyError("No message with key: %s", msg_key)
+            else:
+                raise
 
-        # And rename the new file over the old one, set its mtime to the
-        # mtime of the old file.
+        msg = await self.get_and_cache_msg(msg_key, cache=cache)
+        del msg[UID_HDR]
+        msg[UID_HDR] = f"{self.uid_vv:010d}.{new_uid:010d}"
+        await self.mailbox.asetitem(msg_key, msg)
+
+        # Sset its mtime to the mtime of the old file.
         #
-        os.rename(new_name, old_name)
-        os.utime(old_name, (mtime, mtime))
-        return (uid_vv, uid)
+        os.utime(path, (mtime, mtime))
+        return (self.uid_vv, new_uid)
 
     ##################################################################
     #
@@ -1134,7 +1058,7 @@ class Mailbox:
 
     ##################################################################
     #
-    async def _update_msg_uids(self, msgs, seq):
+    async def _update_msg_uids(self, msgs: List[int], seq):
         """
         This will loop through all of the msgs whose keys were passed in the
         msgs list. We assume these keys are in order. We see if they have
@@ -1194,6 +1118,11 @@ class Mailbox:
         # 'redoing' goes to true and we now update this message and every
         # successive message adding a proper uid_vv/uid header.
         #
+        # If we are not looking at too many messages (200?), then be sure to
+        # try to cache them in the message cache.
+        #
+        num_msgs = len(msgs)
+        cache = True if num_msgs < 200 else False
         for i, msg in enumerate(msgs):
             if i % 200 == 0:
                 self.log.debug(
@@ -1206,7 +1135,7 @@ class Mailbox:
                 # monotonically increasing from the previous uid then
                 # we have to redo the rest of the folder.
                 #
-                uid_vv, uid = self.get_uid_from_msg(msg)
+                uid_vv, uid = await self.get_uid_from_msg(msg, cache=cache)
                 if (
                     uid_vv != self.uid_vv
                     or uid <= prev_uid
@@ -1226,7 +1155,9 @@ class Mailbox:
                 # We are either replacing or adding a new UID header to this
                 # message no matter what so do that.
                 #
-                uid_vv, uid = self.set_uid_in_msg(msg, self.next_uid)
+                uid_vv, uid = await self.set_uid_in_msg(
+                    msg, self.next_uid, cache=cache
+                )
                 uids_found.append(self.next_uid)
                 self.next_uid += 1
 
@@ -1456,7 +1387,9 @@ class Mailbox:
 
     ##################################################################
     #
-    def get_and_cache_msg(self, msg_key):
+    async def get_and_cache_msg(
+        self, msg_key: int, cache: bool = True
+    ) -> MHMessage:
         """
         Get the message associated with the given message key in our mailbox.
         We check the cache first to see if it is there.
@@ -1467,8 +1400,9 @@ class Mailbox:
         """
         msg = self.server.msg_cache.get(self.name, msg_key)
         if msg is None:
-            msg = self.mailbox.get_message(msg_key)
-            self.server.msg_cache.add(self.name, msg_key, msg)
+            msg = await self.mailbox.aget_message(msg_key)
+            if cache:
+                self.server.msg_cache.add(self.name, msg_key, msg)
         return msg
 
     ##################################################################
@@ -2373,7 +2307,9 @@ class Mailbox:
 
     ##################################################################
     #
-    def copy(self, msg_set, dest_mbox, uid_command=False):
+    async def copy(
+        self, msg_set: set, dest_mbox: "Mailbox", uid_command: bool = False
+    ):
         r"""
         Copy the messages in msg_set to the destination mailbox.
         Flags (sequences), and internal date are preserved.
@@ -2384,20 +2320,18 @@ class Mailbox:
         - `uid_command`: True if this is for a UID SEARCH command, which means
           we have to return not message sequence numbers but message UID's.
         """
-        try:
-            # XXX This causes the mtime of the mailbox to change!
-            #
-            # XXX NOTE: We should change the 'mtime' of the mailbox be
-            # the mtime of the '.mh_sequences' file.
-            #
-            self.mailbox.lock()
 
+        async with self.lock.read_lock():
             # We get the full list of keys instead of using an iterator because
             # we need the max id and max uuid.
             #
-            msgs = list(self.mailbox.keys())
-            uid_vv, uid_max = self.get_uid_from_msg(msgs[-1])
-            seq_max = len(self.mailbox)  # XXX same as len(msgs), no?
+            msgs = await self.mailbox.akeys()
+            uid_vv, uid_max = self.get_uid_from_msg(msgs[-1], cache=True)
+            if uid_vv is None or uid_max is None:
+                self.resync()
+
+            seq_max = len(msgs)
+
             if uid_command:
                 # If we are doing a 'UID COPY' command we need to use the max
                 # uid for the sequence max.
@@ -2415,13 +2349,6 @@ class Mailbox:
                     if uid in self.uids:
                         mi = self.uids.index(uid) + 1
                         msg_idxs.append(mi)
-                        # muid_vv, muid = self.get_uid_from_msg(msgs[mi-1])
-                        # if muid != uid:
-                        #     self.log.error(
-                        #           "store: at index: %d, msg: %d, uid: %d, "
-                        #           "doees not match actual message uid: %d" %
-                        #           (mi, msgs[mi-1],uid, muid))
-                        #     self.resync(force = True, optional = False)
             else:
                 msg_idxs = sequence_set_to_list(msg_set, seq_max)
 
@@ -2497,9 +2424,6 @@ class Mailbox:
                 self.log.debug(
                     "copy: Copied message %d(%d) to %d" % (idx, key, new_key)
                 )
-        finally:
-            # XXX This causes the mtime of the mailbox to change!
-            self.mailbox.unlock()
 
         # Now we do a resync on the dest mailbox to assign all the new
         # messages UID's. Get all of the new UID's for the messages we
@@ -2542,9 +2466,12 @@ class Mailbox:
         path = mbox_msg_path(mh, name)
         seq_path = path / ".mh_sequences"
 
+        # Create the .mh_sequences file if it does not exist.
+        #
         if not await aiofiles.os.path.exists(str(seq_path)):
             f = await aiofiles.open(str(seq_path), "w+")
             await f.close()
+
         path_mtime = await aiofiles.os.path.getmtime(str(path))
         seq_mtime = await aiofiles.os.path.getmtime(str(seq_path))
 
@@ -2576,7 +2503,7 @@ class Mailbox:
         # flag and return success.
         #
         try:
-            mbox = server.get_mailbox(name, expiry=0)
+            mbox = await server.get_mailbox(name, expiry=0)
         except NoSuchMailbox:
             mbox = None
 
@@ -2586,8 +2513,8 @@ class Mailbox:
         if mbox:
             if r"\Noselect" in mbox.attributes:
                 mbox.attributes.remove(r"\Noselect")
-                mbox.check_set_haschildren_attr()
-                mbox.commit_to_db()
+                await mbox.check_set_haschildren_attr()
+                await mbox.commit_to_db()
             else:
                 raise MailboxExists("Mailbox %s already exists" % name)
 
@@ -2608,7 +2535,7 @@ class Mailbox:
         mbox_chain.reverse()
         for m in mbox_chain:
             mbox = MH(m, create=True)
-            mbox = server.get_mailbox(m, expiry=0)
+            mbox = await server.get_mailbox(m)
             mboxes_created.append(mbox)
 
         # And now go through all of those mboxes and update their children
@@ -2616,8 +2543,8 @@ class Mailbox:
         # information.
         #
         for m in mboxes_created:
-            m.check_set_haschildren_attr()
-            m.commit_to_db()
+            await m.check_set_haschildren_attr()
+            await m.commit_to_db()
 
         return
 
@@ -2655,7 +2582,7 @@ class Mailbox:
         if name == "inbox":
             raise InvalidMailbox("You are not allowed to delete the inbox")
 
-        mbox = server.get_mailbox(name, expiry=0)
+        mbox = server.get_mailbox(name)
         do_delete = False
         server.msg_cache.clear_mbox(name)
         async with (mbox.mailbox.lock_folder(), mbox.lock.read_lock()):
@@ -2664,7 +2591,7 @@ class Mailbox:
             # You can not delete a mailbox that has the '\Noselect' attribute
             # and has inferior mailboxes.
             #
-            if r"\Noselect" in mbox.attributes and len(inferior_mailboxes) > 0:
+            if r"\Noselect" in mbox.attributes and inferior_mailboxes:
                 raise InvalidMailbox(
                     "The mailbox '%s' is already deleted" % name
                 )
@@ -2797,12 +2724,18 @@ class Mailbox:
     ####################################################################
     #
     @classmethod
-    async def list(cls, ref_mbox_name, mbox_match, server, lsub=False):
+    async def list(
+        cls: "Mailbox",
+        ref_mbox_name: str,
+        mbox_match: str,
+        server: "IMAPUserServer",
+        lsub: bool = False,
+    ) -> List[Tuple[str, Set[str]]]:
         """
-        This returns a list of tuples of mailbox names and that mailboxes
-        attributes. The list is generated from the mailboxes db shelf. The
-        'ref_mbox_name' defines the prefix of the mailboxes that will
-        match. ie: the mailbox name must begin with ref_mbox_name.
+        This returns a list of tuples of mailbox names and those mailbox's
+        attributes. The list is generated from the mailboxes db shelf.
+
+        The `ref_mbox_name` is a string prefix for mailbox names to match.
 
         mbox_match is a pattern that determines which of the subset that match
         ref_mbox_name will be returned to our caller.
@@ -2830,9 +2763,6 @@ class Mailbox:
         - `lsub`: If True this will only match folders that have their
           subscribed bit set.
         """
-
-        # log = logging.getLogger("%s.%s.list()" % (__name__, cls.__name__))
-
         # The mbox_match character can not begin with '/' because our mailboxes
         # are unrooted.
         #
@@ -2860,32 +2790,24 @@ class Mailbox:
         #
         mbox_match = mbox_match.replace(r"\*", r".*").replace(r"\%", r"[^\/]*")
         results = []
-        c = server.db.cursor()
-        if lsub:
-            subscribed = "and subscribed=1"
-        else:
-            subscribed = ""
 
         # NOTE: We do not present to the IMAP client any folders that
-        #       have the flag 'ignore' set on them.
-        r = c.execute(
-            "select name,attributes from mailboxes where name "
-            "regexp ? %s and attributes not like '%%ignored%%' "
-            "order by name" % subscribed,
-            (mbox_match,),
+        #       have the flag 'ignored' set on them.
+        #
+        subscribed = "AND subscribed=1" if lsub else ""
+        query = (
+            "SELECT name,attributes FROM mailboxes WHERE name "
+            f"regexp ? {subscribed} AND attributes NOT LIKE '%ignored%' "
+            "ORDER BY name"
         )
 
-        for row in r:
-            mbox_name, attributes = row
+        async for mbox_name, attributes in server.db.query(
+            query, (mbox_match,)
+        ):
             attributes = set(attributes.split(","))
-
-            # INBOX has to be specially named I believe.
-            #
             if mbox_name.lower() == "inbox":
                 mbox_name = "INBOX"
-
             results.append((mbox_name, attributes))
-        c.close()
         return results
 
 
@@ -3022,6 +2944,10 @@ async def _helper_rename_inbox(mbox: Mailbox, new_name: str):
     #
     new_mbox = await server.get_mailbox(new_name)
 
+    # NOTE: We are nesting locks of different mailboxes. Normally this would be
+    #       a bad thing to do but it should be okay here because the dest
+    #       mailbox is newly created and likely has nothing else poking it.
+    #
     async with mbox.mailbox.lock_folder():
         async with (mbox.lock.read_lock(), mbox.lock.write_lock):
             async with (new_mbox.lock.read_lock(), new_mbox.lock.write_lock):
