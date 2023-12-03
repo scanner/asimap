@@ -9,17 +9,42 @@ import email.generator
 import errno
 import mailbox
 import os
+import time
+from collections import defaultdict
 from contextlib import asynccontextmanager
 from mailbox import FormatError, MHMessage, NotEmptyError
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Dict, List, TypeAlias, Union
 
 # 3rd party imports
 #
 import aiofiles
 import aiofiles.os
 
+# project imports
+#
+from .utils import utime
+
 if TYPE_CHECKING:
     from _typeshed import StrPath
+
+Sequences: TypeAlias = Dict[str, List[int]]
+
+
+####################################################################
+#
+def update_message_sequences(
+    msg_key: int, msg: MHMessage, sequences: Sequences
+):
+    """
+    Updates the sequences attached to the specific MHMessage.
+
+    Does not update the .mh_sequences file.
+    """
+    msg_sequences: List[str] = []
+    for name, key_list in sequences.items():
+        if msg_key in key_list:
+            msg_sequences.append(name)
+    msg.set_sequences(msg_sequences)
 
 
 ########################################################################
@@ -52,6 +77,19 @@ class MH(mailbox.MH):
     def add_folder(self, folder: "StrPath"):
         """Create a folder and return an MH instance representing it."""
         return MH(os.path.join(self._path, str(folder)), factory=self._factory)
+
+    ####################################################################
+    #
+    async def atouch(self):
+        """
+        Update the mtime on folder and .mh_sequences file. This is intended
+        to mark the folder as recently updated which will cause
+        Mailbox.resync() to give this folder more than a cursory glance.
+        """
+        mtime = time.time()
+        seq_path = os.path.join(self._path, ".mh_sequences")
+        await utime(self._path, (mtime, mtime))
+        await utime(seq_path, (mtime, mtime))
 
     ####################################################################
     #
@@ -250,9 +288,9 @@ class MH(mailbox.MH):
 
     ####################################################################
     #
-    async def aget_sequences(self):
+    async def aget_sequences(self) -> Sequences:
         """Return a name-to-key-list dictionary to define each sequence."""
-        results = {}
+        results = defaultdict(list)
         seq_path = os.path.join(self._path, ".mh_sequences")
         async with self.lock_folder():
             all_keys = set(await self.akeys())
@@ -280,7 +318,7 @@ class MH(mailbox.MH):
 
     ####################################################################
     #
-    async def aset_sequences(self, sequences):
+    async def aset_sequences(self, sequences: Sequences):
         """Set sequences using the given name-to-key-list dictionary."""
         seq_file = os.path.join(self._path, ".mh_sequences")
         async with self.lock_folder():

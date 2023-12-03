@@ -6,21 +6,27 @@
 Classes and their supporting methods that represent an IMAP Search
 structure.
 """
-
 # system imports
 #
 import logging
 import os.path
 from datetime import datetime
+from typing import TYPE_CHECKING
 
+# 3rd party imports
+#
 import pytz
-
-import asimap.constants
 
 # asimap imports
 #
-import asimap.utils
-from asimap.exceptions import MailboxInconsistency
+from .constants import flag_to_seq
+from .exceptions import MailboxInconsistency
+from .utils import UID_HDR, get_uidvv_uid, parsedate
+
+if TYPE_CHECKING:
+    from .mbox import Mailbox, Sequences
+
+logger = logging.getLogger("asimap.search")
 
 
 ############################################################################
@@ -46,7 +52,13 @@ class SearchContext(object):
     ##################################################################
     #
     def __init__(
-        self, mailbox, msg_key, msg_number, seq_max, uid_max, sequences
+        self,
+        mailbox: "Mailbox",
+        msg_key: int,
+        msg_number: int,
+        seq_max: int,
+        uid_max: int,
+        sequences: "Sequences",
     ):
         """
         A container to hold the contextual information an IMAPSearch
@@ -73,9 +85,6 @@ class SearchContext(object):
         self.uid_max = uid_max
         self.msg_number = msg_number
         self.mailbox_sequences = sequences
-        # self.msg = mailbox.mailbox.get_message(msg_key)
-        # self.uid_vv, self.uid = [int(x) for x in
-        #                          self.msg['x-asimapd-uid'].strip().split('.')]
         self.path = os.path.join(mailbox.mailbox._path, str(msg_key))
         self.internal_date = datetime.fromtimestamp(
             os.path.getmtime(self.path), pytz.UTC
@@ -93,23 +102,20 @@ class SearchContext(object):
 
     ##################################################################
     #
-    @property
-    def msg(self):
+    async def msg(self):
         """
         The message parsed in to a MHMessage object
         """
-        # In preparation for all of our necessary locking support we are adding
-        # this so we can catch places where we do not have a read lock but we
-        # should
+        # XXX remove when confident
         #
-        assert self.mailbox.rw_lock.this_task_has_read_lock()
+        assert self.mailbox.lock.this_task_has_read_lock()
 
         if self._msg:
             return self._msg
 
         # We have not actually loaded the message yet..
         #
-        self._msg = self.mailbox.get_and_cache_msg(self.msg_key)
+        self._msg = await self.mailbox.get_and_cache_msg(self.msg_key)
 
         # If the uid is not set, then set it by reading it from the message.
         # If attempting to set it fails then something is wrong with this
@@ -117,9 +123,7 @@ class SearchContext(object):
         # parsed.
         #
         if self._uid is None:
-            self._uid_vv, self._uid = asimap.utils.get_uidvv_uid(
-                self.msg["x-asimapd-uid"]
-            )
+            self._uid_vv, self._uid = get_uidvv_uid(self._msg[UID_HDR])
             if self._uid is None:
                 raise MailboxInconsistency(
                     mbox_name=self.mailbox.name, msg_key=self.msg_key
@@ -132,7 +136,7 @@ class SearchContext(object):
             # coperative locking but something out of our control has
             # apparently happened.
             #
-            uid_vv, uid = asimap.utils.get_uidvv_uid(self.msg["x-asimapd-uid"])
+            uid_vv, uid = get_uidvv_uid(self._msg[UID_HDR])
             if self._uid != uid or uid is None:
                 raise MailboxInconsistency(
                     mbox_name=self.mailbox.name, msg_key=self.msg_key
@@ -183,14 +187,18 @@ class SearchContext(object):
         loaded we avoid loading the message object by just getting the
         sequences directly from the mailbox and computing which sequences this
         message is in.
-        """
-        if self._sequences:
-            return self._sequences
 
+        XXX Wait.. we should be using the sequences attached to the message
+            itself.
+        """
         # If the message is loaded use its sequence information.
         #
         if self._msg:
             return self._msg.get_sequences()
+
+        # Otherwise we populate sequence information from the folder.
+        if self._sequences:
+            return self._sequences
 
         # Look at the mailbox sequences and figure out which ones this message
         # is in, if any.
@@ -353,7 +361,7 @@ class IMAPSearch(object):
         #       a decision on whether or not the message is removed from the
         #       recent sequence or not.
         #
-        keyword = asimap.constants.flag_to_seq(self.args["keyword"])
+        keyword = flag_to_seq(self.args["keyword"])
         result = keyword in self.ctx.sequences
         # XXX Decided that I am not going to reset the \Recent flag on a search
         #     match.
@@ -497,9 +505,9 @@ class IMAPSearch(object):
         Messages whose [RFC-822] Date: header is earlier than the
         specified date.
         """
-        return "date" in self.ctx.msg and self.args[
-            "date"
-        ] > asimap.utils.parsedate(self.ctx.msg["date"])
+        return "date" in self.ctx.msg and self.args["date"] > parsedate(
+            self.ctx.msg["date"]
+        )
 
     #########################################################################
     #
@@ -511,7 +519,7 @@ class IMAPSearch(object):
         return (
             "date" in self.ctx.msg
             and self.args["date"].date()
-            == asimap.utils.parsedate(self.ctx.msg["date"]).date()
+            == parsedate(self.ctx.msg["date"]).date()
         )
 
     #########################################################################
@@ -521,9 +529,9 @@ class IMAPSearch(object):
         Messages whose [RFC-822] Date: header is later than the
         specified date.
         """
-        return "date" in self.ctx.msg and self.args[
-            "date"
-        ] < asimap.utils.parsedate(self.ctx.msg["date"])
+        return "date" in self.ctx.msg and self.args["date"] < parsedate(
+            self.ctx.msg["date"]
+        )
 
     #########################################################################
     #

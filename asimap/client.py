@@ -28,7 +28,7 @@ from .throttle import check_allow, login_failed
 #
 if TYPE_CHECKING:
     from .server import IMAPClient
-    from .user_server import IMAPClientProxy
+    from .user_server import IMAPClientProxy, IMAPUserServer
 
 # Local constants
 #
@@ -383,9 +383,9 @@ class PreAuthenticated(BaseClientHandler):
 
     ##################################################################
     #
-    def __init__(self, client):
+    def __init__(self, client: "IMAPClient"):
         """ """
-        BaseClientHandler.__init__(self, client)
+        super().__init__(client)
         self.name = "PreAuthenticated"
         self.log = logging.getLogger(
             "%s.%s" % (__name__, self.__class__.__name__)
@@ -480,9 +480,10 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    def __init__(self, client, user_server):
-        """ """
-        BaseClientHandler.__init__(self, client)
+    def __init__(
+        self, client: "IMAPClientProxy", user_server: "IMAPUserServer"
+    ):
+        super().__init__(client)
         self.log = logging.getLogger(
             f"{__name__}.{self.__class__.__name__}-{client.name}"
         )
@@ -1142,54 +1143,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    def _fetch_internal(self, cmd, count):
-        """
-        The internal part of the 'do_fetch' command that can fail with a
-        MailboxInconsistency exception such that if we hit that except we try
-        this command again after a resync.
-
-        Arguments:
-        - `cmd`: The IMAP command being processed
-        - `count`: Number of times we have been called. If more than 1 we force
-          the resync.
-        """
-        # Try to fetch the message, potentally forcing a resync of the mbox.
-        #
-        # XXX Maybe `mbox.fetch()` should do the resync?
-        #
-        #
-        force = False
-        optional = True
-        RETRY_LIMIT = 2
-        for count in range(RETRY_LIMIT + 1):
-            if count >= 1:
-                optional = False
-            if count >= 2:
-                force = True
-
-            try:
-                self.mbox.resync(
-                    notify=cmd.uid_command, force=force, optional=optional
-                )
-                results, seq_changed = self.mbox.fetch(
-                    cmd.msg_set, cmd.fetch_atts, cmd
-                )
-            except MailboxInconsistency as e:
-                self.server.msg_cache.clear_mbox(self.mbox.name)
-                self.log.warn("do_fetch: %s, Try %d", str(e), count)
-                if count >= RETRY_LIMIT:
-                    raise
-
-        for idx, iter_results in results:
-            self.client.push(
-                "* %d FETCH (%s)\r\n" % (idx, " ".join(iter_results))
-            )
-
-        return seq_changed
-
-    ##################################################################
-    #
-    def do_fetch(self, cmd):
+    async def do_fetch(self, cmd):
         """
         Fetch data from the messages indicated in the command.
 
@@ -1207,56 +1161,45 @@ class Authenticated(BaseClientHandler):
             self.unceremonious_bye("Your selected mailbox no longer exists")
             return
 
-        # If there are commands pending in the queue this gets put on the queue
-        # waiting for those to be finished before processing.
-        #
-        if not self.process_or_queue(cmd):
-            return False
+        async with (self.mbox.lock.read_lock(), self.mailbox.lock_folder()):
+            await self.mbox.resync()
 
-        # If this client has pending EXPUNGE messages then we return a tagged
-        # No response.. the client should see this and do a NOOP or such and
-        # receive the pending expunges. Unless this is a UID command. It is
-        # okay to send pending expunges during the operations of a UID FETCH.
-        #
-        if len(self.pending_expunges) > 0:
-            if cmd.uid_command:
-                self.send_pending_expunges()
-            else:
-                # If a client continues to pound us asking for FETCH's when
-                # there are pending EXPUNGE's give them the finger by forcing
-                # them to disconnect. It is obvious watching Mail.app that it
-                # will not give up when given a No so we punt this connection
-                # of theirs. They should reconnect and learn the error of their
-                # ways.
-                #
-                self.fetch_while_pending_count += 1
-                if self.fetch_while_pending_count > 10:
-                    self.unceremonious_bye("You have pending EXPUNGEs.")
-                    return
+            # If this client has pending EXPUNGE messages then we return a
+            # tagged No response.. the client should see this and do a NOOP or
+            # such and receive the pending expunges. Unless this is a UID
+            # command. It is okay to send pending expunges during the
+            # operations of a UID FETCH.
+            #
+            if self.pending_expunges:
+                if cmd.uid_command:
+                    self.send_pending_expunges()
                 else:
-                    raise No("There are pending EXPUNGEs.")
+                    # If a client continues to pound us asking for FETCH's when
+                    # there are pending EXPUNGE's give them the finger by
+                    # forcing them to disconnect. It is obvious watching
+                    # Mail.app that it will not give up when given a No so we
+                    # punt this connection of theirs. They should reconnect and
+                    # learn the error of their ways.
+                    #
+                    self.fetch_while_pending_count += 1
+                    if self.fetch_while_pending_count > 10:
+                        self.unceremonious_bye("You have pending EXPUNGEs.")
+                        return
+                    else:
+                        raise No("There are pending EXPUNGEs.")
 
-        self.fetch_while_pending_count = 0
-        seq_changed = self._fetch_internal(cmd, count)
-
-        # If the fetch caused sequences to change then we need to make the
-        # resync non-optional so that we will send FETCH messages to the other
-        # clients listening to this mailbox.
-        #
-        if seq_changed:
-            self.mbox.resync(optional=False)
-
-        # If 'needs_continuation' is True then we have actually only partially
-        # processed this command. We push this command on to the end of the
-        # command_queue for this folder. It will get picked off and processed
-        # later through the event loop. The command itself keeps track of where
-        # it is in terms of processing.
-        #
-        if cmd.needs_continuation:
-            self.mbox.command_queue.append((self, cmd))
-            return False
-
-        return None
+            self.fetch_while_pending_count = 0
+            try:
+                async for idx, results in self.mbox.fetch(
+                    cmd.msg_set, cmd.fetch_atts, cmd
+                ):
+                    await self.client.push(
+                        f"* {idx} FETCH {' '.join(results)}\r\n"
+                    )
+            except MailboxInconsistency as exc:
+                # Touching the mailbox will cause a more than cursory resync
+                await self.mailbox.atouch()
+                raise No(f"Problem while fetching: {exc}")
 
     ##################################################################
     #

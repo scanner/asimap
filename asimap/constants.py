@@ -5,10 +5,6 @@
 """
 Various global constants.
 """
-
-# system imports
-#
-
 # Here we set the list of defined system flags (flags that may be set on a
 # message) and the subset of those flags that may not be set by a  user.
 #

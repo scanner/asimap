@@ -35,7 +35,7 @@ def test_server_capability(imap_server):
 ####################################################################
 #
 @pytest.mark.integration
-def test_server_login(imap_server, imap_user_server):
+def test_server_login(imap_server, imap_user_server_program):
     """
     Try logging in to the server. This will also launch the subprocess and
     communicate with it.

@@ -18,6 +18,7 @@ from typing import Iterable, Optional, Union
 # 3rd party imports
 #
 import pytest
+import pytest_asyncio
 import trustme
 
 # project imports
@@ -25,7 +26,7 @@ import trustme
 import asimap.auth
 
 from ..server import IMAPServer
-from ..user_server import set_user_server_program
+from ..user_server import IMAPUserServer, set_user_server_program
 from .factories import UserFactory
 
 
@@ -252,7 +253,7 @@ def imap_server(faker, ssl_certs, user_factory, password_file_factory):
 ####################################################################
 #
 @pytest.fixture()
-def imap_user_server():
+def imap_user_server_program():
     """
     When running integration tests that need to log in as a user we need to
     say where the user server program is.
@@ -323,3 +324,16 @@ def bunch_of_email_in_folder(email_factory, mh_folder):
         return mh_dir
 
     return create_emails
+
+
+####################################################################
+#
+@pytest_asyncio.fixture
+async def imap_user_server(mh_folder):
+    """
+    The Mailbox tests need to create a mailbox instance, which needs an
+    IMAPUserServer.
+    """
+    (mh_dir, _, _) = mh_folder()
+    server = await IMAPUserServer.new(mh_dir)
+    return server

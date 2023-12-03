@@ -22,7 +22,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from queue import SimpleQueue
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING, List, Optional, Set, Tuple, TypeAlias, Union
 
 # 3rd party module imports
 #
@@ -37,11 +37,16 @@ from .exceptions import Bad
 if TYPE_CHECKING:
     from _typeshed import StrPath
 
+MsgSet: TypeAlias = Union[List | Set | Tuple]
+
 # RE used to suss out the digits of the uid_vv/uid header in an email
 # message
 #
 UID_RE = re.compile(r"(\d+)\s*\.\s*(\d+)")
 
+# The MHmessage header that is used for holding a messages uid.
+#
+UID_HDR = "X-asimapd-uid"
 
 ####################################################################
 #
@@ -366,7 +371,7 @@ def formatdate(dt: datetime, localtime: bool = False, usegmt: bool = False):
 #       empty.
 #
 def sequence_set_to_list(
-    seq_set: tuple | list | set,
+    seq_set: MsgSet,
     seq_max: int,
     uid_cmd: bool = False,
 ):

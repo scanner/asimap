@@ -14,6 +14,7 @@ import logging
 import mailbox
 import os.path
 import re
+from enum import Enum
 from typing import Union
 
 # 3rd party imports
@@ -92,17 +93,18 @@ class UnknownSearchKey(BadCommand):
 #
 # Constants used by IMAPClientCommand
 #
+class StoreAction(Enum):
+    REPLACE_FLAGS = 0
+    ADD_FLAGS = 1
+    REMOVE_FLAGS = 2
 
-REPLACE_FLAGS = 0
-ADD_FLAGS = 1
-REMOVE_FLAGS = 2
 
 # For debugging messages.. mapping the flags back to strings.
 #
 flag_to_str = {
-    REPLACE_FLAGS: "FLAGS",
-    ADD_FLAGS: "+FLAGS",
-    REMOVE_FLAGS: "-FLAGS",
+    StoreAction.REPLACE_FLAGS: "FLAGS",
+    StoreAction.ADD_FLAGS: "+FLAGS",
+    StoreAction.REMOVE_FLAGS: "-FLAGS",
 }
 
 # Attributes of a fetch command. Note that the order is important. We need to
@@ -287,30 +289,6 @@ class IMAPClientCommand(object):
         self.uid_command = False
         self.tag = None
         self.command = None
-
-        # If this is a command which we had to stop processing part way through
-        # due to it taking too long 'needs_continuation' will be set to true so
-        # that that the command process will know how to handle this unfinished
-        # command.
-        #
-        self.needs_continuation = False
-
-        # Frequently (always?) a command that needed continuation needed it
-        # because it had too many messages to process (fetch, search, store) in
-        # a short time. In those cases we keep track of the messages we still
-        # need to process as a list in 'message_squence'. This way following
-        # processing of this command will be able to pick up where it left off.
-        #
-        self.msg_idxs = None
-
-        # The 'SEARCH' command does not return its results in a series of
-        # responses but in a single SEARCH response. Thus when doing
-        # continuations we need to collect the results inside the IMAP command
-        # and then when it is done we send it back to our caller. Our caller
-        # knows now to use the search results it gets from the search command
-        # until the imap command comes back 'needs_continuation == False'
-        #
-        self.search_results = []
 
     ##################################################################
     #
@@ -757,11 +735,11 @@ class IMAPClientCommand(object):
 
         plus_or_minus = self._p_re(_plus_or_minus_re, silent=True)
         if plus_or_minus == "-":
-            self.store_action = REMOVE_FLAGS
+            self.store_action = StoreAction.REMOVE_FLAGS
         elif plus_or_minus == "+":
-            self.store_action = ADD_FLAGS
+            self.store_action = StoreAction.ADD_FLAGS
         else:
-            self.store_action = REPLACE_FLAGS
+            self.store_action = StoreAction.REPLACE_FLAGS
 
         self._p_simple_string("flags")
         if self._p_simple_string(".silent", silent=True):

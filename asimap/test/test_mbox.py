@@ -8,24 +8,34 @@ Tests for the mbox module
 #
 import pytest
 
-from .mbox import Mailbox
-
 # Project imports
 #
-from .user_server import IMAPUserServer
+from .mbox import Mailbox
 
 
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_mailbox_init(mh_folder):
+async def test_mailbox_init(imap_user_server):
     """
     We can create a Mailbox object instance.
     """
-    (mh_dir, _, _) = mh_folder()
-    server = await IMAPUserServer.new(mh_dir)
+    server = imap_user_server
     mbox = await Mailbox.new("inbox", server)
     assert mbox
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_get_sequences_update_seen(
+    bunch_of_email_in_folder, imap_user_server
+):
+    server = imap_user_server
+    mbox = await Mailbox.new("inbox", server)
+    msg_keys = await mbox.mailbox.akeys()
+    seqs = await mbox._get_sequences_update_seen(msg_keys)
+    assert seqs
 
 
 ####################################################################

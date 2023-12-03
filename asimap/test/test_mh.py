@@ -200,6 +200,10 @@ async def test_mh_aget_sequences(bunch_of_email_in_folder):
     mh_dir = bunch_of_email_in_folder()
     mh = MH(mh_dir)
     inbox = mh.get_folder("inbox")
+
+    # The `bunch_of_email_in_folder` creates a bunch of messages in `inbox` and
+    # they are all in the `unseen` sequence.
+    #
     keys = await inbox.akeys()
     sequences = await inbox.aget_sequences()
     assert keys == sequences["unseen"]

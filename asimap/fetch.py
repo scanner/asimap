@@ -15,14 +15,16 @@ import email.utils
 import logging
 from email.generator import Generator
 from email.header import Header
+from email.policy import SMTP
 from io import StringIO
-
-import asimap.constants
-import asimap.exceptions
 
 # asimap imports
 #
+import asimap.constants
+import asimap.exceptions
 import asimap.utils
+
+from .constants import seq_to_flag
 
 # from kitchen.text.converters import to_bytes  XXX was used in py2
 
@@ -61,7 +63,7 @@ class TextGenerator(Generator):
         must have a write() method.
 
         """
-        Generator.__init__(self, outfp)
+        Generator.__init__(self, outfp, policy=SMTP)
         self._headers = headers
 
     ####################################################################
@@ -71,7 +73,7 @@ class TextGenerator(Generator):
         # that we do not write the headers if self._headers is false.
         #
         if self._headers:
-            Generator._write(self, msg)
+            Generator.write(self, msg)
         else:
             self._dispatch(msg)
 
@@ -291,7 +293,7 @@ class FetchAtt(object):
 
     #######################################################################
     #
-    def fetch(self, ctx):
+    async def fetch(self, ctx):
         r"""
         This method applies fetch criteria that this object represents
         to the message and message entry being passed in.
@@ -307,33 +309,35 @@ class FetchAtt(object):
         # Based on the operation figure out what subroutine does the rest
         # of the work.
         #
-        if self.attribute == "body":
-            result = self.body(self.ctx.msg, self.section)
-        elif self.attribute == "bodystructure":
-            result = self.bodystructure(self.ctx.msg)
-        elif self.attribute == "envelope":
-            result = self.envelope(self.ctx.msg)
-        elif self.attribute == "flags":
-            result = "(%s)" % " ".join(
-                [asimap.constants.seq_to_flag(x) for x in self.ctx.sequences]
-            )
-        elif self.attribute == "internaldate":
-            result = '"%s"' % self.ctx.internal_date.strftime(
-                "%d-%b-%Y %H:%m:%S %z"
-            )
-        elif self.attribute == "rfc822.size":
-            # result = str(len(self.ctx.mailbox.mailbox.get_string(
-            #     self.ctx.msg_key)))
-            fp = StringIO()
-            g = Generator(fp, mangle_from_=False)
-            g.flatten(self.ctx.msg)
-            result = str(len(email.utils.fix_eols(fp.getvalue())))
-        elif self.attribute == "uid":
-            result = str(self.ctx.uid)
-        else:
-            raise NotImplementedError
+        match self.attribute:
+            case "body" | "bodystructure" | "envelope" | "rfc822.size":
+                msg = await self.ctx.msg()
+                match self.attribute:
+                    case "body":
+                        result = self.body(msg, self.section)
+                    case "bodystructure":
+                        result = self.bodystructure(msg)
+                    case "envelope":
+                        result = self.envelope(msg)
+                    case "rfc822.size":
+                        fp = StringIO()
+                        g = Generator(fp, mangle_from_=False, policy=SMTP)
+                        g.flatten(self.ctx.msg)
+                        result = str(len(fp.getvalue()))
+            case "flags":
+                flags = " ".join([seq_to_flag(x) for x in self.ctx.sequences])
+                result = f"({flags})"
+            case "internaldate":
+                internal_date = self.ctx.internal_date.strftime(
+                    "%d-%b-%Y %H:%m:%S %z"
+                )
+                result = f'"{internal_date}"'
+            case "uid":
+                result = str(self.ctx.uid)
+            case _:
+                raise NotImplementedError
 
-        return "%s %s" % (str(self), result)
+        return f"{str(self)} {result}"
 
     #######################################################################
     #
@@ -345,7 +349,7 @@ class FetchAtt(object):
 
         msg_text = None
         g = None
-        if len(section) == 0:
+        if not section:
             # They want the entire message.
             #
             # This really only ever is the case as our first invocation of the
@@ -353,9 +357,9 @@ class FetchAtt(object):
             # least one element in the section list when they are called.
             #
             fp = StringIO()
-            g = Generator(fp, mangle_from_=False)
-            g.flatten(msg)
-            msg_text = email.utils.fix_eols(fp.getvalue())
+            g = Generator(fp, mangle_from_=False, policy=SMTP)
+            g.flatten(self.ctx.msg)
+            msg_text = fp.getvalue()
         else:
             if len(section) == 1:
                 fp = StringIO()

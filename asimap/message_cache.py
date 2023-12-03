@@ -18,25 +18,30 @@ be what forces the LRU algorithm to take place.
 At times when the Mailbox knows that the cache is probably invalid it
 can tell us to clear all the entries for that mailbox.
 """
-
 # system imports
 #
-
 import logging
 import time
 from functools import reduce
+from mailbox import MHMessage
+from typing import Dict, List, Tuple, TypeAlias
 
 # asimap imports
 #
 from asimap.exceptions import MailboxInconsistency
 
-CACHE_SIZE = 20971520  # Max cache size (in bytes) -- 20MiB
+from .utils import UID_HDR
+
+logger = logging.getLogger("asimap.message_cache")
+CACHE_SIZE = 41_943_040  # Max cache size (in bytes) -- 40MiB
+
+CacheEntry: TypeAlias = Tuple[int, int, MHMessage, float]
 
 
 ##################################################################
 ##################################################################
 #
-class MessageCache(object):
+class MessageCache:
     """
     Our message cache.
 
@@ -51,6 +56,8 @@ class MessageCache(object):
     Allow a way to clear all messages in the cache.
     """
 
+    STAT_LOG_INTERVAL = 60.0  # In seconds. Probably be 300 in production.
+
     ##################################################################
     #
     def __init__(self, max_size=CACHE_SIZE):
@@ -62,14 +69,50 @@ class MessageCache(object):
         - `max_size`: Limit in octets of how many messages we will
           store in the cache.
         """
-        self.log = logging.getLogger(
-            "%s.%s" % (__name__, self.__class__.__name__)
-        )
-        self.max_size = max_size
-        self.cur_size = 0
-        self.num_msgs = 0
-        self.msgs_by_mailbox = {}
-        return
+        self.max_size: int = max_size
+        self.cur_size: int = 0
+        self.num_msgs: int = 0
+
+        # We want to periodically say how large the message cache is, so
+        # we keep a timestamp of when we last reported the size.
+        #
+        self.next_size_report = 0.0
+
+        # The msgs_by_mailbox is our "LRU"
+        # The key is for the mailbox.
+        # Under each key is a list of tuples.
+        # Each tuple has in it:
+        #    msg_key: int, msg_size:int, msg: MHMessage, time: float
+        # Older messages are at the end of the list.
+        #
+        self.msgs_by_mailbox: Dict[str, List[CacheEntry]] = {}
+
+        # XXX We should probably add a dict `msgs_by_mailbox_by_msgkey` that
+        #     lets us directly look up a message by its message key instead of
+        #     having to loop through the list.  Currently this would not work
+        #     because every time we get the message we will need to find it in
+        #     the `msgs_by_mailbox` list anyways.
+        #
+        #     So this is currently unused.
+        #
+        #     We will likely need to figure this out soon. Some people have an
+        #     `inbox` with 8,000+ messages and if we cache a large number of
+        #     those the lookups are going to be intense (but do we cache that
+        #     many?)
+        #
+        self.msgs_by_mailbox_by_msg_key: Dict[str, Dict[int, CacheEntry]] = {}
+
+    ####################################################################
+    #
+    def _log_stats(self):
+        """
+        Dump to the log our stats every now and then.
+        """
+        now = time.time()
+        if now < self.next_size_report:
+            return
+        logger.info("Size report: %s", str(self))
+        self.next_size_report = now + self.STAT_LOG_INTERVAL
 
     ##################################################################
     #
@@ -112,10 +155,16 @@ class MessageCache(object):
         # Somewhere up the call stack it will see this and trigger a
         # resync of the mailbox and then re-try the failed command.
         #
-        if "x-asimapd-uid" not in msg:
-            self.log.error(
+        # XXX Do we need a UID in a message we cache? Since we will eventually
+        #     update the message anyways.. and if all calls go through the
+        #     message cache we will update the message in the message cache.
+        #
+        if UID_HDR not in msg:
+            logger.error(
                 "add: mailbox '%s' inconsistency msg key %d has no"
-                " UID header" % (mbox, msg_key)
+                " UID header",
+                mbox,
+                msg_key,
             )
             raise MailboxInconsistency(mbox_name=mbox, msg_key=msg_key)
 
@@ -132,40 +181,61 @@ class MessageCache(object):
         while self.cur_size > self.max_size:
             oldest = None
             for mbox_name in self.msgs_by_mailbox.keys():
-                if len(self.msgs_by_mailbox[mbox_name]) == 0:
+                if not self.msgs_by_mailbox[mbox_name]:
                     continue
                 if oldest is None:
                     oldest = (mbox_name, self.msgs_by_mailbox[mbox_name][0])
                 elif oldest[1][3] > self.msgs_by_mailbox[mbox_name][0][3]:
                     oldest = (mbox_name, self.msgs_by_mailbox[mbox_name][0])
             if oldest is None:
-                self.log.warn(
-                    "Unable to get cur_size %d under max size %d"
-                    % (self.cur_size, self.max_size)
+                logger.warning(
+                    "Unable to get cur_size %d under max size %d",
+                    self.cur_size,
+                    self.max_size,
                 )
                 return
             self.msgs_by_mailbox[oldest[0]].pop(0)
             if len(self.msgs_by_mailbox[oldest[0]]) == 0:
                 del self.msgs_by_mailbox[oldest[0]]
-            # self.log.debug("removing from cache: %s" % str(oldest))
             self.cur_size -= oldest[1][1]
         return
 
+    ####################################################################
+    #
+    def msg_keys_for_mbox(self, mbox: str) -> List[int]:
+        """
+        Return a list of all the messages keys we have in the cache for a
+        specific mailbox.
+
+        Returns an empty list if that mailbox is not in the cache.
+        """
+        if mbox not in self.msgs_by_mailbox:
+            return []
+
+        return sorted([x[0] for x in self.msgs_by_mailbox[mbox]])
+
     ##################################################################
     #
-    def get(self, mbox, msg_key, remove=False):
+    def get(
+        self,
+        mbox: str,
+        msg_key: int,
+        remove: bool = False,
+        do_not_update: bool = False,
+    ):
         """
         Get the message in the given mailbox under the given MH folder key.
 
         If there is no such message then return None
-
-        XXX maybe we should raise an exception?
 
         Arguments:
         - `mbox`: name of the mbox we are looking in
         - `msg_key`: The MH folder key we are looking up
         - `remove`: instead of re-adding this message to the end of a
           mailbox's list we just remove it from the mailbox.
+        - `do_not_update`: do not update this message's access time in the
+          LRU. Usually called when doing many queries across all keys in the
+          mailbox.
         """
         if mbox not in self.msgs_by_mailbox:
             return None
@@ -179,6 +249,9 @@ class MessageCache(object):
         if result is None:
             return None
 
+        if do_not_update:
+            return result[2]
+
         # If we did find our message then we remove it from the list and
         # append it to the end of the list, resetting its time.
         #
@@ -189,6 +262,16 @@ class MessageCache(object):
         else:
             self.cur_size -= result[1]
         return result[2]
+
+    ####################################################################
+    #
+    def update_message_sequences(self, mbox_name: str, msg_key: int, sequences):
+        """
+        Keyword Arguments:
+        mbox_name: str --
+        msg_key: int   --
+        sequences      --
+        """
 
     ##################################################################
     #
@@ -220,15 +303,13 @@ class MessageCache(object):
         for msg_item in self.msgs_by_mailbox[mbox]:
             self.cur_size -= msg_item[1]
         del self.msgs_by_mailbox[mbox]
-        self.log.debug(
+        logger.debug(
             "Clear mbox %s from the message cache, "
-            "new size: %d (%.1f%% full, %.1fMib)"
-            % (
-                mbox,
-                self.cur_size,
-                (self.cur_size / self.max_size) * 100,
-                (self.cur_size / 1048576),
-            )
+            "new size: %d (%.1f%% full, %.1fMib)",
+            mbox,
+            self.cur_size,
+            (self.cur_size / self.max_size) * 100,
+            (self.cur_size / 1048576),
         )
         return
 
