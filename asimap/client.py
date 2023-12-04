@@ -500,9 +500,16 @@ class Authenticated(BaseClientHandler):
         # should reconnect and when they do they should be able to fix the
         # state of the mailbox.
         #
+        # NOTE: This is because we cannot send `EXPUNGES` during a non-UID
+        # fetch:
+        #
+        #        An EXPUNGE response MUST NOT be sent when no command is in
+        #        progress, nor while responding to a FETCH, STORE, or SEARCH
+        #        command.  This rule is necessary to prevent a loss of
+        #        synchronization of message sequence numbers between client and
+        #        server.
+        #
         self.fetch_while_pending_count = 0
-
-        return
 
     ##################################################################
     #

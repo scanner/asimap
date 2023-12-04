@@ -227,7 +227,7 @@ class Mailbox:
     ####################################################################
     #
     @classmethod
-    async def new(cls, *args, **kwargs):
+    async def new(cls, *args, **kwargs) -> "Mailbox":
         """
         We can not have __init__() be an async function, yet we need to do
         some async operations when we instantiate a mailbox. This code is for
@@ -256,6 +256,7 @@ class Mailbox:
             # our db if we need to.
             #
             await mbox.resync(force=not force_resync, optional=False)
+        return mbox
 
     ##################################################################
     #
@@ -1348,6 +1349,7 @@ class Mailbox:
                 self.last_resync,
                 self.subscribed,
             ) = results
+            self.subscribed = bool(self.subscribed)
             self.attributes = set(attributes.split(","))
             if len(uids) == 0:
                 self.uids = []

@@ -7,10 +7,11 @@ Tests for the mbox module
 # 3rd party imports
 #
 import pytest
+from dirty_equals import IsNow
 
 # Project imports
 #
-from .mbox import Mailbox
+from ..mbox import Mailbox
 
 
 ####################################################################
@@ -21,8 +22,47 @@ async def test_mailbox_init(imap_user_server):
     We can create a Mailbox object instance.
     """
     server = imap_user_server
-    mbox = await Mailbox.new("inbox", server)
+    NAME = "inbox"
+    mbox = await Mailbox.new(NAME, server)
     assert mbox
+    assert mbox.id
+    assert mbox.last_resync == IsNow(unix_number=True)
+
+    results = await server.db.fetchone(
+        "select id, uid_vv,attributes,mtime,next_uid,num_msgs,"
+        "num_recent,uids,last_resync,subscribed from mailboxes "
+        "where name=?",
+        (NAME,),
+    )
+    (
+        id,
+        uid_vv,
+        attributes,
+        mtime,
+        next_uid,
+        num_msgs,
+        num_recent,
+        uids,
+        last_resync,
+        subscribed,
+    ) = results
+    assert id == mbox.id
+    assert uid_vv == 1  # 1 because first mailbox in server
+    assert mbox.uid_vv == uid_vv
+    assert sorted(attributes.split(",")) == [r"\HasNoChildren", r"\Marked"]
+    assert mbox.mtime == mtime
+    assert mtime == IsNow(unix_number=True)
+    assert next_uid == 1
+    assert mbox.next_uid == next_uid
+    assert num_msgs == 0
+    assert mbox.num_msgs == num_msgs
+    assert num_recent == 0
+    assert mbox.num_recent == num_recent
+    assert uids == ""
+    assert len(mbox.uids) == 0
+    assert mbox.last_resync == last_resync
+    assert bool(subscribed) is False
+    assert mbox.subscribed == bool(subscribed)
 
 
 ####################################################################

@@ -376,6 +376,8 @@ class IMAPUserServer:
         #
         self.db: Database
 
+        self.folder_scan_task: Optional[asyncio.Task] = None
+
     ##################################################################
     #
     async def _restore_from_db(self):
@@ -412,6 +414,23 @@ class IMAPUserServer:
         user_server.db = await Database.new(maildir)
         await user_server._restore_from_db()
         return user_server
+
+    ####################################################################
+    #
+    async def shutdown(self):
+        """
+        Close various things when the server is shutting down.
+        """
+        if self.folder_scan_task:
+            self.folder_scan_task.cancel()
+            await self.folder_scan_task  # ?? do we need to do this?
+        clients = [c.close() for c in self.clients.values()]
+        if clients:
+            await asyncio.gather(*clients, return_exceptions=True)
+
+        await self.db.commit()
+        await self.db.close()
+        self.mailbox.close()
 
     ####################################################################
     #
@@ -467,14 +486,7 @@ class IMAPUserServer:
         except asyncio.exceptions.CancelledError:
             pass
         finally:
-            self.folder_scan_task.cancel()
-            await self.folder_scan_task  # ?? do we need to do this?
-            clients = [c.close() for c in self.clients.values()]
-            await asyncio.gather(*clients, return_exceptions=True)
-
-            self.db.commit()
-            self.db.close()
-            self.mailbox.close()
+            await self.shutdown()
 
     ####################################################################
     #

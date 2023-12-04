@@ -336,4 +336,7 @@ async def imap_user_server(mh_folder):
     """
     (mh_dir, _, _) = mh_folder()
     server = await IMAPUserServer.new(mh_dir)
-    return server
+    try:
+        yield server
+    finally:
+        await server.shutdown()
