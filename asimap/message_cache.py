@@ -22,14 +22,14 @@ can tell us to clear all the entries for that mailbox.
 #
 import logging
 import time
+from collections import defaultdict
 from functools import reduce
 from mailbox import MHMessage
 from typing import Dict, List, Tuple, TypeAlias
 
 # asimap imports
 #
-from asimap.exceptions import MailboxInconsistency
-
+from .exceptions import MailboxInconsistency
 from .utils import UID_HDR
 
 logger = logging.getLogger("asimap.message_cache")
@@ -77,6 +77,20 @@ class MessageCache:
         # we keep a timestamp of when we last reported the size.
         #
         self.next_size_report = 0.0
+
+        # A list of message entries ordered by entry age. The oldest entry is
+        # at the end of the list.
+        #
+        self.msgs_by_age: List[CacheEntry] = []
+
+        # Messages are indexed by the string "<mbox name>:<msg key>"
+        #
+        self.msgs_by_mbox_msg_key: Dict[str, CacheEntry] = {}
+
+        # A frequent operation getting all the msg keys for messages by
+        # mbox. Called once every non-optional resync (when mbox mtimes change)
+        #
+        self.msg_keys_by_mbox: Dict[str, List[int]] = defaultdict(list)
 
         # The msgs_by_mailbox is our "LRU"
         # The key is for the mailbox.
