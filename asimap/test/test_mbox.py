@@ -3,6 +3,7 @@ Tests for the mbox module
 """
 # system imports
 #
+import asyncio
 from typing import List
 
 # 3rd party imports
@@ -101,6 +102,8 @@ async def test_mailbox_init_with_messages(
     server = imap_user_server
     mbox = await Mailbox.new(NAME, server)
     assert mbox.uid_vv == 1
+    assert r"\Marked" in mbox.attributes
+    assert r"\HasNoChildren" in mbox.attributes
 
     msg_keys = await mbox.mailbox.akeys()
     assert len(msg_keys) > 0
@@ -121,12 +124,39 @@ async def test_mailbox_init_with_messages(
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_resync_new_folder():
+async def test_mailbox_gets_new_message(
+    bunch_of_email_in_folder, imap_user_server
+):
     """
-    Test resync on a folder that is new to the system (ie: none of the
-    messages have been properly tagged with the x-asimapd-uuid header)
+    After initial init, add message to folder. Do resync.
     """
-    pass
+    NAME = "inbox"
+    bunch_of_email_in_folder(folder=NAME)
+    server = imap_user_server
+    mbox = await Mailbox.new(NAME, server)
+    last_resync = mbox.last_resync
+
+    # We need to sleep at least one second for mbox.last_resync to change (we
+    # only consider seconds)
+    #
+    await asyncio.sleep(1)
+
+    # Now add one message to the folder.
+    #
+    bunch_of_email_in_folder(folder=NAME, num_emails=1)
+    msg_keys = await mbox.mailbox.akeys()
+    seqs = await mbox.mailbox.aget_sequences()
+
+    async with mbox.lock.read_lock():
+        await mbox.resync()
+    assert r"\Marked" in mbox.attributes
+    assert mbox.last_resync > last_resync
+    assert mbox.num_msgs == len(msg_keys)
+    assert mbox.sequences == seqs
+    assert len(mbox.sequences["unseen"]) == len(msg_keys)
+    assert mbox.sequences["unseen"] == msg_keys
+    assert len(mbox.sequences["Seen"]) == 0
+    await assert_uids_match_msgs(msg_keys, mbox)
 
 
 ####################################################################

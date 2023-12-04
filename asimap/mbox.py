@@ -260,7 +260,7 @@ class Mailbox:
 
     ##################################################################
     #
-    def marked(self, bool):
+    def marked(self, mark: bool):
         r"""
         A helper function that toggles the '\Marked' or '\Unmarked' flags on a
         folder (another one of those annoying things in the RFC you really only
@@ -270,14 +270,14 @@ class Mailbox:
         - `bool`: if True the \Marked attribute is added to the folder. If
                   False the \Unmarked attribute is added to the folder.
         """
-        if bool:
+        if mark:
+            self.attributes.add(r"\Marked")
             if r"\Unmarked" in self.attributes:
                 self.attributes.remove(r"\Unmarked")
-                self.attributes.add(r"\Marked")
         else:
+            self.attributes.add(r"\Unmarked")
             if r"\Marked" in self.attributes:
                 self.attributes.remove(r"\Marked")
-                self.attributes.add(r"\Unmarked")
         return
 
     ####################################################################
@@ -713,7 +713,7 @@ class Mailbox:
             # And see if the folder is getting kinda 'gappy' with spaces
             # between message keys. If it is, pack it.
             #
-            self._pack_if_necessary(msg_keys)
+            await self._pack_if_necessary(msg_keys)
 
         # And update the mtime before we leave..
         #
@@ -1295,7 +1295,7 @@ class Mailbox:
             # Create the entry in the db reflects what is on the disk as
             # far as we know.
             #
-            self.check_set_haschildren_attr()
+            await self.check_set_haschildren_attr()
             self.mtime = await Mailbox.get_actual_mtime(
                 self.server.mailbox, self.name
             )
@@ -2607,14 +2607,14 @@ class Mailbox:
         # update that mailbox's 'has children' attributes.
         #
         parent_name = os.path.dirname(name)
-        if parent_name != "":
-            parent_mbox = server.get_mailbox(parent_name, expiry=0)
+        if parent_name:
+            parent_mbox = await server.get_mailbox(parent_name, expiry=10)
             async with (
                 parent_mbox.lock.read_lock(),
                 parent_mbox.lock.write_lock(),
             ):
-                parent_mbox.check_set_haschildren_attr()
-                parent_mbox.commit_to_db()
+                await parent_mbox.check_set_haschildren_attr()
+                await parent_mbox.commit_to_db()
 
         # And remove the mailbox from the filesystem.
         #
