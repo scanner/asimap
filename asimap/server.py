@@ -316,7 +316,9 @@ class IMAPServer:
         rem_addr, port = writer.get_extra_info("peername")
         peer_name = f"{rem_addr}:{port}"
         logger.debug(f"New client: {peer_name}")
-        client_handler = IMAPClient(self, peer_name, rem_addr, reader, writer)
+        client_handler = IMAPClient(
+            self, peer_name, rem_addr, port, reader, writer
+        )
         task = asyncio.create_task(client_handler.start(), name=peer_name)
         task.add_done_callback(self.client_done)
         self.imap_client_tasks[task] = client_handler
@@ -371,11 +373,13 @@ class IMAPClient:
         imap_server: IMAPServer,
         name: str,
         rem_addr: str,
+        port: int,
         reader: asyncio.StreamReader,
         writer: asyncio.StreamWriter,
     ):
         self.name = name
         self.rem_addr = rem_addr
+        self.port = port
         self.reader = reader
         self.writer = writer
         self.imap_server = imap_server
