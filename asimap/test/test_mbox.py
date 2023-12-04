@@ -41,9 +41,21 @@ async def test_get_sequences_update_seen(
 ####################################################################
 #
 @pytest.mark.asyncio
-def test_resync_new_folder():
+async def test_resync_new_folder():
     """
     Test resync on a folder that is new to the system (ie: none of the
     messages have been properly tagged with the x-asimapd-uuid header)
+    """
+    pass
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mbox_resync_two_tasks_fighting():
+    """
+    Create a Mailbox. Create a condition. Start two tasks that wait on the
+    condition, make sure several resync's complete, including new messages
+    being added to the mailbox.
     """
     pass

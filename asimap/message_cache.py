@@ -74,7 +74,8 @@ class MessageCache:
         self.next_size_report = 0.0
 
         # A list of message entries ordered by entry age. The oldest entry is
-        # at the end of the list.
+        # at the end of the list.  Maybe this should be a heap, sorted by time.
+        # still need to make sure deleting and inserting a node is cheap.
         #
         self.msgs_by_age: List[CacheEntry] = []
 
