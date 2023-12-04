@@ -3,6 +3,7 @@ Tests for the mbox module
 """
 # system imports
 #
+from typing import List
 
 # 3rd party imports
 #
@@ -12,6 +13,30 @@ from dirty_equals import IsNow
 # Project imports
 #
 from ..mbox import Mailbox
+from ..utils import UID_HDR
+
+
+####################################################################
+#
+async def assert_uids_match_msgs(msg_keys: List[int], mbox: Mailbox):
+    """
+    A helper function to validate that the messages in the mailbox all have
+    the UID_HDR, and that all the uid's set in the messages match the ones in
+    `mbox.uids` (and that the order is the same.)
+
+    This assures that one of the most basic functions of `mbox.resync()` works
+    properly.
+    """
+    assert len(msg_keys) == len(mbox.uids)
+    for msg_key, uid in zip(msg_keys, mbox.uids):
+        msg = await mbox.mailbox.aget_message(msg_key)
+        uid_vv, msg_uid = [int(x) for x in msg[UID_HDR].strip().split(".")]
+        assert uid_vv == mbox.uid_vv
+        assert uid == msg_uid
+
+        cached_uid_vv, cached_uid = await mbox.get_uid_from_msg(msg_key)
+        assert cached_uid_vv == mbox.uid_vv
+        assert uid == cached_uid
 
 
 ####################################################################
@@ -68,14 +93,29 @@ async def test_mailbox_init(imap_user_server):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_get_sequences_update_seen(
+async def test_mailbox_init_with_messages(
     bunch_of_email_in_folder, imap_user_server
 ):
+    NAME = "inbox"
+    bunch_of_email_in_folder(folder=NAME)
     server = imap_user_server
-    mbox = await Mailbox.new("inbox", server)
+    mbox = await Mailbox.new(NAME, server)
+    assert mbox.uid_vv == 1
+
     msg_keys = await mbox.mailbox.akeys()
-    seqs = await mbox._get_sequences_update_seen(msg_keys)
-    assert seqs
+    assert len(msg_keys) > 0
+
+    seqs = await mbox.mailbox.aget_sequences()
+
+    # NOTE: By default `bunch_of_email_in_folder` inserts all messages it
+    # creates in to the `unseen` sequence.
+    #
+    assert mbox.num_msgs == len(msg_keys)
+    assert mbox.sequences == seqs
+    assert len(mbox.sequences["unseen"]) == len(msg_keys)
+    assert mbox.sequences["unseen"] == msg_keys
+    assert len(mbox.sequences["Seen"]) == 0
+    await assert_uids_match_msgs(msg_keys, mbox)
 
 
 ####################################################################
