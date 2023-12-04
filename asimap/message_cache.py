@@ -27,11 +27,6 @@ from functools import reduce
 from mailbox import MHMessage
 from typing import Dict, List, Tuple, TypeAlias
 
-# asimap imports
-#
-from .exceptions import MailboxInconsistency
-from .utils import UID_HDR
-
 logger = logging.getLogger("asimap.message_cache")
 CACHE_SIZE = 41_943_040  # Max cache size (in bytes) -- 40MiB
 
@@ -163,30 +158,36 @@ class MessageCache:
         - `msg_key`: The key for this message (in the MH folder)
         - `msg`: message to be added to mailbox
         """
-        # If you try to add a message to the cache without a UID header
-        # we are going to raise a MailboxInconsistency exception.
+        # I think for now we will not worry about missing uid's in cached
+        # messages. This should only happen during resync's, and at the end of
+        # which all the messages we put in the cache will have uids in them
+        # (and done in such a way that the messages in the cache have uid's.)
         #
-        # Somewhere up the call stack it will see this and trigger a
-        # resync of the mailbox and then re-try the failed command.
-        #
-        # XXX Do we need a UID in a message we cache? Since we will eventually
-        #     update the message anyways.. and if all calls go through the
-        #     message cache we will update the message in the message cache.
-        #
-        if UID_HDR not in msg:
-            logger.error(
-                "add: mailbox '%s' inconsistency msg key %d has no"
-                " UID header",
-                mbox,
-                msg_key,
-            )
-            raise MailboxInconsistency(mbox_name=mbox, msg_key=msg_key)
+        # # If you try to add a message to the cache without a UID header
+        # # we are going to raise a MailboxInconsistency exception.
+        # #
+        # # Somewhere up the call stack it will see this and trigger a
+        # # resync of the mailbox and then re-try the failed command.
+        # #
+        # # XXX Do we need a UID in a message we cache? Since we will eventually
+        # #     update the message anyways.. and if all calls go through the
+        # #     message cache we will update the message in the message cache.
+        # #
+        # if UID_HDR not in msg:
+        #     logger.error(
+        #         "add: mailbox '%s' inconsistency msg key %d has no"
+        #         " UID header",
+        #         mbox,
+        #         msg_key,
+        #     )
+        #     raise MailboxInconsistency(mbox_name=mbox, msg_key=msg_key)
 
         if mbox not in self.msgs_by_mailbox:
             self.msgs_by_mailbox[mbox] = []
 
         msg_size = len(msg.as_string())
         self.cur_size += msg_size
+        self.num_msgs += 1
         self.msgs_by_mailbox[mbox].append((msg_key, msg_size, msg, time.time()))
 
         # If we have exceeded our max size remove the oldest messages
@@ -275,17 +276,16 @@ class MessageCache:
             self.msgs_by_mailbox[mbox].append(result)
         else:
             self.cur_size -= result[1]
+            self.num_msgs -= 1
         return result[2]
 
     ####################################################################
     #
     def update_message_sequences(self, mbox_name: str, msg_key: int, sequences):
         """
-        Keyword Arguments:
-        mbox_name: str --
-        msg_key: int   --
-        sequences      --
+        current done by a function in `mbox` but should we move it into here?
         """
+        pass
 
     ##################################################################
     #
