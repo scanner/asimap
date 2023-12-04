@@ -3,6 +3,7 @@
 
 async-timeout
 codetiming
+dirty-equals
 ipython
 pytest
 pytest-asyncio
