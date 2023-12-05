@@ -492,7 +492,6 @@ class Authenticated(BaseClientHandler):
         )
         self.server = user_server
         self.name = client.name
-        self.db = user_server.db
         self.mbox = None
         self.state = "authenticated"
         self.examine = False  # If a mailbox is selected in 'examine' mode
@@ -516,62 +515,15 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    def process_or_queue(self, imap_cmd, queue=True):
-        """
-        When we have a mailbox selected we may be in a state where we can not
-        process the command we have been handed. This happens when we have a
-        non-zero command queue on the mailbox. In these cases the imap command
-        is NOT processed and is instead added to the end of the mailbox's
-        command queue for later processing.
-
-        If that is the case we will return False.
-
-        Otherwise we return True letting our caller know they can just continue
-        with processing this command.
-
-        Arguments:
-        - `imap_cmd`: IMAP command about to be processed.
-        - `queue`: If this is True then we _queue this command_ we are handed
-          for later processing. It is the case that some commands can be
-          immediately processed even if we are in the middle of processing
-          another command and our caller knows this and tells us not to queue
-          the command.
-        """
-        # If this imap command has 'needs_continuation' set then we are going
-        # to assume that is the continuation of the command currently being
-        # processed.
-        #
-        # If this imap coammnd DOES NOT have 'needs_continuation' set AND the
-        # mailbox has a non-zero command_queue then we push this command on to
-        # the end of the queue and return.
-        #
-        if (
-            imap_cmd.needs_continuation
-            or self.mbox is None
-            or not self.mbox.command_queue
-        ):
-            return True
-        if queue:
-            self.mbox.command_queue.append((self, imap_cmd))
-            self.log.debug(
-                "mbox has queued commands. Pushing command on to " "queue."
-            )
-        return False
-
-    ##################################################################
-    #
     async def notifies(self):
         """
         Handles the common case of sending pending expunges and a resync where
         we only notify this client of exists/recent.
         """
         if self.state == "selected" and self.mbox is not None:
-            try:
+            async with self.mbox.lock.read_lock():
                 await self.mbox.resync(only_notify=self)
-            except MailboxLock:
-                pass
         await self.send_pending_expunges()
-        return
 
     #########################################################################
     #

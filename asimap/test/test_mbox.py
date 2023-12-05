@@ -425,9 +425,28 @@ async def test_mbox_resync_auto_pack(
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_mbox_selected(bunch_of_email_in_folder, imap_user_server):
+async def test_mbox_selected(
+    mocker, bunch_of_email_in_folder, imap_user_server_and_client
+):
     NAME = "inbox"
     bunch_of_email_in_folder()
-    server = imap_user_server
+    server, imap_client_proxy = imap_user_server_and_client
     mbox = await Mailbox.new(NAME, server)
-    assert mbox is None
+    msg_keys = await mbox.mailbox.akeys()
+    num_msgs = len(msg_keys)
+
+    async with mbox.lock.read_lock():
+        await mbox.selected(imap_client_proxy.cmd_processor)
+
+    expected = [
+        f"* {num_msgs} EXISTS",
+        f"* {num_msgs} RECENT",
+        f"* OK [UNSEEN {msg_keys[0]}]",
+        f"* OK [UIDVALIDITY {mbox.uid_vv}]",
+        f"* OK [UIDNEXT {mbox.next_uid}]",
+        r"* FLAGS (\Answered \Deleted \Draft \Flagged \Recent \Seen unseen)",
+        r"* OK [PERMANENTFLAGS (\Answered \Deleted \Draft \Flagged \Seen \*)]",
+    ]
+
+    results = [x.strip() for x in imap_client_proxy.push.call_args.args]
+    assert expected == results

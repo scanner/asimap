@@ -26,7 +26,11 @@ import trustme
 import asimap.auth
 
 from ..server import IMAPServer
-from ..user_server import IMAPUserServer, set_user_server_program
+from ..user_server import (
+    IMAPClientProxy,
+    IMAPUserServer,
+    set_user_server_program,
+)
 from .factories import UserFactory
 
 
@@ -340,3 +344,50 @@ async def imap_user_server(mh_folder):
         yield server
     finally:
         await server.shutdown()
+
+
+####################################################################
+#
+@pytest_asyncio.fixture
+async def imap_user_server_and_client(faker, mocker, imap_user_server):
+    """
+    Creates a user server, imap proxy client, and Authenticated client
+    handler.  There is no network stream reader/writer. This is intended for
+    testing mbox.Mailbox and client.Authenticated where we only care about the
+    `push` method on the imap proxy client. This push method is an async mock
+    (ie: this is inteded for testing the responses from directly invoking
+    methods on `mbox.Mailbox` and `client.Authenticated` that are expected to
+    generate IMAP protocol responses.)
+    """
+    # NOTE: We can just create a stream reader and feed it data if we need to:
+    #       https://www.pythonfixing.com/2021/10/fixed-writing-pytest-testcases-for.html
+    #
+    # NOTE: For the stream writer we attach it to /dev/null.  Since we are
+    #       patching the `push` method on the IMAPClientProxy we never expect
+    #       the stream writer to get any data.. but we still we need one to
+    #       create our IMAPClientProxy.
+    #
+    # XXX If we cared we should probably attach it to a text file or find
+    #     someway to attach it to a text buffer.
+    #
+    rem_addr = "127.0.0.1"
+    port = faker.pyint(min_value=1024, max_value=65535)
+    name = f"{rem_addr}:{port}"
+    server = imap_user_server
+
+    loop = asyncio.get_event_loop()
+    devnull_writer = open("/dev/null", "wb")
+    writer_transport, writer_protocol = await loop.connect_write_pipe(
+        lambda: asyncio.streams.FlowControlMixin(loop=loop), devnull_writer
+    )
+
+    writer = asyncio.StreamWriter(writer_transport, writer_protocol, None, loop)
+    reader = asyncio.StreamReader()
+    imap_client_proxy = IMAPClientProxy(
+        server, name, rem_addr, port, reader, writer
+    )
+    mocker.patch.object(imap_client_proxy, "push", mocker.AsyncMock())
+    try:
+        yield (server, imap_client_proxy)
+    finally:
+        writer.close()

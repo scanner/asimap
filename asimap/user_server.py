@@ -31,12 +31,12 @@ import asimap
 import asimap.mbox
 import asimap.message_cache
 import asimap.parse
-from asimap.client import Authenticated
-from asimap.exceptions import MailboxInconsistency, MailboxLock
-from asimap.trace import trace
 
+from .client import Authenticated
 from .db import Database
+from .exceptions import MailboxInconsistency, MailboxLock
 from .mh import MH
+from .trace import trace
 from .utils import UpgradeableReadWriteLock
 
 if TYPE_CHECKING:
@@ -438,7 +438,7 @@ class IMAPUserServer:
         through the main process. Run until the server exits.
         """
         if "SENTRY_DSN" in os.environ:
-            sys.stderr.write("initializing sentry_sdk\n")
+            logger.debug("Initializing sentry_sdk")
             sentry_sdk.init(
                 dsn=os.environ["SENTRY_DSN"],
                 # Set traces_sample_rate to 1.0 to capture 100%
@@ -451,16 +451,18 @@ class IMAPUserServer:
                 environment="devel",
             )
         else:
-            sys.stderr.write("***** SENTRY_DSN not in enviornment")
+            logger.debug(
+                "Not initializing sentry_sdk: SENTRY_DSN not in enviornment"
+            )
 
+        # Listen on localhost for connections from the main server process.
+        #
         self.asyncio_server = await asyncio.start_server(
             self.new_client, "127.0.0.1"
         )
         addrs = [sock.getsockname() for sock in self.asyncio_server.sockets]
         self.port = addrs[0][1]
-        sys.stderr.write(f"listening on {addrs}\n")
-        sys.stderr.flush()
-        self.log.debug("Serving on port %s (addrs: %s)", self.port, addrs)
+        logger.debug("Serving on port %s (addrs: %s)", self.port, addrs)
 
         try:
             # Before we tell the main server process what port we are listening
@@ -476,7 +478,6 @@ class IMAPUserServer:
             #
             sys.stdout.write(f"{self.port}\n")
             sys.stdout.flush()
-            sys.stderr.write(f"***** SUBPROCESS: Wrote port: {self.port}\n")
 
             async with self.asyncio_server:
                 await self.asyncio_server.serve_forever()

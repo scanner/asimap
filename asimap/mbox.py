@@ -1601,26 +1601,6 @@ class Mailbox:
 
     ##################################################################
     #
-    def has_queued_commands(self, client=None):
-        """
-        Returns True if this client currently has commands in the command
-        queue. Or if there are any queued commands if client is None
-
-        Arguments:
-        - `client`: The client we are checking for in the command queue.  If
-                    client is None then we return True if there are any queued
-                    commands.
-        """
-        if client:
-            return any(
-                x[0].client.port == client.client.port
-                for x in self.command_queue
-            )
-        else:
-            return len(self.command_queue) > 0
-
-    ##################################################################
-    #
     def unselected(self, client_name: str):
         """
         When the client is no longer selecting/examining this mailbox.
