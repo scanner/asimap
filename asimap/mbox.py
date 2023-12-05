@@ -222,7 +222,10 @@ class Mailbox:
         # The dict of clients that currently have this mailbox selected.
         # This includes clients that used 'EXAMINE' instead of 'SELECT'
         #
-        self.clients: Dict[str, "Authenticated"] = {}
+        # Key is the local port this client's IMAPClientProxy is connected to.
+        # (maybe it should be the client's name?)
+        #
+        self.clients: Dict[int, "Authenticated"] = {}
 
     ####################################################################
     #
@@ -1483,7 +1486,7 @@ class Mailbox:
 
     ##################################################################
     #
-    def selected(self, client):
+    async def selected(self, client: "Authenticated"):
         r"""
         This mailbox is being selected by a client.
 
@@ -1533,6 +1536,7 @@ class Mailbox:
         Arguments:
         - `client`: The client that has selected this mailbox.
         """
+        assert self.lock.this_task_has_read_lock()  # XXX remove when confident
         if client.client.port in self.clients:
             raise No("Mailbox '%s' is already selected" % self.name)
 
@@ -1543,61 +1547,57 @@ class Mailbox:
         #
         self.expiry = None
 
-        try:
-            # self.mailbox.lock()
-            # When a client selects a mailbox we do a resync to make sure we
-            # give it up to date information.
-            #
-            self.resync()
+        # When a client selects a mailbox we do a resync to make sure we
+        # give it up to date information.
+        #
+        await self.resync()
 
-            # Add the client to the mailbox _after_ we do the resync. This way
-            # we will not potentially send EXISTS and RECENT messages to the
-            # client twice.
-            #
-            self.clients[client.client.port] = client
+        # Add the client to the mailbox _after_ we do the resync. This way
+        # we will not potentially send EXISTS and RECENT messages to the
+        # client twice.
+        #
+        self.clients[client.client.port] = client
 
-            # Now send back messages to this client that it expects upon
-            # selecting a mailbox.
+        # Now send back messages to this client that it expects upon
+        # selecting a mailbox.
+        #
+        # Flags on messages are represented by being in an MH sequence.
+        # The sequence name == the flag on the message.
+        #
+        # NOTE: '\' is not a permitted character in an MH sequence name so
+        #       we translate "Recent" to '\Recent'
+        #
+        # XXX We just did a resync.. we should be able to use `self.sequences`
+        #     right? we are in a read lock, nothing else should have changed
+        #     these..
+        #
+        seq = await self.mailbox.aget_sequences()
+        msg_keys = await self.mailbox.akeys()
+        push_data = []
+        push_data.append(f"* {len(msg_keys)} EXISTS\r\n")
+        push_data.append(f"* {len(seq['Recent'])} RECENT\r\n")
+        if seq["unseen"]:
+            # Message id of the first message that is unseen.
             #
-            # Flags on messages are represented by being in an MH sequence.
-            # The sequence name == the flag on the message.
-            #
-            # NOTE: '\' is not a permitted character in an MH sequence name so
-            #       we translate "Recent" to '\Recent'
-            #
-            seq = self.mailbox.get_sequences()
-            mbox_keys = list(self.mailbox.keys())
-            client.client.push("* %d EXISTS\r\n" % len(mbox_keys))
-            if "Recent" in seq:
-                client.client.push("* %d RECENT\r\n" % len(seq["Recent"]))
-            else:
-                client.client.push("* 0 RECENT\r\n")
-            if "unseen" in seq:
-                # Message id of the first message that is unseen.
-                #
-                first_unseen = sorted(seq["unseen"])[0]
-                first_unseen = mbox_keys.index(first_unseen) + 1
-                client.client.push("* OK [UNSEEN %d]\r\n" % first_unseen)
-            client.client.push("* OK [UIDVALIDITY %d]\r\n" % self.uid_vv)
-            client.client.push("* OK [UIDNEXT %d]\r\n" % self.next_uid)
+            first_unseen = seq["unseen"][0]
+            first_unseen = msg_keys.index(first_unseen) + 1
+            push_data.append(f"* OK [UNSEEN {first_unseen}]\r\n")
+        push_data.append(f"* OK [UIDVALIDITY {self.uid_vv}]\r\n")
+        push_data.append(f"* OK [UIDNEXT {self.next_uid}]\r\n")
 
-            # Each sequence is a valid flag.. we send back to the client all
-            # of the system flags and any other sequences that are defined on
-            # this mailbox.
-            #
-            flags = list(SYSTEM_FLAGS)
-            for k in list(seq.keys()):
-                if k not in SYSTEM_FLAG_MAP:
-                    flags.append(k)
-            client.client.push("* FLAGS (%s)\r\n" % " ".join(flags))
-            client.client.push(
-                "* OK [PERMANENTFLAGS (%s)]\r\n" % " ".join(PERMANENT_FLAGS)
-            )
-        finally:
-            # self.mailbox.unlock()
-            pass
-
-        return
+        # Each sequence is a valid flag.. we send back to the client all
+        # of the system flags and any other sequences that are defined on
+        # this mailbox.
+        #
+        flags = list(SYSTEM_FLAGS)
+        for k in list(seq.keys()):
+            if seq[k] and k not in SYSTEM_FLAG_MAP:
+                flags.append(k)
+        push_data.append(f"* FLAGS ({' '.join(flags)})\r\n")
+        push_data.append(
+            f"* OK [PERMANENTFLAGS ({' '.join(PERMANENT_FLAGS)})]\r\n"
+        )
+        await client.client.push(*push_data)
 
     ##################################################################
     #

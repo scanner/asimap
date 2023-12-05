@@ -420,3 +420,14 @@ async def test_mbox_resync_auto_pack(
     assert mbox.sequences["unseen"] == msg_keys
     assert mbox.sequences["Recent"] == msg_keys
     await assert_uids_match_msgs(msg_keys, mbox)
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mbox_selected(bunch_of_email_in_folder, imap_user_server):
+    NAME = "inbox"
+    bunch_of_email_in_folder()
+    server = imap_user_server
+    mbox = await Mailbox.new(NAME, server)
+    assert mbox is None
