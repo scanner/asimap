@@ -684,10 +684,10 @@ class Mailbox:
                     ):
                         to_notify.append(client.client)
 
-                # NOTE: We separate the generating which clients to notify from
-                #       actually pushing messages out to those clients because
-                #       if it disconnects due to us sending it we do not want
-                #       to raise an exception because the self.clients
+                # NOTE: We separate the generating of which clients to notify
+                #       from actually pushing messages out to those clients
+                #       because if it disconnects due to us sending it we do
+                #       not want to raise an exception because the self.clients
                 #       dictionary changed.
                 #
                 for imap_client in to_notify:
@@ -1223,32 +1223,29 @@ class Mailbox:
                 # We are either replacing or adding a new UID header to this
                 # message no matter what so do that.
                 #
+                # NOTE: Every message we set a uid on, whether it had one
+                #       before or not, is added to the `Recent` sequence.
+                #
                 uid_vv, uid = await self.set_uid_in_msg(
                     msg_key, self.next_uid, cache=cache
                 )
                 uids_found.append(self.next_uid)
                 self.next_uid += 1
 
-                # If the uid_vv we previously retrieved from the message is
-                # different thant he uid_vv of this folder then this message is
-                # new to this folder and needed to be added to the Recent
-                # sequence.
+                # IF the msg is not already in the Recent sequence add it.
                 #
-                if uid_vv != self.uid_vv:
-                    # IF the msg is not already in the Recent sequence add it.
-                    #
-                    if msg_key not in seq["Recent"]:
-                        seq_changed = True
-                        seq["Recent"].append(msg_key)
+                if msg_key not in seq["Recent"]:
+                    seq_changed = True
+                    seq["Recent"].append(msg_key)
 
-                        # If the message is in the cache, make sure it also
-                        # gets the `Recent` sequence.
-                        #
-                        msg = self.server.msg_cache.get(
-                            self.name, msg_key, do_not_update=True
-                        )
-                        if msg:
-                            update_message_sequences(msg_key, msg, seq)
+                    # If the message is in the cache, make sure it also
+                    # gets the `Recent` sequence.
+                    #
+                    msg = self.server.msg_cache.get(
+                        self.name, msg_key, do_not_update=True
+                    )
+                    if msg:
+                        update_message_sequences(msg_key, msg, seq)
 
         # If we had to redo the folder then we believe it is indeed now
         # interesting so set the \Marked attribute on it.
@@ -2120,6 +2117,10 @@ class Mailbox:
             if seq_changed:
                 self.log.debug("FETCH: sequences were modified, saving")
                 await self.mailbox.aset_sequences(self.sequences)
+                # XXX We know a resync is required. But if we do it now not
+                #     everyone will be notified? Better to let it happen
+                #     naturally on the next client command?
+                #
                 await self.resync(optional=False)
             logger.debug(
                 "FETCH finished, num results: %d, total duration: %f, "

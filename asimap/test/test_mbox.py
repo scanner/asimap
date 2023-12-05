@@ -125,7 +125,7 @@ async def test_mailbox_init_with_messages(
     assert mbox.sequences["unseen"] == msg_keys
     assert len(mbox.sequences["Seen"]) == 0
     print(mbox.sequences)
-    assert len(mbox.sequences["Recent"]) == 0
+    assert mbox.sequences["Recent"] == msg_keys
     await assert_uids_match_msgs(msg_keys, mbox)
 
     # The messages have been re-writen to have UID's. However the mtimes should
@@ -161,16 +161,15 @@ async def test_mailbox_gets_new_message(
     #
     bunch_of_email_in_folder(folder=NAME, num_emails=1)
     msg_keys = await mbox.mailbox.akeys()
-    seqs = await mbox.mailbox.aget_sequences()
 
     async with mbox.lock.read_lock():
         await mbox.resync()
     assert r"\Marked" in mbox.attributes
     assert mbox.last_resync > last_resync
     assert mbox.num_msgs == len(msg_keys)
-    assert mbox.sequences == seqs
     assert len(mbox.sequences["unseen"]) == len(msg_keys)
     assert mbox.sequences["unseen"] == msg_keys
+    assert mbox.sequences["Recent"] == msg_keys
     assert len(mbox.sequences["Seen"]) == 0
     await assert_uids_match_msgs(msg_keys, mbox)
 
@@ -198,6 +197,7 @@ async def test_mailbox_sequence_change(
     # Remove unseen on some messages. Mark some messages replied to.
     msg_keys = await mbox.mailbox.akeys()
     seqs = await mbox.mailbox.aget_sequences()
+    assert mbox.sequences["Recent"] == msg_keys
 
     for i in range(10):
         seqs["unseen"].remove(msg_keys[i])
@@ -214,7 +214,11 @@ async def test_mailbox_sequence_change(
     assert mbox.sequences["unseen"] == msg_keys[10:]
     assert len(mbox.sequences["Seen"]) == 10
     assert mbox.sequences["Seen"] == msg_keys[:10]
-    assert mbox.sequences["Recent"] == []
+
+    # Messages have gained and lost flags (sequences), but no new messages have
+    # appeared, thus `Recent` is the same as before (all message keys)
+    #
+    assert mbox.sequences["Recent"] == msg_keys
     await assert_uids_match_msgs(msg_keys, mbox)
 
 
