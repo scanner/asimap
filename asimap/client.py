@@ -468,6 +468,9 @@ class PreAuthenticated(BaseClientHandler):
 ##################################################################
 ##################################################################
 #
+# XXX Should rename this "AuthenticatedClient" or something because just
+#     "Authenticated" in other modules is a bit information lacking.
+#
 class Authenticated(BaseClientHandler):
     """
     The 'authenticated' client IMAP command handler. Basically this handles all

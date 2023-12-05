@@ -326,3 +326,40 @@ async def test_mbox_resync_two_tasks_racing(
     async with timeout(2):
         results = await asyncio.gather(task1, task2, return_exceptions=True)
     assert results
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mbox_resync_mysterious_msg_deletions(
+    bunch_of_email_in_folder, imap_user_server
+):
+    """
+    The resync code handles something removing messages from a mailbox
+    outside of our control.
+    """
+    NAME = "inbox"
+    bunch_of_email_in_folder(folder=NAME)
+    server = imap_user_server
+    mbox = await Mailbox.new(NAME, server)
+    last_resync = mbox.last_resync
+    await asyncio.sleep(1)
+
+    # Remove the 5th message.
+    #
+    msg_keys = await mbox.mailbox.akeys()
+    await mbox.mailbox.aremove(msg_keys[5])
+    del msg_keys[5]
+    msg_keys = await mbox.mailbox.akeys()
+    assert len(msg_keys) == 19
+
+    async with mbox.lock.read_lock():
+        await mbox.resync()
+    assert r"\Marked" in mbox.attributes
+    assert mbox.last_resync > last_resync
+    assert mbox.num_msgs == len(msg_keys)
+    assert len(mbox.sequences["unseen"]) == len(msg_keys)
+    assert mbox.sequences["unseen"] == msg_keys
+    assert mbox.sequences["Recent"] == msg_keys
+    assert len(mbox.sequences["Seen"]) == 0
+    await assert_uids_match_msgs(msg_keys, mbox)

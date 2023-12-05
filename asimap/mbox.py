@@ -255,7 +255,7 @@ class Mailbox:
             # And make sure our mailbox on disk state is up to snuff and update
             # our db if we need to.
             #
-            await mbox.resync(force=not force_resync, optional=False)
+            await mbox.resync(force=force_resync, optional=False)
         return mbox
 
     ##################################################################
@@ -359,8 +359,8 @@ class Mailbox:
         self,
         force: bool = False,
         notify: bool = True,
-        only_notify=None,
-        dont_notify=None,
+        only_notify: Optional["Authenticated"] = None,
+        dont_notify: Optional["Authenticated"] = None,
         publish_uids: bool = False,
         optional: bool = True,
     ):
@@ -458,10 +458,10 @@ class Mailbox:
             self.server.mailbox, self.name
         )
 
-        # If `optional` is set and the mtime is the same as what is on disk
-        # then we can totally skip this resync run.
+        # If `optional` is set (the default) and the mtime is the same as what
+        # is on disk then we can totally skip this resync run.
         #
-        if optional and start_mtime <= self.mtime:
+        if not force and optional and start_mtime <= self.mtime:
             return
 
         # If only_notify is not None then notify is forced to False.
@@ -1267,15 +1267,15 @@ class Mailbox:
 
     ##################################################################
     #
-    async def _restore_from_db(self):
+    async def _restore_from_db(self) -> bool:
         """
         Restores this mailbox's persistent state from the database.  If this
         mailbox does not exist in the db we create an entry for it with
         defaults.
 
-        We return True if we restored the data from the db.
+        We return False if we restored the data from the db.
 
-        We return False if we had to create the record for this mailbox in the
+        We return True if we had to create the record for this mailbox in the
         db.
         """
         results = await self.server.db.fetchone(
@@ -1330,7 +1330,7 @@ class Mailbox:
                     (name, self.id, ",".join([str(x) for x in values])),
                 )
             await self.server.db.commit()
-            return False
+            return True
         else:
             # We got back an actual result. Fill in the values in the mailbox.
             #
@@ -1361,7 +1361,7 @@ class Mailbox:
             ):
                 name, sequence = row
                 self.sequences[name] = [int(x) for x in sequence.split(",")]
-        return True
+        return False
 
     ##################################################################
     #
@@ -2417,8 +2417,7 @@ class Mailbox:
 
         path_mtime = await aiofiles.os.path.getmtime(str(path))
         seq_mtime = await aiofiles.os.path.getmtime(str(seq_path))
-
-        return max(int(path_mtime), int(seq_mtime))
+        return int(max(path_mtime, seq_mtime))
 
     #########################################################################
     #
