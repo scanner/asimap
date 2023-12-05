@@ -4,10 +4,12 @@ Tests for the mbox module
 # system imports
 #
 import asyncio
+import os
 from typing import List
 
 # 3rd party imports
 #
+import aiofiles
 import pytest
 from dirty_equals import IsNow
 
@@ -107,6 +109,10 @@ async def test_mailbox_init_with_messages(
 
     msg_keys = await mbox.mailbox.akeys()
     assert len(msg_keys) > 0
+    mtimes = []
+    for msg_key in msg_keys:
+        path = os.path.join(mbox.mailbox._path, str(msg_key))
+        mtimes.append(await aiofiles.os.path.getmtime(path))
 
     seqs = await mbox.mailbox.aget_sequences()
 
@@ -118,7 +124,17 @@ async def test_mailbox_init_with_messages(
     assert len(mbox.sequences["unseen"]) == len(msg_keys)
     assert mbox.sequences["unseen"] == msg_keys
     assert len(mbox.sequences["Seen"]) == 0
+    print(mbox.sequences)
+    assert len(mbox.sequences["Recent"]) == 0
     await assert_uids_match_msgs(msg_keys, mbox)
+
+    # The messages have been re-writen to have UID's. However the mtimes should
+    # not have changed.
+    #
+    for msg_key, orig_mtime in zip(msg_keys, mtimes):
+        path = os.path.join(mbox.mailbox._path, str(msg_key))
+        mtime = await aiofiles.os.path.getmtime(path)
+        assert mtime == orig_mtime
 
 
 ####################################################################
@@ -156,6 +172,49 @@ async def test_mailbox_gets_new_message(
     assert len(mbox.sequences["unseen"]) == len(msg_keys)
     assert mbox.sequences["unseen"] == msg_keys
     assert len(mbox.sequences["Seen"]) == 0
+    await assert_uids_match_msgs(msg_keys, mbox)
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mailbox_sequence_change(
+    bunch_of_email_in_folder, imap_user_server
+):
+    """
+    After initial init, add message to folder. Do resync.
+    """
+    NAME = "inbox"
+    bunch_of_email_in_folder(folder=NAME)
+    server = imap_user_server
+    mbox = await Mailbox.new(NAME, server)
+    last_resync = mbox.last_resync
+
+    # We need to sleep at least one second for mbox.last_resync to change (we
+    # only consider seconds)
+    #
+    await asyncio.sleep(1)
+
+    # Remove unseen on some messages. Mark some messages replied to.
+    msg_keys = await mbox.mailbox.akeys()
+    seqs = await mbox.mailbox.aget_sequences()
+
+    for i in range(10):
+        seqs["unseen"].remove(msg_keys[i])
+    seqs["Answered"] = [msg_keys[i] for i in range(5)]
+    await mbox.mailbox.aset_sequences(seqs)
+
+    async with mbox.lock.read_lock():
+        await mbox.resync()
+    assert r"\Marked" in mbox.attributes
+    assert mbox.last_resync > last_resync
+    assert mbox.num_msgs == len(msg_keys)
+    assert mbox.sequences != seqs  # Addition of `Seen` sequence
+    assert len(mbox.sequences["unseen"]) == 10
+    assert mbox.sequences["unseen"] == msg_keys[10:]
+    assert len(mbox.sequences["Seen"]) == 10
+    assert mbox.sequences["Seen"] == msg_keys[:10]
+    assert mbox.sequences["Recent"] == []
     await assert_uids_match_msgs(msg_keys, mbox)
 
 

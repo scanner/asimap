@@ -2166,14 +2166,14 @@ class Mailbox:
         async with self.mailbox.lock_folder():
             # Get the list of message keys that msg_set indicates.
             #
-            msg_keys = await self.mailbox.akeys()
-            seq_max = len(msg_keys)
+            all_msg_keys = await self.mailbox.akeys()
+            seq_max = len(all_msg_keys)
 
             if cmd.uid_command:
                 # If we are doing a 'UID FETCH' command we need to use the max
                 # uid for the sequence max.
                 #
-                uid_vv, uid_max = await self.get_uid_from_msg(msg_keys[-1])
+                uid_vv, uid_max = await self.get_uid_from_msg(all_msg_keys[-1])
                 assert uid_max
                 uid_list = sequence_set_to_list(
                     msg_set, uid_max, cmd.uid_command
@@ -2197,7 +2197,7 @@ class Mailbox:
             # Build a set of msg keys that are just the messages we want to
             # operate on.
             #
-            msgs = [msg_keys[x - 1] for x in msg_idxs]
+            msg_keys = [all_msg_keys[x - 1] for x in msg_idxs]
 
             # Convert the flags to MH sequence names..
             #
@@ -2205,7 +2205,7 @@ class Mailbox:
             seqs = await self.mailbox.aget_sequences()
             store_start = time.time()
 
-            for key in msgs:
+            for key in msg_keys:
                 msg = await self.get_and_cache_msg(key)
                 match action:
                     case StoreAction.ADD_FLAGS | StoreAction.REMOVE_FLAGS:
