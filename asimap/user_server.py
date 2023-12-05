@@ -321,8 +321,6 @@ class IMAPUserServer:
             "%s.%s" % (__name__, self.__class__.__name__)
         )
 
-        self.maildir = maildir
-
         # We setup our MH mailbox to return email.message.EmailMessage's
         # (instead of MHMessage's). Lets us use the most modern email model at
         # this time.

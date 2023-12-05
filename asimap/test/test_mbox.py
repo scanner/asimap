@@ -349,7 +349,6 @@ async def test_mbox_resync_mysterious_msg_deletions(
     #
     msg_keys = await mbox.mailbox.akeys()
     await mbox.mailbox.aremove(msg_keys[5])
-    del msg_keys[5]
     msg_keys = await mbox.mailbox.akeys()
     assert len(msg_keys) == 19
 
@@ -362,4 +361,62 @@ async def test_mbox_resync_mysterious_msg_deletions(
     assert mbox.sequences["unseen"] == msg_keys
     assert mbox.sequences["Recent"] == msg_keys
     assert len(mbox.sequences["Seen"]) == 0
+    await assert_uids_match_msgs(msg_keys, mbox)
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mbox_resync_mysterious_folder_pack(
+    bunch_of_email_in_folder, imap_user_server
+):
+    """
+    Mailbox handles if folder gets `packed` by some outside force
+    """
+    NAME = "inbox"
+    bunch_of_email_in_folder()
+    server = imap_user_server
+    mbox = await Mailbox.new(NAME, server)
+    await asyncio.sleep(1)
+
+    msg_keys = await mbox.mailbox.akeys()
+    for i in (1, 5, 10, 15, 16):
+        await mbox.mailbox.aremove(msg_keys[i])
+    await mbox.mailbox.apack()
+    msg_keys = await mbox.mailbox.akeys()
+
+    async with mbox.lock.read_lock():
+        await mbox.resync()
+    assert r"\Marked" in mbox.attributes
+    assert mbox.num_msgs == len(msg_keys)
+    assert len(mbox.sequences["unseen"]) == len(msg_keys)
+    assert mbox.sequences["unseen"] == msg_keys
+    assert mbox.sequences["Recent"] == msg_keys
+    assert len(mbox.sequences["Seen"]) == 0
+    await assert_uids_match_msgs(msg_keys, mbox)
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mbox_resync_auto_pack(
+    bunch_of_email_in_folder, imap_user_server
+):
+    """
+    resync autopacks if the folder is too gappy.
+    """
+    NAME = "inbox"
+
+    # Gap every other message. This is enough gaps for the auto-repack to kick
+    # in.
+    #
+    bunch_of_email_in_folder(sequence=range(1, 41))
+
+    server = imap_user_server
+    mbox = await Mailbox.new(NAME, server)
+    msg_keys = list(range(1, 21))  # After pack it should be 1..20
+    assert mbox.num_msgs == len(msg_keys)
+    assert len(mbox.sequences["unseen"]) == len(msg_keys)
+    assert mbox.sequences["unseen"] == msg_keys
+    assert mbox.sequences["Recent"] == msg_keys
     await assert_uids_match_msgs(msg_keys, mbox)
