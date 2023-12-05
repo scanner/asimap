@@ -14,6 +14,8 @@ import pytest
 from async_timeout import timeout
 from dirty_equals import IsNow
 
+from ..exceptions import No
+
 # Project imports
 #
 from ..mbox import Mailbox
@@ -447,6 +449,18 @@ async def test_mbox_selected(
         r"* FLAGS (\Answered \Deleted \Draft \Flagged \Recent \Seen unseen)",
         r"* OK [PERMANENTFLAGS (\Answered \Deleted \Draft \Flagged \Seen \*)]",
     ]
+
+    results = [x.strip() for x in imap_client_proxy.push.call_args.args]
+    assert expected == results
+
+    with pytest.raises(No):
+        async with mbox.lock.read_lock():
+            await mbox.selected(imap_client_proxy.cmd_processor)
+
+    mbox.unselected(imap_client_proxy.cmd_processor.name)
+
+    async with mbox.lock.read_lock():
+        await mbox.selected(imap_client_proxy.cmd_processor)
 
     results = [x.strip() for x in imap_client_proxy.push.call_args.args]
     assert expected == results
