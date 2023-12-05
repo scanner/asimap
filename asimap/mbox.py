@@ -225,7 +225,7 @@ class Mailbox:
         # Key is the local port this client's IMAPClientProxy is connected to.
         # (maybe it should be the client's name?)
         #
-        self.clients: Dict[int, "Authenticated"] = {}
+        self.clients: Dict[str, "Authenticated"] = {}
 
     ####################################################################
     #
@@ -810,10 +810,7 @@ class Mailbox:
             msg_idx = msg_keys.index(msg_key) + 1
             clients = []
             for client in self.clients.values():
-                if (
-                    dont_notify
-                    and client.client.port == dont_notify.client.port
-                ):
+                if dont_notify and client.name == dont_notify.name:
                     continue
                 clients.append(client)
 
@@ -1537,7 +1534,7 @@ class Mailbox:
         - `client`: The client that has selected this mailbox.
         """
         assert self.lock.this_task_has_read_lock()  # XXX remove when confident
-        if client.client.port in self.clients:
+        if client.name in self.clients:
             raise No("Mailbox '%s' is already selected" % self.name)
 
         if r"\Noselect" in self.attributes:
@@ -1556,7 +1553,7 @@ class Mailbox:
         # we will not potentially send EXISTS and RECENT messages to the
         # client twice.
         #
-        self.clients[client.client.port] = client
+        self.clients[client.name] = client
 
         # Now send back messages to this client that it expects upon
         # selecting a mailbox.
@@ -1735,12 +1732,12 @@ class Mailbox:
             clients_to_notify = {}
             clients_to_pend = []
             if client is not None:
-                clients_to_notify[client.client.port] = client
+                clients_to_notify[client.name] = client
 
-            for port, c in self.clients.items():
+            for name, c in self.clients.items():
                 if c.idling:
-                    clients_to_notify[port] = c
-                elif port not in clients_to_notify:
+                    clients_to_notify[name] = c
+                elif name not in clients_to_notify:
                     clients_to_pend.append(c)
 
             # Now that we know who we are going to send expunges to immediately

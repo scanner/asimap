@@ -80,7 +80,7 @@ class BaseClientHandler:
         )
         self.client = client
         self.state = "not_authenticated"
-        self.name = "BaseClientHandler"
+        self.name = client.name
         self.mbox = None
 
         # Idling is like a sub-state. When we are idling we expect a 'DONE'
@@ -88,7 +88,7 @@ class BaseClientHandler:
         # message. However during this time the server may still send async
         # messages to the client.
         #
-        self.idling = False
+        self.idling: bool = False
 
         # This is used to keep track of the tag.. useful for when finishing an
         # DONE command when idling.
@@ -386,7 +386,6 @@ class PreAuthenticated(BaseClientHandler):
     def __init__(self, client: "IMAPClient"):
         """ """
         super().__init__(client)
-        self.name = "PreAuthenticated"
         self.log = logging.getLogger(
             "%s.%s" % (__name__, self.__class__.__name__)
         )
@@ -491,7 +490,6 @@ class Authenticated(BaseClientHandler):
             f"{__name__}.{self.__class__.__name__}-{client.name}"
         )
         self.server = user_server
-        self.name = client.name
         self.mbox = None
         self.state = "authenticated"
         self.examine = False  # If a mailbox is selected in 'examine' mode
