@@ -15,6 +15,7 @@ import shutil
 import stat
 import time
 from collections import defaultdict
+from datetime import datetime
 from mailbox import FormatError, MHMessage, NoSuchMailboxError, NotEmptyError
 from pathlib import Path
 from statistics import fmean, median, stdev
@@ -472,7 +473,7 @@ class Mailbox:
         if only_notify is not None:
             notify = False
 
-        async with (self.lock.write_lock(), self.mailbox.lock_folder()):
+        async with (self.mailbox.lock_folder(), self.lock.write_lock()):
             # Whenever we resync the mailbox we update the sequence for
             # 'seen' based on 'seen' are all the messages that are NOT in
             # the 'unseen' sequence.
@@ -1624,18 +1625,28 @@ class Mailbox:
 
     ##################################################################
     #
-    def append(self, msg: MHMessage, flags=[], date_time=None):
+    async def append(
+        self,
+        msg: MHMessage,
+        flags: Optional[List[str]] = None,
+        date_time: Optional[datetime] = None,
+    ) -> int:
         r"""
         Append the given message to this mailbox.
         Set the flags given. We also set the \Recent flag.
         If date_time is not given set it to 'now'.
         The internal date on the message is set to date_time.
 
+        NOTE: Must be called with the mailbox read lock acquired.
+
         Arguments:
         - `message`: The email.message being appended to this mailbox
         - `flags`: A list of flags to set on this message
         - `date_time`: The internal date on this message
         """
+        assert self.lock.this_task_has_read_lock()  # XXX remove when confident
+
+        flags = [] if flags is None else flags
         for flag in flags:
             # We need to translate some flags in to the equivalent MH mailbox
             # sequence name.
@@ -1647,27 +1658,34 @@ class Mailbox:
         # flag
         #
         msg.add_sequence("Recent")
-        try:
-            self.mailbox.lock()
-            key = self.mailbox.add(msg)
+
+        async with (self.mailbox.lock_folder(), self.lock.write_lock()):
+            # NOTE: This updates the .mh_sequences folder
+            #
+            key = await self.mailbox.aadd(msg)
 
             # if a date_time was supplied then set the mtime on the file to
             # that. We use mtime as our 'internal date' on messages.
             #
-            if date_time is not None:
-                c = time.mktime(date_time.timetuple())
-                os.utime(mbox_msg_path(self.mailbox, key), (c, c))
-        finally:
-            self.mailbox.unlock()
+            if date_time:
+                mtime = date_time.timestamp()
+                await utime(mbox_msg_path(self.mailbox, key), (mtime, mtime))
 
         # We need to resync this mailbox so that we can get the UID of the
         # newly added message. This should be quick.
         #
-        self.resync(optional=False)
-        uid_vv, uid = self.get_uid_from_msg(key)
-        self.log.debug(
-            "append: message: %d, uid: %d, sequences: %s"
-            % (key, uid, ", ".join(msg.get_sequences()))
+        await self.resync(optional=False)
+        uid_vv, uid = await self.get_uid_from_msg(key)
+        if uid is None:
+            raise Bad(
+                f"Mailbox: {self.name}, unable to fetch UID for message {key}"
+            )
+        logger.debug(
+            "Mailbox: %s, append message: %d, uid: %d, " "sequences: %s",
+            self.name,
+            key,
+            uid,
+            ", ".join(msg.get_sequences()),
         )
         return uid
 

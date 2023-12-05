@@ -5,6 +5,8 @@ Tests for the mbox module
 #
 import asyncio
 import os
+from datetime import datetime
+from mailbox import MHMessage
 from typing import List
 
 # 3rd party imports
@@ -14,12 +16,12 @@ import pytest
 from async_timeout import timeout
 from dirty_equals import IsNow
 
-from ..exceptions import No
-
 # Project imports
 #
+from ..exceptions import No
 from ..mbox import Mailbox
 from ..utils import UID_HDR
+from .conftest import assert_email_equal
 
 
 ####################################################################
@@ -464,3 +466,35 @@ async def test_mbox_selected(
 
     results = [x.strip() for x in imap_client_proxy.push.call_args.args]
     assert expected == results
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mbox_append(imap_user_server, email_factory):
+    server = imap_user_server
+    NAME = "inbox"
+    mbox = await Mailbox.new(NAME, server)
+
+    msg = MHMessage(email_factory())
+
+    async with mbox.lock.read_lock():
+        uid = await mbox.append(
+            msg, flags=[r"\Flagged", "unseen"], date_time=datetime.now()
+        )
+
+    msg_keys = await mbox.mailbox.akeys()
+    assert len(msg_keys) == 1
+    msg_key = msg_keys[0]
+    mhmsg = await mbox.mailbox.aget_message(msg_key)
+    uid_vv, msg_uid = [int(x) for x in mhmsg[UID_HDR].strip().split(".")]
+    assert mhmsg.get_sequences() == ["flagged", "unseen", "Recent"]
+    assert mbox.sequences == {"flagged": [1], "unseen": [1], "Recent": [1]}
+    assert msg_uid == uid
+    assert uid_vv == mbox.uid_vv
+
+    # Make sure the messages match. `append()` added the UID_HDR, so we need to
+    # remove that before we compare the messages.
+    #
+    del mhmsg[UID_HDR]
+    assert_email_equal(msg, mhmsg)

@@ -1,7 +1,7 @@
 """
 pytest fixtures for testing `asimap`
 """
-# system imports
+# System imports
 #
 import asyncio
 import imaplib
