@@ -11,6 +11,7 @@ from typing import List
 #
 import aiofiles
 import pytest
+from async_timeout import timeout
 from dirty_equals import IsNow
 
 # Project imports
@@ -275,10 +276,53 @@ async def test_mbox_resync_msg_with_wrong_uidvv(
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_mbox_resync_two_tasks_fighting():
+async def test_mbox_resync_two_tasks_racing(
+    bunch_of_email_in_folder, imap_user_server
+):
     """
-    Create a Mailbox. Create a condition. Start two tasks that wait on the
-    condition, make sure several resync's complete, including new messages
-    being added to the mailbox.
+    Create a Mailbox. Create an asyncio.Event. Start two tasks that wait on the
+    event, make sure several resync's complete, including new messages
+    being added to the mailbox. (and there is no deadlock)
     """
-    pass
+    NAME = "inbox"
+    bunch_of_email_in_folder(folder=NAME)
+    server = imap_user_server
+    mbox = await Mailbox.new(NAME, server)
+    last_resync = mbox.last_resync
+
+    # We need to sleep at least one second for mbox.last_resync to change (we
+    # only consider seconds)
+    #
+    await asyncio.sleep(1)
+
+    # We add some new messages to the mailbox
+    #
+    bunch_of_email_in_folder(folder=NAME, num_emails=10)
+    msg_keys = await mbox.mailbox.akeys()
+
+    # We create an event our two tasks will wait on.
+    #
+    start_event = asyncio.Event()
+
+    # Our two tasks that are going to race to see who resyncs first.
+    async def resync_racer():
+        async with mbox.lock.read_lock():
+            await start_event.wait()
+            await mbox.resync()
+        assert r"\Marked" in mbox.attributes
+        assert mbox.last_resync > last_resync
+        assert mbox.num_msgs == len(msg_keys)
+        assert len(mbox.sequences["unseen"]) == len(msg_keys)
+        assert mbox.sequences["unseen"] == msg_keys
+        assert mbox.sequences["Recent"] == msg_keys
+        assert len(mbox.sequences["Seen"]) == 0
+        await assert_uids_match_msgs(msg_keys, mbox)
+
+    task1 = asyncio.create_task(resync_racer(), name="task1")
+    task2 = asyncio.create_task(resync_racer(), name="task2")
+
+    await asyncio.sleep(1)
+    start_event.set()
+    async with timeout(2):
+        results = await asyncio.gather(task1, task2, return_exceptions=True)
+    assert results
