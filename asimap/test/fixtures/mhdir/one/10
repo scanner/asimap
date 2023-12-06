@@ -21,8 +21,6 @@ Received: from dispatchb-eu1.ppe-hosted.com (185.132.181.12) by
  LO2GBR01FT016.mail.protection.outlook.com (10.152.42.102) with Microsoft SMTP
  Server (version=TLS1_2, cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384) id
  15.20.4930.15 via Frontend Transport; Wed, 26 Jan 2022 09:06:51 +0000
-Authentication-Results-Original: eu1-mdac18-23.fra.mdlocal; spf=pass
- smtp.mailfrom=; dmarc=fail header.from=hmail.jitbit.com header.policy=none;
 X-Virus-Scanned: Proofpoint Essentials engine
 Received: from hmail.jitbit.com (hmail.jitbit.com [52.4.102.94])
 	(using TLSv1.2 with cipher ECDHE-RSA-AES256-GCM-SHA384 (256/256 bits))
