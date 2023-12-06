@@ -113,14 +113,6 @@ def main():
     except KeyboardInterrupt:
         logger.warning("Keyboard interrupt, exiting")
 
-    server = IMAPUserServer(
-        Path.cwd(), debug=debug, trace_enabled=trace_enabled
-    )
-    try:
-        asyncio.run(server.run())
-    except KeyboardInterrupt:
-        logger.warning("Keyboard interrupt, exiting")
-
 
 ############################################################################
 ############################################################################
