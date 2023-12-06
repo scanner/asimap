@@ -45,6 +45,7 @@ from .utils import (
     UID_HDR,
     MsgSet,
     UpgradeableReadWriteLock,
+    get_uidvv_uid,
     sequence_set_to_list,
     utime,
     with_timeout,
@@ -990,7 +991,7 @@ class Mailbox:
             return (None, None)
 
         try:
-            uid_vv, uid = [int(x) for x in msg[UID_HDR].strip().split(".")]
+            uid_vv, uid = get_uidvv_uid(msg[UID_HDR])
             return (uid_vv, uid)
         except ValueError:
             logger.warning(
@@ -1892,14 +1893,16 @@ class Mailbox:
                 # IMAP messages are numbered starting from 1.
                 #
                 i = idx + 1
-                ctx = await SearchContext.new(
+                ctx = SearchContext(
                     self, msg_key, i, seq_max, uid_max, self.sequences
                 )
                 if search.match(ctx):
                     # The UID SEARCH command returns uid's of messages
                     #
                     if cmd.uid_command:
-                        results.append(ctx.uid)
+                        uid = await ctx.uid()
+                        assert uid
+                        results.append(uid)
                     else:
                         results.append(i)
         return results
@@ -2030,7 +2033,7 @@ class Mailbox:
                     logger.warning(log_msg)
                     raise MailboxInconsistency(log_msg)
 
-                ctx = await SearchContext.new(
+                ctx = SearchContext(
                     self, msg_key, idx, seq_max, uid_max, self.sequences
                 )
                 fetched_flags = False

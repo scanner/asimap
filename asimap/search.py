@@ -10,14 +10,13 @@ structure.
 #
 import logging
 import os.path
-from datetime import datetime
+from datetime import datetime, timezone
 from mailbox import MHMessage
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional
 
 # 3rd party imports
 #
 import aiofiles
-import pytz
 
 # asimap imports
 #
@@ -88,31 +87,40 @@ class SearchContext(object):
         self.msg_number = msg_number
         self.mailbox_sequences = sequences
         self.path = os.path.join(mailbox.mailbox._path, str(msg_key))
-        self.internal_date: datetime
 
         # msg & uid are looked up and set ONLY if the search actually reaches
         # in to the message. We use read only attributes to fill in these
         # values.
         #
-        self._msg: MHMessage
-        self._uid_vv = None
-        self._uid = None
-        self._sequences = None
-        return
+        self._internal_date: Optional[datetime] = None
+        self._msg: Optional[MHMessage] = None
+        self._uid_vv: Optional[int] = None
+        self._uid: Optional[int] = None
+        self._sequences: Optional[List[str]] = None
 
-    ##################################################################
+    ####################################################################
     #
-    @classmethod
-    async def new(cls, *args, **kwargs) -> "SearchContext":
-        ctx = cls(*args, **kwargs)
-        ctx.internal_date = datetime.fromtimestamp(
-            await aiofiles.os.path.getmtime(ctx.path), pytz.UTC
+    def __str__(self) -> str:
+        return (
+            f"<SearchContext, mailbox: {self.mailbox.name}, msg key: "
+            f"{self.msg_key}, IMAP sequence num: {self.msg_number}, "
+            f"path: {self.path}>"
         )
-        return ctx
+
+    ####################################################################
+    #
+    async def internal_date(self) -> datetime:
+        if self._internal_date:
+            return self._internal_date
+
+        self._internal_date = datetime.fromtimestamp(
+            await aiofiles.os.path.getmtime(self.path), timezone.utc
+        )
+        return self._internal_date
 
     ##################################################################
     #
-    async def msg(self):
+    async def msg(self) -> MHMessage:
         """
         The message parsed in to a MHMessage object
         """
@@ -127,37 +135,34 @@ class SearchContext(object):
         #
         self._msg = await self.mailbox.get_and_cache_msg(self.msg_key)
 
-        # If the uid is not set, then set it by reading it from the message.
-        # If attempting to set it fails then something is wrong with this
-        # message since it had a `x-asimapd-uid` header, but it could not be
-        # parsed.
-        #
         if self._uid is None:
-            self._uid_vv, self._uid = get_uidvv_uid(self._msg[UID_HDR])
-            if self._uid is None:
-                raise MailboxInconsistency(
-                    mbox_name=self.mailbox.name, msg_key=self.msg_key
-                )
+            if UID_HDR in self._msg:
+                self._uid_vv, self._uid = get_uidvv_uid(self._msg[UID_HDR])
         else:
-            # If, after we get the message and if the UID is defined and if the
-            # UID in the message does NOT match the UID we have then raise a
-            # mailboxinconsistency error. Probably means that the mailbox has
-            # been re-arranged since we started. This should not happen with
-            # coperative locking but something out of our control has
-            # apparently happened.
+            # NOTE: This should never happen. It used to happen in the past but
+            #       if our locking is correct, it should never happen again.
+            #       So this is more for making sure that the code is correct
+            #       now wrt locking.
             #
-            uid_vv, uid = get_uidvv_uid(self._msg[UID_HDR])
-            if self._uid != uid or uid is None:
-                raise MailboxInconsistency(
-                    mbox_name=self.mailbox.name, msg_key=self.msg_key
-                )
-
+            if UID_HDR in self._msg:
+                uid_vv, uid = get_uidvv_uid(self._msg[UID_HDR])
+                if self._uid != uid or uid is None:
+                    logger.error(
+                        "Mailbox: %s, msg: %d, uid mismatch, was: %d, "
+                        "now is: %d",
+                        self.mailbox.name,
+                        self.msg_key,
+                        self._uid,
+                        uid,
+                    )
+                    raise MailboxInconsistency(
+                        mbox_name=self.mailbox.name, msg_key=self.msg_key
+                    )
         return self._msg
 
     ##################################################################
     #
-    @property
-    def uid(self):
+    async def uid(self) -> Optional[int]:
         """
         The IMAP UID of the message
         """
@@ -169,15 +174,14 @@ class SearchContext(object):
         try:
             self._uid = self.mailbox.uids[self.msg_number - 1]
         except IndexError:
-            self._uid_vv, self._uid = self.mailbox.get_uid_from_msg(
+            self._uid_vv, self._uid = await self.mailbox.get_uid_from_msg(
                 self.msg_key
             )
         return self._uid
 
     ##################################################################
     #
-    @property
-    def uid_vv(self):
+    async def uid_vv(self) -> Optional[int]:
         """
         The IMAP UID Validity Value for the mailbox
         """
@@ -185,21 +189,20 @@ class SearchContext(object):
             return self._uid_vv
         # Use the fast method of getting the uid/uidvv.
         #
-        self._uid_vv, self._uid = self.mailbox.get_uid_from_msg(self.msg_key)
+        self._uid_vv, self._uid = await self.mailbox.get_uid_from_msg(
+            self.msg_key
+        )
         return self._uid_vv
 
     ##################################################################
     #
     @property
-    def sequences(self):
+    def sequences(self) -> List[str]:
         """
         The list of sequences that this message is in. If the message is not
         loaded we avoid loading the message object by just getting the
         sequences directly from the mailbox and computing which sequences this
         message is in.
-
-        XXX Wait.. we should be using the sequences attached to the message
-            itself.
         """
         # If the message is loaded use its sequence information.
         #
