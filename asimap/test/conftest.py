@@ -6,12 +6,12 @@ pytest fixtures for testing `asimap`
 import asyncio
 import imaplib
 import json
-import mailbox
 import ssl
 import threading
 import time
 from email.headerregistry import Address
 from email.message import EmailMessage
+from mailbox import MH, MHMessage
 from pathlib import Path
 from typing import Iterable, Optional, Union
 
@@ -25,6 +25,7 @@ import trustme
 #
 import asimap.auth
 
+from ..mbox import Mailbox
 from ..server import IMAPServer
 from ..user_server import (
     IMAPClientProxy,
@@ -294,7 +295,7 @@ def mh_folder(tmp_path):
     mh_dir = tmp_path / "Mail"
 
     def mk_folder(folder: str = "inbox"):
-        mh = mailbox.MH(mh_dir)
+        mh = MH(mh_dir)
         m_folder = mh.add_folder(folder)
         return (mh_dir, mh, m_folder)
 
@@ -322,7 +323,7 @@ def bunch_of_email_in_folder(email_factory, mh_folder):
         if sequence is None:
             sequence = list(range(1, num_emails + 1))
         for i, key in zip(range(num_emails), sequence):
-            msg = mailbox.MHMessage(email_factory())
+            msg = MHMessage(email_factory())
             msg.add_sequence("unseen")
             m_folder.add(msg)
         return mh_dir
@@ -391,3 +392,20 @@ async def imap_user_server_and_client(faker, mocker, imap_user_server):
         yield (server, imap_client_proxy)
     finally:
         writer.close()
+
+
+####################################################################
+#
+@pytest_asyncio.fixture
+def mailbox_instance(bunch_of_email_in_folder, imap_user_server):
+    """
+    create a Mailbox which has email in it.
+    """
+
+    async def create_mailbox(name: str = "inbox", with_messages: bool = False):
+        bunch_of_email_in_folder(folder=name)
+        server = imap_user_server
+        mbox = await Mailbox.new(name, server)
+        return mbox
+
+    return create_mailbox

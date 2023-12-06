@@ -40,7 +40,7 @@ from .fetch import FetchAtt
 from .message_cache import MessageCache
 from .mh import MH, Sequences, update_message_sequences
 from .parse import IMAPClientCommand, StoreAction
-from .search import SearchContext
+from .search import IMAPSearch, SearchContext
 from .utils import (
     UID_HDR,
     MsgSet,
@@ -132,6 +132,14 @@ class Mailbox:
     This may cause each mailbox to send out notifications to every client.
     """
 
+    # Only pack when the folder is over this size
+    #
+    FOLDER_SIZE_PACK_LIMIT = 100
+
+    # Only pack when the folder's message key span is under this ratio
+    #
+    FOLDER_RATIO_PACK_LIMIT = 0.8
+
     ##################################################################
     #
     def __init__(self, name, server, expiry=900):
@@ -164,6 +172,8 @@ class Mailbox:
         self.next_uid = 1
         self.num_msgs = 0
         self.num_recent = 0
+        self.folder_size_pack_limit = self.FOLDER_SIZE_PACK_LIMIT
+        self.folder_ratio_pack_limit = self.FOLDER_RATIO_PACK_LIMIT
 
         # List of the UID's of the messages in this mailbox. They are in IMAP
         # message sequence order (ie: first message in the mailbox, its uid is
@@ -853,10 +863,10 @@ class Mailbox:
         - `msgs`: The list of all message keys in the folder.
         """
         num_msgs = len(msg_keys)
-        if num_msgs < 20:
+        if num_msgs < self.folder_size_pack_limit:
             return
 
-        if num_msgs / msg_keys[-1] > 0.8:
+        if num_msgs / msg_keys[-1] > self.folder_ratio_pack_limit:
             return
         logger.debug(
             "Packing mailbox %s, num msgs: %d, max msg key: %d",
@@ -865,6 +875,7 @@ class Mailbox:
             msg_keys[-1],
         )
         await self.mailbox.apack()
+        self.server.msg_cache.clear_mbox(self.name)
         self.sequences = await self.mailbox.aget_sequences()
         return
 
@@ -1691,7 +1702,7 @@ class Mailbox:
 
     ##################################################################
     #
-    def expunge(self, client=None):
+    async def expunge(self, client: Optional["Authenticated"] = None):
         """
         Perform an expunge. All messages in the 'Deleted' sequence are removed.
 
@@ -1725,45 +1736,48 @@ class Mailbox:
         - `client`: the client to send the immediate untagged expunge messags
           to.
         """
+        assert self.lock.this_task_has_read_lock()  # XXX remove when confident
 
-        try:
-            # self.mailbox.lock()
-            # If there are no messages in the 'Deleted' sequence then we have
-            # nothing to do.
+        # If there are no messages in the 'Deleted' sequence then we have
+        # nothing to do.
+        #
+        seqs = await self.mailbox.aget_sequences()
+        if len(seqs["Deleted"]) == 0:
+            return
+
+        # See if there any other clients other than the one passed in the
+        # arguments and any NOT in IDLE that have this mailbox selected.
+        # This tells us whether we need to keep track of these expunges to
+        # send to the other clients.
+        #
+        clients_to_notify = {}
+        clients_to_pend = []
+        if client is not None:
+            clients_to_notify[client.name] = client
+
+        for name, c in self.clients.items():
+            if c.idling:
+                clients_to_notify[name] = c
+            elif name not in clients_to_notify:
+                clients_to_pend.append(c)
+
+        async with (self.mailbox.lock_folder(), self.lock.write_lock()):
+            # Remove the msg keys being deleted from the message cache.
             #
-            seq = self.mailbox.get_sequences()
-            if "Deleted" not in seq:
-                return
+            del_keys = set(self.server.msg_cache.msg_keys_for_mbox(self.name))
+            purge_keys = set(seqs["Deleted"]) - del_keys
+            for msg_key in purge_keys:
+                self.server.msg_cache.remove(self.name, msg_key)
 
-            # Because there was a 'Deleted' sequence we know that there are
-            # messages to delete from the folder. This will mess up the index
-            # of the message keys in this mailbox's message cache so we are
-            # just going to toss the entire message cache for this mailbox.
-            #
-            self.server.msg_cache.clear_mbox(self.name)
-
-            # See if there any other clients other than the one passed in the
-            # arguments and any NOT in IDLE that have this mailbox selected.
-            # This tells us whether we need to keep track of these expunges to
-            # send to the other clients.
-            #
-            clients_to_notify = {}
-            clients_to_pend = []
-            if client is not None:
-                clients_to_notify[client.name] = client
-
-            for name, c in self.clients.items():
-                if c.idling:
-                    clients_to_notify[name] = c
-                elif name not in clients_to_notify:
-                    clients_to_pend.append(c)
+            msg_keys = await self.mailbox.akeys()
 
             # Now that we know who we are going to send expunges to immediately
             # and who we are going to record them for later sending, go through
             # the mailbox and delete the messages.
             #
-            msgs = list(self.mailbox.keys())
-            for msg in seq["Deleted"]:
+            to_delete = sorted(seqs["Deleted"], reverse=True)
+
+            for msg_key in to_delete:
                 # Remove the message from the folder.. and also remove it from
                 # our uids to message index mapping. (NOTE: 'which' is in IMAP
                 # message sequence order, so its actual position in the array
@@ -1771,31 +1785,36 @@ class Mailbox:
                 #
                 # Convert msg_key to IMAP seq num
                 #
-                which = msgs.index(msg) + 1
-                msgs.remove(msg)
+                which = msg_keys.index(msg_key) + 1
+                msg_keys.remove(msg_key)
 
                 # Remove UID from list of UID's in this folder. IMAP
                 # sequence numbers start at 1.
                 #
                 self.uids.remove(self.uids[which - 1])
-                self.mailbox.discard(msg)
+                await self.mailbox.aremove(msg_key)
+
+                # Remove from all sequences.
+                #
+                for seq in seqs.keys():
+                    if msg_key in seqs[seq]:
+                        seqs[seq].remove(msg_key)
 
                 # Send EXPUNGE's to the clients we are allowed to notify
                 # immediately.
                 #
+                expunge_msg = f"* {which} EXPUNGE\r\n"
                 for c in clients_to_notify.values():
-                    c.client.push("* %d EXPUNGE\r\n" % which)
+                    await c.client.push(expunge_msg)
 
                 # All other clients listening to this mailbox get the expunge
                 # messages added to a list that will be checked before we
                 # accept any other commands from them.
                 #
                 for c in clients_to_pend:
-                    c.pending_expunges.append("* %d EXPUNGE\r\n" % which)
+                    c.pending_expunges.append(expunge_msg)
 
-        finally:
-            # self.mailbox.unlock()
-            pass
+            await self.mailbox.aset_sequences(seqs)
 
         # Resync the mailbox, but send NO exists messages because the mailbox
         # has shrunk: 5.2.: "it is NOT permitted to send an EXISTS response
@@ -1805,12 +1824,13 @@ class Mailbox:
         # Unless a client is sitting in IDLE, then it is okay send them
         # exists/recents.
         #
-        self.resync(notify=False)
-        return
+        await self.resync(notify=False)
 
     ##################################################################
     #
-    def search(self, search, cmd: IMAPClientCommand):
+    async def search(
+        self, search: IMAPSearch, cmd: IMAPClientCommand
+    ) -> List[int]:
         """
         Take the given IMAP search object and apply it to all of the messages
         in the mailbox.
@@ -1824,54 +1844,56 @@ class Mailbox:
           command and this contains our continuation state, as well as whether
           or not this is a UID command.
         """
-        # Before we do a search we do a resync to make sure that we have
-        # attached uid's to all of our messages and various counts are up to
-        # sync. But we do it with notify turned off because we can not send any
-        # conflicting messages to this client (other clients that are idling do
-        # get any updates though.)
-        #
-        self.resync(notify=False)
-        if cmd.uid_command:
-            self.log.debug("search(): Doing a UID SEARCH")
+        assert self.lock.this_task_has_read_lock()  # XXX remove when confident
 
-        results = []
-        try:
-            # self.mailbox.lock()
-            # search_started = time.time()
+        # We get the folder lock to make sure any external systems that obey
+        # the folder lock do not muck with this folder while we are doing a
+        # search.
+        #
+        async with self.mailbox.lock_folder():
+            if cmd.uid_command:
+                logger.debug("Mailbox: %s, doing a UID SEARCH", self.name)
 
             # We get the full list of keys instead of using an iterator because
             # we need the max id and max uuid.
             #
-            msgs = list(self.mailbox.keys())
+            msg_keys = await self.mailbox.akeys()
+            if not msg_keys:
+                return []
 
-            if not msgs:
-                return results
+            results: List[int] = []
 
-            seq_max = len(msgs)
-            uid_vv, uid_max = self.get_uid_from_msg(msgs[-1])
-            if uid_vv is None or uid_max is None:
-                self.resync(notify=False)
-
-            # If this is a continuation command than we skip over the number of
-            # messages that we have alread processed.
+            seq_max = len(msg_keys)
+            # Before we do a search we do a resync to make sure that we have
+            # attached uid's to all of our messages and various counts are up
+            # to sync. But we do it with notify turned off because we can not
+            # send any conflicting messages to this client (other clients that
+            # are idling do get any updates though.)
             #
-            if cmd.needs_continuation:
-                # In the case of a search cmd.msg_idxs is an integer that
-                # tells us how many messages to skip over.
+            await self.resync(notify=False)
+
+            uid_vv, uid_max = await self.get_uid_from_msg(msg_keys[-1])
+            if uid_vv is None or uid_max is None:
+                # Nothing should be able to modify the folder. If something has
+                # then let the upper level give the client the bad news.
                 #
-                msgs = msgs[cmd.msg_idxs :]
+                raise Bad(f"Mailbox {self.name}: During SEARCH folder modified")
 
             # Go through the messages one by one and pass them to the search
             # object to see if they are or are not in the result set..
             #
-            self.log.debug("Applying search to messages: %s" % str(search))
+            logger.debug(
+                "Mailbox: %s, applying search to messages: %s",
+                self.name,
+                str(search),
+            )
 
-            for idx, msg in enumerate(msgs):
+            for idx, msg_key in enumerate(msg_keys):
                 # IMAP messages are numbered starting from 1.
                 #
                 i = idx + 1
-                ctx = SearchContext(
-                    self, msg, i, seq_max, uid_max, self.sequences
+                ctx = await SearchContext.new(
+                    self, msg_key, i, seq_max, uid_max, self.sequences
                 )
                 if search.match(ctx):
                     # The UID SEARCH command returns uid's of messages
@@ -1880,42 +1902,6 @@ class Mailbox:
                         results.append(ctx.uid)
                     else:
                         results.append(i)
-
-                # If after processing that message we have exceeded how much
-                # time we may spend in a fetch we store how far we have gotten
-                # and set the 'needs_continuation' flag and break out of the
-                # loop. We will be invoked again and we will need to recognize
-                # this and pick up where we left off.
-                #
-                # XXX Going to say... 1 second.
-                #
-                # now = time.time()
-                # if now - search_started > 1:
-                #     cmd.needs_continuation = True
-                #     cmd.msg_idxs = i
-                #     cmd.search_results.extend(results)
-                #     self.log.debug("search: command took too long (%f), %d "
-                #                    "processed out of %d. %d processed this "
-                #                    "run. Marking as continuation and "
-                #                    "returning." %
-                #                    (now, len(cmd.search_results),
-                #                     original_len, len(results)))
-                #     return None
-                # else:
-                #     cmd.needs_continuation = False
-
-        finally:
-            # self.mailbox.unlock()
-            pass
-
-        # If our command has a non-empty list of search_results
-        # then it was previously a continued command (and it is now
-        # down..) Extend our results with what we have stashed in
-        # the command.
-        #
-        if len(cmd.search_results) > 0:
-            results.extend(cmd.search_results)
-
         return results
 
     #########################################################################
@@ -2044,7 +2030,7 @@ class Mailbox:
                     logger.warning(log_msg)
                     raise MailboxInconsistency(log_msg)
 
-                ctx = SearchContext(
+                ctx = await SearchContext.new(
                     self, msg_key, idx, seq_max, uid_max, self.sequences
                 )
                 fetched_flags = False

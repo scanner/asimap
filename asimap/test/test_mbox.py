@@ -20,7 +20,7 @@ from dirty_equals import IsNow
 #
 from ..exceptions import No
 from ..mbox import Mailbox
-from ..utils import UID_HDR
+from ..utils import UID_HDR, get_uidvv_uid
 from .conftest import assert_email_equal
 
 
@@ -38,7 +38,7 @@ async def assert_uids_match_msgs(msg_keys: List[int], mbox: Mailbox):
     assert len(msg_keys) == len(mbox.uids)
     for msg_key, uid in zip(msg_keys, mbox.uids):
         msg = await mbox.mailbox.aget_message(msg_key)
-        uid_vv, msg_uid = [int(x) for x in msg[UID_HDR].strip().split(".")]
+        uid_vv, msg_uid = get_uidvv_uid(msg)
         assert uid_vv == mbox.uid_vv
         assert uid == msg_uid
 
@@ -129,7 +129,6 @@ async def test_mailbox_init_with_messages(
     assert len(mbox.sequences["unseen"]) == len(msg_keys)
     assert mbox.sequences["unseen"] == msg_keys
     assert len(mbox.sequences["Seen"]) == 0
-    print(mbox.sequences)
     assert mbox.sequences["Recent"] == msg_keys
     await assert_uids_match_msgs(msg_keys, mbox)
 
@@ -417,7 +416,9 @@ async def test_mbox_resync_auto_pack(
     bunch_of_email_in_folder(sequence=range(1, 41))
 
     server = imap_user_server
+    Mailbox.FOLDER_SIZE_PACK_LIMIT = 20
     mbox = await Mailbox.new(NAME, server)
+
     msg_keys = list(range(1, 21))  # After pack it should be 1..20
     assert mbox.num_msgs == len(msg_keys)
     assert len(mbox.sequences["unseen"]) == len(msg_keys)
@@ -487,7 +488,7 @@ async def test_mbox_append(imap_user_server, email_factory):
     assert len(msg_keys) == 1
     msg_key = msg_keys[0]
     mhmsg = await mbox.mailbox.aget_message(msg_key)
-    uid_vv, msg_uid = [int(x) for x in mhmsg[UID_HDR].strip().split(".")]
+    uid_vv, msg_uid = get_uidvv_uid(mhmsg)
     assert mhmsg.get_sequences() == ["flagged", "unseen", "Recent"]
     assert mbox.sequences == {"flagged": [1], "unseen": [1], "Recent": [1]}
     assert msg_uid == uid
@@ -498,3 +499,62 @@ async def test_mbox_append(imap_user_server, email_factory):
     #
     del mhmsg[UID_HDR]
     assert_email_equal(msg, mhmsg)
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mbox_expunge_with_client(
+    bunch_of_email_in_folder, imap_user_server_and_client
+):
+    num_msgs_to_delete = 4
+    NAME = "inbox"
+    bunch_of_email_in_folder(folder=NAME)
+    server, imap_client_proxy = imap_user_server_and_client
+    mbox = await Mailbox.new(NAME, server)
+
+    # Mark messages for expunge.
+    #
+    msg_keys = await mbox.mailbox.akeys()
+    num_msgs = len(msg_keys)
+    seqs = await mbox.mailbox.aget_sequences()
+    for i in range(1, num_msgs_to_delete + 1):
+        seqs["Deleted"].append(msg_keys[i])
+
+    await mbox.mailbox.aset_sequences(seqs)
+
+    async with mbox.lock.read_lock():
+        await mbox.expunge(imap_client_proxy.cmd_processor)
+
+    results = [
+        y.strip() for x in imap_client_proxy.push.call_args_list for y in x.args
+    ]
+    assert results == [
+        "* 5 EXPUNGE",
+        "* 4 EXPUNGE",
+        "* 3 EXPUNGE",
+        "* 2 EXPUNGE",
+    ]
+    assert mbox.uids == [
+        1,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+    ]
+    msg_keys = await mbox.mailbox.akeys()
+    assert len(msg_keys) == num_msgs - num_msgs_to_delete
+    assert len(mbox.uids) == len(msg_keys)
+    seqs = await mbox.mailbox.aget_sequences()
+    assert "Delete" not in seqs

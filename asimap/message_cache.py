@@ -286,7 +286,7 @@ class MessageCache:
         """
         current done by a function in `mbox` but should we move it into here?
         """
-        pass
+        raise NotImplementedError()
 
     ##################################################################
     #

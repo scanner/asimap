@@ -11,10 +11,12 @@ structure.
 import logging
 import os.path
 from datetime import datetime
+from mailbox import MHMessage
 from typing import TYPE_CHECKING
 
 # 3rd party imports
 #
+import aiofiles
 import pytz
 
 # asimap imports
@@ -86,19 +88,27 @@ class SearchContext(object):
         self.msg_number = msg_number
         self.mailbox_sequences = sequences
         self.path = os.path.join(mailbox.mailbox._path, str(msg_key))
-        self.internal_date = datetime.fromtimestamp(
-            os.path.getmtime(self.path), pytz.UTC
-        )
+        self.internal_date: datetime
 
         # msg & uid are looked up and set ONLY if the search actually reaches
         # in to the message. We use read only attributes to fill in these
         # values.
         #
-        self._msg = None
+        self._msg: MHMessage
         self._uid_vv = None
         self._uid = None
         self._sequences = None
         return
+
+    ##################################################################
+    #
+    @classmethod
+    async def new(cls, *args, **kwargs) -> "SearchContext":
+        ctx = cls(*args, **kwargs)
+        ctx.internal_date = datetime.fromtimestamp(
+            await aiofiles.os.path.getmtime(ctx.path), pytz.UTC
+        )
+        return ctx
 
     ##################################################################
     #
