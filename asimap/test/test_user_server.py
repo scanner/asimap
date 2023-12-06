@@ -18,5 +18,8 @@ from ..user_server import IMAPUserServer
 @pytest.mark.asyncio
 async def test_user_server_instantiate(mh_folder):
     (mh_dir, _, _) = mh_folder()
-    user_server = await IMAPUserServer.new(mh_dir)
-    assert user_server
+    try:
+        user_server = await IMAPUserServer.new(mh_dir)
+        assert user_server
+    finally:
+        await user_server.shutdown()
