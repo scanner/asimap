@@ -97,7 +97,7 @@ def msg_as_string(msg: Message, headers: bool = True) -> str:
 
 ####################################################################
 #
-def msg_size(msg: Message, headers: bool = True) -> int:
+def get_msg_size(msg: Message, headers: bool = True) -> int:
     """
     We need to know the size of a message in octets in several different
     contexts. Our TextGenerator is what we use to flatten messages for sending

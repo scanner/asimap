@@ -25,7 +25,11 @@ import time
 from collections import defaultdict
 from functools import reduce
 from mailbox import MHMessage
-from typing import Dict, List, Tuple, TypeAlias
+from typing import Dict, List, Optional, Tuple, TypeAlias
+
+# Project imports
+#
+from .generator import get_msg_size
 
 logger = logging.getLogger("asimap.message_cache")
 CACHE_SIZE = 41_943_040  # Max cache size (in bytes) -- 40MiB
@@ -61,10 +65,6 @@ class MessageCache:
     #
     def __init__(self, max_size=CACHE_SIZE):
         """
-        Default size: 20mb
-
-        Arguments:
-
         - `max_size`: Limit in octets of how many messages we will
           store in the cache.
         """
@@ -190,7 +190,7 @@ class MessageCache:
         if mbox not in self.msgs_by_mailbox:
             self.msgs_by_mailbox[mbox] = []
 
-        msg_size = len(msg.as_string())
+        msg_size = get_msg_size(msg)
         self.cur_size += msg_size
         self.num_msgs += 1
         self.msgs_by_mailbox[mbox].append((msg_key, msg_size, msg, time.time()))
@@ -236,13 +236,13 @@ class MessageCache:
 
     ##################################################################
     #
-    def get(
+    def _get(
         self,
         mbox: str,
         msg_key: int,
         remove: bool = False,
         do_not_update: bool = False,
-    ):
+    ) -> Optional[CacheEntry]:
         """
         Get the message in the given mailbox under the given MH folder key.
 
@@ -270,7 +270,7 @@ class MessageCache:
             return None
 
         if do_not_update:
-            return result[2]
+            return result
 
         # If we did find our message then we remove it from the list and
         # append it to the end of the list, resetting its time.
@@ -282,7 +282,47 @@ class MessageCache:
         else:
             self.cur_size -= result[1]
             self.num_msgs -= 1
-        return result[2]
+        return result
+
+    ####################################################################
+    #
+    def get(
+        self,
+        mbox: str,
+        msg_key: int,
+        remove: bool = False,
+        do_not_update: bool = False,
+    ) -> Optional[MHMessage]:
+        """
+        Return the cached message or none.
+        """
+        result = self._get(
+            mbox, msg_key, remove=remove, do_not_update=do_not_update
+        )
+        if result:
+            return result[2]
+        else:
+            return None
+
+    ####################################################################
+    #
+    def get_msg_and_size(
+        self,
+        mbox: str,
+        msg_key: int,
+        remove: bool = False,
+        do_not_update: bool = False,
+    ) -> Optional[Tuple[MHMessage, int]]:
+        """
+        Return the cached message and its size as a tuple, or none.
+        """
+        result = self._get(
+            mbox, msg_key, remove=remove, do_not_update=do_not_update
+        )
+        if result:
+            return (result[2], result[1])
+        else:
+            return None
 
     ####################################################################
     #

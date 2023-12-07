@@ -1090,62 +1090,6 @@ class IMAPClientCommand(object):
             peek=peek,
         )
 
-        # if fetch_att_tok not in ("body", "body.peek"):
-        #     # a rfc822 fetch is turned in to a body[] fetch.
-        #     # a rfc822.header fetch is turned in to a body.peek[header] fetch.
-        #     # a rfc822.text fetch is turned in to a body[text] fetch.
-        #     #
-        #     if fetch_att_tok == "rfc822":
-        #         return FetchAtt("body", section=[], actual_command="RFC822")
-        #     elif fetch_att_tok == "rfc822.size":
-        #         return FetchAtt(fetch_att_tok)
-        #     elif fetch_att_tok == "rfc822.header":
-        #         return FetchAtt(
-        #             "body",
-        #             section=["header"],
-        #             peek=True,
-        #             actual_command="RFC822.HEADER",
-        #         )
-        #     elif fetch_att_tok == "rfc822.text":
-        #         return FetchAtt(
-        #             "body", section=["text"], actual_command="RFC822.TEXT"
-        #         )
-        #     else:
-        #         return FetchAtt(fetch_att_tok)
-
-        # if (
-        #     fetch_att_tok == "body"
-        #     and self._p_simple_string("[", silent=True, swallow=False) is None
-        # ):
-        #     return FetchAtt(
-        #         "bodystructure", ext_data=False, actual_command="BODY"
-        #     )
-
-        # if fetch_att_tok == "body.peek":
-        #     peek = True
-        #     fetch_att_tok = "body"
-        # else:
-        #     peek = False
-
-        # # Otherwise we must have a section. We must parse what section they
-        # # want to care about. It will either be one of several text strings or
-        # # it will be a list of numbers (which may be followed by one of several
-        # # text strings), all separated by '.'
-        # #
-        # section = self._p_section()
-
-        # # If the next character is a '<' then we have a 'partial' to parse.
-        # # Otherwise there is no partial and we are done parsing.
-        # #
-        # if self._p_simple_string("<", silent=True, swallow=False) is None:
-        #     return FetchAtt(fetch_att_tok, section=section, peek=peek)
-        # return FetchAtt(
-        #     fetch_att_tok,
-        #     section=section,
-        #     partial=self._p_partial(),
-        #     peek=peek,
-        # )
-
     #######################################################################
     #
     def _p_partial(self) -> Tuple[int, int]:
