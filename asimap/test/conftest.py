@@ -409,3 +409,10 @@ def mailbox_instance(bunch_of_email_in_folder, imap_user_server):
         return mbox
 
     return create_mailbox
+
+
+####################################################################
+#
+def static_email_factory():
+    """ """
+    pass

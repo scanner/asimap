@@ -1,7 +1,3 @@
-#!/usr/bin/env python
-#
-# File: $Id$
-#
 """
 Objects and functions to fetch elements of a message.  This is the
 module that does the heavy lifting of sending actual content of email
@@ -14,7 +10,6 @@ query and generate the body of the `FETCH` response IMAP message.
 import email.utils
 import logging
 from email.generator import Generator
-from email.header import Header
 from email.policy import SMTP
 from enum import StrEnum
 from io import StringIO
@@ -24,6 +19,7 @@ from typing import List, Optional, Tuple, Union
 #
 from .constants import seq_to_flag
 from .exceptions import Bad
+from .generator import HeaderGenerator, TextGenerator
 
 logger = logging.getLogger("asimap.fetch")
 
@@ -36,159 +32,6 @@ class BadSection(Bad):
 
     def __str__(self):
         return f"BadSection: {self.value}"
-
-
-############################################################################
-#
-class TextGenerator(Generator):
-    def __init__(self, outfp, headers=False):
-        """
-        This is a special purpose message generator.
-
-        We need a generator that can be used to represent the 'TEXT'
-        fetch attribute. When used on a multipart message it does not
-        render the headers of the message, but renders the headers of
-        every sub-part.
-
-        When used on a message that is not a multipart it just renders
-        the body.
-
-        We do this by having the 'clone()' method basically reverse
-        whether or not we should print the headers, and the _write()
-        method looks at that instance variable to decide if it should
-        print the headers or not.
-
-        outfp is the output file-like object for writing the message to.  It
-        must have a write() method.
-
-        """
-        Generator.__init__(self, outfp, policy=SMTP)
-        self._headers = headers
-
-    ####################################################################
-    #
-    def _write(self, msg):
-        # Just like the original _write in the Generator class except
-        # that we do not write the headers if self._headers is false.
-        #
-        if self._headers:
-            Generator.write(self, msg)
-        else:
-            self._dispatch(msg)
-
-    ####################################################################
-    #
-    def clone(self, fp, headers=True):
-        """Clone this generator with the exact same options."""
-        return self.__class__(fp, headers)
-
-
-############################################################################
-#
-def _is8bitstring(s):
-    if isinstance(s, str):
-        try:
-            str(s, "us-ascii")
-        except UnicodeError:
-            return True
-    return False
-
-
-############################################################################
-#
-class HeaderGenerator(Generator):
-    """
-    A generator that prints out only headers. If 'skip' is true,
-    then headers in the list 'headers' are NOT included in the
-    output.
-
-    If skip is False then only headers in the list 'headers' are
-    included in the output.
-
-    The default of headers = [] and skip = True will cause all
-    headers to be printed.
-
-    NOTE: Headers are compared in a case insensitive fashion so
-    'bCc' and 'bCC' and 'bcc' are all the same.
-    """
-
-    ####################################################################
-    #
-    def __init__(self, outfp, headers=[], skip=True):
-        self.log = logging.getLogger(
-            "%s.%s" % (__name__, self.__class__.__name__)
-        )
-        Generator.__init__(self, outfp)
-        self._headers = [x.lower() for x in headers]
-        self._skip = skip
-
-    ####################################################################
-    #
-    def clone(self, fp):
-        """Clone this generator with the exact same options."""
-        return self.__class__(fp, self._headers, self._skip)
-
-    ####################################################################
-    #
-    def _write(self, msg):
-        """
-        Just like the original _write in the Generator class except
-        that we do is write the headers.
-
-        Write the headers.  First we see if the message object wants to
-        handle that itself.  If not, we'll do it generically.
-        """
-        # XXX What messages have a headers method? Note that using the
-        #     message's '_write_headers' function will skip our header
-        #     field exclusion/inclusion rules.
-        #
-        meth = getattr(msg, "_write_headers", None)
-        if meth is None:
-            self._write_headers(msg)
-        else:
-            meth(self)
-
-    ####################################################################
-    #
-    def _write_headers(self, msg):
-        for h, v in list(msg.items()):
-            # Determine if we are supposed to skip this header or not.
-            #
-            if (self._skip and h.lower() in self._headers) or (
-                not self._skip and h.lower() not in self._headers
-            ):
-                continue
-
-            # Otherwise output this header.
-            #
-            print("%s:" % h, end=" ", file=self._fp)
-            if self._maxheaderlen == 0:
-                # Explicit no-wrapping
-                print(v, file=self._fp)
-            elif isinstance(v, Header):
-                # Header instances know what to do
-                print(v.encode(), file=self._fp)
-            elif _is8bitstring(v):
-                # If we have raw 8bit data in a byte string, we have no idea
-                # what the encoding is.  There is no safe way to split this
-                # string.  If it's ascii-subset, then we could do a normal
-                # ascii split, but if it's multibyte then we could break the
-                # string.  There's no way to know so the least harm seems to
-                # be to not split the string and risk it being too long.
-                print(v, file=self._fp)
-            else:
-                # Header's got lots of smarts, so use it.
-                print(
-                    Header(
-                        v,
-                        maxlinelen=self._maxheaderlen,
-                        header_name=h,
-                        continuation_ws="\t",
-                    ).encode(),
-                    file=self._fp,
-                )
-        # A blank line always separates headers from body
-        print(file=self._fp)
 
 
 ########################################################################
@@ -300,7 +143,7 @@ class FetchAtt(object):
 
     #######################################################################
     #
-    async def fetch(self, ctx):
+    async def fetch(self, ctx) -> str:
         r"""
         This method applies fetch criteria that this object represents
         to the message and message entry being passed in.
@@ -316,6 +159,7 @@ class FetchAtt(object):
         # Based on the operation figure out what subroutine does the rest
         # of the work.
         #
+        result: Union[str, int]
         match self.attribute:
             case FetchOp.BODY | FetchOp.BODYSTRUCTURE | FetchOp.ENVELOPE | FetchOp.RFC822_SIZE:
                 msg = await self.ctx.msg()
@@ -330,7 +174,7 @@ class FetchAtt(object):
                         fp = StringIO()
                         g = Generator(fp, mangle_from_=False, policy=SMTP)
                         g.flatten(self.ctx.msg)
-                        result = str(len(fp.getvalue()))
+                        result = len(fp.getvalue())
             case FetchOp.FLAGS:
                 flags = " ".join([seq_to_flag(x) for x in self.ctx.sequences])
                 result = f"({flags})"
@@ -339,7 +183,7 @@ class FetchAtt(object):
                 internal_date = int_date.strftime("%d-%b-%Y %H:%m:%S %z")
                 result = f'"{internal_date}"'
             case FetchOp.UID:
-                result = str(self.ctx.uid)
+                result = self.ctx.uid
             case _:
                 raise NotImplementedError
 
