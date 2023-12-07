@@ -1,7 +1,3 @@
-#!/usr/bin/env python
-#
-# File: $Id$
-#
 """
 This module contains the classes and structures that are used to parse an
 IMAP message received from an IMAP client in to structures and invocations of
@@ -15,7 +11,7 @@ import mailbox
 import os.path
 import re
 from enum import Enum
-from typing import Union
+from typing import List, Optional, Tuple, Union
 
 # 3rd party imports
 #
@@ -35,7 +31,7 @@ class BadCommand(Exception):
         self.value = value
 
     def __str__(self):
-        return "BadCommand: %s" % self.value
+        return f"BadCommand: {self.value}"
 
 
 #######################################################################
@@ -45,7 +41,7 @@ class NoMatch(BadCommand):
         self.value = value
 
     def __str__(self):
-        return "NoMatch: %s" % self.value
+        return f"NoMatch: {self.value}"
 
 
 #######################################################################
@@ -55,7 +51,7 @@ class UnknownCommand(BadCommand):
         self.value = value
 
     def __str__(self):
-        return "UnknownCommand: %s" % self.value
+        return f"UnknownCommand: {self.value}"
 
 
 #######################################################################
@@ -65,7 +61,7 @@ class BadLiteral(BadCommand):
         self.value = value
 
     def __str__(self):
-        return "BadLiteral: %s" % self.value
+        return f"BadLiteral: {self.value}"
 
 
 #######################################################################
@@ -75,7 +71,7 @@ class BadSyntax(BadCommand):
         self.value = value
 
     def __str__(self):
-        return "BadSyntax: %s" % self.value
+        return f"BadSyntax: {self.value}"
 
 
 #######################################################################
@@ -85,7 +81,7 @@ class UnknownSearchKey(BadCommand):
         self.value = value
 
     def __str__(self):
-        return "UnknownSearchKey: %s" % self.value
+        return f"UnknownSearchKey: {self.value}"
 
 
 #######################################################################
@@ -277,7 +273,7 @@ class IMAPClientCommand(object):
 
     #######################################################################
     #
-    def __init__(self, imap_command):
+    def __init__(self, imap_command: str):
         """
         Create the IMAPClientCommand object. This does NOT parse the string we
         were given, though. You need to call the 'parse()' method for that.
@@ -286,9 +282,9 @@ class IMAPClientCommand(object):
             "%s.%s" % (__name__, self.__class__.__name__)
         )
         self.input = imap_command
-        self.uid_command = False
+        self.uid_command: bool = False
         self.tag = None
-        self.command = None
+        self.command: Optional[str] = None
 
     ##################################################################
     #
@@ -979,7 +975,7 @@ class IMAPClientCommand(object):
 
     #######################################################################
     #
-    def _p_fetch_att(self):
+    def _p_fetch_att(self) -> FetchAtt:
         """fetch_att ::= "ENVELOPE" / "FLAGS" / "INTERNALDATE" /
                      "RFC822" [".HEADER" / ".SIZE" / ".TEXT"] /
                      "BODY" ["STRUCTURE"] / "UID" /
@@ -1081,7 +1077,7 @@ class IMAPClientCommand(object):
 
     #######################################################################
     #
-    def _p_partial(self):
+    def _p_partial(self) -> Tuple[int, int]:
         """An attribute being fetched can have a 'partial' section that
         indicates. It is a '<' integer '.' integer '>'. We will return the
         tuple of integers
@@ -1120,7 +1116,7 @@ class IMAPClientCommand(object):
         #
         # So, see if we have a list of numbers separated by '.'
         #
-        sect_list = []
+        sect_list: List[Union[int, str]] = []
         try:
             while True:
                 sect_list.append(int(self._p_re(_number_re)))
@@ -1758,8 +1754,13 @@ class IMAPClientCommand(object):
     #######################################################################
     #
     def _p_re(
-        self, regexp, silent=False, swallow=True, group=0, syntax_error=None
-    ):
+        self,
+        regexp: re.Pattern,
+        silent: bool = False,
+        swallow: bool = True,
+        group: int = 0,
+        syntax_error: Optional[str] = None,
+    ) -> Optional[str]:
         """This will attempt to match (ie: at the beginning of the string)
         the given regular expression with our current input string. If it
         matches it will return what matched. If 'silent' is False, and it did

@@ -16,27 +16,26 @@ import logging
 from email.generator import Generator
 from email.header import Header
 from email.policy import SMTP
+from enum import StrEnum
 from io import StringIO
+from typing import List, Optional, Tuple, Union
 
 # asimap imports
 #
-import asimap.constants
-import asimap.exceptions
-import asimap.utils
-
 from .constants import seq_to_flag
+from .exceptions import Bad
 
-# from kitchen.text.converters import to_bytes  XXX was used in py2
+logger = logging.getLogger("asimap.fetch")
 
 
 ############################################################################
 #
-class BadSection(asimap.exceptions.Bad):
+class BadSection(Bad):
     def __init__(self, value="bad 'section'"):
         self.value = value
 
     def __str__(self):
-        return "BadSection: %s" % self.value
+        return f"BadSection: {self.value}"
 
 
 ############################################################################
@@ -192,6 +191,25 @@ class HeaderGenerator(Generator):
         print(file=self._fp)
 
 
+########################################################################
+########################################################################
+#
+class FetchOp(StrEnum):
+    BODY = "body"
+    BODYSTRUCTURE = "bodystructure"
+    ENVELOPE = "envelope"
+    FLAGS = "flags"
+    INTERNALDATE = "internaldate"
+    RFC822_HEADER = "rfc822.header"
+    RFC822_SIZE = "rfc822.size"
+    RFC822_TEXT = "rfc822.text"
+    UID = "uid"
+
+
+STR_TO_FETCH_OP = {op_enum.value: op_enum for op_enum in FetchOp}
+
+
+############################################################################
 ############################################################################
 #
 class FetchAtt(object):
@@ -204,26 +222,16 @@ class FetchAtt(object):
     indicates.
     """
 
-    OP_BODY = "body"
-    OP_BODYSTRUCTURE = "bodystructure"
-    OP_ENVELOPE = "envelope"
-    OP_FLAGS = "flags"
-    OP_INTERNALDATE = "internaldate"
-    OP_RFC822_HEADER = "rfc822.header"
-    OP_RFC822_SIZE = "rfc822.size"
-    OP_RFC822_TEXT = "rfc822.text"
-    OP_UID = "uid"
-
     #######################################################################
     #
     def __init__(
         self,
-        attribute,
-        section=None,
-        partial=None,
-        peek=False,
-        ext_data=True,
-        actual_command=None,
+        attribute: FetchOp,
+        section: Optional[List[Union[int, str]]] = None,
+        partial: Optional[Tuple[int, int]] = None,
+        peek: bool = False,
+        ext_data: bool = True,
+        actual_command: Optional[str] = None,
     ):
         """
         Fill in the details of our FetchAtt object based on what we parse
@@ -234,10 +242,9 @@ class FetchAtt(object):
         self.partial = partial
         self.peek = peek
         self.ext_data = ext_data
-        if actual_command is None:
-            self.actual_command = self.attribute.upper()
-        else:
-            self.actual_command = actual_command
+        self.actual_command = (
+            actual_command if actual_command else self.attribute.value.upper()
+        )
         self.log = logging.getLogger(
             "%s.%s.%s" % (__name__, self.__class__.__name__, actual_command)
         )
@@ -245,11 +252,12 @@ class FetchAtt(object):
     #######################################################################
     #
     def __repr__(self):
-        return "FetchAtt(%s[%s]<%s>)" % (
-            self.attribute,
-            str(self.section),
-            str(self.partial),
-        )
+        result = [f"FetchAtt({self.attribute.value}"]
+        if self.section:
+            result.append(f"[{self.section}]")
+        if self.partial:
+            result.append(f"<{self.partial[0]}.{self.partial[1]}>")
+        return "".join(result)
 
     ##################################################################
     #
@@ -280,15 +288,14 @@ class FetchAtt(object):
                     # convert that to a proper string for our FETCH response.
                     #
                     if isinstance(s, (list, tuple)):
-                        sects.append(
-                            "%s (%s)"
-                            % (str(s[0]).upper(), " ".join(x for x in s[1]))
-                        )
+                        sect = str(s[0]).upper()
+                        paren = " ".join(x for x in s[1])
+                        sects.append(f"{sect} ({paren})")
                     else:
                         sects.append(str(s).upper())
-                result += "[%s]" % ".".join(sects)
+                result += "[{'.'.join(sects)}]"
             if self.partial:
-                result += "<%d.%d>" % (self.partial[0], self.partial[1])
+                result += "<{self.partial[0]}.{self.partial[1]}>"
         return result
 
     #######################################################################
@@ -310,29 +317,28 @@ class FetchAtt(object):
         # of the work.
         #
         match self.attribute:
-            case "body" | "bodystructure" | "envelope" | "rfc822.size":
+            case FetchOp.BODY | FetchOp.BODYSTRUCTURE | FetchOp.ENVELOPE | FetchOp.RFC822_SIZE:
                 msg = await self.ctx.msg()
                 match self.attribute:
-                    case "body":
+                    case FetchOp.BODY:
                         result = self.body(msg, self.section)
-                    case "bodystructure":
+                    case FetchOp.BODYSTRUCTURE:
                         result = self.bodystructure(msg)
-                    case "envelope":
+                    case FetchOp.ENVELOPE:
                         result = self.envelope(msg)
-                    case "rfc822.size":
+                    case FetchOp.RFC822_SIZE:
                         fp = StringIO()
                         g = Generator(fp, mangle_from_=False, policy=SMTP)
                         g.flatten(self.ctx.msg)
                         result = str(len(fp.getvalue()))
-            case "flags":
+            case FetchOp.FLAGS:
                 flags = " ".join([seq_to_flag(x) for x in self.ctx.sequences])
                 result = f"({flags})"
-            case "internaldate":
-                internal_date = self.ctx.internal_date.strftime(
-                    "%d-%b-%Y %H:%m:%S %z"
-                )
+            case FetchOp.INTERNALDATE:
+                int_date = await self.ctx.internal_date()
+                internal_date = int_date.strftime("%d-%b-%Y %H:%m:%S %z")
                 result = f'"{internal_date}"'
-            case "uid":
+            case FetchOp.UID:
                 result = str(self.ctx.uid)
             case _:
                 raise NotImplementedError

@@ -271,7 +271,7 @@ STR_TO_SEARCH_OP = {op_enum.value: op_enum for op_enum in SearchOp}
 
 
 ############################################################################
-#
+############################################################################
 #
 class IMAPSearch(object):
     """THis is an IMAPSearch object. It can instantiate all the possible
