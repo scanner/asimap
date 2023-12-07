@@ -304,12 +304,12 @@ class IMAPSearch(object):
     #########################################################################
     #
     def __repr__(self):
-        return "IMAPSearch, operation: {self.op.value}"
+        return f"IMAPSearch, operation: {self.op.value}"
 
     #########################################################################
     #
     def __str__(self):
-        result = ["IMAPSearch('{self.op.value}'"]
+        result = [f"IMAPSearch('{self.op.value}'"]
         match self.op:
             case SearchOp.AND | SearchOp.OR:
                 elt: List[str] = []
@@ -381,7 +381,7 @@ class IMAPSearch(object):
         # We look up the method on ourselves that is the search op we
         # are to perform and we call that operation.
         #
-        return await getattr(self, "_match_{self.op.value}")()
+        return await getattr(self, f"_match_{self.op.value}")()
 
     #########################################################################
     #########################################################################

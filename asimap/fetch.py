@@ -55,7 +55,7 @@ STR_TO_FETCH_OP = {op_enum.value: op_enum for op_enum in FetchOp}
 ############################################################################
 ############################################################################
 #
-class FetchAtt(object):
+class FetchAtt:
     """
     This object contains the parsed out elements of a fetch command that
     specify an attribute to pull out of a message.
@@ -136,9 +136,9 @@ class FetchAtt(object):
                         sects.append(f"{sect} ({paren})")
                     else:
                         sects.append(str(s).upper())
-                result += "[{'.'.join(sects)}]"
+                result += f"[{'.'.join(sects)}]"
             if self.partial:
-                result += "<{self.partial[0]}.{self.partial[1]}>"
+                result += f"<{self.partial[0]}.{self.partial[1]}>"
         return result
 
     #######################################################################
