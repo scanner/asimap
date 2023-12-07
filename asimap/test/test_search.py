@@ -50,3 +50,4 @@ async def test_search_context(mailbox_instance):
             assert_email_equal(mhmsg, await ctx.msg())
             assert uid == await ctx.uid()
             assert uid_vv == await ctx.uid_vv()
+            assert len((await ctx.msg()).as_string()) == await ctx.msg_size()

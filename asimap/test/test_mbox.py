@@ -558,3 +558,16 @@ async def test_mbox_expunge_with_client(
     assert len(mbox.uids) == len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
     assert "Delete" not in seqs
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mailbox_search(imap_user_server):
+    """
+    We can create a Mailbox object instance.
+    """
+    server = imap_user_server
+    NAME = "inbox"
+    mbox = await Mailbox.new(NAME, server)
+    assert mbox

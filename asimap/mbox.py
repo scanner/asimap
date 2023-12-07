@@ -598,13 +598,15 @@ class Mailbox:
                     # Given these two references to a message choose the lower
                     # of the two and scan from that point forward.
                     #
-                    first_new_task = self._find_first_new_message(
-                        msg_keys, horizon=30
-                    )
-                    first_wo_uid_task = self._find_msg_without_uidvv(msg_keys)
-                    first_new_msg, first_msg_wo_uid = await asyncio.gather(
-                        first_new_task, first_wo_uid_task
-                    )
+                    async with asyncio.TaskGroup() as tg:
+                        first_new_task = tg.create_task(
+                            self._find_first_new_message(msg_keys, horizon=30)
+                        )
+                        first_wo_uid_task = tg.create_task(
+                            self._find_msg_without_uidvv(msg_keys)
+                        )
+                    first_new_msg = first_new_task.result()
+                    first_msg_wo_uid = first_wo_uid_task.result()
 
                     # If either of these is NOT None then we have some subset
                     # of messages we need to scan. If both of these ARE None

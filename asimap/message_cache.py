@@ -30,6 +30,10 @@ from typing import Dict, List, Tuple, TypeAlias
 logger = logging.getLogger("asimap.message_cache")
 CACHE_SIZE = 41_943_040  # Max cache size (in bytes) -- 40MiB
 
+# CacheEntry members are:
+#
+#    msg_key: int, msg_size:int, msg: MHMessage, time: float
+#
 CacheEntry: TypeAlias = Tuple[int, int, MHMessage, float]
 
 
