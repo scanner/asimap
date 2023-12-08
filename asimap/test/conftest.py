@@ -9,11 +9,12 @@ import json
 import ssl
 import threading
 import time
+from email.header import decode_header
 from email.headerregistry import Address
 from email.message import EmailMessage
 from mailbox import MH, MHMessage
 from pathlib import Path
-from typing import Iterable, Optional, Union
+from typing import Iterable, List, Optional, Union
 
 # 3rd party imports
 #
@@ -39,6 +40,27 @@ REPLACE_LINESEP = {ord("\r"): None, ord("\n"): None}
 
 ####################################################################
 #
+def decode_headers(headers: List[str]) -> List[str]:
+    """
+    Given a list of headers, decode each of them. If, after decoding, make
+    sure that they are decoded back in to strings if they were encoded
+    """
+    result: List[str] = []
+    for hdr in headers:
+        h = decode_header(hdr)
+        tb = []
+        for th, encoding in h:
+            if encoding is not None:
+                hdr_text = str(th, encoding)
+            else:
+                hdr_text = th
+            tb.append(hdr_text)
+        result.append("".join(tb))
+    return result
+
+
+####################################################################
+#
 def assert_email_equal(msg1, msg2, ignore_headers=False):
     """
     Because we can not directly compare a Message and EmailMessage object
@@ -51,8 +73,8 @@ def assert_email_equal(msg1, msg2, ignore_headers=False):
         assert len(msg1.keys()) == len(msg2.keys())
         keys = set(msg1.keys())
         for header in sorted(list(keys)):
-            value1 = msg1.get_all(header, failobj=[])
-            value2 = msg2.get_all(header, failobj=[])
+            value1 = decode_headers(msg1.get_all(header, failobj=[]))
+            value2 = decode_headers(msg2.get_all(header, failobj=[]))
             value1 = sorted(
                 [x.translate(REPLACE_LINESEP).strip() for x in value1]
             )

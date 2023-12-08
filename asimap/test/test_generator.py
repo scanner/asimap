@@ -1,16 +1,16 @@
 """
 Fetch.. the part that gets various bits and pieces of messages.
 """
-from email.generator import Generator
-
 # System imports
 #
+from email.generator import Generator
+from email.policy import SMTP
 from io import StringIO
 from mailbox import MHMessage
 
 # Project imports
 #
-from ..generator import SMTP_NONE_FOLD, msg_as_string, msg_headers_as_string
+from ..generator import msg_as_string, msg_headers_as_string
 
 
 ####################################################################
@@ -25,7 +25,7 @@ def test_text_generator_no_headers(email_factory, static_email_factory):
     # skip headers. NOTE: rfc822 emails have `\r\n` as their line ends.
     #
     fp = StringIO()
-    g = Generator(fp, mangle_from_=False, policy=SMTP_NONE_FOLD)
+    g = Generator(fp, mangle_from_=False, policy=SMTP)
     g.flatten(msg)
     rfc822_text = fp.getvalue()
 
@@ -42,7 +42,7 @@ def test_text_generator_no_headers(email_factory, static_email_factory):
         msg_text = msg_as_string(msg, headers=False)
 
         fp = StringIO()
-        g = Generator(fp, mangle_from_=False, policy=SMTP_NONE_FOLD)
+        g = Generator(fp, mangle_from_=False, policy=SMTP)
         g.flatten(msg)
         rfc822_text = fp.getvalue()
 
@@ -59,13 +59,13 @@ def test_text_generator_no_headers(email_factory, static_email_factory):
 def test_text_generator_headers(email_factory, static_email_factory):
     """
     A message with headers is the same as the default generator with
-    policy=SMTP_NONE_FOLD.
+    policy=SMTP.
     """
     msg = MHMessage(email_factory())
     msg_text = msg_as_string(msg, headers=True)
 
     fp = StringIO()
-    g = Generator(fp, mangle_from_=False, policy=SMTP_NONE_FOLD)
+    g = Generator(fp, mangle_from_=False, policy=SMTP)
     g.flatten(msg)
     rfc822_text = fp.getvalue()
 
@@ -75,7 +75,7 @@ def test_text_generator_headers(email_factory, static_email_factory):
         msg = MHMessage(orig_msg_text)
         msg_text = msg_as_string(msg, headers=True)
         fp = StringIO()
-        g = Generator(fp, mangle_from_=False, policy=SMTP_NONE_FOLD)
+        g = Generator(fp, mangle_from_=False, policy=SMTP)
         g.flatten(msg)
         rfc822_text = fp.getvalue()
 
@@ -94,7 +94,7 @@ def test_header_generator_all_headers(email_factory, static_email_factory):
     # skip headers. NOTE: rfc822 emails have `\r\n` as their line ends.
     #
     fp = StringIO()
-    g = Generator(fp, mangle_from_=False, policy=SMTP_NONE_FOLD)
+    g = Generator(fp, mangle_from_=False, policy=SMTP)
     g.flatten(msg)
     rfc822_text = fp.getvalue()
 
@@ -111,7 +111,7 @@ def test_header_generator_all_headers(email_factory, static_email_factory):
         headers = msg_headers_as_string(msg)
 
         fp = StringIO()
-        g = Generator(fp, mangle_from_=False, policy=SMTP_NONE_FOLD)
+        g = Generator(fp, mangle_from_=False, policy=SMTP)
         g.flatten(msg)
         rfc822_text = fp.getvalue()
 
@@ -198,16 +198,18 @@ def test_header_generator_skip_headers(lots_of_headers_email):
     expected = """Return-Path: <jang.abcdef@xyzlinux12345678.it>\r
 Delivered-To: jang12@linux12.org.new\r
 Received: (qmail 21619 invoked from network); 15 Nov 2017 14:16:18 -0000\r
-Received: from unknown (HELO EUR01-HE1-obe.outbound.protection.outlook.com) (80.68.177.35)\r
-  by  with SMTP; 15 Nov 2017 14:16:18 -0000\r
+Received: from unknown (HELO EUR01-HE1-obe.outbound.protection.outlook.com)\r
+ (80.68.177.35)  by  with SMTP; 15 Nov 2017 14:16:18 -0000\r
 Received: from mail-he1eur01on0133.outbound.protection.outlook.com\r
 \t([104.47.0.133] helo=EUR01-HE1-obe.outbound.protection.outlook.com) by\r
 \tmyassp01.mynet.it with SMTP (2.5.5); 15 Nov 2017 15:16:20 +0100\r
 DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;\r
  d=CMMSRL.onmicrosoft.com; s=selector1-cmmlaser-it;\r
  h=From:Date:Subject:Message-ID:Content-Type:MIME-Version;\r
- bh=JmZzBMD0RLaOTuqX/VlM86EEKHsfeOF0B0kBWE4fKBY=;\r
- b=h65Qop22nh21H30A/T/T47dDaCkb70hySSaJfJCzh+0E2A41BTqlUT7Y3c80Kf6zc5Totg4Kmuub2P8r/Fj30rIiQP5EXW+/caFvHtXEQjZXeuWYRfBweASqK5/1ClHkY3SBgnw3dEuAhlIDzid6M/5YxuJqzn6d/mKvmjV2Ju0=\r
+ bh=JmZzBMD0RLaOTuqX/VlM86EEKHsfeOF0B0kBWE4fKBY=; =?utf-8?q?b=3Dh65Qop22nh21?=\r
+ =?utf-8?q?H30A/T/T47dDaCkb70hySSaJfJCzh+0E2A41BTqlUT7Y3c80Kf6zc5Totg4Kmuub2?=\r
+ =?utf-8?q?P8r/Fj30rIiQP5EXW+/caFvHtXEQjZXeuWYRfBweASqK5/1ClHkY3SBgnw3dEuAhl?=\r
+ =?utf-8?q?IDzid6M/5YxuJqzn6d/mKvmjV2Ju0=3D?=\r
 Received: from AM4PR01MB1444.eurprd01.prod.exchangelabs.com (10.164.76.26) by\r
  AM4PR01MB1442.eurprd01.prod.exchangelabs.com (10.164.76.24) with Microsoft\r
  SMTP Server (version=TLS1_2,\r
@@ -221,12 +223,16 @@ From: jang.abcdef@xyzlinu <jang.abcdef@xyzlinux12345678.it>\r
 To: "jang12@linux12.org.new" <jang12@linux12.org.new>\r
 Subject: R: R: R: I: FR-selca LA selcaE\r
 Thread-Topic: R: R: I: FR-selca LA selcaE\r
-Thread-Index: AdNST+6DXK4xfZYaRzuyUbaIacENgAHGVF+AAACaRUAAAhGDmgAASt6QACm+BjkA/3MzkAAAPw7yAAA7j6A=\r
+Thread-Index: =?utf-8?q?AdNST+6DXK4xfZYaRzuyUbaIacENgAHGVF+AAACaRUAAAhGDmgAA?=\r
+ =?utf-8?q?St6QACm+BjkA/3MzkAAAPw7yAAA7j6A=3D?=\r
 Date: Wed, 15 Nov 2017 14:16:14 +0000\r
 Message-ID: <AM4PR01MB1444B3F21AE7DA9C8128C28FF7290@AM4PR01MB1444.eurprd01.prod.exchangelabs.com>\r
-References: <AM4PR01MB1444920F2AF5B6F4856FEA13F7290@AM4PR01MB1444.eurprd01.prod.exchangelabs.com>\r
- <5185e377-81c5-4361-91ba-11d42f4c5cc9@AM5EUR02FT056.eop-EUR02.prod.protection.outlook.com>\r
-In-Reply-To: <5185e377-81c5-4361-91ba-11d42f4c5cc9@AM5EUR02FT056.eop-EUR02.prod.protection.outlook.com>\r
+References: =?utf-8?q?=3CAM4PR01MB1444920F2AF5B6F4856FEA13F7290=40AM4PR01MB1?=\r
+ =?utf-8?q?444=2Eeurprd01=2Eprod=2Eexchangelabs=2Ecom=3E_=3C5185e377-81c5-43?=\r
+ =?utf-8?q?61-91ba-11d42f4c5cc9=40AM5EUR02FT056=2Eeop-EUR02=2Eprod=2Eprotect?=\r
+ =?utf-8?q?ion=2Eoutlook=2Ecom=3E?=\r
+In-Reply-To: =?utf-8?q?=3C5185e377-81c5-4361-91ba-11d42f4c5cc9=40AM5EUR02FT0?=\r
+ =?utf-8?q?56=2Eeop-EUR02=2Eprod=2Eprotection=2Eoutlook=2Ecom=3E?=\r
 Accept-Language: it-IT, en-US\r
 Content-Language: it-IT\r
 authentication-results: spf=none (sender IP is )\r
