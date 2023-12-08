@@ -12,9 +12,12 @@ import asyncio
 import logging
 import os.path
 from datetime import datetime, timezone
+from email import message_from_string
+from email.message import EmailMessage
+from email.policy import SMTP
 from enum import StrEnum
 from mailbox import MHMessage
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, cast
 
 # 3rd party imports
 #
@@ -24,6 +27,7 @@ import aiofiles
 #
 from .constants import flag_to_seq
 from .exceptions import MailboxInconsistency
+from .generator import msg_as_string
 from .utils import UID_HDR, get_uidvv_uid, parsedate
 
 if TYPE_CHECKING:
@@ -96,6 +100,7 @@ class SearchContext(object):
         #
         self._internal_date: Optional[datetime] = None
         self._msg: Optional[MHMessage] = None
+        self._email_msg: Optional[EmailMessage] = None
         self._msg_size: Optional[int] = None
         self._uid_vv: Optional[int] = None
         self._uid: Optional[int] = None
@@ -181,6 +186,26 @@ class SearchContext(object):
                         mbox_name=self.mailbox.name, msg_key=self.msg_key
                     )
         return self._msg
+
+    ####################################################################
+    #
+    async def email_message(self) -> EmailMessage:
+        """
+        When operating on the message itself during FETCH operations an
+        EmailMessage is more modern and easier to work with, so this method
+        will re-parse the message into an EmailMessage.
+
+        NOTE: Why do we have to do this? Because use the MHMessage's sequence
+              features and that is by force an email.Message.
+        """
+        if self._email_msg:
+            return self._email_msg
+
+        self._email_msg = cast(
+            EmailMessage,
+            message_from_string(msg_as_string(await self.msg()), policy=SMTP),
+        )
+        return self._email_msg
 
     ##################################################################
     #

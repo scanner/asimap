@@ -4,6 +4,7 @@ Test `SearchContext` and `IMAPSearch`
 # System imports
 #
 from datetime import timezone
+from email.message import EmailMessage
 
 # 3rd party imports
 #
@@ -52,3 +53,6 @@ async def test_search_context(mailbox_instance):
             assert uid == await ctx.uid()
             assert uid_vv == await ctx.uid_vv()
             assert get_msg_size(mhmsg) == await ctx.msg_size()
+            email_msg = await ctx.email_message()
+            assert isinstance(email_msg, EmailMessage)
+            assert_email_equal(mhmsg, email_msg)
