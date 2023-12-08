@@ -104,10 +104,8 @@ def get_msg_size(msg: Message, headers: bool = True) -> int:
     to IMAP clients, so we want to also use it to be the canonical description
     of a message's size.
     """
-    fp = StringIO()
-    g = TextGenerator(fp, mangle_from_=False, headers=headers)
-    g.flatten(msg)
-    return len(fp.getvalue())
+    msg_str = msg_as_string(msg, headers=headers)
+    return len(msg_str)
 
 
 ############################################################################
@@ -136,7 +134,7 @@ class HeaderGenerator(Generator):
         *args,
         headers: Optional[List[str]] = None,
         skip: bool = True,
-        **kwargs
+        **kwargs,
     ):
         self._mangle_from_: bool
         self.policy: Policy
@@ -242,13 +240,14 @@ class HeaderGenerator(Generator):
             # Determine if we are supposed to skip this header or not.
             #
             hdr = h.lower()
-            if (self._skip and hdr in self._headers) or (
-                not self._skip and hdr not in self._headers
-            ):
+            if self._skip and hdr in self._headers:
                 continue
-
+            if not self._skip and hdr not in self._headers:
+                continue
             self.write(self.policy.fold(h, v))
         # A blank line always separates headers from body
+        # and this is always included in our response to IMAP clients.
+        #
         self.write(self._NL)
 
 

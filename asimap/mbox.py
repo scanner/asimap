@@ -1030,6 +1030,11 @@ class Mailbox:
         del msg[UID_HDR]
         msg[UID_HDR] = f"{self.uid_vv:010d}.{new_uid:010d}"
 
+        # NOTE: The message size has changed! If the message is in the cache
+        #       update the cached message size.
+        #
+        _ = self.server.msg_cache.get(self.name, msg_key, update_size=True)
+
         # NOTE: The following call will write the .mh_sequences file for this
         #       folder. We may want to check to make sure that the sequences we
         #       have for this message and the folder are in agreement (they

@@ -127,11 +127,17 @@ class SearchContext(object):
         if self._msg_size:
             return self._msg_size
 
-        msg = await self.msg()
-        # XXX We should probabl get this from the message cache instead of
-        #     calculating this twice.
+        # Just to make sure that the message is cached.
         #
-        self._msg_size = len(msg.as_string())
+        _ = await self.msg()
+
+        # Do not waste time updating the LRU. We just did that.
+        #
+        result = self.mailbox.server.msg_cache.get_msg_and_size(
+            self.mailbox.name, self.msg_key, do_not_update=True
+        )
+        assert result
+        self._msg_size = int(result[1])
         return self._msg_size
 
     ##################################################################

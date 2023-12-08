@@ -413,6 +413,25 @@ def mailbox_instance(bunch_of_email_in_folder, imap_user_server):
 
 ####################################################################
 #
+@pytest.fixture
 def static_email_factory():
-    """ """
-    pass
+    """
+    `email_factory` is good for a number of things but we want some tests
+    with fixed inputs that have a richer variety of input.
+
+    We have a bunch of pre-generated emails from MimeKit. This fixture will
+    yield those messages as strings.
+    """
+    dir = Path(__file__).parent / "fixtures" / "mhdir" / "one"
+    return (msg_file.read_text() for msg_file in dir.iterdir())
+
+
+####################################################################
+#
+@pytest.fixture
+def lots_of_headers_email():
+    """
+    Just get one email with lots of headers.
+    """
+    msg_file = Path(__file__).parent / "fixtures" / "mhdir" / "one" / "16"
+    return msg_file.read_text()

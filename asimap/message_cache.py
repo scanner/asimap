@@ -151,7 +151,7 @@ class MessageCache:
 
     ##################################################################
     #
-    def add(self, mbox, msg_key, msg):
+    def add(self, mbox: str, msg_key: int, msg: MHMessage):
         """
         Add the given message to the given mailbox's cache.
 
@@ -242,6 +242,7 @@ class MessageCache:
         msg_key: int,
         remove: bool = False,
         do_not_update: bool = False,
+        update_size: bool = False,
     ) -> Optional[CacheEntry]:
         """
         Get the message in the given mailbox under the given MH folder key.
@@ -277,7 +278,14 @@ class MessageCache:
         #
         self.msgs_by_mailbox[mbox].remove(result)
         if not remove:
-            result = (result[0], result[1], result[2], time.time())
+            msg = result[2]
+            if update_size:
+                msg_size = get_msg_size(msg)
+                self.cur_size -= result[1]
+                self.cur_size += msg_size
+            else:
+                msg_size = result[1]
+            result = (result[0], msg_size, result[2], time.time())
             self.msgs_by_mailbox[mbox].append(result)
         else:
             self.cur_size -= result[1]
@@ -292,12 +300,17 @@ class MessageCache:
         msg_key: int,
         remove: bool = False,
         do_not_update: bool = False,
+        update_size: bool = False,
     ) -> Optional[MHMessage]:
         """
         Return the cached message or none.
         """
         result = self._get(
-            mbox, msg_key, remove=remove, do_not_update=do_not_update
+            mbox,
+            msg_key,
+            remove=remove,
+            do_not_update=do_not_update,
+            update_size=update_size,
         )
         if result:
             return result[2]
@@ -312,12 +325,17 @@ class MessageCache:
         msg_key: int,
         remove: bool = False,
         do_not_update: bool = False,
+        update_size: bool = False,
     ) -> Optional[Tuple[MHMessage, int]]:
         """
         Return the cached message and its size as a tuple, or none.
         """
         result = self._get(
-            mbox, msg_key, remove=remove, do_not_update=do_not_update
+            mbox,
+            msg_key,
+            remove=remove,
+            do_not_update=do_not_update,
+            update_size=update_size,
         )
         if result:
             return (result[2], result[1])
