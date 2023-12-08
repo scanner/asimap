@@ -435,3 +435,36 @@ def lots_of_headers_email():
     """
     msg_file = Path(__file__).parent / "fixtures" / "mhdir" / "one" / "16"
     return msg_file.read_text()
+
+
+####################################################################
+#
+@pytest.fixture
+def big_static_email():
+    """
+    A message with lots of parts with encodings. Mainly so we can test more
+    complicated `FETCH` commands.
+    """
+    msg_file = Path(__file__).parent / "fixtures" / "mhdir" / "one" / "10"
+    return msg_file.read_text()
+
+
+####################################################################
+#
+@pytest_asyncio.fixture
+async def mailbox_with_big_static_email(
+    mh_folder, big_static_email, imap_user_server
+):
+    """
+    Fixture for making `FETCH` tests a little easier.
+    There will be _1_ message in the Mailbox `inbox`
+    The mailbox is what this fixture returns.
+    """
+    NAME = "inbox"
+    server = imap_user_server
+    (mh_dir, _, m_folder) = mh_folder(NAME)
+    msg = MHMessage(big_static_email)
+    msg.add_sequence("unseen")
+    m_folder.add(msg)
+    mbox = await Mailbox.new(NAME, server)
+    return mbox

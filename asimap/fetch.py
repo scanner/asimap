@@ -176,10 +176,7 @@ class FetchAtt:
                     case FetchOp.ENVELOPE:
                         result = self.envelope(msg)
                     case FetchOp.RFC822_SIZE:
-                        fp = StringIO()
-                        g = Generator(fp, mangle_from_=False, policy=SMTP)
-                        g.flatten(self.ctx.msg)
-                        result = len(fp.getvalue())
+                        result = await ctx.msg_size()
             case FetchOp.FLAGS:
                 flags = " ".join([seq_to_flag(x) for x in self.ctx.sequences])
                 result = f"({flags})"
