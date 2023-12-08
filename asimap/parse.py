@@ -941,35 +941,36 @@ class IMAPClientCommand(object):
                 # list of fetch atts.
                 #
                 macro = macro.lower()
-                if macro == "all":
-                    return [
-                        FetchAtt("flags"),
-                        FetchAtt("internaldate"),
-                        FetchAtt("rfc822.size"),
-                        FetchAtt("envelope"),
-                    ]
-                elif macro == "full":
-                    return [
-                        FetchAtt("flags"),
-                        FetchAtt("internaldate"),
-                        FetchAtt("rfc822.size"),
-                        FetchAtt("envelope"),
-                        FetchAtt(
-                            "bodystructure",
-                            ext_data=False,
-                            actual_command="BODY",
-                        ),
-                    ]
-                elif macro == "fast":
-                    return [
-                        FetchAtt("flags"),
-                        FetchAtt("internaldate"),
-                        FetchAtt("rfc822.size"),
-                    ]
-                else:
-                    raise BadSyntax(
-                        value='"%s" is not a valid fetch ' "attribute"
-                    )
+                match macro:
+                    case "all":
+                        return [
+                            FetchAtt(FetchOp.FLAGS),
+                            FetchAtt(FetchOp.INTERNALDATE),
+                            FetchAtt(FetchOp.RFC822_SIZE),
+                            FetchAtt(FetchOp.ENVELOPE),
+                        ]
+                    case "full":
+                        return [
+                            FetchAtt(FetchOp.FLAGS),
+                            FetchAtt(FetchOp.INTERNALDATE),
+                            FetchAtt(FetchOp.RFC822_SIZE),
+                            FetchAtt(FetchOp.ENVELOPE),
+                            FetchAtt(
+                                FetchOp.BODYSTRUCTURE,
+                                ext_data=False,
+                                actual_command="BODY",
+                            ),
+                        ]
+                    case "fast":
+                        return [
+                            FetchAtt(FetchOp.FLAGS),
+                            FetchAtt(FetchOp.INTERNALDATE),
+                            FetchAtt(FetchOp.RFC822_SIZE),
+                        ]
+                    case _:
+                        raise BadSyntax(
+                            value=f'"{macro}" is not a valid fetch attribute'
+                        )
             else:
                 # Otherwise we have what MUST be a single fetch attribute.
                 return [self._p_fetch_att()]
@@ -1004,11 +1005,12 @@ class IMAPClientCommand(object):
         that can have several followon bits of information.
         """
 
-        fetch_att_tok = self._p_re(_fetch_att_atom_re).lower()
-        if fetch_att_tok is None or fetch_att_tok not in fetch_atts:
+        fetch_att_tok = self._p_re(_fetch_att_atom_re)
+        if fetch_att_tok is None or fetch_att_tok.lower() not in fetch_atts:
             raise BadSyntax(
                 "'%s' is not a valid FETCH argument" % fetch_att_tok
             )
+        fetch_att_tok = fetch_att_tok.lower()
 
         # XXX NOTE, our turning things from shortcuts to their
         # underlying representation we need to store the actual
@@ -1048,7 +1050,7 @@ class IMAPClientCommand(object):
                 case _:
                     return FetchAtt(STR_TO_FETCH_OP[fetch_att_tok])
 
-        # If we have `BODY` and not `BODY[...` then treat this as a
+        # If we have `BODY` and the next character is NOT `[` then this is
         # `BODYSTRUCTURE`
         #
         if (
@@ -1098,9 +1100,13 @@ class IMAPClientCommand(object):
         tuple of integers
         """
         self._p_simple_string("<")
-        start = int(self._p_re(_number_re))
+        r = self._p_re(_number_re)
+        assert r
+        start = int(r)
         self._p_simple_string(".")
-        end = int(self._p_re(_number_re))
+        r = self._p_re(_number_re)
+        assert r
+        end = int(r)
         self._p_simple_string(">")
         return (start, end)
 

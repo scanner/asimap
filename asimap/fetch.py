@@ -37,9 +37,12 @@ class BadSection(Bad):
 ########################################################################
 ########################################################################
 #
+# Note that the order is important. We need to match the longest strings with
+# the common prefix first to insure that we fully match the proper keyword (ie:
+# if we look for 'rfc822' first we will incorrectly not identify a
+# 'rfc822.text')
+#
 class FetchOp(StrEnum):
-    BODY = "body"
-    BODYSTRUCTURE = "bodystructure"
     ENVELOPE = "envelope"
     FLAGS = "flags"
     INTERNALDATE = "internaldate"
@@ -47,6 +50,8 @@ class FetchOp(StrEnum):
     RFC822_SIZE = "rfc822.size"
     RFC822_TEXT = "rfc822.text"
     UID = "uid"
+    BODYSTRUCTURE = "bodystructure"
+    BODY = "body"
 
 
 STR_TO_FETCH_OP = {op_enum.value: op_enum for op_enum in FetchOp}
