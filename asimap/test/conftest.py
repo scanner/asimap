@@ -459,7 +459,7 @@ def static_email_factory():
     yield those messages as strings.
     """
     dir = Path(__file__).parent / "fixtures" / "mhdir" / "one"
-    return (msg_file.read_text() for msg_file in dir.iterdir())
+    return (msg_file.read_text() for msg_file in sorted(dir.iterdir()))
 
 
 ####################################################################
@@ -502,5 +502,26 @@ async def mailbox_with_big_static_email(
     msg = MHMessage(big_static_email)
     msg.add_sequence("unseen")
     m_folder.add(msg)
+    mbox = await Mailbox.new(NAME, server)
+    return mbox
+
+
+####################################################################
+#
+@pytest_asyncio.fixture
+async def mailbox_with_mimekit_email(
+    mh_folder, static_email_factory, imap_user_server
+):
+    """
+    Create a mailbox filled with all of our static email fixtures
+    (originally all from the MimeKit fixture test data)
+    """
+    NAME = "inbox"
+    server = imap_user_server
+    (mh_dir, _, m_folder) = mh_folder(NAME)
+    for msg_text in static_email_factory:
+        msg = MHMessage(msg_text)
+        msg.add_sequence("unseen")
+        m_folder.add(msg)
     mbox = await Mailbox.new(NAME, server)
     return mbox
