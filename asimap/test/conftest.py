@@ -34,6 +34,8 @@ from ..user_server import (
 )
 from .factories import UserFactory
 
+REPLACE_LINESEP = {ord("\r"): None, ord("\n"): None}
+
 
 ####################################################################
 #
@@ -46,10 +48,18 @@ def assert_email_equal(msg1, msg2, ignore_headers=False):
     # Compare all headers, unless we are ignoring them.
     #
     if ignore_headers is False:
-        assert len(msg1.items()) == len(msg2.items())
-        for header, value in msg1.items():
-            value = value.replace("\n", "")
-            assert msg2[header].replace("\n", "") == value
+        assert len(msg1.keys()) == len(msg2.keys())
+        keys = set(msg1.keys())
+        for header in sorted(list(keys)):
+            value1 = msg1.get_all(header, failobj=[])
+            value2 = msg2.get_all(header, failobj=[])
+            value1 = sorted(
+                [x.translate(REPLACE_LINESEP).strip() for x in value1]
+            )
+            value2 = sorted(
+                [x.translate(REPLACE_LINESEP).strip() for x in value2]
+            )
+            assert value1 == value2
 
     # If we are ignoring only some headers, then skip those.
     #
@@ -65,7 +75,9 @@ def assert_email_equal(msg1, msg2, ignore_headers=False):
     # If not multipart, the payload should be the same.
     #
     if not msg1.is_multipart():
-        assert msg1.get_payload() == msg2.get_payload()
+        payload1 = msg1.get_payload().translate(REPLACE_LINESEP).strip()
+        payload2 = msg2.get_payload().translate(REPLACE_LINESEP).strip()
+        assert payload1 == payload2
 
     # Otherwise, compare each part.
     #
@@ -74,7 +86,9 @@ def assert_email_equal(msg1, msg2, ignore_headers=False):
     assert len(parts1) == len(parts2)
 
     for part1, part2 in zip(parts1, parts2):
-        assert part1.get_payload() == part2.get_payload()
+        payload1 = part1.get_payload()
+        payload2 = part1.get_payload()
+        assert payload1 == payload2
 
 
 ####################################################################

@@ -3,16 +3,20 @@ Fetch.. the part that gets various bits and pieces of messages.
 """
 # System imports
 #
+from mailbox import MHMessage
 from typing import Any, Dict, List, Tuple
 
 # 3rd party imports
 #
 import pytest
 
+from ..fetch import STR_TO_FETCH_OP, FetchAtt, FetchOp
+
 # Project imports
 #
-from ..fetch import STR_TO_FETCH_OP, FetchAtt, FetchOp
+from ..parse import _lit_ref_re
 from ..search import SearchContext
+from .conftest import assert_email_equal
 
 
 ####################################################################
@@ -48,6 +52,7 @@ def test_fetch_create_and_str():
             {"ext_data": False, "actual_command": "BODY"},
             "BODY",
         ),
+        ("body", {}, "BODY"),
         ("body", {"section": [1, 2, 3, 4, "header"]}, "BODY[1.2.3.4.HEADER]"),
         ("body", {"section": [3, "text"]}, "BODY[3.TEXT]"),
         ("body", {"section": [], "partial": (0, 1024)}, "BODY[]<0.1024>"),
@@ -59,7 +64,6 @@ def test_fetch_create_and_str():
 
     for fetch_op, kwargs, expected in inputs:
         f = FetchAtt(STR_TO_FETCH_OP[fetch_op], **kwargs)
-        print(str(f))
         assert str(f) == expected
 
 
@@ -82,12 +86,21 @@ async def test_fetch_body(mailbox_with_big_static_email):
 
     async with mbox.lock.read_lock():
         ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, sequences)
-
+        msg = await ctx.msg()
+        msg_size = await ctx.msg_size()
         fetch = FetchAtt(FetchOp.BODY)
         result = await fetch.fetch(ctx)
 
-    print(result)
-    assert False
+    assert result.startswith("BODY {")
+    m = _lit_ref_re.search(result)
+    assert m
+    result_msg_size = int(m.group(1))
+    assert result_msg_size == msg_size
+
+    msg_start_idx = result.find("}\r\n") + 3
+    msg_data = result[msg_start_idx : msg_start_idx + result_msg_size]
+    result_msg = MHMessage(msg_data)
+    assert_email_equal(msg, result_msg)
 
 
 ####################################################################

@@ -51,4 +51,10 @@ async def test_search_context(mailbox_instance):
             assert_email_equal(mhmsg, await ctx.msg())
             assert uid == await ctx.uid()
             assert uid_vv == await ctx.uid_vv()
+            from ..generator import msg_as_string
+
+            print("MHMessage:")
+            print(msg_as_string(mhmsg))
+            print("CTX Msg:")
+            print(msg_as_string(await ctx.msg()))
             assert get_msg_size(mhmsg) == await ctx.msg_size()

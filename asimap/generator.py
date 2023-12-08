@@ -17,6 +17,8 @@ from typing import List, Optional, TextIO
 
 logger = logging.getLogger("asimap.generator")
 
+SMTP_NONE_FOLD = SMTP.clone(refold_source="none")
+
 
 ############################################################################
 #
@@ -49,7 +51,9 @@ class TextGenerator(Generator):
         # for what we send to the IMAP Client.. but we want to let other
         # options in if specified when this class is instantiated.
         #
-        kwargs["policy"] = SMTP if "policy" not in kwargs else kwargs["policy"]
+        kwargs["policy"] = (
+            SMTP_NONE_FOLD if "policy" not in kwargs else kwargs["policy"]
+        )
 
         super().__init__(outfp, *args, **kwargs)
         self._headers = headers
@@ -145,7 +149,9 @@ class HeaderGenerator(Generator):
         # for what we send to the IMAP Client.. but we want to let other
         # options in if specified when this class is instantiated.
         #
-        kwargs["policy"] = SMTP if "policy" not in kwargs else kwargs["policy"]
+        kwargs["policy"] = (
+            SMTP_NONE_FOLD if "policy" not in kwargs else kwargs["policy"]
+        )
 
         Generator.__init__(self, outfp, *args, **kwargs)
 

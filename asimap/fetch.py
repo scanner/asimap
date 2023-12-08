@@ -9,17 +9,16 @@ query and generate the body of the `FETCH` response IMAP message.
 #
 import email.utils
 import logging
-from email.generator import Generator
-from email.policy import SMTP
 from enum import StrEnum
 from io import StringIO
+from mailbox import MHMessage
 from typing import List, Optional, Tuple, Union
 
 # asimap imports
 #
 from .constants import seq_to_flag
 from .exceptions import Bad
-from .generator import HeaderGenerator, TextGenerator
+from .generator import HeaderGenerator, TextGenerator, msg_as_string
 
 logger = logging.getLogger("asimap.fetch")
 
@@ -193,7 +192,7 @@ class FetchAtt:
 
     #######################################################################
     #
-    def body(self, msg, section):
+    def body(self, msg: MHMessage, section: Optional[List[int | str]]):
         """
         Fetch the appropriate part of the message and return it to the
         user.
@@ -208,10 +207,7 @@ class FetchAtt:
             # body() method. All further recursive calls will always have at
             # least one element in the section list when they are called.
             #
-            fp = StringIO()
-            g = Generator(fp, mangle_from_=False, policy=SMTP)
-            g.flatten(self.ctx.msg)
-            msg_text = fp.getvalue()
+            msg_text = msg_as_string(msg)
         else:
             if len(section) == 1:
                 fp = StringIO()
@@ -339,21 +335,13 @@ class FetchAtt:
         # We have our message text we need to return to our caller.
         # truncate if it we also have a 'partial' defined.
         #
-        # Convert \n in to \r\n
-        #
-        msg_text = email.utils.fix_eols(msg_text)
         if self.partial:
             msg_text = msg_text[self.partial[0] : self.partial[1]]
 
         # We return all of these body sections as a length prefixed
-        # IMAP string. Also run the message text through the wringer
-        # converter it through unicode via utf8 back in to bytes
-        # (since we are sending messages over the network we want
-        # stuff a bytes as much as possible.)
+        # IMAP string.
         #
-        # msg_text = to_bytes(msg_text.decode("utf8", "replace")) XXX py2 way
-        msg_text = msg_text.encode(encoding="UTF-8")
-        return "{%d}\r\n%s" % (len(msg_text), msg_text)
+        return f"{{{len(msg_text)}}}\r\n{msg_text}"
 
     #######################################################################
     #
