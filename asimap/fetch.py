@@ -9,10 +9,10 @@ query and generate the body of the `FETCH` response IMAP message.
 #
 import email.utils
 import logging
+from email.message import EmailMessage
 from enum import StrEnum
 from io import StringIO
-from mailbox import MHMessage
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Set, Tuple, Union
 
 # asimap imports
 #
@@ -166,7 +166,7 @@ class FetchAtt:
         result: Union[str, int]
         match self.attribute:
             case FetchOp.BODY | FetchOp.BODYSTRUCTURE | FetchOp.ENVELOPE | FetchOp.RFC822_SIZE:
-                msg = await self.ctx.msg()
+                msg = await self.ctx.email_message()
                 match self.attribute:
                     case FetchOp.BODY:
                         result = self.body(msg, self.section)
@@ -192,7 +192,9 @@ class FetchAtt:
 
     #######################################################################
     #
-    def body(self, msg: MHMessage, section: Optional[List[int | str]]):
+    def body(
+        self, msg: EmailMessage, section: Optional[List[int | str]]
+    ) -> str:
         """
         Fetch the appropriate part of the message and return it to the
         user.
@@ -345,7 +347,7 @@ class FetchAtt:
 
     #######################################################################
     #
-    def envelope(self, msg):
+    def envelope(self, msg: EmailMessage) -> str:
         """
         Get the envelope structure of the message as a list, in a defined
         order.
@@ -387,7 +389,7 @@ class FetchAtt:
             # parenthesized lists of address structures.
             #
             if field in ("from", "sender", "reply-to", "to", "cc", "bcc"):
-                addrs = email.Utils.getaddresses([msg[field]])
+                addrs = email.utils.getaddresses([msg[field]])
                 if len(addrs) == 0:
                     result.append("NIL")
                     continue
@@ -441,7 +443,7 @@ class FetchAtt:
 
     ##################################################################
     #
-    def body_languages(self, msg):
+    def body_languages(self, msg: EmailMessage) -> str:
         """
         Find the language related headers in the message and return a
         string suitable for the 'body language' element of a
@@ -450,29 +452,31 @@ class FetchAtt:
         Arguments:
         - `msg`: the message we are looking in..
         """
-        # We want all of the header that end in "-language"
-        #
-        langs = []
-        for hdr, value in list(msg.items()):
-            if hdr[-9:].lower() != "-language":
-                continue
-            if "," in value:
-                langs.extend(value.split(","))
-            elif ";" in value:
-                langs.extend(value.split(";"))
-            else:
-                langs.append(value)
+        langs: Set[str] = set()
+        values: List[str] = []
+        for hdr in ("Accept-Language", "Content-Language"):
+            values.extend(msg.get_all(hdr, failobj=[]))
 
-        if len(langs) == 0:
+        for value in values:
+            if "," in value:
+                for lng in value.split(","):
+                    langs.add(lng.strip())
+            elif ";" in value:
+                for lng in value.split(";"):
+                    langs.add(lng.strip())
+            else:
+                langs.add(value.strip())
+
+        if not langs:
             return "NIL"
         elif len(langs) == 1:
-            return '"%s"' % langs[0]
+            return f'"{list(langs)[0]}"'
         else:
-            return "(%s)" % " ".join([str(x).strip() for x in langs])
+            return f"({' '.join([x for x in langs])})"
 
     ##################################################################
     #
-    def body_location(self, msg):
+    def body_location(self, msg: EmailMessage) -> str:
         """
         Suss if the message part has a 'content-location' header or not
         and return it if it does (or NIL if it does not.)
@@ -486,34 +490,66 @@ class FetchAtt:
 
     ##################################################################
     #
-    def body_parameters(self, msg):
+    def body_parameters(self, msg: EmailMessage) -> str:
         """
+        The body parameters for a message as a parenthesized list.
+        Basically this list is a set of key value pairs, all separate by
+        spaces. So the parameter "CHARSET" with a value of "US-ASCII" and a
+        "NAME" with a value of "cc.diff" looks like:
 
-         body parameter parenthesized list
-            A parenthesized list of attribute/value pairs [e.g., (`foo`
-            `bar` `baz` `rag`) where `bar` is the value of `foo` and
-            `rag` is the value of `baz`] as defined in [MIME-IMB].
+             ("CHARSET" "US-ASCII" "NAME" "cc.diff")
 
-        Arguments:
-        - `msg`:
         """
-        if msg.get_params() is None:
+        params = {}
+
+        # Get the charset.. if the message has no charset, yet it is of type
+        # text or message, set it to be us-ascii.
+        #
+        charset = msg.get_content_charset()
+        maintype = msg.get_content_maintype()
+        if charset is None and maintype in ("text", "message"):
+            charset = "us-ascii"
+        if charset:
+            params["CHARSET"] = charset.upper()
+
+        # Add any other params from the 'Content-Type' header if it exists.
+        #
+        if "Content-Type" in msg:
+            for param in msg["Content-Type"].params.keys():
+                if param.lower() == "charset":
+                    continue
+                params[param] = msg["Content-Type"].params[param]
+
+        if not params:
             return "NIL"
 
-        msg_params = []
-        for k, v in msg.get_params():
-            if v == "":
-                continue
-            msg_params.append('"%s"' % k.upper())
-            msg_params.append('"%s"' % v)
-        if len(msg_params) > 0:
-            return "(%s)" % " ".join(msg_params)
-        else:
-            return "NIL"
+        results = []
+        for k, v in params.items():
+            results.append(f'"{k.upper()}" "{v}"')
+
+        return f"({' '.join(results)})"
+
+    ####################################################################
+    #
+    def extension_data(self, msg: EmailMessage) -> List[str]:
+        """
+        Keyword Arguments:
+        msg: EmailMessages --
+        """
+        results = []
+        results.append(self.body_disposition(msg))
+        results.append(self.body_languages(msg))
+        cl = (
+            f'"{msg["Content-Location"]}"'
+            if "Content-Location" in msg
+            else "NIL"
+        )
+        results.append(cl)
+        return results
 
     #######################################################################
     #
-    def body_disposition(self, msg):
+    def body_disposition(self, msg: EmailMessage) -> str:
         """
         Return the body-disposition properly formatted for returning as
         part of a BODYSTRUCTURE fetch.
@@ -528,64 +564,65 @@ class FetchAtt:
         Arguments:
         - `msg`: The message (or message sub-part) we are looking at
         """
-        # If we have a content-disposition
-        #
-        if "content-disposition" in msg:
-            # XXX We are hard coding what we assume will be in
-            # XXX content-disposition. This is doomed to eventual failure.
-            #
-            cd = msg.get_params(header="content-disposition")
-
-            # if the content disposition does not have parameters then just
-            # put 'NIL' for the parameter list, otherwise we have a list of
-            # key/value pairs for the disposition list.
-            #
-            if len(cd) == 1:
-                return '("%s" NIL)' % cd[0][0].upper()
-            else:
-                cdpl = []
-                for k, v in cd[1:]:
-                    cdpl.extend(['"%s" "%s"' % (k.upper(), v)])
-                return '("%s" (%s))' % (cd[0][0].upper(), " ".join(cdpl))
-        else:
+        cd = msg.get_content_disposition()
+        if cd is None:
             return "NIL"
+
+        params = msg["Content-Disposition"].params
+        if not params:
+            return f'("{cd}" NIL)'
+
+        result = []
+        for param, value in params.items():
+            result.append(f'"{param}" "{value}"')
+
+        return f'("{cd}" ({" ".join(result)}))'
 
     #######################################################################
     #
-    def bodystructure(self, msg):
+    def bodystructure(self, msg: EmailMessage) -> str:
         """
-        XXX NOTE: WE need to not send extension data if self.ext_data is False.
-        """
+        The [MIME-IMB] body structure of the message.  This is computed by
+        the server by parsing the [MIME-IMB] header fields in the [RFC-2822]
+        header and [MIME-IMB] headers.
 
+        A parenthesized list that describes the [MIME-IMB] body structure of a
+        message.  This is computed by the server by parsing the [MIME-IMB]
+        header fields, defaulting various fields as necessary.
+
+        For example, a simple text message of 48 lines and 2279 octets can have
+        a body structure of:
+
+           ("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 2279 48)
+
+        Multiple parts are indicated by parenthesis nesting.  Instead of a body
+        type as the first element of the parenthesized list, there is a
+        sequence of one or more nested body structures.  The second element of
+        the parenthesized list is the multipart subtype (mixed, digest,
+        parallel, alternative, etc.).
+
+        For example, a two part message consisting of a text and a
+        BASE64-encoded text attachment can have a body structure of:
+
+           (("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 1152 23)
+            ("TEXT" "PLAIN" ("CHARSET" "US-ASCII" "NAME" "cc.diff")
+            "<960723163407.20117h@cac.washington.edu>" "Compiler diff"
+            "BASE64" 4554 73) "MIXED")
+
+        Extension data follows the multipart subtype.  Extension data is never
+        returned with the BODY fetch, but can be returned with a BODYSTRUCTURE
+        fetch.  Extension data, if present, MUST be in the defined order.
+
+        See RFC3501 `BODYSTRUCTURE` response for the rest of the description.
+        """
         if msg.is_multipart():
-            # If the message is a multipart message then the bodystructure
-            # for this multipart is a parenthesized list.
+            # For multiparts we are going to generate the bodystructure for
+            # each sub-part.
             #
-            # The list begins with a parenthesized list that is the
-            # bodystructure for each sub-part.
+            # We take all these body parts and make a parentheized list.
+            # At the end we add on the mime multipart subtype
             #
-            # Then we have as an imap string the sub-type of the
-            # multipart message (ie: 'mixed' 'digest', 'parallel',
-            # 'alternative').
-            #
-            # Following the subtype is the extension data.
-            #
-            # The extension data appears in the following order:
-            #
-            # o body parameters as a parenthesized list. The body parameters
-            #   are key value pairs (usually things like the multi-part
-            #   boundary separator string.)
-            #
-            # o body disposition: NIL or A parenthesized list, consisting of
-            #   a disposition type string followed by a parenthesized list of
-            #   disposition attribute/value pairs.  The disposition type and
-            #   attribute names will be defined in a future standards-track
-            #   revision to [DISPOSITION]. NOTE: This means we always return
-            #   NIL as disposition types have not been defined.
-            #
-            # o body language: A string or parenthesized list giving the body
-            #   language value as defined in [LANGUAGE-TAGS].
-            #   NOTE: This is also NIL as these are not defined either.
+            # And finally, if we can, we add on the multipart extension data.
             #
             sub_parts = []
             for sub_part in msg.get_payload():
@@ -595,140 +632,109 @@ class FetchAtt:
             # doing a 'body' not a 'bodystructure' then we have
             # everything we need to return a result.
             #
+            subtype = msg.get_content_subtype().upper()
             if not self.ext_data:
-                return '(%s "%s")' % (
-                    "".join(sub_parts),
-                    msg.get_content_subtype(),
-                )
-            #                                      msg.get_content_subtype().upper())
+                return f'({"".join(sub_parts)} "{subtype}")'
 
-            # Otherwise this is a real 'bodystructure' fetch and we need to
-            # return the extension data as well.
+            # Get the extension data and add it to our response.
             #
-            # The extension data of a multipart body part are in the
-            # following order
-            #
-            # body parameter parenthesized list
-            #    A parenthesized list of attribute/value pairs [e.g., ("foo"
-            #    "bar" "baz" "rag") where "bar" is the value of "foo", and
-            #    "rag" is the value of "baz"] as defined in [MIME-IMB].
-            #
-            # body disposition
-            #    A parenthesized list, consisting of a disposition type
-            #    string, followed by a parenthesized list of disposition
-            #    attribute/value pairs as defined in [DISPOSITION].
-            #
-            # body language
-            #    A string or parenthesized list giving the body language
-            #    value as defined in [LANGUAGE-TAGS].
-            #
-            # body location
-            #    A string list giving the body content URI as defined in
-            #    [LOCATION].
-            #
-            return '(%s "%s" %s %s %s %s)' % (
-                "".join(sub_parts),
-                # msg.get_content_subtype().upper(),
-                msg.get_content_subtype(),
-                self.body_parameters(msg),
-                self.body_disposition(msg),
-                self.body_languages(msg),
-                self.body_location(msg),
-            )
+            ext_data = self.extension_data(msg)
+            body_params = self.body_parameters(msg)
+            ext_data.insert(0, body_params)
 
-        # Otherwise, we figure out the bodystructure of this message
-        # part and return that as a string in parentheses.
+            return f'({"".join(sub_parts)} "{subtype}" {" ".join(ext_data)})'
+
+        # This is a non-multipart msg (NOTE: This may very well be one of the
+        # sub-parts of the original message).
         #
-        # Consult the FETCH response section of rfc2060 for the gory
-        # details of how and why the list is formatted this way.
+        # As such the response is made up of the following elements that will
+        # be returned as a space separated, parenthesized list:
+        #
+        # The basic fields are:
+        # - body type
+        # - body subtype
+        # - body parameter parenthesized list
+        # - body id - Content-ID header field value (NIL if none)
+        # - body description - Content-Description header field (NIL if none)
+        # - body encoding - content transfer encoding
+        # - body size - size of the body in octets
+        #
+        # After the basic fields:
+        #   If this is a `message/rfc822`:
+        #     - envelope structure
+        #     - body structure
+        #     - size of the encapsulated message in text lines
+        #   If bodytype is 'text':
+        #     - size of the body in text lines
+        #
+        # After the above fields comes the "extension data"
+        # - body md5
+        # - body disposition: A parenthesized list with the same content
+        #   and function as the body disposition for a multipart body part.
+        # - body langauge: A string or parenthesized list giving the body
+        #   language value as defined in [LANGUAGE-TAGS].
+        # - body location - A string giving the body content URI as defined
+        #   in [LOCATION].
         #
         result = []
 
         # Body type and sub-type
         #
-        # result.append('"%s"' % msg.get_content_maintype().upper())
-        # result.append('"%s"' % msg.get_content_subtype().upper())
-        result.append('"%s"' % msg.get_content_maintype())
-        result.append('"%s"' % msg.get_content_subtype())
+        maintype = msg.get_content_maintype()
+        subtype = msg.get_content_subtype()
+        result.append(f'"{maintype.upper()}"')
+        result.append(f'"{subtype.upper()}"')
 
-        # Parenthesized list of the message parameters as a list of
-        # key followed by value.
-        #
         result.append(self.body_parameters(msg))
 
-        # The body id (what is this? none of our message from a test
-        # IMAP server ever set this.
-        #
-        result.append("NIL")
+        body_id = f'"{msg["Content-ID"]}"' if "Content-ID" in msg else "NIL"
+        result.append(body_id)
 
-        # Body description.
-        # diito as body id.. noone seems to use this.
-        #
-        result.append("NIL")
+        body_desc = (
+            f'"{msg["Content-Description"]}"'
+            if "Content-Description" in msg
+            else "NIL"
+        )
+        result.append(body_desc)
 
-        # The body encoding, from the 'content transfer-encoding' header.
-        #
-        if "content-transfer-encoding" in msg:
-            result.append('"%s"' % msg["content-transfer-encoding"].upper())
-        else:
-            result.append('"7bit"')
-            # result.append('"7BIT"')
+        cte = (
+            f'"{msg["Content-Transfer-Encoding"]}"'
+            if "Content-Transfer-Encoding" in msg
+            else "7BIT"
+        )
+        result.append(f'"{cte}"')
 
-        # Body size.. length of the payload string.
-        #
-        # NOTE: The message payload as returned by the email module has '\n's
-        # instead of '\n\r' for newlines. This is probably just coming from
-        # the file system directly, but I believe that we need to convert
-        # this to \r\n and this needs to figure in our calculation of the
-        # number of octets in the message.
-        #
-        payload = msg.get_payload()
-        result.append(str(len(email.utils.fix_eols(payload))))
-        # result.append(str(len(payload)))
+        # Body size
+        payload = msg_as_string(msg, headers=False)
+        result.append(str(len(payload)))
 
         # Now come the variable fields depending on the maintype/subtype
         # of this message.
         #
-        if msg.get_content_type() == "message/rfc822":
-            # envelope structure
-            # body structure
-            # size in text lines of encapsulated message
+        if maintype == "message" and subtype == "rfc822":
+            # - envelope structure
+            # - body structure
+            # - size in text lines of encapsulated message
             result.append(self.envelope(msg))
-            result.append(self.bodystructure(payload))
-            result.append(str(len(payload.splitlines())))
+            result.append(self.bodystructure(msg))
+            result.append(str(payload.count("\n")))
         elif msg.get_content_maintype() == "text":
-            # size in text lines of the body.
-            #
-            result.append(str(len(payload.splitlines())))
+            result.append(str(payload.count("\n")))
 
         # If we are not supposed to return extension data then we are done here
         #
         if not self.ext_data:
-            return "(%s)" % " ".join(result)
+            return f"({' '.join(result)})"
 
-        # Now we have the message body extension data.
+        # Now we have the message body extension data. NOTE: This does NOT
+        # return the `NIL` for MD5.
         #
-        # The MD5 of the payload
-        # XXX Dovecot does not supply this so we will skip this too.
-        # result.append('"%s"' % hashlib.md5(payload).hexdigest())
-        #
-        result.append("NIL")
+        extension_data = self.extension_data(msg)
+        extension_data.insert(0, "NIL")
 
-        # body disposition
-        #    A parenthesized list, consisting of a disposition type
-        #    string, followed by a parenthesized list of disposition
-        #    attribute/value pairs as defined in [DISPOSITION].
+        # If there is no extension data then do not bother to include it.
         #
-        result.append(self.body_disposition(msg))
-
-        # And body language..
-        #
-        result.append(self.body_languages(msg))
-
-        # and body location..
-        #
-        result.append(self.body_location(msg))
-
-        # Convert our result in to a parentheses list.
-        #
-        return "(%s)" % " ".join(result)
+        if any(x != "NIL" for x in extension_data):
+            for x in extension_data:
+                result.append(x)
+        return f"({' '.join(result)})"
