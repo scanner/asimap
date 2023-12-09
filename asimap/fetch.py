@@ -214,7 +214,7 @@ class FetchAtt:
         """
 
         msg_text = None
-        g = None
+        g: Optional[Union[TextGenerator, HeaderGenerator]] = None
         if not section:
             # They want the entire message.
             #
@@ -346,6 +346,9 @@ class FetchAtt:
                 )
             g.flatten(msg)
             msg_text = fp.getvalue()
+            msg_text = (
+                msg_text if msg_text.endswith("\r\n") else msg_text + "\r\n"
+            )
 
         # We have our message text we need to return to our caller.
         # truncate if it we also have a 'partial' defined.

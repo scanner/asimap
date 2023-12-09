@@ -3,8 +3,10 @@ Fetch.. the part that gets various bits and pieces of messages.
 """
 # System imports
 #
-from mailbox import MHMessage
-from typing import Any, Dict, List, Tuple
+from email import message_from_string
+from email.message import EmailMessage
+from email.policy import SMTP
+from typing import Any, Dict, List, Tuple, cast
 
 # 3rd party imports
 #
@@ -84,9 +86,11 @@ async def test_fetch_body(mailbox_with_big_static_email):
     #
     msg_idx = msg_key
 
+    from ..generator import msg_as_string
+
     async with mbox.lock.read_lock():
         ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, sequences)
-        msg = await ctx.msg()
+        msg = await ctx.email_message()
         msg_size = await ctx.msg_size()
         fetch = FetchAtt(FetchOp.BODY)
         result = await fetch.fetch(ctx)
@@ -95,11 +99,16 @@ async def test_fetch_body(mailbox_with_big_static_email):
     m = _lit_ref_re.search(result)
     assert m
     result_msg_size = int(m.group(1))
+    with open("msg1.txt", "w") as f:
+        f.write(result[result.find("}\r\n") + 3 :])
+    with open("msg2.txt", "w") as f:
+        f.write(msg_as_string(msg))
+    print(len(result[result.find("}\r\n") + 3 :]))
     assert result_msg_size == msg_size
 
     msg_start_idx = result.find("}\r\n") + 3
-    msg_data = result[msg_start_idx : msg_start_idx + result_msg_size]
-    result_msg = MHMessage(msg_data)
+    data = result[msg_start_idx : msg_start_idx + result_msg_size]
+    result_msg = cast(EmailMessage, message_from_string((data), policy=SMTP))
     assert_email_equal(msg, result_msg)
 
 

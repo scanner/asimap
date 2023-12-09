@@ -134,15 +134,9 @@ class SearchContext(object):
 
         # Just to make sure that the message is cached.
         #
-        _ = await self.msg()
+        msg = await self.email_message()
 
-        # Do not waste time updating the LRU. We just did that.
-        #
-        result = self.mailbox.server.msg_cache.get_msg_and_size(
-            self.mailbox.name, self.msg_key, do_not_update=True
-        )
-        assert result
-        self._msg_size = int(result[1])
+        self._msg_size = len(msg_as_string(msg))
         return self._msg_size
 
     ##################################################################

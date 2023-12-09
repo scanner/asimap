@@ -319,31 +319,6 @@ class MessageCache:
 
     ####################################################################
     #
-    def get_msg_and_size(
-        self,
-        mbox: str,
-        msg_key: int,
-        remove: bool = False,
-        do_not_update: bool = False,
-        update_size: bool = False,
-    ) -> Optional[Tuple[MHMessage, int]]:
-        """
-        Return the cached message and its size as a tuple, or none.
-        """
-        result = self._get(
-            mbox,
-            msg_key,
-            remove=remove,
-            do_not_update=do_not_update,
-            update_size=update_size,
-        )
-        if result:
-            return (result[2], result[1])
-        else:
-            return None
-
-    ####################################################################
-    #
     def update_message_sequences(self, mbox_name: str, msg_key: int, sequences):
         """
         current done by a function in `mbox` but should we move it into here?
