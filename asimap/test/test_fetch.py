@@ -12,10 +12,9 @@ from typing import Any, Dict, List, Tuple, cast
 #
 import pytest
 
-from ..fetch import STR_TO_FETCH_OP, FetchAtt, FetchOp
-
 # Project imports
 #
+from ..fetch import STR_TO_FETCH_OP, FetchAtt, FetchOp
 from ..parse import _lit_ref_re
 from ..search import SearchContext
 from .conftest import assert_email_equal
@@ -72,44 +71,34 @@ def test_fetch_create_and_str():
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_fetch_body(mailbox_with_big_static_email):
-    mbox = mailbox_with_big_static_email
+async def test_fetch_body(mailbox_with_mimekit_email):
+    mbox = mailbox_with_mimekit_email
     msg_keys = await mbox.mailbox.akeys()
-    msg_key = msg_keys[0]
     seq_max = len(msg_keys)
-    sequences = await mbox.mailbox.aget_sequences()
+    seqs = await mbox.mailbox.aget_sequences()
     uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
-    # for an unpacked folder with one message in it the message key and the
-    # message index are the same value.
-    #
-    msg_idx = msg_key
+    for msg_idx, msg_key in enumerate(msg_keys):
+        async with mbox.lock.read_lock():
+            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+            msg = await ctx.email_message()
+            msg_size = await ctx.msg_size()
+            fetch = FetchAtt(FetchOp.BODY)
+            result = await fetch.fetch(ctx)
 
-    from ..generator import msg_as_string
+        assert result.startswith("BODY {")
+        m = _lit_ref_re.search(result)
+        assert m
+        result_msg_size = int(m.group(1))
+        assert result_msg_size == msg_size
 
-    async with mbox.lock.read_lock():
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, sequences)
-        msg = await ctx.email_message()
-        msg_size = await ctx.msg_size()
-        fetch = FetchAtt(FetchOp.BODY)
-        result = await fetch.fetch(ctx)
-
-    assert result.startswith("BODY {")
-    m = _lit_ref_re.search(result)
-    assert m
-    result_msg_size = int(m.group(1))
-    with open("msg1.txt", "w") as f:
-        f.write(result[result.find("}\r\n") + 3 :])
-    with open("msg2.txt", "w") as f:
-        f.write(msg_as_string(msg))
-    print(len(result[result.find("}\r\n") + 3 :]))
-    assert result_msg_size == msg_size
-
-    msg_start_idx = result.find("}\r\n") + 3
-    data = result[msg_start_idx : msg_start_idx + result_msg_size]
-    result_msg = cast(EmailMessage, message_from_string((data), policy=SMTP))
-    assert_email_equal(msg, result_msg)
+        msg_start_idx = result.find("}\r\n") + 3
+        data = result[msg_start_idx : msg_start_idx + result_msg_size]
+        result_msg = cast(
+            EmailMessage, message_from_string((data), policy=SMTP)
+        )
+        assert_email_equal(msg, result_msg)
 
 
 ####################################################################
