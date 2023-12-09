@@ -55,6 +55,19 @@ class FetchOp(StrEnum):
 
 STR_TO_FETCH_OP = {op_enum.value: op_enum for op_enum in FetchOp}
 
+ENVELOPE_FIELDS = (
+    "date",
+    "subject",
+    "from",
+    "sender",
+    "reply-to",
+    "to",
+    "cc",
+    "bcc",
+    "in-reply-to",
+    "message-id",
+)
+
 
 ############################################################################
 ############################################################################
@@ -353,25 +366,15 @@ class FetchAtt:
         order.
 
         Any fields that we can not determine the value of are NIL.
-
-        XXX This does not need to be an instance method..
-
         """
         result = []
 
         from_field = ""
-        for field in (
-            "date",
-            "subject",
-            "from",
-            "sender",
-            "reply-to",
-            "to",
-            "cc",
-            "bcc",
-            "in-reply-to",
-            "message-id",
-        ):
+        for field in ENVELOPE_FIELDS:
+            if field in ("date", "subject", "in-reply-to", "message-id"):
+                if field not in msg:
+                    result.append("NIL")
+                    continue
             # 'reply-to' and 'sender' are copied from the 'from' field
             # if they are not explicitly defined.
             #
@@ -389,9 +392,10 @@ class FetchAtt:
             # parenthesized lists of address structures.
             #
             if field in ("from", "sender", "reply-to", "to", "cc", "bcc"):
-                addrs = email.utils.getaddresses([msg[field]])
-                if len(addrs) == 0:
-                    result.append("NIL")
+                field_data: List[str] = msg.get_all(field, [])
+                if field_data:
+                    addrs = email.utils.getaddresses(field_data)
+                else:
                     continue
 
                 addr_list = []
@@ -407,7 +411,7 @@ class FetchAtt:
                     if name == "":
                         one_addr.append("NIL")
                     else:
-                        one_addr.append('"%s"' % name)
+                        one_addr.append(f'"{name}"')
 
                     # This is the '[SMTP] at-domain-list (source route)' which
                     # for now we do not bother with (not in any of my messages
@@ -422,15 +426,15 @@ class FetchAtt:
                     if paddr != "":
                         if "@" in paddr:
                             mbox_name, host_name = paddr.split("@")
-                            one_addr.append('"%s"' % mbox_name)
-                            one_addr.append('"%s"' % host_name)
+                            one_addr.append(f'"{mbox_name}"')
+                            one_addr.append(f'"{host_name}"')
                         else:
-                            one_addr.append('"%s"' % paddr)
-                            one_addr.append('"NIL"')
+                            one_addr.append(f'"{paddr}"')
+                            one_addr.append("NIL")
                     else:
                         one_addr.append("NIL")
-                    addr_list.append("(%s)" % " ".join(one_addr))
-                result.append("(%s)" % "".join(addr_list))
+                    addr_list.append(f"({' '.join(one_addr)})")
+                result.append(f"({''.join(addr_list)})")
 
                 # We stash the from field because we may need it for sender
                 # and reply-to
@@ -438,8 +442,8 @@ class FetchAtt:
                 if field == "from":
                     from_field = result[-1]
             else:
-                result.append('"%s"' % msg[field])
-        return "(%s)" % " ".join(result)
+                result.append(f'"{msg[field]}"')
+        return f"({' '.join(result)})"
 
     ##################################################################
     #
@@ -460,19 +464,19 @@ class FetchAtt:
         for value in values:
             if "," in value:
                 for lng in value.split(","):
-                    langs.add(lng.strip())
+                    langs.add(f'"{lng.strip()}"')
             elif ";" in value:
                 for lng in value.split(";"):
-                    langs.add(lng.strip())
+                    langs.add(f'"{lng.strip()}"')
             else:
-                langs.add(value.strip())
+                langs.add(f'"{value.strip()}"')
 
         if not langs:
             return "NIL"
         elif len(langs) == 1:
-            return f'"{list(langs)[0]}"'
+            return list(langs)[0]
         else:
-            return f"({' '.join([x for x in langs])})"
+            return f"({' '.join([x for x in sorted(list(langs))])})"
 
     ##################################################################
     #
@@ -574,9 +578,9 @@ class FetchAtt:
 
         result = []
         for param, value in params.items():
-            result.append(f'"{param}" "{value}"')
+            result.append(f'"{param.upper()}" "{value}"')
 
-        return f'("{cd}" ({" ".join(result)}))'
+        return f'("{cd.upper()}" ({" ".join(result)}))'
 
     #######################################################################
     #
@@ -615,7 +619,9 @@ class FetchAtt:
 
         See RFC3501 `BODYSTRUCTURE` response for the rest of the description.
         """
-        if msg.is_multipart():
+
+        content_type = msg.get_content_type()
+        if msg.is_multipart() and content_type != "message/rfc822":
             # For multiparts we are going to generate the bodystructure for
             # each sub-part.
             #
@@ -698,7 +704,7 @@ class FetchAtt:
         result.append(body_desc)
 
         cte = (
-            f'"{msg["Content-Transfer-Encoding"]}"'
+            msg["Content-Transfer-Encoding"]
             if "Content-Transfer-Encoding" in msg
             else "7BIT"
         )
@@ -707,6 +713,7 @@ class FetchAtt:
         # Body size
         payload = msg_as_string(msg, headers=False)
         result.append(str(len(payload)))
+        num_lines = payload.count("\n")
 
         # Now come the variable fields depending on the maintype/subtype
         # of this message.
@@ -715,11 +722,13 @@ class FetchAtt:
             # - envelope structure
             # - body structure
             # - size in text lines of encapsulated message
-            result.append(self.envelope(msg))
-            result.append(self.bodystructure(msg))
-            result.append(str(payload.count("\n")))
+            encapsulated_msg = msg.get_payload()[0]
+            result.append(self.envelope(encapsulated_msg))
+            result.append(self.bodystructure(encapsulated_msg))
+            encapsulated_msg_text = msg_as_string(encapsulated_msg)
+            result.append(str(encapsulated_msg_text.count("\n")))
         elif msg.get_content_maintype() == "text":
-            result.append(str(payload.count("\n")))
+            result.append(str(num_lines))
 
         # If we are not supposed to return extension data then we are done here
         #

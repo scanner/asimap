@@ -92,7 +92,9 @@ def msg_as_string(msg: Message, headers: bool = True) -> str:
     fp = StringIO()
     g = TextGenerator(fp, mangle_from_=False, headers=headers)
     g.flatten(msg)
-    return fp.getvalue()
+    msg_str = fp.getvalue()
+    msg_str = msg_str if msg_str.endswith("\r\n") else msg_str + "\r\n"
+    return msg_str
 
 
 ####################################################################
