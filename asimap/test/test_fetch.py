@@ -23,7 +23,7 @@ from ..fetch import STR_TO_FETCH_OP, FetchAtt, FetchOp
 from ..mbox import mbox_msg_path
 from ..parse import _lit_ref_re
 from ..search import SearchContext
-from ..utils import parsedate
+from ..utils import UID_HDR, get_uidvv_uid, parsedate
 from .conftest import assert_email_equal
 
 
@@ -87,6 +87,7 @@ async def test_fetch_body(mailbox_with_mimekit_email):
     assert uid_max
 
     for msg_idx, msg_key in enumerate(msg_keys):
+        msg_idx += 1
         async with mbox.lock.read_lock():
             ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
             msg = await ctx.email_message()
@@ -150,6 +151,7 @@ async def test_fetch_bodystructure(mailbox_with_mimekit_email):
     # message index are the same value.
     #
     for msg_idx, (msg_key, expected) in enumerate(zip(msg_keys, expecteds)):
+        msg_idx += 1
         async with mbox.lock.read_lock():
             ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
             fetch = FetchAtt(FetchOp.BODYSTRUCTURE)
@@ -195,13 +197,13 @@ async def test_fetch_envelope(mailbox_with_mimekit_email):
         """("Fri, 03 Nov 2017 12:00:00 -0800" "Message Subject" (("test" NIL "test" "test.com")) (("test" NIL "test" "test.com")) (("test" NIL "test" "test.com")) (("test" NIL "test" "test.com")(NIL NIL "date" NIL)) NIL NIL NIL "<aasfasdfasdfa@bb>")""",
     ]
     for msg_idx, (msg_key, expected) in enumerate(zip(msg_keys, expecteds)):
+        msg_idx += 1
         async with mbox.lock.read_lock():
             ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
             fetch = FetchAtt(FetchOp.ENVELOPE)
             result = await fetch.fetch(ctx)
 
         assert result.startswith("ENVELOPE ")
-        print(f"msg key: {msg_key}")
         assert result[9:] == expected
 
 
@@ -242,6 +244,7 @@ async def test_fetch_rfc822_size(mailbox_with_mimekit_email):
     ]
 
     for msg_idx, (msg_key, expected) in enumerate(zip(msg_keys, expecteds)):
+        msg_idx += 1
         async with mbox.lock.read_lock():
             ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
             fetch = FetchAtt(FetchOp.RFC822_SIZE)
@@ -279,6 +282,7 @@ async def test_fetch_flags(mailbox_with_bunch_of_email):
     await mbox.mailbox.aset_sequences(seqs)
 
     for msg_idx, msg_key in enumerate(msg_keys):
+        msg_idx += 1
         async with mbox.lock.read_lock():
             ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
             fetch = FetchAtt(FetchOp.FLAGS)
@@ -311,13 +315,13 @@ async def test_fetch_internaldate(mailbox_with_bunch_of_email):
             mtime, timezone.utc
         )
     for msg_idx, msg_key in enumerate(msg_keys):
+        msg_idx += 1
         async with mbox.lock.read_lock():
             ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
             fetch = FetchAtt(FetchOp.INTERNALDATE)
             result = await fetch.fetch(ctx)
 
         assert result.startswith("INTERNALDATE ")
-        print(result[13:])
         assert result[13] == '"' and result[-1] == '"'
         internal_date = parsedate(result[14:-1])
         assert internal_date == internal_date_by_msg[msg_key]
@@ -326,5 +330,26 @@ async def test_fetch_internaldate(mailbox_with_bunch_of_email):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_fetch_uid():
-    pass
+async def test_fetch_uid(mailbox_with_bunch_of_email):
+    mbox = mailbox_with_bunch_of_email
+    msg_keys = await mbox.mailbox.akeys()
+    seq_max = len(msg_keys)
+    seqs = await mbox.mailbox.aget_sequences()
+    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    assert uid_max
+
+    uid_by_msg: Dict[int, int] = {}
+    for msg_key in msg_keys:
+        msg = await mbox.mailbox.aget_message(msg_key)
+        uid_vv, uid = get_uidvv_uid(msg[UID_HDR])
+        uid_by_msg[msg_key] = uid
+
+    for msg_idx, msg_key in enumerate(msg_keys):
+        msg_idx += 1
+        async with mbox.lock.read_lock():
+            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+            fetch = FetchAtt(FetchOp.UID)
+            result = await fetch.fetch(ctx)
+
+        assert result.startswith("UID ")
+        assert int(result[4:]) == uid_by_msg[msg_key]

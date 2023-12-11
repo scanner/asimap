@@ -197,7 +197,7 @@ class FetchAtt:
                 internal_date = email.utils.format_datetime(int_date)
                 result = f'"{internal_date}"'
             case FetchOp.UID:
-                result = self.ctx.uid
+                result = await self.ctx.uid()
             case _:
                 raise NotImplementedError
 
