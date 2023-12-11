@@ -529,3 +529,20 @@ async def mailbox_with_mimekit_email(
         m_folder.add(msg)
     mbox = await Mailbox.new(NAME, server)
     return mbox
+
+
+####################################################################
+#
+@pytest_asyncio.fixture
+async def mailbox_with_bunch_of_email(
+    bunch_of_email_in_folder, imap_user_server
+):
+    """
+    Email factory emails. For tests where we are not stressing about
+    headers and email contents being anything fancy or complex.
+    """
+    NAME = "inbox"
+    bunch_of_email_in_folder(folder=NAME)
+    server = imap_user_server
+    mbox = await Mailbox.new(NAME, server)
+    return mbox

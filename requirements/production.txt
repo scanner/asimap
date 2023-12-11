@@ -14,8 +14,6 @@ docopt==0.6.2
     # via -r production.in
 python-dotenv==1.0.0
     # via -r production.in
-pytz==2023.3.post1
-    # via -r production.in
 sentry-sdk==1.36.0
     # via -r production.in
 urllib3==2.1.0

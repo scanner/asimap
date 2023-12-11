@@ -194,7 +194,7 @@ class FetchAtt:
                 result = f"({flags})"
             case FetchOp.INTERNALDATE:
                 int_date = await self.ctx.internal_date()
-                internal_date = int_date.strftime("%d-%b-%Y %H:%m:%S %z")
+                internal_date = email.utils.format_datetime(int_date)
                 result = f'"{internal_date}"'
             case FetchOp.UID:
                 result = self.ctx.uid
@@ -388,6 +388,11 @@ class FetchAtt:
             # If a field is not in the message it is nil.
             #
             if field not in msg:
+                if field == "from":
+                    # Messages without a From field are bad, but we need to
+                    # supply all fields for the ENVELOPE response.
+                    #
+                    from_field = "NIL"
                 result.append("NIL")
                 continue
 
@@ -399,6 +404,7 @@ class FetchAtt:
                 if field_data:
                     addrs = email.utils.getaddresses(field_data)
                 else:
+                    result.append("NIL")
                     continue
 
                 addr_list = []

@@ -1,6 +1,5 @@
 aiofiles
 aiosqlite
 docopt
-pytz
 sentry-sdk
 python-dotenv

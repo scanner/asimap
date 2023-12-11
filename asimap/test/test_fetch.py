@@ -3,6 +3,9 @@ Fetch.. the part that gets various bits and pieces of messages.
 """
 # System imports
 #
+import random
+from collections import defaultdict
+from datetime import datetime, timezone
 from email import message_from_string
 from email.message import EmailMessage
 from email.policy import SMTP
@@ -12,11 +15,15 @@ from typing import Any, Dict, List, Tuple, cast
 #
 import pytest
 
+from ..constants import REVERSE_SYSTEM_FLAG_MAP, SYSTEM_FLAGS
+
 # Project imports
 #
 from ..fetch import STR_TO_FETCH_OP, FetchAtt, FetchOp
+from ..mbox import mbox_msg_path
 from ..parse import _lit_ref_re
 from ..search import SearchContext
+from ..utils import parsedate
 from .conftest import assert_email_equal
 
 
@@ -155,29 +162,165 @@ async def test_fetch_bodystructure(mailbox_with_mimekit_email):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_fetch_envelope():
-    pass
+async def test_fetch_envelope(mailbox_with_mimekit_email):
+    mbox = mailbox_with_mimekit_email
+    msg_keys = await mbox.mailbox.akeys()
+    seq_max = len(msg_keys)
+    seqs = await mbox.mailbox.aget_sequences()
+    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    assert uid_max
+
+    expecteds = [
+        """("Sat, 02 Jan 2016 17:42:00 -0400" "MimeMessage.TextBody and HtmlBody tests" (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) NIL NIL NIL NIL)""",
+        """("Sat, 02 Jan 2016 17:42:00 -0400" "MimeMessage.TextBody and HtmlBody tests" (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) NIL NIL NIL NIL)""",
+        """("Sat, 02 Jan 2016 17:42:00 -0400" "MimeMessage.TextBody and HtmlBody tests" (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) NIL NIL NIL NIL)""",
+        """("Sat, 02 Jan 2016 17:42:00 -0400" "MimeMessage.TextBody and HtmlBody tests" (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) NIL NIL NIL NIL)""",
+        """("Sat, 02 Jan 2016 17:42:00 -0400" "MimeMessage.TextBody and HtmlBody tests" (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) NIL NIL NIL NIL)""",
+        """("Sat, 02 Jan 2016 17:42:00 -0400" "MimeMessage.TextBody and HtmlBody tests" (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) NIL NIL NIL NIL)""",
+        """("Sat, 02 Jan 2016 17:42:00 -0400" "MimeMessage.TextBody and HtmlBody tests" (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) NIL NIL NIL NIL)""",
+        """("Sat, 02 Jan 2016 17:42:00 -0400" "MimeMessage.TextBody and HtmlBody tests" (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) NIL NIL NIL NIL)""",
+        """("Sat, 02 Jan 2016 17:42:00 -0400" "MimeMessage.TextBody and HtmlBody tests" (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) NIL NIL NIL NIL)""",
+        """("Wed, 26 Jan 2022 04:06:48 -0500" "Undelivered Mail Returned to Sender" ((NIL NIL "MAILER-DAEMON" "hmail.jitbit.com")) ((NIL NIL "MAILER-DAEMON" "hmail.jitbit.com")) ((NIL NIL "MAILER-DAEMON" "hmail.jitbit.com")) ((NIL NIL "helpdesk" "netecgc.com")) NIL NIL NIL "<20220126090648.12632412E9@hmail.jitbit.com>")""",
+        """("Mon, 29 Jul 1996 02:13:08 -0700" "email delivery error" (("The Post Office" NIL "postmaster" "mm1.sprynet.com")) (("The Post Office" NIL "postmaster" "mm1.sprynet.com")) (("The Post Office" NIL "postmaster" "mm1.sprynet.com")) ((NIL NIL "noone" "example.net")) (("The Postmaster" NIL "postmaster" "mm1.sprynet.com")) NIL NIL "<96Jul29.022158-0700pdt.148226-12799+708@mm1.sprynet.com>")""",
+        """("Mon, 29 Jul 1996 02:13:08 -0700" "email delivery error" (("The Post Office" NIL "postmaster" "mm1.sprynet.com")) (("The Post Office" NIL "postmaster" "mm1.sprynet.com")) (("The Post Office" NIL "postmaster" "mm1.sprynet.com")) ((NIL NIL "noone" "example.net")) (("The Postmaster" NIL "postmaster" "mm1.sprynet.com")) NIL NIL "<96Jul29.022158-0700pdt.148226-12799+708@mm1.sprynet.com>")""",
+        """("Wed, 20 Sep 1995 00:19:00 -0000" "Disposition notification" (("Joe Recipient" NIL "Joe_Recipient" "example.com")) (("Joe Recipient" NIL "Joe_Recipient" "example.com")) (("Joe Recipient" NIL "Joe_Recipient" "example.com")) (("Jane Sender" NIL "Jane_Sender" "example.org")) NIL NIL NIL "<199509200019.12345@example.com>")""",
+        """("Tue, 12 Nov 2013 09:12:42 -0500" "test of empty multipart/alternative" ((NIL NIL "mimekit" "example.com")) ((NIL NIL "mimekit" "example.com")) ((NIL NIL "mimekit" "example.com")) ((NIL NIL "mimekit" "example.com")) NIL NIL NIL "<54AD68C9E3B0184CAC6041320424FD1B5B81E74D@localhost.localdomain>")""",
+        """("Sun, 07 May 1995 16:21:03 +0000" "Re: The Once and Future OS" (("Peter Urka" NIL "pcu" "umich.edu")) ((NIL NIL "preston" "urkabox.chem.lsa.umich.edu")) ((NIL NIL "pcu" "umich.edu")) NIL NIL NIL NIL "<07May1621030321@urkabox.chem.lsa.umich.edu>")""",
+        """("Wed, 15 Nov 2017 14:16:14 +0000" "R: R: R: I: FR-selca LA selcaE" ((NIL NIL "jang.abcdef" "xyzlinu")) ((NIL NIL "jang.abcdef" "xyzlinu")) ((NIL NIL "jang.abcdef" "xyzlinu")) (("jang12@linux12.org.new" NIL "jang12" "linux12.org.new")) NIL NIL "<5185e377-81c5-4361-91ba-11d42f4c5cc9@AM5EUR02FT056.eop-EUR02.prod.protection.outlook.com>" "<AM4PR01MB1444B3F21AE7DA9C8128C28FF7290@AM4PR01MB1444.eurprd01.prod.exchangelabs.com>")""",
+        """("Wed, 22 Jul 2015 01:02:29 +0900" "日本語メールテスト (testing Japanese emails)" (("Atsushi Eno" NIL "x" "x.com")) (("Atsushi Eno" NIL "x" "x.com")) (("Atsushi Eno" NIL "x" "x.com")) (("Jeffrey Stedfast" NIL "x" "x.com")) NIL NIL NIL "<55AE6D15.4010805@veritas-vos-liberabit.com>")""",
+        """("Tue, 29 Dec 2015 09:06:17 -0400" "Test of an invalid mime-type" (("someone" NIL "someone" "somewhere.com")) (("someone" NIL "someone" "somewhere.com")) (("someone" NIL "someone" "somewhere.com")) (("someone else" NIL "someone.else" "somewhere.else.com")) NIL NIL NIL NIL)""",
+        """("Sat, 24 Mar 2007 23:00:00 +0200" NIL ((NIL NIL "user" "domain.org")) ((NIL NIL "user" "domain.org")) ((NIL NIL "user" "domain.org")) NIL NIL NIL NIL NIL)""",
+        """(NIL NIL NIL NIL NIL NIL NIL NIL NIL NIL)""",
+        """(NIL "Sample message structure for IMAP part specifiers" ((NIL NIL "me" "myself.com")) ((NIL NIL "me" "myself.com")) ((NIL NIL "me" "myself.com")) ((NIL NIL "me" "myself.com")) NIL NIL NIL NIL)""",
+        """("Fri, 03 Nov 2017 12:00:00 -0800" "Message Subject" (("test" NIL "test" "test.com")) (("test" NIL "test" "test.com")) (("test" NIL "test" "test.com")) (("test" NIL "test" "test.com")(NIL NIL "date" NIL)) NIL NIL NIL "<aasfasdfasdfa@bb>")""",
+    ]
+    for msg_idx, (msg_key, expected) in enumerate(zip(msg_keys, expecteds)):
+        async with mbox.lock.read_lock():
+            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+            fetch = FetchAtt(FetchOp.ENVELOPE)
+            result = await fetch.fetch(ctx)
+
+        assert result.startswith("ENVELOPE ")
+        print(f"msg key: {msg_key}")
+        assert result[9:] == expected
 
 
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_fetch_rfc822_size():
-    pass
+async def test_fetch_rfc822_size(mailbox_with_mimekit_email):
+    mbox = mailbox_with_mimekit_email
+    msg_keys = await mbox.mailbox.akeys()
+    seq_max = len(msg_keys)
+    seqs = await mbox.mailbox.aget_sequences()
+    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    assert uid_max
+
+    expecteds = [
+        291,
+        309,
+        491,
+        632,
+        816,
+        1056,
+        1056,
+        624,
+        624,
+        28242,
+        2479,
+        2477,
+        1479,
+        757,
+        1259,
+        9434,
+        623,
+        302,
+        505,
+        2724,
+        1391,
+        138447,
+    ]
+
+    for msg_idx, (msg_key, expected) in enumerate(zip(msg_keys, expecteds)):
+        async with mbox.lock.read_lock():
+            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+            fetch = FetchAtt(FetchOp.RFC822_SIZE)
+            result = await fetch.fetch(ctx)
+
+        assert result.startswith("RFC822.SIZE ")
+        assert int(result[12:]) == expected
 
 
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_fetch_flags():
-    pass
+async def test_fetch_flags(mailbox_with_bunch_of_email):
+    mbox = mailbox_with_bunch_of_email
+    msg_keys = await mbox.mailbox.akeys()
+    seq_max = len(msg_keys)
+    seqs = await mbox.mailbox.aget_sequences()
+    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    assert uid_max
+
+    # Set some flags on the messages
+    msgs_by_flag: Dict[str, List[int]] = {}
+    flags_by_msg: Dict[int, List[str]] = defaultdict(list)
+    for flag in SYSTEM_FLAGS:
+        msgs_by_flag[flag] = random.sample(msg_keys, k=5)
+        for k in msgs_by_flag[flag]:
+            flags_by_msg[k].append(flag)
+        if flag == r"\Seen":
+            seqs["unseen"] = list(set(msg_keys) - set(msgs_by_flag[flag]))
+            for k in seqs["unseen"]:
+                flags_by_msg[k].append("unseen")
+
+        seqs[REVERSE_SYSTEM_FLAG_MAP[flag]] = msgs_by_flag[flag]
+
+    await mbox.mailbox.aset_sequences(seqs)
+
+    for msg_idx, msg_key in enumerate(msg_keys):
+        async with mbox.lock.read_lock():
+            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+            fetch = FetchAtt(FetchOp.FLAGS)
+            result = await fetch.fetch(ctx)
+
+        assert result.startswith("FLAGS ")
+        flags = result[6:]
+        assert flags[0] == "(" and flags[-1] == ")"
+        assert sorted(flags_by_msg[msg_key]) == sorted(flags[1:-1].split(" "))
 
 
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_fetch_internaldate():
-    pass
+async def test_fetch_internaldate(mailbox_with_bunch_of_email):
+    mbox = mailbox_with_bunch_of_email
+    msg_keys = await mbox.mailbox.akeys()
+    seq_max = len(msg_keys)
+    seqs = await mbox.mailbox.aget_sequences()
+    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    assert uid_max
+
+    # Get all the mtime's of the messages in the mailbox and convert these in
+    # to non-naive datetimes.
+    #
+    internal_date_by_msg: Dict[int, datetime] = {}
+    for msg_key in msg_keys:
+        mtime = int(mbox_msg_path(mbox.mailbox, msg_key).stat().st_mtime)
+        internal_date_by_msg[msg_key] = datetime.fromtimestamp(
+            mtime, timezone.utc
+        )
+    for msg_idx, msg_key in enumerate(msg_keys):
+        async with mbox.lock.read_lock():
+            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+            fetch = FetchAtt(FetchOp.INTERNALDATE)
+            result = await fetch.fetch(ctx)
+
+        assert result.startswith("INTERNALDATE ")
+        print(result[13:])
+        assert result[13] == '"' and result[-1] == '"'
+        internal_date = parsedate(result[14:-1])
+        assert internal_date == internal_date_by_msg[msg_key]
 
 
 ####################################################################

@@ -5,17 +5,13 @@ commands in other parts of the server.
 """
 # system imports
 #
-import datetime
 import logging
 import mailbox
 import os.path
 import re
+from datetime import datetime, timezone
 from enum import Enum
 from typing import List, Optional, Tuple, Union
-
-# 3rd party imports
-#
-import pytz
 
 # asimapd imports
 #
@@ -23,6 +19,9 @@ import asimap.utils
 
 from .fetch import STR_TO_FETCH_OP, FetchAtt, FetchOp
 from .search import IMAPSearch
+
+# 3rd party imports
+#
 
 
 #######################################################################
@@ -1591,7 +1590,7 @@ class IMAPClientCommand(object):
         """
         date = self._p_re(_date_re)
         match = _date_re.match(date)
-        return datetime.datetime(
+        return datetime(
             int(match.group("year")),
             _month[match.group("month").lower()],
             int(match.group("day")),
@@ -1599,7 +1598,7 @@ class IMAPClientCommand(object):
             0,
             0,
             0,
-            pytz.UTC,
+            timezone.utc,
         )
 
     #######################################################################

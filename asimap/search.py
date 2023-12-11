@@ -1,7 +1,3 @@
-#!/usr/bin/env python
-#
-# File: $Id$
-#
 """
 Classes and their supporting methods that represent an IMAP Search
 structure.
@@ -120,10 +116,10 @@ class SearchContext(object):
     async def internal_date(self) -> datetime:
         if self._internal_date:
             return self._internal_date
-
-        self._internal_date = datetime.fromtimestamp(
+        internal_date = datetime.fromtimestamp(
             await aiofiles.os.path.getmtime(self.path), timezone.utc
         )
+        self._internal_date = internal_date
         return self._internal_date
 
     ##################################################################

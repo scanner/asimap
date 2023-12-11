@@ -12,21 +12,19 @@ may move over in to a module dedicated for that.
 #
 import asyncio
 import atexit
-import calendar
 import email.utils
 import logging
 import logging.handlers
 import os
 import re
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from queue import SimpleQueue
 from typing import TYPE_CHECKING, List, Optional, Set, Tuple, TypeAlias, Union
 
 # 3rd party module imports
 #
-import pytz
 from aiofiles.ospath import wrap as aiofiles_wrap
 from async_timeout import timeout
 
@@ -332,7 +330,7 @@ def setup_logging(
 
 ############################################################################
 #
-def parsedate(date_time_str):
+def parsedate(datetime_str: str) -> datetime:
     """
     All date time data is stored as a datetime object in UTC.
     This routine uses common routines provided by python to parse a rfc822
@@ -340,25 +338,14 @@ def parsedate(date_time_str):
 
     It is pretty simple, but makes the code a lot shorter and easier to read.
     """
-    return datetime.fromtimestamp(
-        email.utils.mktime_tz(email.utils.parsedate_tz(date_time_str)),
-        pytz.UTC,
-    )
-
-
-############################################################################
-#
-def formatdate(dt: datetime, localtime: bool = False, usegmt: bool = False):
-    """
-    This is the reverse. It will take a datetime object and format
-    and do the deconversions necessary to pass it to email.utils.formatdate()
-    and thus return a string properly formatted as an RFC822 date.
-    """
-    return email.utils.formatdate(
-        calendar.timegm(dt.utctimetuple()),
-        localtime=localtime,
-        usegmt=usegmt,
-    )
+    # email.utils.parsedate_to_datetime creates a naive datetime if the tz
+    # string is UTC (ie: "+0000") .. so in that case we set the timezone to be
+    # UTC.
+    #
+    dt = email.utils.parsedate_to_datetime(datetime_str)
+    if datetime_str[-5:] == "+0000":
+        dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 ####################################################################
