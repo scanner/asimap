@@ -340,11 +340,11 @@ def parsedate(datetime_str: str) -> datetime:
     """
     # email.utils.parsedate_to_datetime creates a naive datetime if the tz
     # string is UTC (ie: "+0000") .. so in that case we set the timezone to be
-    # UTC.
+    # UTC (ie, we are making the datetime be non-naive, and its TZ is UTC).
     #
     dt = email.utils.parsedate_to_datetime(datetime_str)
-    if datetime_str[-5:] == "+0000":
-        dt.replace(tzinfo=timezone.utc)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
     return dt
 
 

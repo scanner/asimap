@@ -101,15 +101,15 @@
   ],
   [
     "A282 SEARCH FLAGGED SINCE 1-Feb-1994 NOT FROM \"Smith\"\r\n",
-    "A282 SEARCH IMAPSearch('and', [IMAPSearch('keyword', keyword = \"\\Flagged\"), IMAPSearch('since', date = \"1994-02-01 00:00:00+00:00\"), IMAPSearch('not', search_key = IMAPSearch('header', header = \"from\", string = \"smith\"))])"
+    "A282 SEARCH IMAPSearch('and', [IMAPSearch('keyword', keyword = \"\\Flagged\"), IMAPSearch('since', date = \"1994-02-01\"), IMAPSearch('not', search_key = IMAPSearch('header', header = \"from\", string = \"smith\"))])"
   ],
   [
     "A282 SEARCH OR FLAGGED SINCE 1-Feb-1994 NOT FROM \"Smith\"\r\n",
-    "A282 SEARCH IMAPSearch('and', [IMAPSearch('or', [IMAPSearch('keyword', keyword = \"\\Flagged\"), IMAPSearch('since', date = \"1994-02-01 00:00:00+00:00\")]), IMAPSearch('not', search_key = IMAPSearch('header', header = \"from\", string = \"smith\"))])"
+    "A282 SEARCH IMAPSearch('and', [IMAPSearch('or', [IMAPSearch('keyword', keyword = \"\\Flagged\"), IMAPSearch('since', date = \"1994-02-01\")]), IMAPSearch('not', search_key = IMAPSearch('header', header = \"from\", string = \"smith\"))])"
   ],
   [
     "A282 SEARCH (OR FLAGGED 1:3,4,5,6) SINCE 1-Feb-1994 NOT FROM \"Smith\"\r\n",
-    "A282 SEARCH IMAPSearch('and', [IMAPSearch('or', [IMAPSearch('keyword', keyword = \"\\Flagged\"), IMAPSearch('message_set')]), IMAPSearch('since', date = \"1994-02-01 00:00:00+00:00\"), IMAPSearch('not', search_key = IMAPSearch('header', header = \"from\", string = \"smith\"))])"
+    "A282 SEARCH IMAPSearch('and', [IMAPSearch('or', [IMAPSearch('keyword', keyword = \"\\Flagged\"), IMAPSearch('message_set')]), IMAPSearch('since', date = \"1994-02-01\"), IMAPSearch('not', search_key = IMAPSearch('header', header = \"from\", string = \"smith\"))])"
   ],
   [
     "a002 noop\r\n",

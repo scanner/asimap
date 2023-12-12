@@ -12,6 +12,8 @@ from copy import deepcopy
 from email.generator import Generator
 from email.message import Message
 from email.policy import SMTP, Policy
+
+# from functools import lru_cache
 from io import StringIO
 from typing import List, Optional, TextIO
 
@@ -83,7 +85,7 @@ class TextGenerator(Generator):
 
 ####################################################################
 #
-def msg_as_string(msg: Message, headers: bool = True) -> str:
+def _msg_as_string(msg: Message, headers: bool = True):
     """
     Instead of having to create the StringIO, TextGenerator, call flatten
     and return the contents fo the StringIO we wrap all those in this
@@ -99,6 +101,18 @@ def msg_as_string(msg: Message, headers: bool = True) -> str:
 
 ####################################################################
 #
+def msg_as_string(msg: Message, headers: bool = True) -> str:
+    return _msg_as_string(msg, headers=headers)
+
+
+####################################################################
+#
+def msg_as_string_nc(msg: Message, headers: bool = True) -> str:
+    return _msg_as_string(msg, headers=headers)
+
+
+####################################################################
+#
 def get_msg_size(msg: Message, headers: bool = True) -> int:
     """
     We need to know the size of a message in octets in several different
@@ -107,6 +121,16 @@ def get_msg_size(msg: Message, headers: bool = True) -> int:
     of a message's size.
     """
     msg_str = msg_as_string(msg, headers=headers)
+    return len(msg_str)
+
+
+####################################################################
+#
+def get_msg_size_nc(msg: Message, headers: bool = True) -> int:
+    """
+    No-cache variant..
+    """
+    msg_str = _msg_as_string(msg, headers=headers)
     return len(msg_str)
 
 

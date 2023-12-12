@@ -9,7 +9,7 @@ import logging
 import mailbox
 import os.path
 import re
-from datetime import datetime, timezone
+from datetime import date
 from enum import Enum
 from typing import List, Optional, Tuple, Union
 
@@ -1578,7 +1578,7 @@ class IMAPClientCommand(object):
 
     #######################################################################
     #
-    def _p_date(self):
+    def _p_date(self) -> date:
         """date      ::= date_text / <"> date_text <">
            date_text ::= date_day "-" date_month "-" date_year
            date_year ::= 4digit
@@ -1588,17 +1588,13 @@ class IMAPClientCommand(object):
 
         We parse the date and return a datetime object.
         """
-        date = self._p_re(_date_re)
-        match = _date_re.match(date)
-        return datetime(
-            int(match.group("year")),
-            _month[match.group("month").lower()],
-            int(match.group("day")),
-            0,
-            0,
-            0,
-            0,
-            timezone.utc,
+        date_exp = self._p_re(_date_re)
+        assert date_exp
+        match = _date_re.match(date_exp)
+        return date(
+            year=int(match.group("year")),
+            month=_month[match.group("month").lower()],
+            day=int(match.group("day")),
         )
 
     #######################################################################

@@ -15,10 +15,9 @@ from typing import Any, Dict, List, Tuple, cast
 #
 import pytest
 
-from ..constants import REVERSE_SYSTEM_FLAG_MAP, SYSTEM_FLAGS
-
 # Project imports
 #
+from ..constants import REVERSE_SYSTEM_FLAG_MAP, SYSTEM_FLAGS
 from ..fetch import STR_TO_FETCH_OP, FetchAtt, FetchOp
 from ..generator import msg_as_string, msg_headers_as_string
 from ..mbox import mbox_msg_path

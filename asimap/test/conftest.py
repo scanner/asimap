@@ -12,6 +12,7 @@ import time
 from email.header import decode_header
 from email.headerregistry import Address
 from email.message import EmailMessage
+from email.utils import format_datetime
 from mailbox import MH, MHMessage
 from pathlib import Path
 from typing import Iterable, List, Optional, Union
@@ -204,6 +205,9 @@ def email_factory(faker):
               `frm`
         """
         msg = EmailMessage()
+        msg["Date"] = format_datetime(
+            faker.date_time_between(start_date="-1yr")
+        )
         msg["Message-ID"] = faker.uuid4()
         msg["Subject"] = (
             faker.sentence() if "subject" not in kwargs else kwargs["subject"]

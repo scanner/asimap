@@ -29,7 +29,8 @@ from typing import Dict, List, Optional, Tuple, TypeAlias
 
 # Project imports
 #
-from .generator import get_msg_size
+from .generator import get_msg_size, get_msg_size_nc
+from .utils import UID_HDR
 
 logger = logging.getLogger("asimap.message_cache")
 CACHE_SIZE = 41_943_040  # Max cache size (in bytes) -- 40MiB
@@ -190,7 +191,11 @@ class MessageCache:
         if mbox not in self.msgs_by_mailbox:
             self.msgs_by_mailbox[mbox] = []
 
-        msg_size = get_msg_size(msg)
+        if UID_HDR not in msg:
+            msg_size = get_msg_size_nc(msg)
+        else:
+            msg_size = get_msg_size(msg)
+
         self.cur_size += msg_size
         self.num_msgs += 1
         self.msgs_by_mailbox[mbox].append((msg_key, msg_size, msg, time.time()))
