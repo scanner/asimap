@@ -619,18 +619,24 @@ class IMAPSearch(object):
     #
     async def _match_text(self) -> bool:
         """
-        Messages that contain the specified string in the header or
-        body of the message.
+        Messages that contain the specified string in the header
+        (including MIME header fields) or body of the message.  Servers
+        are allowed to implement flexible matching for this search key,
+        for example, matching "swim" to both "swam" and "swum" in English
+        language text or only performing full-word matching (where "swim"
+        will not match "swimming").
+
+        NOTE: We do not do such fancy text searching.
         """
         # Look in the headers.. and if it is not in the headers, look
         # in the body.
         #
         text = self.args["string"]
         msg = await self.ctx.msg()
-        for header in msg.values():
-            if header.lower().find(text) != -1:
-                return True
-        return await self._match_body()
+        msg_text = msg_as_string(msg, headers=True).lower()
+        if text in msg_text:
+            return True
+        return False
 
     #########################################################################
     #
