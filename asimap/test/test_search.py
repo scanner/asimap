@@ -3,6 +3,7 @@ Test `SearchContext` and `IMAPSearch`
 """
 # System imports
 #
+import os
 import random
 from collections import Counter, defaultdict
 from datetime import date, timezone
@@ -19,7 +20,7 @@ from dirty_equals import IsNow
 from ..constants import REVERSE_SYSTEM_FLAG_MAP, SYSTEM_FLAGS
 from ..generator import get_msg_size
 from ..search import IMAPSearch, SearchContext
-from ..utils import UID_HDR, get_uidvv_uid, parsedate
+from ..utils import UID_HDR, get_uidvv_uid, parsedate, utime
 from .conftest import assert_email_equal
 
 
@@ -231,6 +232,71 @@ async def test_search_sent_before_since_on(mailbox_with_bunch_of_email):
                 assert msg_key in before_date
 
     search_op = IMAPSearch("senton", date=check_date)
+    for msg_idx, msg_key in enumerate(msg_keys):
+        msg_idx += 1
+        async with mbox.lock.read_lock():
+            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+            if await search_op.match(ctx):
+                assert msg_key == on_date
+            else:
+                assert msg_key != on_date
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_search_before_since_on(mailbox_with_bunch_of_email):
+    mbox = mailbox_with_bunch_of_email
+    msg_keys = await mbox.mailbox.akeys()
+    seq_max = len(msg_keys)
+    seqs = await mbox.mailbox.aget_sequences()
+    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    assert uid_max
+
+    # Go through the messages and set the mtime on each message to be the
+    # parsed value of the `Date` header. We do not cache the mtime outside of
+    # the search context so doing this post mbox.resync() is okay in terms of
+    # mbox state.
+    #
+    dates: List[Tuple[date, int]] = []
+    for msg_key in msg_keys:
+        msg = await mbox.mailbox.aget_message(msg_key)
+        dt = parsedate(msg["Date"])
+        dt_ts = dt.timestamp()
+        msg_path = os.path.join(mbox.mailbox._path, str(msg_key))
+        await utime(msg_path, (dt_ts, dt_ts))
+        dates.append((dt.date(), msg_key))
+
+    # Find our mid-point date for the three different searches
+    #
+    dates = sorted(dates, key=lambda x: x[0])
+    mp = int(len(dates) / 2)
+    check_date = dates[mp][0]
+    before_date = sorted([x[1] for x in dates[:mp]])
+    on_date = dates[mp][1]
+    after_date = sorted([x[1] for x in dates[mp:]])
+
+    search_op = IMAPSearch("before", date=check_date)
+    for msg_idx, msg_key in enumerate(msg_keys):
+        msg_idx += 1
+        async with mbox.lock.read_lock():
+            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+            if await search_op.match(ctx):
+                assert msg_key in before_date
+            else:
+                assert msg_key in after_date
+
+    search_op = IMAPSearch("since", date=check_date)
+    for msg_idx, msg_key in enumerate(msg_keys):
+        msg_idx += 1
+        async with mbox.lock.read_lock():
+            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+            if await search_op.match(ctx):
+                assert msg_key in after_date
+            else:
+                assert msg_key in before_date
+
+    search_op = IMAPSearch("on", date=check_date)
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
         async with mbox.lock.read_lock():

@@ -482,7 +482,7 @@ class IMAPSearch(object):
         Messages whose internal date is earlier than the specified
         date.
         """
-        internal_date = await self.ctx.internal_date().date()
+        internal_date = (await self.ctx.internal_date()).date()
         return internal_date < self.args["date"]
 
     #########################################################################
@@ -553,7 +553,7 @@ class IMAPSearch(object):
         vague about this and just says what is listed above 'within
         the specific date')
         """
-        internal_date = await self.ctx.internal_date().date()
+        internal_date = (await self.ctx.internal_date()).date()
         return internal_date == self.args["date"]
 
     #########################################################################
@@ -602,7 +602,7 @@ class IMAPSearch(object):
         Messages whose internal date is within or later than the
         specified date.
         """
-        internal_date = await self.ctx.internal_date().date()
+        internal_date = (await self.ctx.internal_date()).date()
         return internal_date >= self.args["date"]
 
     #########################################################################
