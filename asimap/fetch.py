@@ -87,7 +87,7 @@ class FetchAtt:
     def __init__(
         self,
         attribute: FetchOp,
-        section: Optional[List[Union[int, str]]] = None,
+        section: Optional[List[Union[int, str, List[str | List[str]]]]] = None,
         partial: Optional[Tuple[int, int]] = None,
         peek: bool = False,
         ext_data: bool = True,
@@ -277,7 +277,7 @@ class FetchAtt:
                         raise BadSection(
                             "Section value must be either "
                             "HEADER.FIELDS or HEADER.FIELDS.NOT, "
-                            "not: %s" % section[0][0]
+                            f"not: {section[0][0]}"
                         )
                 else:
                     g = HeaderGenerator(fp)
@@ -305,12 +305,10 @@ class FetchAtt:
                             msg = msg.get_payload(0)
                     else:
                         self.log.warn(
-                            "body: Unexpected section[0] value: %s"
-                            % repr(section)
+                            f"body: Unexpected section[0] value: {repr(section)}"
                         )
                         raise BadSection(
-                            "%s: Unexpected section value: %s"
-                            % (str(self), repr(section[0]))
+                            f"{str(self)}: Unexpected section value: {repr(section[0])}"
                         )
             elif isinstance(section[0], int):
                 # We have an integer sub-section. This means that we
@@ -322,17 +320,15 @@ class FetchAtt:
                 #
                 if not msg.is_multipart():
                     raise BadSection(
-                        "Message does not contain subsection %d "
-                        "(section list: %s" % section[0],
-                        section,
+                        f"Message does not contain subsection {section[0]} "
+                        f"(section list: {section}"
                     )
                 try:
                     msg = msg.get_payload(section[0] - 1)
                 except TypeError:
                     raise BadSection(
-                        "Message does not contain subsection %d "
-                        "(section list: %s)" % section[0],
-                        section,
+                        f"Message does not contain subsection {section[0]} "
+                        f"(section list: {section})"
                     )
                 return self.body(msg, section[1:])
 
@@ -342,7 +338,7 @@ class FetchAtt:
             #
             if g is None:
                 raise BadSection(
-                    "Section selector '%s' can not be parsed" % section
+                    f"Section selector '{section}' can not be parsed"
                 )
             g.flatten(msg)
             msg_text = fp.getvalue()

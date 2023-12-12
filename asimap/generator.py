@@ -264,6 +264,12 @@ def msg_headers_as_string(
     Instead of having to create the StringIO, TextGenerator, call flatten
     and return the contents fo the StringIO we wrap all those in this
     convenience function.
+
+    If `headers` and `skip=False`is specified this is the list of headers to
+    return.
+
+    If `skip` is True (and `headers` must be provided) the headers returned
+    are the ones that are NOT in the list of headers.
     """
     fp = StringIO()
     g = HeaderGenerator(fp, mangle_from_=False, headers=headers, skip=skip)
