@@ -77,11 +77,6 @@ class SearchContext(object):
         - `sequences`: The sequences for the mailbox. Passed in to save us from
           having to load and parse it separately for every message.
         """
-        self.log = logging.getLogger(
-            "%s.%s.%s.msg-%d"
-            % (__name__, self.__class__.__name__, mailbox.name, msg_key)
-        )
-
         self.mailbox = mailbox
         self.msg_key = msg_key
         self.seq_max = seq_max
@@ -313,9 +308,6 @@ class IMAPSearch(object):
         'search operation' keyword and a bunch of keyword arguments that are
         required for that search operation.
         """
-        self.log = logging.getLogger(
-            "%s.%s" % (__name__, self.__class__.__name__)
-        )
         if op not in STR_TO_SEARCH_OP:
             raise BadSearchOp(f"'{op}' is not a valid search op")
         self.op = STR_TO_SEARCH_OP[op]
