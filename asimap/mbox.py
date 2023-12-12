@@ -1912,6 +1912,7 @@ class Mailbox:
                         results.append(uid)
                     else:
                         results.append(i)
+                await asyncio.sleep(0)
         return results
 
     #########################################################################
@@ -2089,6 +2090,7 @@ class Mailbox:
                         self.sequences["Seen"].append(msg_key)
                         seq_changed = True
                 fetch_yield_times.append(time.time() - single_fetch_started)
+                await asyncio.sleep(0)
 
         finally:
             now = time.time()
@@ -2238,6 +2240,7 @@ class Mailbox:
                             seqs["unseen"].append(key)
                         if "unseen" in seqs_to_remove:
                             seqs["Seen"].append(key)
+                await asyncio.sleep(0)
 
             async with self.lock.write_lock():
                 # And when it is all done save our modified sequences back
@@ -2347,6 +2350,7 @@ class Mailbox:
                 copy_msgs.append((msg, mtime))
                 uid_vv, uid = await self.get_uid_from_msg(key)
                 src_uids.append(uid)
+                await asyncio.sleep(0)
 
         # We have now read all the messages we are copying. Write them to the
         # dest folder. Sequences are preserved since we are reading and writing

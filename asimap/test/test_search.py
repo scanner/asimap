@@ -18,7 +18,7 @@ from dirty_equals import IsNow
 # Project imports
 #
 from ..constants import REVERSE_SYSTEM_FLAG_MAP, SYSTEM_FLAGS
-from ..generator import get_msg_size
+from ..generator import get_msg_size, msg_as_string
 from ..search import IMAPSearch, SearchContext
 from ..utils import UID_HDR, get_uidvv_uid, parsedate, utime
 from .conftest import assert_email_equal
@@ -141,16 +141,13 @@ async def test_search_headers(mailbox_with_bunch_of_email):
 
     # First, searching on an empty string matches messages that have the header.
     #
-    matched: List[int] = []
     search_op = IMAPSearch("header", header="subject", string="")
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
         async with mbox.lock.read_lock():
             ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
-            if await search_op.match(ctx):
-                matched.append(msg_key)
-
-    assert msg_keys == matched
+            if not await search_op.match(ctx):
+                assert False
 
     # Go through the messages and find the most common words in the subject.
     # Those will be what we test header search on.
@@ -305,3 +302,66 @@ async def test_search_before_since_on(mailbox_with_bunch_of_email):
                 assert msg_key == on_date
             else:
                 assert msg_key != on_date
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_search_body(mailbox_with_bunch_of_email):
+    mbox = mailbox_with_bunch_of_email
+    msg_keys = await mbox.mailbox.akeys()
+    seq_max = len(msg_keys)
+    seqs = await mbox.mailbox.aget_sequences()
+    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    assert uid_max
+
+    # First, searching on an empty string matches all messages with a body.
+    #
+    search_op = IMAPSearch("body", string="")
+    for msg_idx, msg_key in enumerate(msg_keys):
+        msg_idx += 1
+        async with mbox.lock.read_lock():
+            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+            if not await search_op.match(ctx):
+                assert False
+
+    # Go through the messages and find the most common words in the text/plain
+    # part.
+    #
+    words: Counter[str] = Counter()
+    for msg_key in msg_keys:
+        msg = await mbox.mailbox.aget_message(msg_key)
+        parts = msg.get_payload()
+        body = msg_as_string(parts[0], headers=False).lower()
+        for line in body.splitlines():
+            for word in line.split():
+                words[word] += 1
+
+    # Match the top couple of words.
+    #
+    msg_keys_by_word: Dict[str, List[int]] = defaultdict(list)
+    for word, count in words.most_common(5):
+        if word == "=":
+            continue
+        search_op = IMAPSearch("body", string=word.lower())
+        for msg_idx, msg_key in enumerate(msg_keys):
+            msg_idx += 1
+            async with mbox.lock.read_lock():
+                ctx = SearchContext(
+                    mbox, msg_key, msg_idx, seq_max, uid_max, seqs
+                )
+                if await search_op.match(ctx):
+                    msg_keys_by_word[word].append(msg_key)
+
+    # Go through all the messages by hand and make sure our searches turned up
+    # the right results.
+    #
+    for word, matched_keys in msg_keys_by_word.items():
+        for msg_key in msg_keys:
+            msg = await mbox.mailbox.aget_message(msg_key)
+            parts = msg.get_payload()
+            body = msg_as_string(parts[0], headers=False).lower()
+            if msg_key in matched_keys:
+                assert word in body.lower()
+            else:
+                assert word not in body.lower()

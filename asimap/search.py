@@ -497,7 +497,7 @@ class IMAPSearch(object):
         for msg_part in msg.walk():
             if msg_part.is_multipart():
                 continue
-            if msg_part.get_payload(decode=True).lower().find(text) != -1:
+            if text in msg_as_string(msg, headers=False).lower():
                 return True
         return False
 
