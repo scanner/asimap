@@ -424,3 +424,49 @@ async def test_search_text(mailbox_with_bunch_of_email):
                 assert word in body.lower()
             else:
                 assert word not in body.lower()
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_search_larger_smaller(mailbox_with_bunch_of_email):
+    mbox = mailbox_with_bunch_of_email
+    msg_keys = await mbox.mailbox.akeys()
+    seq_max = len(msg_keys)
+    seqs = await mbox.mailbox.aget_sequences()
+    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    assert uid_max
+
+    # Go through and find the various sizes and determine a mid-point
+    #
+    sizes: List[Tuple[int, int]] = []
+    for msg_key in msg_keys:
+        msg = await mbox.mailbox.aget_message(msg_key)
+        msg_size = get_msg_size(msg)
+        sizes.append((msg_size, msg_key))
+
+    sizes = sorted(sizes, key=lambda x: x[0])
+    mp = int(len(sizes) / 2)
+    mid_size = sizes[mp][0] - 1  # One octet smaller.
+    smaller = sorted([x[1] for x in sizes[:mp]])
+    larger = sorted([x[1] for x in sizes[mp:]])
+
+    search_op = IMAPSearch("smaller", n=mid_size)
+    for msg_idx, msg_key in enumerate(msg_keys):
+        msg_idx += 1
+        async with mbox.lock.read_lock():
+            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+            if await search_op.match(ctx):
+                assert msg_key in smaller
+            else:
+                assert msg_key in larger
+
+    search_op = IMAPSearch("larger", n=mid_size)
+    for msg_idx, msg_key in enumerate(msg_keys):
+        msg_idx += 1
+        async with mbox.lock.read_lock():
+            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+            if await search_op.match(ctx):
+                assert msg_key in larger
+            else:
+                assert msg_key in smaller
