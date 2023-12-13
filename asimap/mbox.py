@@ -36,10 +36,10 @@ from .constants import (
     seq_to_flag,
 )
 from .exceptions import Bad, MailboxInconsistency, No
-from .fetch import FetchAtt
+from .fetch import FetchAtt, FetchOp
 from .message_cache import MessageCache
 from .mh import MH, Sequences, update_message_sequences
-from .parse import IMAPClientCommand, StoreAction
+from .parse import StoreAction
 from .search import IMAPSearch, SearchContext
 from .utils import (
     UID_HDR,
@@ -1837,7 +1837,7 @@ class Mailbox:
     ##################################################################
     #
     async def search(
-        self, search: IMAPSearch, cmd: IMAPClientCommand
+        self, search: IMAPSearch, uid_cmd: bool = False
     ) -> List[int]:
         """
         Take the given IMAP search object and apply it to all of the messages
@@ -1859,7 +1859,7 @@ class Mailbox:
         # search.
         #
         async with self.mailbox.lock_folder():
-            if cmd.uid_command:
+            if uid_cmd:
                 logger.debug("Mailbox: %s, doing a UID SEARCH", self.name)
 
             # We get the full list of keys instead of using an iterator because
@@ -1906,7 +1906,7 @@ class Mailbox:
                 if search.match(ctx):
                     # The UID SEARCH command returns uid's of messages
                     #
-                    if cmd.uid_command:
+                    if uid_cmd:
                         uid = await ctx.uid()
                         assert uid
                         results.append(uid)
@@ -1917,8 +1917,9 @@ class Mailbox:
 
     #########################################################################
     #
-    @with_timeout(15)
-    async def fetch(self, msg_set: MsgSet, fetch_ops, cmd: IMAPClientCommand):
+    async def fetch(
+        self, msg_set: MsgSet, fetch_ops: List[FetchAtt], uid_cmd: bool = False
+    ):
         """
         Go through the messages in the mailbox. For the messages that are
         within the indicated message set parse them and pull out the data
@@ -1962,7 +1963,7 @@ class Mailbox:
             if not msgs:
                 # If there are no messages but they asked for some messages
                 # (that are not there), return NO.. can not fetch that data.
-                if msg_set and not cmd.uid_command:
+                if msg_set and not uid_cmd:
                     raise No("Mailbox empty.")
                 return
 
@@ -1982,15 +1983,13 @@ class Mailbox:
             # NOTE: We map from message sequence number to index in to the msgs
             #       list when we are getting the value from the message list.
             #
-            if cmd.uid_command:
+            if uid_cmd:
                 # If we are doing a UID command we need to translate the values
                 # in `msg_set` to IMAP message sequence numbers.
                 #
                 # We to use the max uid for the sequence max.
                 #
-                uid_list = sequence_set_to_list(
-                    msg_set, uid_max, cmd.uid_command
-                )
+                uid_list = sequence_set_to_list(msg_set, uid_max, uid_cmd)
 
                 # We want to convert this list of UID's in to message indices
                 # So for every uid we we got out of the msg_set we look up its
@@ -2012,7 +2011,7 @@ class Mailbox:
                 # one of the fields being fetched, and if it is not add it.
                 #
                 if not any([x.attribute == "uid" for x in fetch_ops]):
-                    fetch_ops.insert(0, FetchAtt("uid"))
+                    fetch_ops.insert(0, FetchAtt(FetchOp.UID))
 
             else:
                 msg_idxs = sequence_set_to_list(msg_set, seq_max)
@@ -2129,7 +2128,13 @@ class Mailbox:
 
     ##################################################################
     #
-    async def store(self, msg_set: MsgSet, action: int, flags: List[str], cmd):
+    async def store(
+        self,
+        msg_set: MsgSet,
+        action: StoreAction,
+        flags: List[str],
+        uid_cmd: bool = False,
+    ):
         r"""
         Update the flags (sequences) of the messages in msg_set.
 
@@ -2142,10 +2147,7 @@ class Mailbox:
         - `msg_set`: The set of messages to modify the flags on
         - `action`: one of REMOVE_FLAGS, ADD_FLAGS, or REPLACE_FLAGS
         - `flags`: The flags to add/remove/replace
-        - `cmd`: The IMAP command for this store. Used to determine if this is
-          a uid command or not, and if this is a continuation or not (and if it
-          is a continuation what the remaining message sequence is.)  we have
-          to return not message sequence numbers but message UID's.
+        - `uid_cmd`: Used to determine if this is a uid command or not
         """
         if r"\Recent" in flags:
             raise No(r"You can not add or remove the '\Recent' flag")
@@ -2163,15 +2165,13 @@ class Mailbox:
             all_msg_keys = await self.mailbox.akeys()
             seq_max = len(all_msg_keys)
 
-            if cmd.uid_command:
+            if uid_cmd:
                 # If we are doing a 'UID FETCH' command we need to use the max
                 # uid for the sequence max.
                 #
                 uid_vv, uid_max = await self.get_uid_from_msg(all_msg_keys[-1])
                 assert uid_max
-                uid_list = sequence_set_to_list(
-                    msg_set, uid_max, cmd.uid_command
-                )
+                uid_list = sequence_set_to_list(msg_set, uid_max, uid_cmd)
 
                 # We want to convert this list of UID's in to message indices
                 # So for every uid we we got out of the msg_set we look up its

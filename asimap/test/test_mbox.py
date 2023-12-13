@@ -5,9 +5,10 @@ Tests for the mbox module
 #
 import asyncio
 import os
+import random
 from datetime import datetime
 from mailbox import MHMessage
-from typing import List
+from typing import Dict, List
 
 # 3rd party imports
 #
@@ -19,7 +20,10 @@ from dirty_equals import IsNow
 # Project imports
 #
 from ..exceptions import No
+from ..fetch import FetchAtt, FetchOp
 from ..mbox import Mailbox
+from ..parse import StoreAction
+from ..search import IMAPSearch
 from ..utils import UID_HDR, get_uidvv_uid
 from .conftest import assert_email_equal
 
@@ -430,7 +434,7 @@ async def test_mbox_resync_auto_pack(
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_mbox_selected(
+async def test_mbox_selected_unselected(
     mocker, bunch_of_email_in_folder, imap_user_server_and_client
 ):
     NAME = "inbox"
@@ -563,11 +567,93 @@ async def test_mbox_expunge_with_client(
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_mailbox_search(imap_user_server):
+async def test_mailbox_search(mailbox_with_bunch_of_email):
     """
-    We can create a Mailbox object instance.
+    Search is tested mostly `test_search`.. so we only need a very simple
+    search.
     """
-    server = imap_user_server
-    NAME = "inbox"
-    mbox = await Mailbox.new(NAME, server)
-    assert mbox
+    mbox = mailbox_with_bunch_of_email
+    msg_keys = await mbox.mailbox.akeys()
+    search_op = IMAPSearch("all")
+
+    # new mailbox, msg_keys have the same values is imap message sequences
+    #
+    async with mbox.lock.read_lock():
+        results = await mbox.search(search_op, uid_cmd=False)
+        assert results == msg_keys
+
+        # ditto for uid's
+        #
+        results = await mbox.search(search_op, uid_cmd=True)
+        assert results == msg_keys
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mailbox_fetch(mailbox_with_bunch_of_email):
+    """
+    Search is tested mostly `test_search`.. so we only need a very simple
+    search.
+    """
+    # We know this mailbox has messages numbered from 1 to 20.
+    #
+    mbox = mailbox_with_bunch_of_email
+    msg_set = [(2, 4)]
+
+    # UID's, message number, and message key are all the same value for a fresh
+    # mailbox.
+    #
+    expected_keys = (2, 3, 4)
+    msgs: Dict[int, MHMessage] = {}
+    for msg_key in expected_keys:
+        msgs[msg_key] = await mbox.mailbox.aget_message(msg_key)
+    fetch_ops = [
+        FetchAtt(FetchOp.FLAGS),
+        FetchAtt(FetchOp.BODY, section=[["HEADER.FIELDS", ["Date", "From"]]]),
+    ]
+
+    # `fetch()` yields a tuple. The first element is the message number. The
+    # second element is a list that contains the individual fetch att
+    # results. In the case of a UID command it also has a `UID` result.
+    #
+    # NOTE: We are not going to test the contents of the results for now. We
+    #       test that in other modules. Just want to make sure that the data
+    #       was formatted properly.
+    async with mbox.lock.read_lock():
+        async for fetch_result in mbox.fetch(msg_set, fetch_ops):
+            msg_key, result = fetch_result
+            assert msg_key in expected_keys
+            flags, headers = result
+            assert flags.startswith("FLAGS (")
+            assert headers.startswith("BODY[HEADER.FIELDS (Date From)] {")
+
+        async for fetch_result in mbox.fetch(msg_set, fetch_ops, uid_cmd=True):
+            msg_key, result = fetch_result
+            assert msg_key in expected_keys
+            uid, flags, headers = result
+            uid_str, uid_val = uid.split()
+            assert uid_str == "UID"
+            assert int(uid_val) == msg_key
+            assert flags.startswith("FLAGS (")
+            assert headers.startswith("BODY[HEADER.FIELDS (Date From)] {")
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mailbox_store(mailbox_with_bunch_of_email):
+    """
+    Search is tested mostly `test_search`.. so we only need a very simple
+    search.
+    """
+    # We know this mailbox has messages numbered from 1 to 20.
+    #
+    mbox = mailbox_with_bunch_of_email
+    msg_keys = await mbox.mailbox.akeys()
+    msg_set = sorted(list(random.sample(msg_keys, 5)))
+
+    # can not touch `\Recent`
+    #
+    with pytest.raises(No):
+        await mbox.store(msg_set, StoreAction.REMOVE_FLAGS, [r"\Recent"])
