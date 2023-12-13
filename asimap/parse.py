@@ -1509,7 +1509,7 @@ class IMAPClientCommand(object):
 
     #######################################################################
     #
-    def _p_msg_set(self):
+    def _p_msg_set(self) -> List:
         """sequence_num ::= nz_number / "*"
 
         * is the largest number in use.  For message sequence numbers, it is

@@ -537,3 +537,47 @@ async def test_search_uid(mailbox_with_bunch_of_email):
                 assert msg_key in expected
             else:
                 assert msg_key not in expected
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_search_and_or(mailbox_with_bunch_of_email):
+    mbox = mailbox_with_bunch_of_email
+    msg_keys = await mbox.mailbox.akeys()
+    seq_max = len(msg_keys)
+    seqs = await mbox.mailbox.aget_sequences()
+    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    assert uid_max
+
+    # Use message sets to test and & or
+    #
+    # We have 20 messages.. so construct a message set that tests all the
+    # features.
+    #
+    msg_set_1 = [(1, 10)]
+    msg_set_2 = [(8, 15)]
+    expected_1 = [8, 9, 10]  # (msg_set_1 and msg_set_2)
+    expected_2 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]  # or
+
+    search_op1 = IMAPSearch("message_set", msg_set=msg_set_1)
+    search_op2 = IMAPSearch("message_set", msg_set=msg_set_2)
+    search_op = IMAPSearch("and", search_key=[search_op1, search_op2])
+    for msg_idx, msg_key in enumerate(msg_keys):
+        msg_idx += 1
+        async with mbox.lock.read_lock():
+            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+            if await search_op.match(ctx):
+                assert msg_key in expected_1
+            else:
+                assert msg_key not in expected_1
+
+    search_op = IMAPSearch("or", search_key=[search_op1, search_op2])
+    for msg_idx, msg_key in enumerate(msg_keys):
+        msg_idx += 1
+        async with mbox.lock.read_lock():
+            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+            if await search_op.match(ctx):
+                assert msg_key in expected_2
+            else:
+                assert msg_key not in expected_2
