@@ -337,6 +337,8 @@ class IMAPSearch(object):
                 result.append(f", n = {self.args['n']}")
             case SearchOp.TEXT | SearchOp.BODY:
                 result.append(f', string = "{self.args["string"]}"')
+            case SearchOp.MESSAGE_SET:
+                result.append(f', msg_set = {self.args["msg_set"]}')
             case SearchOp.HEADER:
                 result.append(
                     f', header = "{self.args["header"]}", '
@@ -346,34 +348,6 @@ class IMAPSearch(object):
                 result.append(f', keyword = "{self.args["keyword"]}"')
         result.append(")")
         return "".join(result)
-        # if self.op in (self.OP_AND, self.OP_OR):
-        #     elt = []
-        #     for search in self.args["search_key"]:
-        #         elt.append(str(search))
-        #     result += ", [%s]" % ", ".join(elt)
-        # elif self.op in (self.OP_NOT):
-        #     result += ", search_key = %s" % self.args["search_key"]
-        # elif self.op in (
-        #     self.OP_BEFORE,
-        #     self.OP_ON,
-        #     self.OP_SENTON,
-        #     self.OP_SENTBEFORE,
-        #     self.OP_SENTSINCE,
-        #     self.OP_SINCE,
-        # ):
-        #     result += ', date = "%s"' % self.args["date"]
-        # elif self.op in (self.OP_LARGER, self.OP_SMALLER):
-        #     result += ", n = %d" % self.args["n"]
-        # elif self.op in (self.OP_TEXT, self.OP_BODY):
-        #     result += ', string = "%s"' % self.args["string"]
-        # elif self.op in (self.OP_HEADER):
-        #     result += ', header = "%s", string = "%s"' % (
-        #         self.args["header"],
-        #         self.args["string"],
-        #     )
-        # elif self.op in (self.OP_KEYWORD):
-        #     result += ', keyword = "%s"' % self.args["keyword"]
-        # return result + ")"
 
     ##################################################################
     #
@@ -527,11 +501,16 @@ class IMAPSearch(object):
         msg_number = self.ctx.msg_number
         for elt in self.args["msg_set"]:
             if isinstance(elt, str) and elt == "*":
-                return msg_number == self.ctx.seq_max
+                if msg_number == self.ctx.seq_max:
+                    return True
             elif isinstance(elt, int):
-                return elt == msg_number
+                if elt == msg_number:
+                    return True
             elif isinstance(elt, tuple):
-                return msg_number >= elt[0] and msg_number <= elt[1]
+                if isinstance(elt[1], str) and elt[1] == "*":
+                    elt = (elt[0], self.ctx.seq_max)
+                if msg_number >= elt[0] and msg_number <= elt[1]:
+                    return True
         return False
 
     #########################################################################

@@ -17,7 +17,7 @@
   ],
   [
     "A999 UID SEARCH 1:100 UID 443:557\r\n",
-    "A999 UID SEARCH IMAPSearch('and', [IMAPSearch('message_set'), IMAPSearch('uid')])"
+    "A999 UID SEARCH IMAPSearch('and', [IMAPSearch('message_set', msg_set = [(1, 100)]), IMAPSearch('uid')])"
   ],
   [
     "A202 list ~/Mail/ %\r\n",
@@ -109,7 +109,7 @@
   ],
   [
     "A282 SEARCH (OR FLAGGED 1:3,4,5,6) SINCE 1-Feb-1994 NOT FROM \"Smith\"\r\n",
-    "A282 SEARCH IMAPSearch('and', [IMAPSearch('or', [IMAPSearch('keyword', keyword = \"\\Flagged\"), IMAPSearch('message_set')]), IMAPSearch('since', date = \"1994-02-01\"), IMAPSearch('not', search_key = IMAPSearch('header', header = \"from\", string = \"smith\"))])"
+    "A282 SEARCH IMAPSearch('and', [IMAPSearch('or', [IMAPSearch('keyword', keyword = \"\\Flagged\"), IMAPSearch('message_set', msg_set = [(1, 3), 4, 5, 6])]), IMAPSearch('since', date = \"1994-02-01\"), IMAPSearch('not', search_key = IMAPSearch('header', header = \"from\", string = \"smith\"))])"
   ],
   [
     "a002 noop\r\n",
