@@ -624,11 +624,17 @@ class IMAPSearch(object):
         Messages with unique identifiers corresponding to the
         specified unique identifier set.
         """
+        uid = await self.ctx.uid()
         for elt in self.args["msg_set"]:
             if isinstance(elt, str) and elt == "*":
-                return self.ctx.uid == self.ctx.uid_max
+                if uid == self.ctx.uid_max:
+                    return True
             elif isinstance(elt, int):
-                return elt == self.ctx.uid
+                if elt == uid:
+                    return True
             elif isinstance(elt, tuple):
-                return self.ctx.uid >= elt[0] and self.ctx.uid <= elt[1]
+                if isinstance(elt[1], str) and elt[1] == "*":
+                    elt = (elt[0], self.ctx.uid_max)
+                if uid >= elt[0] and uid <= elt[1]:
+                    return True
         return False

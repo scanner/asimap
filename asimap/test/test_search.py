@@ -495,6 +495,8 @@ async def test_search_message_set_and_not(mailbox_with_bunch_of_email):
             ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
             if await search_op.match(ctx):
                 assert msg_key in expected
+            else:
+                assert msg_key not in expected
 
     # Let us try this with the `not` operator conveniently also testing it.
     #
@@ -504,5 +506,34 @@ async def test_search_message_set_and_not(mailbox_with_bunch_of_email):
         async with mbox.lock.read_lock():
             ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
             if await search_op.match(ctx):
-                print(f"{msg_key} not matched")
+                assert msg_key not in expected
+            else:
+                assert msg_key in expected
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_search_uid(mailbox_with_bunch_of_email):
+    mbox = mailbox_with_bunch_of_email
+    msg_keys = await mbox.mailbox.akeys()
+    seq_max = len(msg_keys)
+    seqs = await mbox.mailbox.aget_sequences()
+    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    assert uid_max
+
+    # We have 20 messages.. so construct a message set that tests all the
+    # features.. These are the first 20 messages ever so the UID's actually
+    # happen to match the message sequence numbers and message keys.
+    #
+    msg_set = (1, 2, (7, 10), (19, "*"), "*")
+    expected = [1, 2, 7, 8, 9, 10] + list(range(19, seq_max + 1))
+    search_op = IMAPSearch("uid", msg_set=msg_set)
+    for msg_idx, msg_key in enumerate(msg_keys):
+        msg_idx += 1
+        async with mbox.lock.read_lock():
+            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+            if await search_op.match(ctx):
+                assert msg_key in expected
+            else:
                 assert msg_key not in expected
