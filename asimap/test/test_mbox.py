@@ -17,9 +17,11 @@ import pytest
 from async_timeout import timeout
 from dirty_equals import IsNow
 
+from ..constants import flag_to_seq
+
 # Project imports
 #
-from ..exceptions import No
+from ..exceptions import Bad, No
 from ..fetch import FetchAtt, FetchOp
 from ..mbox import Mailbox
 from ..parse import StoreAction
@@ -599,7 +601,18 @@ async def test_mailbox_fetch(mailbox_with_bunch_of_email):
     # We know this mailbox has messages numbered from 1 to 20.
     #
     mbox = mailbox_with_bunch_of_email
-    msg_set = [(2, 4)]
+    seqs = await mbox.mailbox.aget_sequences()
+    msg_keys = await mbox.mailbox.akeys()
+    msg_set = [2, 3, 4]
+
+    # New mailbox.. all messages are unseen. FETCH BODY without PEEK marks them
+    # as seen.
+    #
+    seen = flag_to_seq(r"\Seen")
+    unseen = flag_to_seq("unseen")
+    assert unseen in seqs
+    assert seqs[unseen] == msg_keys
+    assert not seqs[seen]
 
     # UID's, message number, and message key are all the same value for a fresh
     # mailbox.
@@ -610,7 +623,11 @@ async def test_mailbox_fetch(mailbox_with_bunch_of_email):
         msgs[msg_key] = await mbox.mailbox.aget_message(msg_key)
     fetch_ops = [
         FetchAtt(FetchOp.FLAGS),
-        FetchAtt(FetchOp.BODY, section=[["HEADER.FIELDS", ["Date", "From"]]]),
+        FetchAtt(
+            FetchOp.BODY,
+            section=[["HEADER.FIELDS", ["Date", "From"]]],
+            peek=True,
+        ),
     ]
 
     # `fetch()` yields a tuple. The first element is the message number. The
@@ -628,6 +645,30 @@ async def test_mailbox_fetch(mailbox_with_bunch_of_email):
             assert flags.startswith("FLAGS (")
             assert headers.startswith("BODY[HEADER.FIELDS (Date From)] {")
 
+            # The on disk mailbox info does not change until we finish the
+            # fetch. However the sequences on the cached message will update
+            # immediately.
+            #
+            msg = mbox.server.msg_cache.get(mbox.name, msg_key)
+            if msg:
+                assert seen not in msg.get_sequences()
+                assert unseen in msg.get_sequences()
+
+        seqs = await mbox.mailbox.aget_sequences()
+        for msg_key in msg_set:
+            # One of the FETCH's is a BODY.PEEK, thus `\Seen` flag should
+            # not be on the messages yet, and they should still be `unseen`.
+            #
+            assert msg_key not in seqs[seen]
+            assert msg_key in seqs[unseen]
+
+            msg = await mbox.mailbox.aget_message(msg_key)
+            assert seen not in msg.get_sequences()
+            assert unseen in msg.get_sequences()
+
+        # Twiggle the FETCH BODY.PEEK to be a FETCH BODY.
+        #
+        fetch_ops[1].peek = False
         async for fetch_result in mbox.fetch(msg_set, fetch_ops, uid_cmd=True):
             msg_key, result = fetch_result
             assert msg_key in expected_keys
@@ -638,6 +679,26 @@ async def test_mailbox_fetch(mailbox_with_bunch_of_email):
             assert flags.startswith("FLAGS (")
             assert headers.startswith("BODY[HEADER.FIELDS (Date From)] {")
 
+            # FETCH BODY is no longer a PEEK, thus these messages are now
+            # `\Seen`
+            #
+            msg = mbox.server.msg_cache.get(mbox.name, msg_key)
+            if msg:
+                assert seen in msg.get_sequences()
+                assert unseen not in msg.get_sequences()
+
+        seqs = await mbox.mailbox.aget_sequences()
+        for msg_key in msg_set:
+            # One of the FETCH's is a BODY.PEEK, thus `\Seen` flag should
+            # not be on the messages yet, and they should still be `unseen`.
+            #
+            assert msg_key in seqs[seen]
+            assert msg_key not in seqs[unseen]
+
+            msg = await mbox.mailbox.aget_message(msg_key)
+            assert seen in msg.get_sequences()
+            assert unseen not in msg.get_sequences()
+
 
 ####################################################################
 #
@@ -647,13 +708,34 @@ async def test_mailbox_store(mailbox_with_bunch_of_email):
     Search is tested mostly `test_search`.. so we only need a very simple
     search.
     """
-    # We know this mailbox has messages numbered from 1 to 20.
+    # We know this mailbox has messages numbered from 1 to 20.  We also know
+    # since this is an initial state the msg_key, message sequence number, and
+    # uid's are the same for each message (ie: 1 == 1 == 1)
     #
     mbox = mailbox_with_bunch_of_email
     msg_keys = await mbox.mailbox.akeys()
     msg_set = sorted(list(random.sample(msg_keys, 5)))
 
-    # can not touch `\Recent`
-    #
-    with pytest.raises(No):
-        await mbox.store(msg_set, StoreAction.REMOVE_FLAGS, [r"\Recent"])
+    async with mbox.lock.read_lock():
+        # can not touch `\Recent`
+        #
+        with pytest.raises(No):
+            await mbox.store(msg_set, StoreAction.REMOVE_FLAGS, [r"\Recent"])
+
+        with pytest.raises(Bad):
+            await mbox.store(msg_set, -1, [r"\Answered"])
+
+        # The messages are all currently 'unseen' when the mbox is created.
+        # By setting `\Seen` they will all lose `unseen` (and gain `\Seen`)
+        #
+        await mbox.store(msg_set, StoreAction.ADD_FLAGS, [r"\Seen"])
+        seqs = await mbox.mailbox.aget_sequences()
+        print(f"Sequences: {seqs}")
+        for msg_key in msg_set:
+            msg = await mbox.mailbox.aget_message(msg_key)
+            msg_seq = msg.get_sequences()
+            print(f"msg key: {msg_key}, sequences: {msg_seq}")
+            assert flag_to_seq(r"\Seen") in msg_seq
+            assert flag_to_seq("unseen") not in msg_seq
+            assert msg_key in seqs[flag_to_seq(r"\Seen")]
+            assert msg_key not in seqs[flag_to_seq("unseen")]

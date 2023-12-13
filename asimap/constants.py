@@ -38,9 +38,7 @@ SYSTEM_FLAG_MAP = {
     "Seen": r"\Seen",
 }
 
-REVERSE_SYSTEM_FLAG_MAP = {}
-for key, value in SYSTEM_FLAG_MAP.items():
-    REVERSE_SYSTEM_FLAG_MAP[value] = key
+REVERSE_SYSTEM_FLAG_MAP = {v: k for k, v in SYSTEM_FLAG_MAP.items()}
 
 
 ####################################################################

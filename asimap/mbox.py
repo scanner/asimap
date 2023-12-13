@@ -1903,7 +1903,7 @@ class Mailbox:
                 ctx = SearchContext(
                     self, msg_key, i, seq_max, uid_max, self.sequences
                 )
-                if search.match(ctx):
+                if await search.match(ctx):
                     # The UID SEARCH command returns uid's of messages
                     #
                     if uid_cmd:
@@ -1951,180 +1951,183 @@ class Mailbox:
         - `cmd`: The IMAP command. We need this to know whether or not this
                  is a UID command.
         """
+        assert self.lock.this_task_has_read_lock()  # XXX remove when confident
 
         start_time = time.time()
         seq_changed = False
         num_results = 0
-        msgs = await self.mailbox.akeys()
+        async with self.mailbox.lock_folder():
+            msgs = await self.mailbox.akeys()
 
-        try:
-            # IF there are no messages in the mailbox there are no results.
-            #
-            if not msgs:
-                # If there are no messages but they asked for some messages
-                # (that are not there), return NO.. can not fetch that data.
-                if msg_set and not uid_cmd:
-                    raise No("Mailbox empty.")
-                return
-
-            uid_vv, uid_max = await self.get_uid_from_msg(msgs[-1])
-            assert uid_max  # XXX If this is None should we force a resync?
-            seq_max = len(msgs)
-
-            # Generate the set of indices in to our folder for this command.
-            #
-            # NOTE: `msg_idxs` is a list of integers. The integer represent an
-            #       IMAP message sequence number, ie: It is the message at
-            #       position <n> in the mailbox, starting from position 1 (it
-            #       is NOT 0-based). So message sequence number `1` referes to
-            #       the first message in a box. That is msgs[0] from the list
-            #       of message keys.
-            #
-            # NOTE: We map from message sequence number to index in to the msgs
-            #       list when we are getting the value from the message list.
-            #
-            if uid_cmd:
-                # If we are doing a UID command we need to translate the values
-                # in `msg_set` to IMAP message sequence numbers.
+            try:
+                # IF there are no messages in the mailbox there are no results.
                 #
-                # We to use the max uid for the sequence max.
-                #
-                uid_list = sequence_set_to_list(msg_set, uid_max, uid_cmd)
+                if not msgs:
+                    # If there are no messages but they asked for some messages
+                    # (that are not there), return NO.. can not fetch that data.
+                    if msg_set and not uid_cmd:
+                        raise No("Mailbox empty.")
+                    return
 
-                # We want to convert this list of UID's in to message indices
-                # So for every uid we we got out of the msg_set we look up its
-                # index in self.uids and from that construct the msg_idxs
-                # list. Missing UID's are fine. They just do not get added to
-                # the list. From rfc3501:
-                #
-                #    "A non-existent unique identifier is ignored without any
-                #     error message generated.  Thus, it is possible for a UID
-                #     FETCH command to return an OK without any data ..."
-                #
-                msg_idxs = []
-                for uid in uid_list:
-                    if uid in self.uids:
-                        mi = self.uids.index(uid) + 1
-                        msg_idxs.append(mi)
+                uid_vv, uid_max = await self.get_uid_from_msg(msgs[-1])
+                assert uid_max  # XXX If this is None should we force a resync?
+                seq_max = len(msgs)
 
-                # Also, if this is a UID FETCH then we MUST make sure UID is
-                # one of the fields being fetched, and if it is not add it.
+                # Generate the set of indices in to our folder for this
+                # command.
                 #
-                if not any([x.attribute == "uid" for x in fetch_ops]):
-                    fetch_ops.insert(0, FetchAtt(FetchOp.UID))
-
-            else:
-                msg_idxs = sequence_set_to_list(msg_set, seq_max)
-
-            # msg_idx is a list of IMAP message sequence numbers.  Go through
-            # each message and apply the fetch_ops.fetch() to it building up a
-            # set of data to respond to the client with. Remember IMAP message
-            # sequence number `1` refers to the first message in the folder,
-            # ie: msgs[0].
-            #
-            fetch_started = time.time()
-            fetch_yield_times = []
-            for idx in msg_idxs:
-                single_fetch_started = time.time()
-                try:
-                    msg_key = msgs[idx - 1]
-                except IndexError:
-                    # Every key in msg_idx should be in the folder. If it is
-                    # not then something is off between our state and the
-                    # folder's state.
+                # NOTE: `msg_idxs` is a list of integers. The integer represent
+                #       an IMAP message sequence number, ie: It is the message
+                #       at position <n> in the mailbox, starting from position
+                #       1 (it is NOT 0-based). So message sequence number `1`
+                #       referes to the first message in a box. That is msgs[0]
+                #       from the list of message keys.
+                #
+                # NOTE: We map from message sequence number to index in to the
+                #       msgs list when we are getting the value from the
+                #       message list.
+                #
+                if uid_cmd:
+                    # If we are doing a UID command we need to translate the
+                    # values in `msg_set` to IMAP message sequence numbers.
                     #
-                    log_msg = (
-                        f"fetch: Attempted to look up message index "
-                        f"{idx - 1}, but msgs is only of length {len(msgs)}"
+                    # We to use the max uid for the sequence max.
+                    #
+                    uid_list = sequence_set_to_list(msg_set, uid_max, uid_cmd)
+
+                    # We want to convert this list of UID's in to message
+                    # indices So for every uid we we got out of the msg_set we
+                    # look up its index in self.uids and from that construct
+                    # the msg_idxs list. Missing UID's are fine. They just do
+                    # not get added to the list. From rfc3501:
+                    #
+                    #    "A non-existent unique identifier is ignored without
+                    #     any error message generated.  Thus, it is possible
+                    #     for a UID FETCH command to return an OK without any
+                    #     data ..."
+                    #
+                    msg_idxs = []
+                    for uid in uid_list:
+                        if uid in self.uids:
+                            mi = self.uids.index(uid) + 1
+                            msg_idxs.append(mi)
+
+                    # Also, if this is a UID FETCH then we MUST make sure UID is
+                    # one of the fields being fetched, and if it is not add it.
+                    #
+                    if not any([x.attribute == "uid" for x in fetch_ops]):
+                        fetch_ops.insert(0, FetchAtt(FetchOp.UID))
+
+                else:
+                    msg_idxs = sequence_set_to_list(msg_set, seq_max)
+
+                # msg_idx is a list of IMAP message sequence numbers.  Go
+                # through each message and apply the fetch_ops.fetch() to it
+                # building up a set of data to respond to the client
+                # with. Remember IMAP message sequence number `1` refers to the
+                # first message in the folder, ie: msgs[0].
+                #
+                fetch_started = time.time()
+                fetch_yield_times = []
+                for idx in msg_idxs:
+                    single_fetch_started = time.time()
+                    try:
+                        msg_key = msgs[idx - 1]
+                    except IndexError:
+                        # Every key in msg_idx should be in the folder. If it is
+                        # not then something is off between our state and the
+                        # folder's state.
+                        #
+                        log_msg = (
+                            f"fetch: Attempted to look up message index "
+                            f"{idx - 1}, but msgs is only of length {len(msgs)}"
+                        )
+                        logger.warning(log_msg)
+                        raise MailboxInconsistency(log_msg)
+
+                    ctx = SearchContext(
+                        self, msg_key, idx, seq_max, uid_max, self.sequences
                     )
-                    logger.warning(log_msg)
-                    raise MailboxInconsistency(log_msg)
+                    fetched_flags = False
+                    fetched_body = False
+                    iter_results = []
 
-                ctx = SearchContext(
-                    self, msg_key, idx, seq_max, uid_max, self.sequences
-                )
-                fetched_flags = False
-                fetched_body = False
-                iter_results = []
+                    for elt in fetch_ops:
+                        iter_results.append(await elt.fetch(ctx))
+                        # If one of the FETCH ops gets the FLAGS we want to
+                        # know and likewise if one of the FETCH ops gets the
+                        # BODY (but NOT BODY.PEEK) we want to know. Both of
+                        # these operations can potentially change the flags of
+                        # the message.
+                        #
+                        if elt.attribute == "body" and elt.peek is False:
+                            fetched_body = True
+                        if elt.attribute == "flags":
+                            fetched_flags = True
 
-                for elt in fetch_ops:
-                    iter_results.append(await elt.fetch(ctx))
-                    # If one of the FETCH ops gets the FLAGS we want to know
-                    # and likewise if one of the FETCH ops gets the BODY (but
-                    # NOT BODY.PEEK) we want to know. Both of these operations
-                    # can potentially change the flags of the message.
+                    # If we did a FETCH FLAGS and the message was in the
+                    # 'Recent' sequence then remove it from the 'Recent'
+                    # sequence. Only one client gets to actually see that a
+                    # message is 'Recent.'
                     #
-                    if elt.attribute == "body" and elt.peek is False:
-                        fetched_body = True
-                    if elt.attribute == "flags":
-                        fetched_flags = True
+                    cached_msg = self.server.msg_cache.get(self.name, msg_key)
+                    if fetched_flags:
+                        if cached_msg:
+                            cached_msg.remove_sequence("Recent")
+                        if msg_key in self.sequences["Recent"]:
+                            self.sequences["Recent"].remove(msg_key)
+                            seq_changed = True
 
-                yield (idx, iter_results)
-                num_results += 1
+                    # If we dif a FETCH BODY (but NOT a BODY.PEEK) then the
+                    # message is removed from the 'unseen' sequence (if it was
+                    # in it) and added to the 'Seen' sequence (if it was not in
+                    # it.)
+                    #
+                    if fetched_body:
+                        if cached_msg:
+                            cached_msg.remove_sequence("unseen")
+                            cached_msg.add_sequence("Seen")
+                        if msg_key in self.sequences["unseen"]:
+                            self.sequences["unseen"].remove(msg_key)
+                            seq_changed = True
+                        if msg_key not in self.sequences["Seen"]:
+                            self.sequences["Seen"].append(msg_key)
+                            seq_changed = True
 
-                # If we did a FETCH FLAGS and the message was in the 'Recent'
-                # sequence then remove it from the 'Recent' sequence. Only one
-                # client gets to actually see that a message is 'Recent.'
+                    fetch_yield_times.append(time.time() - single_fetch_started)
+                    yield (idx, iter_results)
+                    num_results += 1
+                    await asyncio.sleep(0)
+
+            finally:
+                now = time.time()
+                total_time = now - start_time
+                fetch_time = now - fetch_started
+                mean_yield_time = fmean(fetch_yield_times)
+                median_yield_time = median(fetch_yield_times)
+                stdev_yield_time = (
+                    stdev(fetch_yield_times, mean_yield_time)
+                    if len(fetch_yield_times) > 2
+                    else 0.0
+                )
+
+                # Done applying FETCH to all of the indicated messages.  If the
+                # sequences changed we need to write them back out to disk.
                 #
-                cached_msg = self.server.msg_cache.get(self.name, msg_key)
-                if fetched_flags:
-                    if cached_msg:
-                        cached_msg.remove_sequence("Recent")
-                    if msg_key in self.sequences["Recent"]:
-                        self.sequences["Recent"].remove(msg_key)
-                        seq_changed = True
-
-                # If we dif a FETCH BODY (but NOT a BODY.PEEK) then the message
-                # is removed from the 'unseen' sequence (if it was in it) and
-                # added to the 'Seen' sequence (if it was not in it.)
-                #
-                if fetched_body:
-                    if cached_msg:
-                        cached_msg.remove_sequence("unseen")
-                        cached_msg.add_sequence("Seen")
-                    if msg_key in self.sequences["unseen"]:
-                        self.sequences["unseen"].remove(msg_key)
-                        seq_changed = True
-                    if msg_key not in self.sequences["Seen"]:
-                        self.sequences["Seen"].append(msg_key)
-                        seq_changed = True
-                fetch_yield_times.append(time.time() - single_fetch_started)
-                await asyncio.sleep(0)
-
-        finally:
-            now = time.time()
-            total_time = now - start_time
-            fetch_time = now - fetch_started
-            mean_yield_time = fmean(fetch_yield_times)
-            median_yield_time = median(fetch_yield_times)
-            stdev_yield_time = (
-                stdev(fetch_yield_times, mean_yield_time)
-                if len(fetch_yield_times) > 2
-                else 0.0
-            )
-
-            # Done applying FETCH to all of the indicated messages.
-            # If the sequences changed we need to write them back out to disk.
-            #
-            if seq_changed:
-                self.log.debug("FETCH: sequences were modified, saving")
-                await self.mailbox.aset_sequences(self.sequences)
-                # XXX We know a resync is required. But if we do it now not
-                #     everyone will be notified? Better to let it happen
-                #     naturally on the next client command?
-                #
-                await self.resync(optional=False)
-            logger.debug(
-                "FETCH finished, num results: %d, total duration: %f, "
-                "fetch duration: %f, mean time per fetch: %f, median: "
-                "%f, stdev: %f",
-                num_results,
-                total_time,
-                fetch_time,
-                mean_yield_time,
-                median_yield_time,
-                stdev_yield_time,
-            )
+                if seq_changed:
+                    self.log.debug("FETCH: sequences were modified, saving")
+                    await self.mailbox.aset_sequences(self.sequences)
+                logger.debug(
+                    "FETCH finished, num results: %d, total duration: %f, "
+                    "fetch duration: %f, mean time per fetch: %f, median: "
+                    "%f, stdev: %f",
+                    num_results,
+                    total_time,
+                    fetch_time,
+                    mean_yield_time,
+                    median_yield_time,
+                    stdev_yield_time,
+                )
 
     ##################################################################
     #
@@ -2149,14 +2152,19 @@ class Mailbox:
         - `flags`: The flags to add/remove/replace
         - `uid_cmd`: Used to determine if this is a uid command or not
         """
+        assert self.lock.this_task_has_read_lock()  # XXX remove when confident
+
         if r"\Recent" in flags:
             raise No(r"You can not add or remove the '\Recent' flag")
 
-        if action not in (
-            StoreAction.ADD_FLAGS,
-            StoreAction.REMOVE_FLAGS,
-            StoreAction.REPLACE_FLAGS,
-        ):
+        try:
+            if action not in StoreAction:
+                raise Bad(f"'{action}' is an invalid STORE action")
+        except TypeError:
+            # XXX in 3.12 __contains__ will no longer raise TypeError, but will
+            #     return True or False depending on whether the value is a
+            #     member or the value of a member
+            #
             raise Bad(f"'{action}' is an invalid STORE action")
 
         async with self.mailbox.lock_folder():
