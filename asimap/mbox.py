@@ -190,6 +190,13 @@ class Mailbox:
         #
         self.last_resync = 0
 
+        # XXX I think I need to do away with this distinction. We can still
+        #     store sequences in the db, but the mbox code will not rely on
+        #     that. Every time we load the mbox we load the sequences from the
+        #     .mh_sequences file. every time we get get the file lock we
+        #     re-read the sequences. If we write it, we must write inside a
+        #     file lock.
+        #
         # NOTE: It is important to note that self.sequences is the value of the
         # sequences we stored in the db from the end of the last resync. As
         # such they are useful for measuring what has changed in various
@@ -1948,6 +1955,7 @@ class Mailbox:
         num_results = 0
         async with self.mailbox.lock_folder():
             msgs = await self.mailbox.akeys()
+            seqs = await self.mailbox.aget_sequences()
 
             try:
                 # IF there are no messages in the mailbox there are no results.
@@ -2036,7 +2044,7 @@ class Mailbox:
                         raise MailboxInconsistency(log_msg)
 
                     ctx = SearchContext(
-                        self, msg_key, idx, seq_max, uid_max, self.sequences
+                        self, msg_key, idx, seq_max, uid_max, seqs
                     )
                     fetched_flags = False
                     fetched_body = False
@@ -2064,8 +2072,8 @@ class Mailbox:
                     if fetched_flags:
                         if cached_msg:
                             cached_msg.remove_sequence("Recent")
-                        if msg_key in self.sequences["Recent"]:
-                            self.sequences["Recent"].remove(msg_key)
+                        if msg_key in seqs["Recent"]:
+                            seqs["Recent"].remove(msg_key)
                             seq_changed = True
 
                     # If we dif a FETCH BODY (but NOT a BODY.PEEK) then the
@@ -2077,11 +2085,11 @@ class Mailbox:
                         if cached_msg:
                             cached_msg.remove_sequence("unseen")
                             cached_msg.add_sequence("Seen")
-                        if msg_key in self.sequences["unseen"]:
-                            self.sequences["unseen"].remove(msg_key)
+                        if msg_key in seqs["unseen"]:
+                            seqs["unseen"].remove(msg_key)
                             seq_changed = True
-                        if msg_key not in self.sequences["Seen"]:
-                            self.sequences["Seen"].append(msg_key)
+                        if msg_key not in seqs["Seen"]:
+                            seqs["Seen"].append(msg_key)
                             seq_changed = True
 
                     # Done applying FETCH to all of the indicated messages.  If
@@ -2091,7 +2099,7 @@ class Mailbox:
                     if seq_changed:
                         async with self.lock.write_lock():
                             logger.debug("sequences were modified, saving")
-                            await self.mailbox.aset_sequences(self.sequences)
+                            await self.mailbox.aset_sequences(seqs)
 
                     fetch_yield_times.append(time.time() - single_fetch_started)
                     yield (idx, iter_results)
@@ -2121,6 +2129,9 @@ class Mailbox:
                     median_yield_time,
                     stdev_yield_time,
                 )
+
+                if seq_changed:
+                    await self.resync()
 
     ##################################################################
     #
