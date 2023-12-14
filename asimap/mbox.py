@@ -2208,60 +2208,67 @@ class Mailbox:
             # Convert the flags to MH sequence names..
             #
             flags = [flag_to_seq(x) for x in flags]
-            seqs = await self.mailbox.aget_sequences()
             store_start = time.time()
 
-            for key in msg_keys:
-                msg = await self.get_and_cache_msg(key)
-                match action:
-                    case StoreAction.ADD_FLAGS | StoreAction.REMOVE_FLAGS:
-                        for flag in flags:
-                            # Make sure a sequence exists for every flag (even
-                            # if removing flags)
-                            #
-                            if flag not in seqs:
-                                seqs[flag] = []
-                            match action:
-                                case StoreAction.ADD_FLAGS:
-                                    _help_add_flag(key, seqs, msg, flag)
-                                case StoreAction.REMOVE_FLAGS:
-                                    _help_remove_flag(key, seqs, msg, flag)
-                    case StoreAction.REPLACE_FLAGS:
-                        # All flags for a message are replaced by the flags
-                        # passed in to `store()`. Except `Recent`. That one is
-                        # untouched by this operation.
-                        #
-                        msg_seqs = msg.get_sequences()
-                        msg.set_sequences(flags)
-                        if "unseen" in flags:
-                            msg.remove_sequence("Seen")
-                        if "Seen" in flags:
-                            msg.remove_sequence("unseen")
-                        if "Recent" in msg_seqs:
-                            msg.add_sequence("Recent")
-
-                        # Figure what sequences we need to remove this message
-                        # from.
-                        #
-                        seqs_to_remove = set(seqs.keys()) - set(flags)
-                        seqs_to_remove.discard("Recent")
-                        for seq_to_remove in seqs_to_remove:
-                            if key in seqs[seq_to_remove]:
-                                seqs[seq_to_remove].remove(key)
-                        if "Seen" in seqs_to_remove:
-                            seqs["unseen"].append(key)
-                        if "unseen" in seqs_to_remove:
-                            seqs["Seen"].append(key)
-                await asyncio.sleep(0)
-
             async with self.lock.write_lock():
-                # And when it is all done save our modified sequences back
-                # to .mh_sequences
-                #
+                seqs = await self.mailbox.aget_sequences()
+                for key in msg_keys:
+                    msg = await self.get_and_cache_msg(key)
+                    match action:
+                        case StoreAction.ADD_FLAGS | StoreAction.REMOVE_FLAGS:
+                            for flag in flags:
+                                # Make sure a sequence exists for every flag
+                                # (even if removing flags)
+                                #
+                                if flag not in seqs:
+                                    seqs[flag] = []
+                                match action:
+                                    case StoreAction.ADD_FLAGS:
+                                        _help_add_flag(key, seqs, msg, flag)
+                                    case StoreAction.REMOVE_FLAGS:
+                                        _help_remove_flag(key, seqs, msg, flag)
+                        case StoreAction.REPLACE_FLAGS:
+                            # All flags for a message are replaced by the flags
+                            # passed in to `store()`. Except `Recent` and
+                            # 'unseen'. They are untouched by this
+                            # operation.
+                            #
+                            msg_seqs = msg.get_sequences()
+                            msg.set_sequences(flags)
+                            if "Recent" in msg_seqs:
+                                msg.add_sequence("Recent")
+                            if "Seen" in msg_seqs and "Seen" not in flags:
+                                msg.add_sequence("unseen")
+                            if "unseen" in msg_seqs and "unseen" not in flags:
+                                msg.add_sequence("Seen")
+
+                            # Figure what sequences we need to remove this
+                            # message from.
+                            #
+                            seqs_to_remove = set(seqs.keys()) - set(flags)
+                            seqs_to_remove.discard("Recent")
+                            if "unseen" in flags or "Seen" in flags:
+                                if "unseen" in flags:
+                                    seqs_to_remove.add("Seen")
+                                    seqs_to_remove.discard("unseen")
+                                if "Seen" in flags:
+                                    seqs_to_remove.add("unseen")
+                                    seqs_to_remove.discard("Seen")
+                            else:
+                                if "unseen" in seqs_to_remove:
+                                    flags.append("Seen")
+                                if "Seen" in seqs_to_remove:
+                                    flags.append("unseen")
+
+                            for flag in flags:
+                                if key not in seqs[flag]:
+                                    seqs[flag].append(key)
+
+                            for seq_to_remove in seqs_to_remove:
+                                if key in seqs[seq_to_remove]:
+                                    seqs[seq_to_remove].remove(key)
                 await self.mailbox.aset_sequences(seqs)
-                logger.debug(
-                    "Completed, took %f seconds", time.time() - store_start
-                )
+        logger.debug("Completed, took %f seconds", time.time() - store_start)
 
     ##################################################################
     #

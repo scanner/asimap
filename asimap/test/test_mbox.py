@@ -730,12 +730,54 @@ async def test_mailbox_store(mailbox_with_bunch_of_email):
         #
         await mbox.store(msg_set, StoreAction.ADD_FLAGS, [r"\Seen"])
         seqs = await mbox.mailbox.aget_sequences()
-        print(f"Sequences: {seqs}")
         for msg_key in msg_set:
-            msg = await mbox.mailbox.aget_message(msg_key)
-            msg_seq = msg.get_sequences()
-            print(f"msg key: {msg_key}, sequences: {msg_seq}")
-            assert flag_to_seq(r"\Seen") in msg_seq
-            assert flag_to_seq("unseen") not in msg_seq
             assert msg_key in seqs[flag_to_seq(r"\Seen")]
             assert msg_key not in seqs[flag_to_seq("unseen")]
+
+            msg = mbox.server.msg_cache.get(mbox.name, msg_key)
+            if msg:
+                msg_seq = msg.get_sequences()
+                assert flag_to_seq(r"\Seen") in msg_seq
+                assert flag_to_seq("unseen") not in msg_seq
+
+            msg = await mbox.mailbox.aget_message(msg_key)
+            msg_seq = msg.get_sequences()
+            assert flag_to_seq(r"\Seen") in msg_seq
+            assert flag_to_seq("unseen") not in msg_seq
+
+        await mbox.store(msg_set, StoreAction.REMOVE_FLAGS, [r"\Seen"])
+        seqs = await mbox.mailbox.aget_sequences()
+        for msg_key in msg_set:
+            assert msg_key not in seqs[flag_to_seq(r"\Seen")]
+            assert msg_key in seqs[flag_to_seq("unseen")]
+
+            msg = mbox.server.msg_cache.get(mbox.name, msg_key)
+            if msg:
+                msg_seq = msg.get_sequences()
+                assert flag_to_seq(r"\Seen") not in msg_seq
+                assert flag_to_seq("unseen") in msg_seq
+
+            msg = await mbox.mailbox.aget_message(msg_key)
+            msg_seq = msg.get_sequences()
+            assert flag_to_seq(r"\Seen") not in msg_seq
+            assert flag_to_seq("unseen") in msg_seq
+
+        await mbox.store(msg_set, StoreAction.REPLACE_FLAGS, [r"\Answered"])
+        seqs = await mbox.mailbox.aget_sequences()
+        for msg_key in msg_set:
+            assert msg_key in seqs[flag_to_seq(r"\Answered")]
+            assert msg_key in seqs[flag_to_seq(r"\Seen")]
+            assert msg_key not in seqs[flag_to_seq("unseen")]
+
+            msg = mbox.server.msg_cache.get(mbox.name, msg_key)
+            if msg:
+                msg_seq = msg.get_sequences()
+                assert flag_to_seq(r"\Answered") in msg_seq
+                assert flag_to_seq(r"\Seen") in msg_seq
+                assert flag_to_seq("unseen") not in msg_seq
+
+            msg = await mbox.mailbox.aget_message(msg_key)
+            msg_seq = msg.get_sequences()
+            assert flag_to_seq(r"\Answered") in msg_seq
+            assert flag_to_seq(r"\Seen") in msg_seq
+            assert flag_to_seq("unseen") not in msg_seq
