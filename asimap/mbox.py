@@ -669,15 +669,6 @@ class Mailbox:
             # (\Marked) and we need to tell all clients listening to this
             # folder about its new sizes.
             #
-            # XXX Should not need this get_sequences as we should have been
-            #     saving `seq` every time we changed it (and indeed, it may
-            #     be more up to date than what is in the sequences file.. and
-            #     with our locking no other process should have been able to
-            #     modify the mailbox.
-            #
-            # seq = await self.mailbox.aget_sequences()
-            #       self.sequences.. so we can not set
-            #       this here.
             num_recent = len(seq["Recent"])
             num_msgs = len(msg_keys)
 
@@ -880,7 +871,6 @@ class Mailbox:
         await self.mailbox.apack()
         self.server.msg_cache.clear_mbox(self.name)
         self.sequences = await self.mailbox.aget_sequences()
-        return
 
     ##################################################################
     #
@@ -2094,6 +2084,15 @@ class Mailbox:
                             self.sequences["Seen"].append(msg_key)
                             seq_changed = True
 
+                    # Done applying FETCH to all of the indicated messages.  If
+                    # the sequences changed we need to write them back out to
+                    # disk.
+                    #
+                    if seq_changed:
+                        async with self.lock.write_lock():
+                            logger.debug("sequences were modified, saving")
+                            await self.mailbox.aset_sequences(self.sequences)
+
                     fetch_yield_times.append(time.time() - single_fetch_started)
                     yield (idx, iter_results)
                     num_results += 1
@@ -2111,12 +2110,6 @@ class Mailbox:
                     else 0.0
                 )
 
-                # Done applying FETCH to all of the indicated messages.  If the
-                # sequences changed we need to write them back out to disk.
-                #
-                if seq_changed:
-                    self.log.debug("FETCH: sequences were modified, saving")
-                    await self.mailbox.aset_sequences(self.sequences)
                 logger.debug(
                     "FETCH finished, num results: %d, total duration: %f, "
                     "fetch duration: %f, mean time per fetch: %f, median: "
