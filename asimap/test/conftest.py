@@ -11,7 +11,7 @@ import threading
 import time
 from email.header import decode_header
 from email.headerregistry import Address
-from email.message import EmailMessage
+from email.message import EmailMessage, Message
 from email.utils import format_datetime
 from mailbox import MH, MHMessage
 from pathlib import Path
@@ -62,7 +62,9 @@ def decode_headers(headers: List[str]) -> List[str]:
 
 ####################################################################
 #
-def assert_email_equal(msg1, msg2, ignore_headers=False):
+def assert_email_equal(
+    msg1: Message, msg2: Message, ignore_headers: Optional[List[str]] = None
+):
     """
     Because we can not directly compare a Message and EmailMessage object
     we need to compare their parts. Since an EmailMessage is a sub-class of
@@ -70,7 +72,13 @@ def assert_email_equal(msg1, msg2, ignore_headers=False):
     """
     # Compare all headers, unless we are ignoring them.
     #
-    if ignore_headers is False:
+    if ignore_headers:
+        ignore_headers = [x.lower() for x in ignore_headers]
+        for header, value in msg1.items():
+            if header.lower() in ignore_headers:
+                continue
+            assert msg2[header] == value
+    else:
         assert len(msg1.keys()) == len(msg2.keys())
         keys = set(msg1.keys())
         for header in sorted(list(keys)):
@@ -83,15 +91,6 @@ def assert_email_equal(msg1, msg2, ignore_headers=False):
                 [x.translate(REPLACE_LINESEP).strip() for x in value2]
             )
             assert value1 == value2
-
-    # If we are ignoring only some headers, then skip those.
-    #
-    if isinstance(ignore_headers, list):
-        ignore_headers = [x.lower() for x in ignore_headers]
-        for header, value in msg1.items():
-            if header.lower() in ignore_headers:
-                continue
-            assert msg2[header] != value
 
     assert msg1.is_multipart() == msg2.is_multipart()
 

@@ -12,3 +12,4 @@ venv*
 .isorted
 .blackened
 venv*
+.coverage

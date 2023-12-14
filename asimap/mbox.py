@@ -2406,7 +2406,7 @@ class Mailbox:
         if DIGITS_RE.match(name):
             raise InvalidMailbox(
                 "Due to MH restrictions you can not create a "
-                "mailbox that is just digits: '%s'" % name
+                f"mailbox that is just digits: '{name}'"
             )
 
         # If the mailbox already exists than it can not be created. One

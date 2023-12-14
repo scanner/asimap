@@ -4,7 +4,7 @@ name: AS IMAP Tests
 
 steps:
   - name: test
-    image: "python:3.11"
+    image: "python:3.12"
     environment:
       PYTHONUNBUFFERED: 1
       PYTHONPATH: /drone/src

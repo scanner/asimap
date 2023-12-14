@@ -1,7 +1,7 @@
 # -*- Mode: Makefile -*-
 
 ACTIVATE := source $(ROOT_DIR)/venv/bin/activate &&
-PYTHON ?= python3.11
+PYTHON ?= python3.12
 
 .git/hooks/pre-commit .git/hooks/pre-push: venv
 	@$(ACTIVATE) pre-commit install

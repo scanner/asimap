@@ -803,3 +803,55 @@ async def test_mailbox_store(mailbox_with_bunch_of_email):
             assert flag_to_seq(r"\Answered") in msg_seq
             assert flag_to_seq(r"\Seen") in msg_seq
             assert flag_to_seq("unseen") not in msg_seq
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mailbox_copy(mailbox_with_bunch_of_email):
+    """
+    Search is tested mostly `test_search`.. so we only need a very simple
+    search.
+    """
+    # We know this mailbox has messages numbered from 1 to 20.  We also know
+    # since this is an initial state the msg_key, message sequence number, and
+    # uid's are the same for each message (ie: 1 == 1 == 1)
+    #
+    mbox = mailbox_with_bunch_of_email
+
+    # `mbox` creates `inbox`. We need a folder to copy messages to.
+    #
+    ARCHIVE = "Archive"
+    archive_mh = mbox.server.mailbox.add_folder(ARCHIVE)
+
+    # Let the server discover this folder and incorporate it.
+    #
+    await mbox.server.find_all_folders()
+    dst_mbox = await mbox.server.get_mailbox(ARCHIVE)
+
+    msg_keys = await mbox.mailbox.akeys()
+    msg_set = sorted(list(random.sample(msg_keys, 5)))
+
+    src_uids, dst_uids = await mbox.copy(msg_set, dst_mbox)
+    assert len(src_uids) == len(dst_uids)
+    dst_msg_keys = await dst_mbox.mailbox.akeys()
+    assert len(dst_msg_keys) == len(msg_set)
+    assert dst_msg_keys == await archive_mh.akeys()
+
+    # in the source mailbox the message keys, message indices, and uid's are
+    # all the same values for the same messages.
+    #
+    assert src_uids == msg_set
+
+    # Compare the messages. Ignore the UID_HDR when comparing.
+    #
+    src_msgs = [await mbox.mailbox.aget_message(x) for x in msg_set]
+    dst_msgs = [await dst_mbox.mailbox.aget_message(x) for x in dst_msg_keys]
+    for src_msg, dst_msg, src_uid, dst_uid in zip(
+        src_msgs, dst_msgs, src_uids, dst_uids
+    ):
+        assert_email_equal(src_msg, dst_msg, ignore_headers=[UID_HDR])
+        _, uid = get_uidvv_uid(src_msg[UID_HDR])
+        assert uid == src_uid
+        _, uid = get_uidvv_uid(dst_msg[UID_HDR])
+        assert uid == dst_uid

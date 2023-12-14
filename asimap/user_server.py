@@ -321,10 +321,6 @@ class IMAPUserServer:
             "%s.%s" % (__name__, self.__class__.__name__)
         )
 
-        # We setup our MH mailbox to return email.message.EmailMessage's
-        # (instead of MHMessage's). Lets us use the most modern email model at
-        # this time.
-        #
         self.mailbox = MH(
             self.maildir,
             create=True,
@@ -623,7 +619,7 @@ class IMAPUserServer:
             async with self.active_mailboxes_lock.write_lock():
                 # otherwise.. make an instance of this mailbox.
                 #
-                mbox = asimap.mbox.Mailbox(name, self, expiry=expiry)
+                mbox = await asimap.mbox.Mailbox.new(name, self, expiry=expiry)
                 self.active_mailboxes[name] = mbox
                 return mbox
 
@@ -694,11 +690,10 @@ class IMAPUserServer:
             name, mtime = row
             extant_mboxes[name] = mtime
 
-        # The user_server's CWD is the root of our mailboxes.
-        #
-        for root, dirs, files in os.walk(".", followlinks=True):
-            for d in dirs:
-                dirname = os.path.normpath(os.path.join(root, d))
+        maildir_root_len = len(str(self.maildir)) + 1
+        for root, dirs, files in self.maildir.walk(follow_symlinks=True):
+            for dir in dirs:
+                dirname = str(root / dir)[maildir_root_len:]
                 if dirname not in extant_mboxes:
                     mboxes_to_create.append(dirname)
 
@@ -709,9 +704,9 @@ class IMAPUserServer:
         #
         for mbox_name in mboxes_to_create:
             await self.get_mailbox(mbox_name, expiry=0)
-        self.log.debug(
-            "find_all_folders: finished. Took %f seconds"
-            % (time.time() - start_time)
+        logger.debug(
+            "find_all_folders: finished. Took %f seconds",
+            time.time() - start_time,
         )
 
     ##################################################################
