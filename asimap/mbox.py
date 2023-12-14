@@ -2145,11 +2145,6 @@ class Mailbox:
         r"""
         Update the flags (sequences) of the messages in msg_set.
 
-        NOTE: No matter what flags are set/reset etc. \Recent is not affected.
-
-        NOTE: This command presumes that a readlock on the mailbox has already
-              been acquired!
-
         Arguments:
         - `msg_set`: The set of messages to modify the flags on
         - `action`: one of REMOVE_FLAGS, ADD_FLAGS, or REPLACE_FLAGS
@@ -2219,7 +2214,7 @@ class Mailbox:
                             for flag in flags:
                                 # Make sure a sequence exists for every flag
                                 # (even if removing flags)
-                                #
+                                # XXX seqs is defaultdict, do not need this
                                 if flag not in seqs:
                                     seqs[flag] = []
                                 match action:
@@ -2228,45 +2223,7 @@ class Mailbox:
                                     case StoreAction.REMOVE_FLAGS:
                                         _help_remove_flag(key, seqs, msg, flag)
                         case StoreAction.REPLACE_FLAGS:
-                            # All flags for a message are replaced by the flags
-                            # passed in to `store()`. Except `Recent` and
-                            # 'unseen'. They are untouched by this
-                            # operation.
-                            #
-                            msg_seqs = msg.get_sequences()
-                            msg.set_sequences(flags)
-                            if "Recent" in msg_seqs:
-                                msg.add_sequence("Recent")
-                            if "Seen" in msg_seqs and "Seen" not in flags:
-                                msg.add_sequence("unseen")
-                            if "unseen" in msg_seqs and "unseen" not in flags:
-                                msg.add_sequence("Seen")
-
-                            # Figure what sequences we need to remove this
-                            # message from.
-                            #
-                            seqs_to_remove = set(seqs.keys()) - set(flags)
-                            seqs_to_remove.discard("Recent")
-                            if "unseen" in flags or "Seen" in flags:
-                                if "unseen" in flags:
-                                    seqs_to_remove.add("Seen")
-                                    seqs_to_remove.discard("unseen")
-                                if "Seen" in flags:
-                                    seqs_to_remove.add("unseen")
-                                    seqs_to_remove.discard("Seen")
-                            else:
-                                if "unseen" in seqs_to_remove:
-                                    flags.append("Seen")
-                                if "Seen" in seqs_to_remove:
-                                    flags.append("unseen")
-
-                            for flag in flags:
-                                if key not in seqs[flag]:
-                                    seqs[flag].append(key)
-
-                            for seq_to_remove in seqs_to_remove:
-                                if key in seqs[seq_to_remove]:
-                                    seqs[seq_to_remove].remove(key)
+                            _help_replace_flags(key, seqs, msg, flags)
                 await self.mailbox.aset_sequences(seqs)
         logger.debug("Completed, took %f seconds", time.time() - store_start)
 
@@ -2984,6 +2941,40 @@ def _help_remove_flag(key: int, seqs: Sequences, msg: MHMessage, flag: str):
             msg.add_sequence("Seen")
             if key not in seqs["Seen"]:
                 seqs["Seen"].append(key)
+
+
+####################################################################
+#
+def _help_replace_flags(
+    key: int, seqs: Sequences, msg: MHMessage, flags: List[str]
+):
+    r"""
+    Replace the flags on the message.
+    The flag `\Recent` if present is not affected.
+    The flag `unseen` if present is not affected unless `\Seen` is in flags.
+    """
+    msg_seqs = set(msg.get_sequences())
+    msg.set_sequences(flags)
+
+    # If `\Recent` was present, then it is added back.
+    #
+    if "Recent" in msg_seqs:
+        msg.add_sequence("Recent")
+
+    # If `\Seen` is not set in flags, then `unseen` is added.
+    #
+    if "Seen" not in flags:
+        msg.add_sequence("unseen")
+
+    new_msg_seqs = set(msg.get_sequences())
+    to_remove = msg_seqs - new_msg_seqs
+
+    for flag in flags:
+        if key not in seqs[flag]:
+            seqs[flag].append(key)
+    for flag in to_remove:
+        if key in seqs[flag]:
+            seqs[flag].remove(key)
 
 
 ####################################################################
