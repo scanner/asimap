@@ -10,18 +10,11 @@ import sys
 from itertools import count, groupby
 from typing import TYPE_CHECKING, List, Optional, Union
 
-from .auth import User, authenticate
-from .exceptions import (
-    AuthenticationException,
-    Bad,
-    MailboxInconsistency,
-    MailboxLock,
-    No,
-)
-from .mbox import Mailbox, NoSuchMailbox
-
 # asimapd imports
 #
+from .auth import User, authenticate
+from .exceptions import AuthenticationException, Bad, MailboxInconsistency, No
+from .mbox import Mailbox, NoSuchMailbox
 from .throttle import check_allow, login_failed
 
 # Allow circular imports for annotations
@@ -29,6 +22,8 @@ from .throttle import check_allow, login_failed
 if TYPE_CHECKING:
     from .server import IMAPClient
     from .user_server import IMAPClientProxy, IMAPUserServer
+
+logger = logging.getLogger("asimap.client")
 
 # Local constants
 #
@@ -149,13 +144,6 @@ class BaseClientHandler:
             result = "%s BAD %s\r\n" % (imap_command.tag, str(e))
             await self.client.push(result)
             self.log.debug(result)
-            return
-        except MailboxLock as e:
-            self.log.warn(
-                "Unable to get lock on mailbox '%s', putting on "
-                "to command queue" % e.mbox.name
-            )
-            e.mbox.command_queue.append((self, imap_command))
             return
         except KeyboardInterrupt:
             sys.exit(0)
@@ -612,10 +600,7 @@ class Authenticated(BaseClientHandler):
             raise No("Client must be in the selected state")
 
         if self.mbox:
-            try:
-                self.mbox.unselected(self.client.name)
-            except MailboxLock:
-                pass
+            self.mbox.unselected(self.client.name)
             self.mbox = None
         self.pending_expunges = []
         self.state = "authenticated"
@@ -677,18 +662,11 @@ class Authenticated(BaseClientHandler):
         # queue, but no notifies are sent in that case.
         #
         if self.process_or_queue(cmd, queue=False):
-            try:
-                self.notifies()
-            except MailboxLock:
-                pass
+            self.notifies()
 
-        try:
-            Mailbox.rename(
-                cmd.mailbox_src_name, cmd.mailbox_dst_name, self.server
-            )
-        except MailboxLock as e:
-            raise Bad("unable to lock mailbox %s, try again" % e.mbox.name)
-        return
+        await Mailbox.rename(
+            cmd.mailbox_src_name, cmd.mailbox_dst_name, self.server
+        )
 
     ##################################################################
     #
@@ -706,15 +684,11 @@ class Authenticated(BaseClientHandler):
         # queue, but no notifies are sent in that case.
         #
         if self.process_or_queue(cmd, queue=False):
-            try:
-                self.notifies()
-            except MailboxLock:
-                pass
+            self.notifies()
 
-        mbox = self.server.get_mailbox(cmd.mailbox_name)
+        mbox = await self.server.get_mailbox(cmd.mailbox_name)
         mbox.subscribed = True
         mbox.commit_to_db()
-        return None
 
     ##################################################################
     #
@@ -732,12 +706,9 @@ class Authenticated(BaseClientHandler):
         # queue, but no notifies are sent in that case.
         #
         if self.process_or_queue(cmd, queue=False):
-            try:
-                self.notifies()
-            except MailboxLock:
-                pass
+            self.notifies()
 
-        mbox = self.server.get_mailbox(cmd.mailbox_name)
+        mbox = await self.server.get_mailbox(cmd.mailbox_name)
         mbox.subscribed = False
         mbox.commit_to_db()
         return None
@@ -810,7 +781,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    def do_status(self, cmd):
+    async def do_status(self, cmd):
         """
         Get the designated mailbox and return the requested status
         attributes to our client.
@@ -822,12 +793,9 @@ class Authenticated(BaseClientHandler):
         # queue, but no notifies are sent in that case.
         #
         if self.process_or_queue(cmd, queue=False):
-            try:
-                self.notifies()
-            except MailboxLock:
-                pass
+            self.notifies()
 
-        mbox = self.server.get_mailbox(cmd.mailbox_name, expiry=45)
+        mbox = await self.server.get_mailbox(cmd.mailbox_name, expiry=45)
 
         # We can only call resync on this mbox if it has an empty
         # command queue.
@@ -853,8 +821,8 @@ class Authenticated(BaseClientHandler):
             else:
                 raise Bad("Unsupported STATUS attribute '%s'" % att)
 
-        self.client.push(
-            '* STATUS "%s" (%s)\r\n' % (cmd.mailbox_name, " ".join(result))
+        await self.client.push(
+            f'* STATUS "{cmd.mailbox_name}" ({" ".join(result)})\r\n'
         )
         return
 
@@ -871,10 +839,7 @@ class Authenticated(BaseClientHandler):
         # queue, but no notifies are sent in that case.
         #
         if self.process_or_queue(cmd, queue=False):
-            try:
-                self.notifies()
-            except MailboxLock:
-                pass
+            self.notifies()
 
         try:
             mbox = self.server.get_mailbox(cmd.mailbox_name, expiry=0)
@@ -966,29 +931,25 @@ class Authenticated(BaseClientHandler):
         self.pending_expunges = []
         self.state = "authenticated"
         mbox = None
-        try:
-            if self.mbox:
-                self.mbox.unselected(self)
-                mbox = self.mbox
-                self.mbox = None
+        if self.mbox:
+            self.mbox.unselected(self)
+            mbox = self.mbox
+            self.mbox = None
 
-            # If the mailbox was selected via 'examine' then closing the
-            # mailbox does NOT do a purge of all messages marked with '\Delete'
-            #
-            if self.examine:
-                return
+        # If the mailbox was selected via 'examine' then closing the
+        # mailbox does NOT do a purge of all messages marked with '\Delete'
+        #
+        if self.examine:
+            return
 
-            # Otherwise closing the mailbox (unlike doing a 'select' 'examine'
-            # or 'logout') will perform an expunge (just no messages will be
-            # sent to this client.) We pass no client parameter so the expunge
-            # does its work 'silently.'
-            #
-            if mbox:
-                mbox.resync()
-                mbox.expunge()
-        except MailboxLock:
-            pass
-        return
+        # Otherwise closing the mailbox (unlike doing a 'select' 'examine'
+        # or 'logout') will perform an expunge (just no messages will be
+        # sent to this client.) We pass no client parameter so the expunge
+        # does its work 'silently.'
+        #
+        if mbox:
+            mbox.resync()
+            mbox.expunge()
 
     ##################################################################
     #

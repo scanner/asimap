@@ -34,7 +34,7 @@ import asimap.parse
 
 from .client import Authenticated
 from .db import Database
-from .exceptions import MailboxInconsistency, MailboxLock
+from .exceptions import MailboxInconsistency
 from .mh import MH
 from .trace import trace
 from .utils import UpgradeableReadWriteLock
@@ -635,7 +635,7 @@ class IMAPUserServer:
                 if any(x.cmd_processor.idling for x in mbox.clients.values()):
                     try:
                         await mbox.resync()
-                    except (MailboxLock, MailboxInconsistency) as e:
+                    except MailboxInconsistency as e:
                         # If hit one of these exceptions they are usually
                         # transient.  we will skip it. The command processor in
                         # client.py knows how to handle these better.
@@ -784,7 +784,7 @@ class IMAPUserServer:
                     else:
                         # Yup, we need to resync this folder.
                         await m.resync(force=force)
-            except (MailboxLock, MailboxInconsistency) as e:
+            except MailboxInconsistency as e:
                 # If hit one of these exceptions they are usually
                 # transient.  we will skip it. The command processor in
                 # client.py knows how to handle these better.

@@ -11,5 +11,4 @@ venv*
 .tox
 .isorted
 .blackened
-venv*
 .coverage

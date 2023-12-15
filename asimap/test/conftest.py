@@ -256,6 +256,9 @@ def imap_server(faker, ssl_certs, user_factory, password_file_factory):
     Starts an IMAP Server in a separate thread and yields an imaplib client
     connected to that server (along with other data like username, password,
     etc.)
+
+    NOTE: This is for pretty high level integration tests that rely on poking
+          this server with an actual IMAP client.
     """
     password = faker.password()
     user = user_factory(password=password)
@@ -392,16 +395,24 @@ async def imap_user_server(mh_folder):
 ####################################################################
 #
 @pytest_asyncio.fixture
-async def imap_user_server_and_client(faker, mocker, imap_user_server):
+async def imap_client_proxy(faker, mocker, imap_user_server):
     """
-    Creates a user server, imap proxy client, and Authenticated client
-    handler.  There is no network stream reader/writer. This is intended for
-    testing mbox.Mailbox and client.Authenticated where we only care about the
-    `push` method on the imap proxy client. This push method is an async mock
-    (ie: this is inteded for testing the responses from directly invoking
-    methods on `mbox.Mailbox` and `client.Authenticated` that are expected to
-    generate IMAP protocol responses.)
+    Creates an IMAPClientProxy object that can be used by our client handlers
+    for tests.
+
+    There is no network stream reader/writer. This is intended for testing
+    mbox.Mailbox and client.BaseClientHandler type objects where we only care
+    about the `push` method on the imap proxy client. This push method is an
+    async mock (ie: this is inteded for testing the responses from directly
+    invoking methods on `mbox.Mailbox` and `client.BaseClientHandler` type
+    objects that are expected to generate IMAP protocol responses.)
+
+    This returns a generator so the caller can make multiple IMAPClientProxy
+    objects (necessary for testing what happens when multiple clients are
+    connected to the server.)
     """
+    writers: List[asyncio.StreamWriter] = []
+
     # NOTE: We can just create a stream reader and feed it data if we need to:
     #       https://www.pythonfixing.com/2021/10/fixed-writing-pytest-testcases-for.html
     #
@@ -413,27 +424,56 @@ async def imap_user_server_and_client(faker, mocker, imap_user_server):
     # XXX If we cared we should probably attach it to a text file or find
     #     someway to attach it to a text buffer.
     #
-    rem_addr = "127.0.0.1"
-    port = faker.pyint(min_value=1024, max_value=65535)
-    name = f"{rem_addr}:{port}"
+    async def _make_imap_client_proxy():
+        rem_addr = "127.0.0.1"
+        port = faker.pyint(min_value=1024, max_value=65535)
+        name = f"{rem_addr}:{port}"
+        server = imap_user_server
+
+        loop = asyncio.get_event_loop()
+        devnull_writer = open("/dev/null", "wb")
+        writer_transport, writer_protocol = await loop.connect_write_pipe(
+            lambda: asyncio.streams.FlowControlMixin(loop=loop), devnull_writer
+        )
+
+        writer = asyncio.StreamWriter(
+            writer_transport, writer_protocol, None, loop
+        )
+        reader = asyncio.StreamReader()
+        imap_client_proxy = IMAPClientProxy(
+            server, name, rem_addr, port, reader, writer
+        )
+        mocker.patch.object(imap_client_proxy, "push", mocker.AsyncMock())
+        writers.append(writer)
+        return imap_client_proxy
+
+    def finalizer():
+        """
+        Called at the end of the test via pytest's finalizer mechanism this
+        closes all the IMAPClientProxy StreamWriter's that were created.
+        """
+        for writer in writers:
+            writer.close()
+
+    return _make_imap_client_proxy
+
+
+####################################################################
+#
+@pytest_asyncio.fixture
+async def imap_user_server_and_client(imap_user_server, imap_client_proxy):
+    """
+    when doing simple client tests we only need one IMAPClientProxy so this
+    fixture makes our tests a teeny bit simpler if you need both a client and a
+    user server.
+
+    NOTE: We will probably remove this fixture. It is here currently for legacy
+          purposes because we use to create both the client proxy and user
+          server in the same fixture.
+    """
     server = imap_user_server
-
-    loop = asyncio.get_event_loop()
-    devnull_writer = open("/dev/null", "wb")
-    writer_transport, writer_protocol = await loop.connect_write_pipe(
-        lambda: asyncio.streams.FlowControlMixin(loop=loop), devnull_writer
-    )
-
-    writer = asyncio.StreamWriter(writer_transport, writer_protocol, None, loop)
-    reader = asyncio.StreamReader()
-    imap_client_proxy = IMAPClientProxy(
-        server, name, rem_addr, port, reader, writer
-    )
-    mocker.patch.object(imap_client_proxy, "push", mocker.AsyncMock())
-    try:
-        yield (server, imap_client_proxy)
-    finally:
-        writer.close()
+    client_proxy = await imap_client_proxy()
+    yield (server, client_proxy)
 
 
 ####################################################################
