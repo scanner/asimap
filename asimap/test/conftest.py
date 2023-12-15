@@ -27,7 +27,6 @@ import trustme
 #
 import asimap.auth
 
-from ..mbox import Mailbox
 from ..server import IMAPServer
 from ..user_server import (
     IMAPClientProxy,
@@ -448,7 +447,7 @@ def mailbox_instance(bunch_of_email_in_folder, imap_user_server):
     async def create_mailbox(name: str = "inbox", with_messages: bool = False):
         bunch_of_email_in_folder(folder=name)
         server = imap_user_server
-        mbox = await Mailbox.new(name, server)
+        mbox = await server.get_mailbox(name)
         return mbox
 
     return create_mailbox
@@ -509,7 +508,7 @@ async def mailbox_with_big_static_email(
     msg = MHMessage(big_static_email)
     msg.add_sequence("unseen")
     m_folder.add(msg)
-    mbox = await Mailbox.new(NAME, server)
+    mbox = await server.get_mailbox(NAME)
     return mbox
 
 
@@ -530,7 +529,7 @@ async def mailbox_with_mimekit_email(
         msg = MHMessage(msg_text)
         msg.add_sequence("unseen")
         m_folder.add(msg)
-    mbox = await Mailbox.new(NAME, server)
+    mbox = await server.get_mailbox(NAME)
     return mbox
 
 
@@ -547,5 +546,6 @@ async def mailbox_with_bunch_of_email(
     NAME = "inbox"
     bunch_of_email_in_folder(folder=NAME)
     server = imap_user_server
-    mbox = await Mailbox.new(NAME, server)
+    mbox = await server.get_mailbox(NAME)
+
     return mbox

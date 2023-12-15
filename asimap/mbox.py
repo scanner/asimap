@@ -59,10 +59,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("asimap.mbox")
 
-# RE used to see if a mailbox being created is just digits.
-#
-DIGITS_RE = re.compile(r"^[0-9]+$")
-
 # How many seconds after a mailbox instance has no clients before we
 # expire it from the list of active mailboxes
 #
@@ -213,7 +209,7 @@ class Mailbox:
         try:
             self.mailbox = server.mailbox.get_folder(name)
         except NoSuchMailboxError:
-            raise NoSuchMailbox("No such mailbox: '%s'" % name)
+            raise NoSuchMailbox(f"No such mailbox: '{name}'")
 
         # The list of attributes on this mailbox (this is things such as
         # '\Noselect'
@@ -658,8 +654,8 @@ class Mailbox:
                 #
                 self.server.msg_cache.clear_mbox(self.name)
                 if self.uids:
-                    logger.warning(
-                        "Mailbox: %s: Huh, list of msgs is empty, but "
+                    logger.info(
+                        "Mailbox: '%s': List of msgs is empty, but "
                         "list of uid's was not. Emptying.",
                         self.name,
                     )
@@ -900,6 +896,7 @@ class Mailbox:
         Arguments:
         - `uids`: The list of uids, in order that are currently in the mailbox.
         """
+        uids = list(uids)
         missing_uids = set(self.uids) - set(uids)
 
         # If none are missing then update the list of all uid's with what was
@@ -947,7 +944,9 @@ class Mailbox:
         # Go through the UID's that are missing and send an expunge for each
         # one taking into account its position in the folder as we delete them.
         #
-        for uid in missing_uids:
+        for uid in sorted(missing_uids, reverse=True):
+            # NOTE: The expunge is the _message index_ of the message being
+            #       deleted.
             which = self.uids.index(uid) + 1
             self.uids.remove(uid)
             exp = f"* {which} EXPUNGE\r\n"
@@ -955,11 +954,6 @@ class Mailbox:
                 await c.client.push(exp)
             for c in clients_to_pend:
                 c.pending_expunges.append(exp)
-
-        # and after we are done with that set our list of uid's to the list of
-        # found uid's.
-        #
-        self.uids = uids
 
     ##################################################################
     #
@@ -1019,7 +1013,7 @@ class Mailbox:
             mtime = await aiofiles.os.path.getmtime(path)
         except OSError as e:
             if e.errno == errno.ENOENT:
-                raise KeyError("No message with key: %s", msg_key)
+                raise KeyError(f"No message with key: {msg_key}")
             else:
                 raise
 
@@ -1552,10 +1546,10 @@ class Mailbox:
         """
         assert self.lock.this_task_has_read_lock()  # XXX remove when confident
         if client.name in self.clients:
-            raise No("Mailbox '%s' is already selected" % self.name)
+            raise No(f"Mailbox '{self.name}' is already selected")
 
         if r"\Noselect" in self.attributes:
-            raise No("You can not select the mailbox '%s'" % self.name)
+            raise No(f"You can not select the mailbox '{self.name}'")
 
         # A client has us selected. Turn of the expiry time.
         #
@@ -2156,14 +2150,7 @@ class Mailbox:
         if r"\Recent" in flags:
             raise No(r"You can not add or remove the '\Recent' flag")
 
-        try:
-            if action not in StoreAction:
-                raise Bad(f"'{action}' is an invalid STORE action")
-        except TypeError:
-            # XXX in 3.12 __contains__ will no longer raise TypeError, but will
-            #     return True or False depending on whether the value is a
-            #     member or the value of a member
-            #
+        if action not in StoreAction:
             raise Bad(f"'{action}' is an invalid STORE action")
 
         async with self.mailbox.lock_folder():
@@ -2403,7 +2390,7 @@ class Mailbox:
         #
         if name.lower() == "inbox":
             raise InvalidMailbox("Can not create a mailbox named 'inbox'")
-        if DIGITS_RE.match(name):
+        if name.isdigit():
             raise InvalidMailbox(
                 "Due to MH restrictions you can not create a "
                 f"mailbox that is just digits: '{name}'"
@@ -2429,7 +2416,7 @@ class Mailbox:
                 await mbox.check_set_haschildren_attr()
                 await mbox.commit_to_db()
             else:
-                raise MailboxExists("Mailbox %s already exists" % name)
+                raise MailboxExists(f"Mailbox '{name}' already exists")
 
         # The mailbox does not exist, we can create it.
         #
@@ -2438,28 +2425,22 @@ class Mailbox:
         #       mailboxes until they have been explicitly 'created'. But that
         #       is annoying. I will just create the intermediary directories.
         #
-        mbox_chain = []
-        chain_name = name
-        while chain_name != "":
+        mbox_chain: List[str] = []
+        mboxes: List["Mailbox"] = []
+        for chain_name in name.split("/"):
             mbox_chain.append(chain_name)
-            chain_name = os.path.dirname(chain_name)
-
-        mboxes_created = []
-        mbox_chain.reverse()
-        for m in mbox_chain:
-            mbox = MH(m, create=True)
-            mbox = await server.get_mailbox(m)
-            mboxes_created.append(mbox)
+            mbox_name = "/".join(mbox_chain)
+            MH(server.maildir / mbox_name)
+            mbox = await server.get_mailbox(mbox_name)
+            mboxes.append(mbox)
 
         # And now go through all of those mboxes and update their children
         # attributes and make sure the underlying db is updated with this
         # information.
         #
-        for m in mboxes_created:
-            await m.check_set_haschildren_attr()
-            await m.commit_to_db()
-
-        return
+        for mbox in mboxes:
+            await mbox.check_set_haschildren_attr()
+            await mbox.commit_to_db()
 
     ####################################################################
     #
@@ -2490,12 +2471,11 @@ class Mailbox:
         - `name`: The name of the mailbox to delete
         - `server`: The user server object
         """
-        log = logging.getLogger("%s.%s.delete()" % (__name__, cls.__name__))
 
         if name == "inbox":
             raise InvalidMailbox("You are not allowed to delete the inbox")
 
-        mbox = server.get_mailbox(name)
+        mbox = await server.get_mailbox(name)
         do_delete = False
         server.msg_cache.clear_mbox(name)
         async with (mbox.mailbox.lock_folder(), mbox.lock.read_lock()):
@@ -2505,16 +2485,15 @@ class Mailbox:
             # and has inferior mailboxes.
             #
             if r"\Noselect" in mbox.attributes and inferior_mailboxes:
-                raise InvalidMailbox(
-                    "The mailbox '%s' is already deleted" % name
-                )
+                raise InvalidMailbox(f"The mailbox '{name}' is already deleted")
+
             # You can not delete a mailbox that has the '\Noselect' attribute
             # and is subscribed. (BTW: This means that this mailbox was already
             # deleted, but not removed because it still has subscribers.)
             #
             if r"\Noselect" in mbox.attributes and mbox.subscribed:
                 raise InvalidMailbox(
-                    "The mailbox '%s' is still subscribed" % name
+                    f"The mailbox '{name}' is still subscribed"
                 )
 
             async with mbox.lock.write_lock():
@@ -2522,6 +2501,10 @@ class Mailbox:
                 # deleted.
                 #
                 await mbox.mailbox.aclear()
+                mbox.num_msgs = 0
+                mbox.num_recent = 0
+                mbox.uids = []
+                mbox.sequences = defaultdict(list)
 
                 # If the mailbox has any active clients we set their selected
                 # mailbox to None. client.py will know if they try to do any
@@ -2544,7 +2527,7 @@ class Mailbox:
                 #
                 if inferior_mailboxes or mbox.subscribed:
                     mbox.attributes.add(r"\Noselect")
-                    mbox.uid_vv = server.get_next_uid_vv()
+                    mbox.uid_vv = await server.get_next_uid_vv()
                     await mbox.commit_to_db()
                 else:
                     # We have no inferior mailboxes. This mailbox is gone. If
@@ -2593,9 +2576,9 @@ class Mailbox:
             try:
                 await server.mailbox.aremove_folder(name)
             except NotEmptyError as e:
-                log.warn("mailbox %s 'not empty', %s" % (name, str(e)))
+                logger.warning("mailbox %s 'not empty', %s", name, str(e))
                 path = mbox_msg_path(server.mailbox, name)
-                log.info("using shutil to delete '%s'" % path)
+                logger.info("using shutil to delete '%s'", path)
                 shutil.rmtree(path)
 
     ####################################################################
@@ -2605,7 +2588,7 @@ class Mailbox:
         cls, old_name: str, new_name: str, server: "IMAPUserServer"
     ):
         """
-        Rename a mailbox from odl_name to new_name.
+        Rename a mailbox from old_name to new_name.
 
         It is an error to attempt to rename from a mailbox name that does not
         exist or to a mailbox name that already exists.
@@ -2627,7 +2610,7 @@ class Mailbox:
         except NoSuchMailboxError:
             pass
         else:
-            raise MailboxExists("Destination mailbox '%s' exists" % new_name)
+            raise MailboxExists(f"Destination mailbox '{new_name}' exists")
 
         # Inbox is handled specially.
         #
@@ -2867,7 +2850,7 @@ async def _helper_rename_inbox(mbox: Mailbox, new_name: str):
     #
     async with mbox.mailbox.lock_folder():
         async with (mbox.lock.read_lock(), mbox.lock.write_lock()):
-            async with (new_mbox.lock.read_lock(), new_mbox.lock.write_lock):
+            async with (new_mbox.lock.read_lock(), new_mbox.lock.write_lock()):
                 for key in await mbox.mailbox.akeys():
                     try:
                         msg = await mbox.mailbox.aget_message(key)
@@ -2876,7 +2859,7 @@ async def _helper_rename_inbox(mbox: Mailbox, new_name: str):
 
                     # Replace the asimap uid since this is a new folder.
                     #
-                    uid = f"{new_mbox.uid_vv:010d}.{new_mbox.new_uid:010d}"
+                    uid = f"{new_mbox.uid_vv:010d}.{new_mbox.next_uid:010d}"
                     new_mbox.next_uid += 1
                     del msg["X-asimapd-uid"]
                     msg["X-asimapd-uid"] = uid
@@ -2889,10 +2872,9 @@ async def _helper_rename_inbox(mbox: Mailbox, new_name: str):
             await new_mbox.commit_to_db()
 
     async with mbox.lock.read_lock():
-        await mbox.resync()
-
+        await mbox.resync(force=True)
     async with new_mbox.lock.read_lock():
-        await new_mbox.resync()
+        await new_mbox.resync(force=True)
 
 
 ####################################################################

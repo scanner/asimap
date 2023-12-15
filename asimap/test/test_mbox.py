@@ -23,7 +23,7 @@ from ..constants import flag_to_seq
 #
 from ..exceptions import Bad, No
 from ..fetch import FetchAtt, FetchOp
-from ..mbox import Mailbox
+from ..mbox import InvalidMailbox, Mailbox, MailboxExists
 from ..parse import StoreAction
 from ..search import IMAPSearch
 from ..utils import UID_HDR, get_uidvv_uid
@@ -809,10 +809,6 @@ async def test_mailbox_store(mailbox_with_bunch_of_email):
 #
 @pytest.mark.asyncio
 async def test_mailbox_copy(mailbox_with_bunch_of_email):
-    """
-    Search is tested mostly `test_search`.. so we only need a very simple
-    search.
-    """
     # We know this mailbox has messages numbered from 1 to 20.  We also know
     # since this is an initial state the msg_key, message sequence number, and
     # uid's are the same for each message (ie: 1 == 1 == 1)
@@ -855,3 +851,108 @@ async def test_mailbox_copy(mailbox_with_bunch_of_email):
         assert uid == src_uid
         _, uid = get_uidvv_uid(dst_msg[UID_HDR])
         assert uid == dst_uid
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mailbox_create_delete(
+    mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    server, imap_client_proxy = imap_user_server_and_client
+    mbox = mailbox_with_bunch_of_email
+    ARCHIVE = "Archive"
+    SUB_FOLDER = "Archive/foo"
+
+    # Make sure we can not create or delete `inbox` or one that is all digits.
+    #
+    with pytest.raises(InvalidMailbox):
+        await Mailbox.create("inbox", server)
+
+    with pytest.raises(InvalidMailbox):
+        await Mailbox.delete("inbox", server)
+
+    with pytest.raises(InvalidMailbox):
+        await Mailbox.create("1234", server)
+
+    await Mailbox.create(ARCHIVE, server)
+    archive = await server.get_mailbox(ARCHIVE)
+
+    # You can not create a mailbox if it already exists.
+    #
+    with pytest.raises(MailboxExists):
+        await Mailbox.create(ARCHIVE, server)
+
+    # Create a mailbox in a mailbox..
+    #
+    await Mailbox.create(SUB_FOLDER, server)
+
+    # You can delete a mailbox that has children (it gets the `\Noselect`
+    # attribute)
+    #
+    await Mailbox.delete(ARCHIVE, server)
+    assert r"\Noselect" in archive.attributes
+
+    # If you try to delete a mailbox with `\Noselect` and it has children
+    # mailboxes, this also fails.
+    #
+    with pytest.raises(InvalidMailbox):
+        await Mailbox.delete(ARCHIVE, server)
+
+    # You can not select a `\Noselect` mailbox
+    #
+    with pytest.raises(No):
+        async with archive.lock.read_lock():
+            await archive.selected(imap_client_proxy.cmd_processor)
+
+    # Trying to create it will remove the `\Noselect` attribute..
+    #
+    await Mailbox.create(ARCHIVE, server)
+    assert r"\Noselect" not in archive.attributes
+
+    # and we will copy some messages into the Archive mailbox just to make sure
+    # we can actually do stuff with it.
+    #
+    msg_keys = await mbox.mailbox.akeys()
+    msg_set = sorted(list(random.sample(msg_keys, 5)))
+    src_uids, dst_uids = await mbox.copy(msg_set, archive)
+    archive_msg_keys = await archive.mailbox.akeys()
+    assert len(dst_uids) == len(archive_msg_keys)
+    assert archive.uids == dst_uids
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mailbox_rename(
+    mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    server, imap_client_proxy = imap_user_server_and_client
+    inbox = mailbox_with_bunch_of_email
+    # inbox = await server.get_mailbox("inbox")
+    NEW_MBOX_NAME = "new_mbox"
+    # The mailbox we are moving must exist.
+    #
+    await Mailbox.create("nope", server)
+    with pytest.raises(MailboxExists):
+        await Mailbox.rename("inbox", "nope", server)
+
+    # If you rename the inbox, you get a new mailbox with the contents of the
+    # inbox moved to it.
+    #
+    msg_keys = await inbox.mailbox.akeys()
+    print(f"Before rename, inbox: {inbox}")
+    await Mailbox.rename("inbox", NEW_MBOX_NAME, server)
+
+    print(f"after inbox rename, inbox uids: {inbox.uids}")
+
+    new_mbox = await server.get_mailbox(NEW_MBOX_NAME)
+    new_msg_keys = await new_mbox.mailbox.akeys()
+
+    assert new_msg_keys == msg_keys
+    assert new_mbox.uids == new_msg_keys
+
+    msg_keys = await inbox.mailbox.akeys()
+    assert not msg_keys
+    assert not inbox.uids
+    assert not inbox.sequences

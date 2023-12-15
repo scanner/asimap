@@ -592,7 +592,7 @@ class IMAPUserServer:
 
     ##################################################################
     #
-    async def get_mailbox(self, name, expiry=900):
+    async def get_mailbox(self, name: str, expiry=900):
         """
         A factory of sorts.. if we have an active mailbox with the given name
         return it.
