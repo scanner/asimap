@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, List, Optional, Union
 from .auth import User, authenticate
 from .exceptions import AuthenticationException, Bad, MailboxInconsistency, No
 from .mbox import Mailbox, NoSuchMailbox
+from .parse import IMAPClientCommand
 from .throttle import check_allow, login_failed
 
 # Allow circular imports for annotations
@@ -260,7 +261,7 @@ class BaseClientHandler:
 
     #########################################################################
     #
-    async def do_capability(self, cmd):
+    async def do_capability(self, cmd: IMAPClientCommand):
         """
         Return the capabilities of this server.
 

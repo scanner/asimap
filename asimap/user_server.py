@@ -194,7 +194,7 @@ class IMAPClientProxy:
                             f"* BAD Expected 'DONE' not: {imap_msg}\r\n"
                         )
                     else:
-                        self.cmd_processor.do_done(None)
+                        await self.cmd_processor.do_done(None)
                     return
 
                 try:

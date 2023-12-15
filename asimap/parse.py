@@ -401,7 +401,7 @@ class IMAPClientCommand(object):
         #
         self.tag = self._p_re(
             _tag_re,
-            syntax_error="missing expected " "tag that prefixes a command",
+            syntax_error="missing expected tag that prefixes a command",
         )
         self._p_simple_string(" ", syntax_error="expected ' ' after tag")
         self.command = self._p_re(
