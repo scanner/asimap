@@ -15,6 +15,11 @@ test_units: venv
 test: venv
 	PYTHONPATH=`pwd` $(ACTIVATE) pytest
 
+coverage: venv
+	PYTHONPATH=`pwd` $(ACTIVATE) coverage run -m pytest
+	coverage html
+	open 'htmlcov/index.html'
+
 build: requirements/production.txt requirements/development.txt	## `docker build` for both `prod` and `dev` targets
 	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --target prod
 	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --target dev

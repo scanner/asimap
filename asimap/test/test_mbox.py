@@ -17,10 +17,9 @@ import pytest
 from async_timeout import timeout
 from dirty_equals import IsNow
 
-from ..constants import flag_to_seq
-
 # Project imports
 #
+from ..constants import flag_to_seq
 from ..exceptions import Bad, No
 from ..fetch import FetchAtt, FetchOp
 from ..mbox import InvalidMailbox, Mailbox, MailboxExists, NoSuchMailbox
