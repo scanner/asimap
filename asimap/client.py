@@ -243,8 +243,10 @@ class BaseClientHandler:
         Arguments:
         - `msg`: The message to send to the client in the BYE.
         """
-        await self.client.push("* BYE %s\r\n" % msg)
+        await self.client.push(f"* BYE {msg}\r\n")
         await self.client.close()
+        self.idling = False
+        self.state = ClientState.LOGGED_OUT
 
     # The following commands are supported in any state.
     #
@@ -259,7 +261,7 @@ class BaseClientHandler:
         """
         self.idling = False
         await self.send_pending_expunges()
-        await self.client.push("%s OK IDLE terminated\r\n" % self.tag)
+        await self.client.push(f"{self.tag} OK IDLE terminated\r\n")
         return
 
     #########################################################################
@@ -272,7 +274,7 @@ class BaseClientHandler:
         - `cmd`: The full IMAP command object.
         """
         await self.send_pending_expunges()
-        await self.client.push("* CAPABILITY %s\r\n" % " ".join(CAPABILITIES))
+        await self.client.push(f"* CAPABILITY {' '.join(CAPABILITIES)}\r\n")
         return None
 
     #########################################################################

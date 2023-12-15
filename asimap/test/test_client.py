@@ -66,6 +66,21 @@ async def test_client_handler_logout(imap_client_proxy):
 ####################################################################
 #
 @pytest.mark.asyncio
+async def test_client_handler_unceremonious_bye(imap_client_proxy):
+    imap_client = await imap_client_proxy()
+    client_handler = BaseClientHandler(imap_client)
+
+    await client_handler.unceremonious_bye("Good bye")
+    results = client_push_responses(imap_client)
+    assert results == [
+        "* BYE Good bye",
+    ]
+    assert client_handler.state == "logged_out"
+
+
+####################################################################
+#
+@pytest.mark.asyncio
 async def test_client_handler_command(imap_client_proxy):
     """
     Using a BaseClientHandler test the `command()` method. Using a
