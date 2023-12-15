@@ -9,19 +9,19 @@ repos:
       - id: check-added-large-files
         args: ["--maxkb=1200"]
   - repo: https://github.com/pycqa/isort
-    rev: 5.12.0
+    rev: 5.13.2
     hooks:
       - id: isort
         name: isort (python)
   - repo: https://github.com/psf/black
-    rev: 23.10.0
+    rev: 23.12.0
     hooks:
       - id: black
         language_version: python3.11
         args: [--config=./pyproject.toml]
   - repo: https://github.com/astral-sh/ruff-pre-commit
     # Ruff version.
-    rev: v0.1.0
+    rev: v0.1.8
     hooks:
       - id: ruff
         # NOTE: move before 'isort' and 'black' if --fix is enabled
