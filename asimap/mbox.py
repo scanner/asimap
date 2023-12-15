@@ -19,7 +19,7 @@ from datetime import datetime
 from mailbox import FormatError, MHMessage, NoSuchMailboxError, NotEmptyError
 from pathlib import Path
 from statistics import fmean, median, stdev
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 # 3rd party imports
 #
@@ -2623,12 +2623,12 @@ class Mailbox:
     #
     @classmethod
     async def list(
-        cls: "Mailbox",
+        cls,
         ref_mbox_name: str,
         mbox_match: str,
         server: "IMAPUserServer",
         lsub: bool = False,
-    ) -> List[Tuple[str, Set[str]]]:
+    ):
         """
         This returns a list of tuples of mailbox names and those mailbox's
         attributes. The list is generated from the mailboxes db shelf.
@@ -2687,7 +2687,6 @@ class Mailbox:
         # Every '\*' becomes '.*' and every % becomes [^/]
         #
         mbox_match = mbox_match.replace(r"\*", r".*").replace(r"\%", r"[^\/]*")
-        results = []
 
         # NOTE: We do not present to the IMAP client any folders that
         #       have the flag 'ignored' set on them.
@@ -2705,8 +2704,7 @@ class Mailbox:
             attributes = set(attributes.split(","))
             if mbox_name.lower() == "inbox":
                 mbox_name = "INBOX"
-            results.append((mbox_name, attributes))
-        return results
+            yield (mbox_name, attributes)
 
 
 ####################################################################

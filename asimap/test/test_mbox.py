@@ -980,3 +980,35 @@ async def test_mailbox_rename(
     nnmsg_keys = await new_new_mbox.mailbox.akeys()
     assert nnmsg_keys == saved_msg_keys
     assert nnmsg_keys == new_new_mbox.uids
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mailbox_list(
+    faker, mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    server, imap_client_proxy = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+
+    # Let us make several other folders.
+    #
+    folders = ["inbox"]
+    for _ in range(5):
+        folder_name = faker.word()
+        await Mailbox.create(folder_name, server)
+        folders.append(folder_name)
+        for _ in range(3):
+            sub_folder = f"{folder_name}/{faker.word()}"
+            if sub_folder in folders:
+                continue
+            await Mailbox.create(sub_folder, server)
+            folders.append(sub_folder)
+
+    list_results = []
+    async for mbox_name, attributes in Mailbox.list("", "*", server):
+        mbox_name = mbox_name.lower() if mbox_name == "INBOX" else mbox_name
+        assert mbox_name in folders
+        list_results.append(mbox_name)
+
+    assert sorted(folders) == sorted(list_results)
