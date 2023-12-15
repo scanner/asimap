@@ -7,11 +7,14 @@ single connected IMAP client.
 import asyncio
 import logging
 import sys
+from enum import StrEnum
 from itertools import count, groupby
 from typing import TYPE_CHECKING, List, Optional, Union
 
 # asimapd imports
 #
+from asimap import __version__
+
 from .auth import User, authenticate
 from .exceptions import AuthenticationException, Bad, MailboxInconsistency, No
 from .mbox import Mailbox, NoSuchMailbox
@@ -39,17 +42,25 @@ CAPABILITIES = (
 )
 SERVER_ID = {
     "name": "asimapd",
-    "version": "1.0rc1",
+    "version": __version__,
     "vendor": "Apricot Systematic",
     "support-url": "https://github.com/scanner/asimap/issues",
-    "command": sys.argv[0],
+    "command": "asimapd.py",
     "os": sys.platform,
 }
 
+
+########################################################################
+########################################################################
+#
 # States that our IMAP client handler can be in. These reflect the valid states
 # from rfc2060.
 #
-STATES = ("not_authenticated", "authenticated", "selected", "logged_out")
+class ClientState(StrEnum):
+    NOT_AUTHENTICATED = "not_authenticated"
+    AUTHENTICATED = "authenticated"
+    SELECTED = "selected"
+    LOGGED_OUT = "logged_out"
 
 
 ##################################################################
@@ -75,7 +86,7 @@ class BaseClientHandler:
             "%s.%s" % (__name__, self.__class__.__name__)
         )
         self.client = client
-        self.state = "not_authenticated"
+        self.state: ClientState = ClientState.NOT_AUTHENTICATED
         self.name = client.name
         self.mbox = None
 
@@ -121,8 +132,8 @@ class BaseClientHandler:
         self.tag = imap_command.tag
         if not hasattr(self, "do_%s" % imap_command.command):
             await self.client.push(
-                "%s BAD Sorry, %s is not a supported "
-                "command\r\n" % (imap_command.tag, imap_command.command)
+                f"{imap_command.tag} BAD Sorry, "
+                f"{imap_command.command} is not a supported command\r\n"
             )
             return
 
@@ -133,26 +144,23 @@ class BaseClientHandler:
         #
         # start_time = time.time()
         try:
-            result = await getattr(self, "do_%s" % imap_command.command)(
+            result = await getattr(self, f"do_{imap_command.command}")(
                 imap_command
             )
         except No as e:
-            result = "%s NO %s\r\n" % (imap_command.tag, str(e))
+            result = f"{imap_command.tag} NO {e}\r\n"
             await self.client.push(result)
             self.log.debug(result)
             return
         except Bad as e:
-            result = "%s BAD %s\r\n" % (imap_command.tag, str(e))
+            result = f"{imap_command.tag} BAD {e}\r\n"
             await self.client.push(result)
             self.log.debug(result)
             return
         except KeyboardInterrupt:
             sys.exit(0)
         except Exception as e:
-            result = "%s BAD Unhandled exception: %s\r\n" % (
-                imap_command.tag,
-                str(e),
-            )
+            result = f"{imap_command.tag} BAD Unhandled exception: {e}\r\n"
             await self.client.push(result)
             self.log.debug(result)
             raise
@@ -162,16 +170,14 @@ class BaseClientHandler:
         # command.
         #
         if result is None:
-            result = "%s OK %s completed\r\n" % (
-                imap_command.tag,
-                imap_command.command.upper(),
+            result = (
+                f"{imap_command.tag} OK "
+                f"{imap_command.command.upper()} command completed\r\n"
             )
             await self.client.push(result)
-            # self.log.debug(result)
         elif result is False:
             # Some commands do NOT send an OK response immediately.. aka the
-            # IDLE command and commands that are being processed in multiple
-            # runs (see 'command_queue' on the mailbox). If result is false
+            # IDLE command. If result is false
             # then we just return. We do not send a message back to our client.
             #
             return
@@ -179,14 +185,11 @@ class BaseClientHandler:
             # The command has some specific response it wants to send back as
             # part of the tagged OK response.
             #
-            result = "%s OK %s %s completed\r\n" % (
-                imap_command.tag,
-                result,
-                imap_command.command.upper(),
+            result = (
+                f"{imap_command.tag} OK {result} "
+                f"{imap_command.command.upper()} command completed\r\n"
             )
             await self.client.push(result)
-            # self.log.debug(result)
-        return
 
     ##################################################################
     #
@@ -201,10 +204,10 @@ class BaseClientHandler:
         if self.mbox:
             self.log.debug(
                 "state: %s, mbox: %s, cmd: %s"
-                % (self.state, self.mbox.name, str(cmd))
+                % (self.state.value, self.mbox.name, str(cmd))
             )
         else:
-            self.log.debug("state: %s, cmd: %s" % (self.state, str(cmd)))
+            self.log.debug("state: %s, cmd: %s" % (self.state.value, str(cmd)))
         return
 
     ##################################################################
@@ -305,10 +308,8 @@ class BaseClientHandler:
                 ", ".join("%s: '%s'" % x for x in self.client_id.items()),
             )
         )
-        res = []
-        for k, v in SERVER_ID.items():
-            res.extend(['"%s"' % k, '"%s"' % v])
-        await self.client.push("* ID (%s)\r\n" % " ".join(res))
+        res = " ".join([f'"{k}" "{v}"' for k, v in SERVER_ID.items()])
+        await self.client.push(f"* ID ({res})\r\n")
         return None
 
     #########################################################################
@@ -350,7 +351,7 @@ class BaseClientHandler:
         await self.client.push(
             "* BYE Logging out of asimap server. Good bye.\r\n"
         )
-        self.state = "logged_out"
+        self.state = ClientState.LOGGED_OUT
         return None
 
 
@@ -395,7 +396,7 @@ class PreAuthenticated(BaseClientHandler):
         - `cmd`: The full IMAP command object.
         """
         await self.send_pending_expunges()
-        if self.state == "authenticated":
+        if self.state == ClientState.AUTHENTICATED:
             raise Bad("client already is in the authenticated state")
         raise No("unsupported authentication mechanism")
 
@@ -429,7 +430,7 @@ class PreAuthenticated(BaseClientHandler):
         #     and password.
         #
         await self.send_pending_expunges()
-        if self.state == "authenticated":
+        if self.state == ClientState.AUTHENTICATED:
             raise Bad("client already is in the authenticated state")
 
         try:
@@ -441,7 +442,7 @@ class PreAuthenticated(BaseClientHandler):
             if not (self.user.maildir.exists() and self.user.maildir.is_dir()):
                 raise No("You have no mailbox directory setup")
 
-            self.state = "authenticated"
+            self.state = ClientState.AUTHENTICATED
             self.log.info(
                 "%s logged in from %s" % (str(self.user), self.client.name)
             )
@@ -480,7 +481,7 @@ class Authenticated(BaseClientHandler):
         )
         self.server = user_server
         self.mbox = None
-        self.state = "authenticated"
+        self.state = ClientState.AUTHENTICATED
         self.examine = False  # If a mailbox is selected in 'examine' mode
 
         # How many times has this client done a FETCH when there are pending
@@ -507,7 +508,7 @@ class Authenticated(BaseClientHandler):
         Handles the common case of sending pending expunges and a resync where
         we only notify this client of exists/recent.
         """
-        if self.state == "selected" and self.mbox is not None:
+        if self.state == ClientState.SELECTED and self.mbox is not None:
             async with self.mbox.lock.read_lock():
                 await self.mbox.resync(only_notify=self)
         await self.send_pending_expunges()
@@ -563,8 +564,8 @@ class Authenticated(BaseClientHandler):
         # deselects any already selected mailbox.
         #
         self.pending_expunges = []
-        if self.state == "selected":
-            self.state = "authenticated"
+        if self.state == ClientState.SELECTED:
+            self.state = ClientState.AUTHENTICATED
             if self.mbox:
                 self.mbox.unselected(self.client.name)
                 self.mbox = None
@@ -576,7 +577,7 @@ class Authenticated(BaseClientHandler):
         mbox = self.server.get_mailbox(cmd.mailbox_name)
         mbox.selected(self)
         self.mbox = mbox
-        self.state = "selected"
+        self.state = ClientState.SELECTED
         self.examine = examine
         if self.examine:
             return "[READ-ONLY]"
@@ -597,14 +598,14 @@ class Authenticated(BaseClientHandler):
         # some heartburn as commands they issues will never get their final
         # message.. but that is their problem.)
         #
-        if self.state != "selected":
+        if self.state != ClientState.SELECTED:
             raise No("Client must be in the selected state")
 
         if self.mbox:
             self.mbox.unselected(self.client.name)
             self.mbox = None
         self.pending_expunges = []
-        self.state = "authenticated"
+        self.state = ClientState.AUTHENTICATED
         return
 
     #########################################################################
@@ -869,7 +870,7 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        if self.state != "selected":
+        if self.state != ClientState.SELECTED:
             raise No("Client must be in the selected state")
 
         # If self.mbox is None then this mailbox was deleted while this user
@@ -923,14 +924,14 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        if self.state != "selected":
+        if self.state != ClientState.SELECTED:
             raise No("Client must be in the selected state")
 
         # We allow for the mailbox to be deleted.. it has no effect on this
         # operation.
         #
         self.pending_expunges = []
-        self.state = "authenticated"
+        self.state = ClientState.AUTHENTICATED
         mbox = None
         if self.mbox:
             self.mbox.unselected(self)
@@ -968,7 +969,7 @@ class Authenticated(BaseClientHandler):
         if not self.process_or_queue(cmd):
             return False
 
-        if self.state != "selected":
+        if self.state != ClientState.SELECTED:
             raise No("Client must be in the selected state")
 
         # If self.mbox is None then this mailbox was deleted while this user
@@ -1000,7 +1001,7 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        if self.state != "selected":
+        if self.state != ClientState.SELECTED:
             raise No("Client must be in the selected state")
 
         # If there are commands pending in the queue this gets put on the queue
@@ -1072,7 +1073,7 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        if self.state != "selected":
+        if self.state != ClientState.SELECTED:
             raise No("Client must be in the selected state")
 
         # If self.mbox is None then this mailbox was deleted while this user
@@ -1139,7 +1140,7 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        if self.state != "selected":
+        if self.state != ClientState.SELECTED:
             raise No("Client must be in the selected state")
 
         # If self.mbox is None then this mailbox was deleted while this user
@@ -1209,7 +1210,7 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        if self.state != "selected":
+        if self.state != ClientState.SELECTED:
             raise No("Client must be in the selected state")
 
         # If self.mbox is None then this mailbox was deleted while this user

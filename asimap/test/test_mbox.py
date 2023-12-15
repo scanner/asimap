@@ -26,7 +26,7 @@ from ..mbox import InvalidMailbox, Mailbox, MailboxExists, NoSuchMailbox
 from ..parse import StoreAction
 from ..search import IMAPSearch
 from ..utils import UID_HDR, get_uidvv_uid
-from .conftest import assert_email_equal
+from .conftest import assert_email_equal, client_push_responses
 
 
 ####################################################################
@@ -531,9 +531,7 @@ async def test_mbox_expunge_with_client(
     async with mbox.lock.read_lock():
         await mbox.expunge(imap_client_proxy.cmd_processor)
 
-    results = [
-        y.strip() for x in imap_client_proxy.push.call_args_list for y in x.args
-    ]
+    results = client_push_responses(imap_client_proxy)
     assert results == [
         "* 5 EXPUNGE",
         "* 4 EXPUNGE",
