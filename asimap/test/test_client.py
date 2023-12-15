@@ -97,6 +97,7 @@ async def test_client_handler_command(imap_client_proxy):
         r"A001 CAPABILITY",
         r"A001 NAMESPACE",
         r'A001 ID ("version" "21B101" "os" "iOS" "name" "iPhone Mail" "os-version" "17.1.2 (21B101)")',
+        r"A001 SELECT INBOX",
     ]
     expecteds = [
         [
@@ -111,6 +112,7 @@ async def test_client_handler_command(imap_client_proxy):
             f"""* ID ({" ".join([f'"{k}" "{v}"' for k, v in SERVER_ID.items()])})""",
             "A001 OK ID command completed",
         ],
+        ['A001 BAD Sorry, "select" is not a valid command'],
     ]
 
     for command, expected in zip(commands, expecteds):

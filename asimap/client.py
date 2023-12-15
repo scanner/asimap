@@ -133,7 +133,7 @@ class BaseClientHandler:
         if not hasattr(self, "do_%s" % imap_command.command):
             await self.client.push(
                 f"{imap_command.tag} BAD Sorry, "
-                f"{imap_command.command} is not a supported command\r\n"
+                f'"{imap_command.command}" is not a valid command\r\n'
             )
             return
 
