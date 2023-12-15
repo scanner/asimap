@@ -2744,7 +2744,7 @@ async def _helper_rename_folder(mbox: Mailbox, new_name: str):
         ):
             await srvr.db.execute(
                 "UPDATE mailboxes SET name=? WHERE id=?",
-                (new_name, old_id),
+                (mbox_new_name, old_id),
             )
 
             mb = srvr.active_mailboxes[mbox_old_name]
@@ -2754,23 +2754,23 @@ async def _helper_rename_folder(mbox: Mailbox, new_name: str):
             srvr.active_mailboxes[mbox_new_name] = mb
         srvr.msg_cache.clear_mbox(mbox_old_name)
 
-    # Make a hard link to where the new mbox is going to be. This way as we
-    # move any subordinate folders if they get activity before we have finished
-    # the entire move they will not just fail. When done all we need to do is
-    # remove the old mbox dir.
+    # Make a sym link to where the new mbox is going to be. This way as we move
+    # any subordinate folders if they get activity before we have finished the
+    # entire move they will not just fail. When done we need to remove the
+    # symlink and rename the dir from the old name to the new name.
     #
     old_name = mbox.name
     old_dir = mbox_msg_path(srvr.mailbox, old_name)
     new_dir = mbox_msg_path(srvr.mailbox, new_name)
 
     async with mbox.lock.read_lock():
-        await aiofiles.os.link(old_dir, new_dir)
+        await aiofiles.os.symlink(old_dir, new_dir)
 
         # Get all the mailboxes we have to rename (this mbox may have children)
         #
         to_change = {}
         async for mbox_old_name, mbox_id in srvr.db.query(
-            "SELECT name,id FROM mailboxes WHERE name=? " "OR name LIKE ?",
+            "SELECT name,id FROM mailboxes WHERE name=? OR name LIKE ?",
             (old_name, f"{old_name}/%"),
         ):
             mbox_new_name = new_name + mbox_old_name[len(old_name) :]
@@ -2791,11 +2791,12 @@ async def _helper_rename_folder(mbox: Mailbox, new_name: str):
                 ):
                     await _do_rename_folder(old_mbox, old_id, new_mbox_name)
 
-        srvr.db.commit()
+        await srvr.db.commit()
 
-        # And now we can remove the link to the old directory.
+        # and now we remove the symlink and rename the old dir to the new dir
         #
-        await aiofiles.os.rmdir(old_dir)
+        await aiofiles.os.remove(new_dir)
+        await aiofiles.os.rename(old_dir, new_dir)
 
     # If this mailbox we just renamed had a parent, that parent mailbox might
     # no longer have any children after this rename, so we have to update its

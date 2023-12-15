@@ -152,7 +152,7 @@ class MH(mailbox.MH):
         for entry in entries:
             if await aiofiles.os.path.isdir(os.path.join(self._path, entry)):
                 result.append(entry)
-        return result
+        return sorted(result)
 
     ####################################################################
     #

@@ -23,7 +23,7 @@ from ..constants import flag_to_seq
 #
 from ..exceptions import Bad, No
 from ..fetch import FetchAtt, FetchOp
-from ..mbox import InvalidMailbox, Mailbox, MailboxExists
+from ..mbox import InvalidMailbox, Mailbox, MailboxExists, NoSuchMailbox
 from ..parse import StoreAction
 from ..search import IMAPSearch
 from ..utils import UID_HDR, get_uidvv_uid
@@ -929,8 +929,8 @@ async def test_mailbox_rename(
 ):
     server, imap_client_proxy = imap_user_server_and_client
     inbox = mailbox_with_bunch_of_email
-    # inbox = await server.get_mailbox("inbox")
     NEW_MBOX_NAME = "new_mbox"
+
     # The mailbox we are moving must exist.
     #
     await Mailbox.create("nope", server)
@@ -941,10 +941,8 @@ async def test_mailbox_rename(
     # inbox moved to it.
     #
     msg_keys = await inbox.mailbox.akeys()
-    print(f"Before rename, inbox: {inbox}")
+    saved_msg_keys = msg_keys[:]
     await Mailbox.rename("inbox", NEW_MBOX_NAME, server)
-
-    print(f"after inbox rename, inbox uids: {inbox.uids}")
 
     new_mbox = await server.get_mailbox(NEW_MBOX_NAME)
     new_msg_keys = await new_mbox.mailbox.akeys()
@@ -956,3 +954,29 @@ async def test_mailbox_rename(
     assert not msg_keys
     assert not inbox.uids
     assert not inbox.sequences
+
+    # Create a new subordinate folder for `new_mbox` so we can make sure the
+    # subfolders are treated right when the mailbox is renamed.
+    #
+    await Mailbox.create(NEW_MBOX_NAME + "/subfolder", server)
+
+    # And now rename our `new_mbox`
+    #
+    NEW_NEW_NAME = "newnew_mbox"
+    await Mailbox.rename(NEW_MBOX_NAME, NEW_NEW_NAME, server)
+
+    folders = await server.mailbox.alist_folders()
+    assert folders == ["inbox", "newnew_mbox", "nope"]
+
+    with pytest.raises(NoSuchMailbox):
+        _ = await server.get_mailbox(NEW_MBOX_NAME)
+
+    # When we rename a mailbox it changes the name on the mailbox. the object
+    # remains the same. It should have messages equivalent to the origina inbox
+    # list.
+    #
+    new_new_mbox = await server.get_mailbox("newnew_mbox")
+    assert new_mbox == new_new_mbox
+    nnmsg_keys = await new_new_mbox.mailbox.akeys()
+    assert nnmsg_keys == saved_msg_keys
+    assert nnmsg_keys == new_new_mbox.uids
