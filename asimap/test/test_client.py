@@ -14,7 +14,9 @@ import pytest
 from ..client import (
     CAPABILITIES,
     SERVER_ID,
+    Authenticated,
     BaseClientHandler,
+    ClientState,
     PreAuthenticated,
 )
 from ..parse import IMAPClientCommand
@@ -86,7 +88,7 @@ async def test_client_handler_unceremonious_bye(imap_client_proxy):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_client_handler_command(imap_client_proxy):
+async def test_base_client_handler_command(imap_client_proxy):
     """
     Using a BaseClientHandler test the `command()` method. Using a
     BaseClientHandler lets us test things that are valid IMAPCommands, but not
@@ -123,7 +125,6 @@ async def test_client_handler_command(imap_client_proxy):
     for command, expected in zip(commands, expecteds):
         cmd = IMAPClientCommand(command + "\r\n")
         cmd.parse()
-        print(f"cmd: '{command}', IMAP Command: {cmd}")
         await client_handler.command(cmd)
         results = client_push_responses(imap_client)
         assert results == expected
@@ -147,3 +148,145 @@ async def test_preauth_client_handler_login(
     await client_handler.command(cmd)
     results = client_push_responses(imap_client)
     assert results == ["A001 OK LOGIN command completed"]
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_authenticated_client_handler_commands(
+    mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    """
+    Test the simpler commands against the Authenticated client handler.
+    """
+    server, imap_client = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+    client_handler = Authenticated(imap_client, server)
+
+    # We test various IMAPCommand's against the client handler.
+    #
+    commands = [
+        r"A001 NOOP",
+        r"A002 AUTHENTICATE KERBEROS_V4",
+        r"A003 LOGIN foo bar",
+        r"A004 SELECT INBOX",
+        r"A005 SELECT INBOX",  # Exercise already-selected logic
+        r"A006 UNSELECT INBOX",
+        r"A007 UNSELECT INBOX",
+        r"A008 EXAMINE INBOX",
+        r'A009 RENAME INBOX "inbox_copy"',
+        r"A010 DELETE INBOX",
+        r"A011 DELETE bar",
+        r"A012 CREATE foo",
+    ]
+    expecteds = [
+        ["A001 OK NOOP command completed"],
+        ["A002 BAD client already is in the authenticated state"],
+        ["A003 BAD client already is in the authenticated state"],
+        [
+            "* 20 EXISTS",
+            "* 20 RECENT",
+            "* OK [UNSEEN 1]",
+            "* OK [UIDVALIDITY 1]",
+            "* OK [UIDNEXT 21]",
+            r"* FLAGS (\Answered \Deleted \Draft \Flagged \Recent \Seen unseen)",
+            r"* OK [PERMANENTFLAGS (\Answered \Deleted \Draft \Flagged \Seen \*)]",
+            "A004 OK [READ-WRITE] SELECT command completed",
+        ],
+        [
+            "* 20 EXISTS",
+            "* 20 RECENT",
+            "* OK [UNSEEN 1]",
+            "* OK [UIDVALIDITY 1]",
+            "* OK [UIDNEXT 21]",
+            r"* FLAGS (\Answered \Deleted \Draft \Flagged \Recent \Seen unseen)",
+            r"* OK [PERMANENTFLAGS (\Answered \Deleted \Draft \Flagged \Seen \*)]",
+            "A005 OK [READ-WRITE] SELECT command completed",
+        ],
+        ["A006 OK UNSELECT command completed"],
+        ["A007 NO Client must be in the selected state"],
+        [
+            "* 20 EXISTS",
+            "* 20 RECENT",
+            "* OK [UNSEEN 1]",
+            "* OK [UIDVALIDITY 1]",
+            "* OK [UIDNEXT 21]",
+            r"* FLAGS (\Answered \Deleted \Draft \Flagged \Recent \Seen unseen)",
+            r"* OK [PERMANENTFLAGS (\Answered \Deleted \Draft \Flagged \Seen \*)]",
+            "A008 OK [READ-ONLY] EXAMINE command completed",
+        ],
+        [
+            "* 20 EXPUNGE",
+            "* 19 EXPUNGE",
+            "* 18 EXPUNGE",
+            "* 17 EXPUNGE",
+            "* 16 EXPUNGE",
+            "* 15 EXPUNGE",
+            "* 14 EXPUNGE",
+            "* 13 EXPUNGE",
+            "* 12 EXPUNGE",
+            "* 11 EXPUNGE",
+            "* 10 EXPUNGE",
+            "* 9 EXPUNGE",
+            "* 8 EXPUNGE",
+            "* 7 EXPUNGE",
+            "* 6 EXPUNGE",
+            "* 5 EXPUNGE",
+            "* 4 EXPUNGE",
+            "* 3 EXPUNGE",
+            "* 2 EXPUNGE",
+            "* 1 EXPUNGE",
+            "* 0 EXISTS",
+            "* 0 RECENT",
+            "A009 OK RENAME command completed",
+        ],
+        ["A010 NO You are not allowed to delete the inbox"],
+        ["A011 NO No such mailbox: 'bar'"],
+        ["A012 OK CREATE command completed"],
+    ]
+
+    for command, expected in zip(commands, expecteds):
+        cmd = IMAPClientCommand(command + "\r\n")
+        cmd.parse()
+        await client_handler.command(cmd)
+        results = client_push_responses(imap_client)
+        assert results == expected
+
+    # We should still be in EXAMINE mode.
+    #
+    assert client_handler.examine
+    assert client_handler.state == ClientState.SELECTED
+    assert client_handler.mbox
+    assert client_handler.mbox.name == "inbox"
+    mbox_foo = await server.get_mailbox("foo")
+    assert mbox_foo
+
+    mbox_inbox_copy = await server.get_mailbox("inbox_copy")
+    assert mbox_inbox_copy
+
+    # Rename inbox_copy to something else.
+    #
+    cmd = IMAPClientCommand('A013 RENAME "inbox_copy" bar')
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == ["A013 OK RENAME command completed"]
+
+    # And delete `bar`
+    cmd = IMAPClientCommand("A014 DELETE bar")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == ["A014 OK DELETE command completed"]
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_authenticated_client_subscribe_and_list(
+    mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    server, imap_client = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+    client_handler = Authenticated(imap_client, server)
+    assert client_handler

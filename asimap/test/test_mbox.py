@@ -515,8 +515,9 @@ async def test_mbox_expunge_with_client(
     num_msgs_to_delete = 4
     NAME = "inbox"
     bunch_of_email_in_folder(folder=NAME)
-    server, imap_client_proxy = imap_user_server_and_client
-    mbox = await Mailbox.new(NAME, server)
+    server, imap_client = imap_user_server_and_client
+    mbox = await server.get_mailbox(NAME)
+    mbox.clients[imap_client.cmd_processor.name] = imap_client.cmd_processor
 
     # Mark messages for expunge.
     #
@@ -529,9 +530,11 @@ async def test_mbox_expunge_with_client(
     await mbox.mailbox.aset_sequences(seqs)
 
     async with mbox.lock.read_lock():
-        await mbox.expunge(imap_client_proxy.cmd_processor)
+        imap_client.cmd_processor.idling = True
+        await mbox.expunge()
+        imap_client.cmd_processor.idling = False
 
-    results = client_push_responses(imap_client_proxy)
+    results = client_push_responses(imap_client)
     assert results == [
         "* 5 EXPUNGE",
         "* 4 EXPUNGE",

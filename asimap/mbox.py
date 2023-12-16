@@ -276,6 +276,11 @@ class Mailbox:
             await mbox.resync(force=force_resync, optional=False)
         return mbox
 
+    ####################################################################
+    #
+    def __str__(self):
+        return f"<Mailbox: {self.name}, num clients: {len(self.clients)}, num msgs: {self.num_msgs}>"
+
     ##################################################################
     #
     def marked(self, mark: bool):
@@ -370,6 +375,42 @@ class Mailbox:
                 self.server.msg_cache, self.name, msg_keys, seq
             )
         return seq
+
+    ####################################################################
+    #
+    async def _dispatch_or_pend_notifications(self, notifications: List[str]):
+        """
+        A helper function for sending out notifications to clients.
+
+        At various times mailbox state updates and the server is permitted to
+        send messages to the clients that have that mailbox selected or are
+        listening to it.
+
+        If they are listening to it we can send the message immediately to that
+        client.
+
+        If they are not listening, then we need to set the message so that when
+        the next command that can have untagged responses is running we can
+        send all these notifications.
+
+        NOTE: We are not allowed to send the untagged and unrequested
+              notifications to a client when a FETCH, STORE, or SEARCH command
+              is in progress for that client.
+
+              *UNLESS!* that command is a UID command. In that case we are
+              allowed to send untagged messages to the client, but they need to
+              be UID messages.
+
+        in any case we were doing this logic in several places this collects it
+        in one place.
+        """
+        if not notifications:
+            return
+        for c in self.clients.values():
+            if c.idling:
+                await c.client.push(*notifications)
+            else:
+                c.pending_notifications.extend(notifications)
 
     ##################################################################
     #
@@ -481,11 +522,6 @@ class Mailbox:
         #
         if not force and optional and start_mtime <= self.mtime:
             return
-
-        # If only_notify is not None then notify is forced to False.
-        #
-        if only_notify is not None:
-            notify = False
 
         async with (self.mailbox.lock_folder(), self.lock.write_lock()):
             # Whenever we resync the mailbox we update the sequence for
@@ -680,31 +716,12 @@ class Mailbox:
             # 'only_notify'
             #
             if num_msgs != self.num_msgs or num_recent != self.num_recent:
-                # Notify all listening clients that the number of messages and
-                # number of recent messages has changed.
-                #
-                to_notify = []
-                for client in self.clients.values():
-                    if (
-                        notify
-                        or client.idling
-                        or (
-                            only_notify is not None
-                            and only_notify.client.port == client.client.port
-                        )
-                    ):
-                        to_notify.append(client.client)
-
-                # NOTE: We separate the generating of which clients to notify
-                #       from actually pushing messages out to those clients
-                #       because if it disconnects due to us sending it we do
-                #       not want to raise an exception because the self.clients
-                #       dictionary changed.
-                #
-                for imap_client in to_notify:
-                    await imap_client.push(
-                        f"* {num_msgs} EXISTS\r\n", f"* {num_recent} RECENT\r\n"
-                    )
+                notifications = []
+                if num_msgs != self.num_msgs:
+                    notifications.append(f"* {num_msgs} EXISTS\r\n")
+                if num_recent != self.num_recent:
+                    notifications.append(f"* {num_recent} RECENT\r\n")
+                await self._dispatch_or_pend_notifications(notifications)
 
             # Make sure to update our mailbox object with the new counts.
             #
@@ -913,47 +930,17 @@ class Mailbox:
             len(missing_uids),
         )
 
-        # Construct the set of clients we can send EXPUNGE's to immediately
-        # and the set of clients we need to queue up EXPUNGE's for.
-        #
-        # NOTE: We can only send immediate EXPUNGEs to clients that are
-        #       `idling`. The rest of the clients attached to this mbox. For
-        #       the other cients the rules on when we can send the EXPUNGEs
-        #       are:
-        #
-        #       An EXPUNGE response MUST NOT be sent when no command is in
-        #       progress, nor while responding to a FETCH, STORE, or SEARCH
-        #       command.  This rule is necessary to prevent a loss of
-        #       synchronization of message sequence numbers between client and
-        #       server.  A command is not "in progress" until the complete
-        #       command has been received; in particular, a command is not "in
-        #       progress" during the negotiation of command continuation.
-        #
-        #       Note: UID FETCH, UID STORE, and UID SEARCH are different
-        #       commands from FETCH, STORE, and SEARCH.  An EXPUNGE response
-        #       MAY be sent during a UID command.
-        #
-        clients_to_notify = []
-        clients_to_pend = []
-        for c in self.clients.values():
-            if c.idling:
-                clients_to_notify.append(c)
-            else:
-                clients_to_pend.append(c)
-
         # Go through the UID's that are missing and send an expunge for each
         # one taking into account its position in the folder as we delete them.
         #
+        notifications = []
         for uid in sorted(missing_uids, reverse=True):
             # NOTE: The expunge is the _message index_ of the message being
             #       deleted.
             which = self.uids.index(uid) + 1
             self.uids.remove(uid)
-            exp = f"* {which} EXPUNGE\r\n"
-            for c in clients_to_notify:
-                await c.client.push(exp)
-            for c in clients_to_pend:
-                c.pending_expunges.append(exp)
+            notifications.append(f"* {which} EXPUNGE\r\n")
+        await self._dispatch_or_pend_notifications(notifications)
 
     ##################################################################
     #
@@ -1701,39 +1688,16 @@ class Mailbox:
 
     ##################################################################
     #
-    async def expunge(self, client: Optional["Authenticated"] = None):
+    async def expunge(self):
         """
         Perform an expunge. All messages in the 'Deleted' sequence are removed.
 
-        If a client is passed in then we send untagged expunge messages to that
-        client.
+        We will sending untagged EXPUNGE messages to all clients on this mbox
+        that are idling.
 
-        The RFC is pretty clear that we MUST NOT send an untagged expunge
-        message to any client if that client has no command in progress so we
-        can only send expunge's to the given client immediately.
-
-        Also we can not send an expunge during FETCH, STORE, or SEARCH
-        commands.
-
-        However, we CAN (MUST?) send expunges that are pending during all the
-        other commands so we need to store up the expunges that we register
-        here and during any of those other commands send out the built up
-        expunge's.
-
-        I think.
-
-        NOTE: We only store pending expunge messages if there are any clients
-              attached to this mailbox (besides the client passed in the
-              arguments.)
-
-        NOTE: IDLE is 'in the middle of a command' and is not on the prohibited
-              list so we also send untagged expunge messages to any clients in
-              IDLE
-
-        Arguments:
-
-        - `client`: the client to send the immediate untagged expunge messags
-          to.
+        For clients that have this mailbox selected but are NOT idling, we will
+        put the EXPUNGE messages on the notifications list for delivery to
+        those clients when possible.
         """
         assert self.lock.this_task_has_read_lock()  # XXX remove when confident
 
@@ -1743,22 +1707,6 @@ class Mailbox:
         seqs = await self.mailbox.aget_sequences()
         if len(seqs["Deleted"]) == 0:
             return
-
-        # See if there any other clients other than the one passed in the
-        # arguments and any NOT in IDLE that have this mailbox selected.
-        # This tells us whether we need to keep track of these expunges to
-        # send to the other clients.
-        #
-        clients_to_notify = {}
-        clients_to_pend = []
-        if client is not None:
-            clients_to_notify[client.name] = client
-
-        for name, c in self.clients.items():
-            if c.idling:
-                clients_to_notify[name] = c
-            elif name not in clients_to_notify:
-                clients_to_pend.append(c)
 
         async with (self.mailbox.lock_folder(), self.lock.write_lock()):
             # Remove the msg keys being deleted from the message cache.
@@ -1770,9 +1718,9 @@ class Mailbox:
 
             msg_keys = await self.mailbox.akeys()
 
-            # Now that we know who we are going to send expunges to immediately
-            # and who we are going to record them for later sending, go through
-            # the mailbox and delete the messages.
+            # We go through the to be deleted messages in reverse order so that
+            # the expunges are "EXPUNGE <n>" "EXPUNGE <n-1>" etc. This is
+            # mostly a nicety making the expunge messages a bit easier to read.
             #
             to_delete = sorted(seqs["Deleted"], reverse=True)
 
@@ -1799,19 +1747,8 @@ class Mailbox:
                     if msg_key in seqs[seq]:
                         seqs[seq].remove(msg_key)
 
-                # Send EXPUNGE's to the clients we are allowed to notify
-                # immediately.
-                #
                 expunge_msg = f"* {which} EXPUNGE\r\n"
-                for c in clients_to_notify.values():
-                    await c.client.push(expunge_msg)
-
-                # All other clients listening to this mailbox get the expunge
-                # messages added to a list that will be checked before we
-                # accept any other commands from them.
-                #
-                for c in clients_to_pend:
-                    c.pending_expunges.append(expunge_msg)
+                await self._dispatch_or_pend_notifications([expunge_msg])
 
             await self.mailbox.aset_sequences(seqs)
 
@@ -1823,7 +1760,7 @@ class Mailbox:
         # Unless a client is sitting in IDLE, then it is okay send them
         # exists/recents.
         #
-        await self.resync(notify=False)
+        await self.resync()
 
     ##################################################################
     #
@@ -2471,7 +2408,6 @@ class Mailbox:
         - `name`: The name of the mailbox to delete
         - `server`: The user server object
         """
-
         if name == "inbox":
             raise InvalidMailbox("You are not allowed to delete the inbox")
 
