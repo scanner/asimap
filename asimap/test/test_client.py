@@ -11,7 +11,12 @@ import pytest
 
 # Project imports
 #
-from ..client import CAPABILITIES, SERVER_ID, BaseClientHandler
+from ..client import (
+    CAPABILITIES,
+    SERVER_ID,
+    BaseClientHandler,
+    PreAuthenticated,
+)
 from ..parse import IMAPClientCommand
 from .conftest import client_push_responses
 
@@ -122,3 +127,23 @@ async def test_client_handler_command(imap_client_proxy):
         await client_handler.command(cmd)
         results = client_push_responses(imap_client)
         assert results == expected
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_preauth_client_handler_login(
+    faker, user_factory, password_file_factory, imap_client_proxy
+):
+    password = faker.password()
+    user = user_factory(password=password)
+    password_file_factory([user])
+
+    imap_client = await imap_client_proxy()
+    client_handler = PreAuthenticated(imap_client)
+
+    cmd = IMAPClientCommand(f"A001 LOGIN {user.username} {password}\r\n")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == ["A001 OK LOGIN command completed"]

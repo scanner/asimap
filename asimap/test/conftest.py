@@ -286,6 +286,7 @@ def imap_server(faker, ssl_certs, user_factory, password_file_factory):
 
     ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
     server_cert.configure_cert(ssl_context)
+    # XXX incorrect args.. pwfile is not password to the IMAPServer.
     server = IMAPServer(host, port, ssl_context, pw_file, debug=True)
 
     ############################
