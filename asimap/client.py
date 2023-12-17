@@ -214,9 +214,9 @@ class BaseClientHandler:
     #
     async def send_pending_notifications(self):
         """
-        Deal with pending expunges that have built up for this client.  This
-        can only be called during a command, but not during FETCH, STORE, or
-        SEARCH commands.
+        Deal with pending notifications like expunges that have built up
+        for this client.  This can only be called during a command, but not
+        during FETCH, STORE, or SEARCH commands.
 
         Also we will not call this during things like 'select' or 'close'
         because they are no longer listening to the mailbox (but they will
@@ -510,8 +510,11 @@ class Authenticated(BaseClientHandler):
         we only notify this client of exists/recent.
         """
         if self.state == ClientState.SELECTED and self.mbox is not None:
-            async with self.mbox.lock.read_lock():
-                await self.mbox.resync(only_notify=self)
+            if self.mbox.lock.this_task_has_read_lock():
+                await self.mbox.resync()
+            else:
+                async with self.mbox.lock.read_lock():
+                    await self.mbox.resync()
         await self.send_pending_notifications()
 
     #########################################################################
@@ -1120,6 +1123,8 @@ class Authenticated(BaseClientHandler):
             else:
                 raise No("There are pending EXPUNGEs.")
 
+        # XXX should we do this resync above the self.pending_notifications
+        #     check?
         self.mbox.resync(notify=cmd.uid_command)
 
         # We do not issue any messages to the client here. This is done
@@ -1131,6 +1136,9 @@ class Authenticated(BaseClientHandler):
         # Unless 'SILENT' was set in which case we still notify all other
         # clients listening to this mailbox, but not this client.
         #
+        # XXX We can use the 'client is idling' trick here for sending the
+        #     updated flags via fetches instead of the 'dont_notify=self' stuff
+        #     here.
         self.mbox.store(cmd.msg_set, cmd.store_action, cmd.flag_list, cmd)
         if cmd.silent:
             self.mbox.resync(

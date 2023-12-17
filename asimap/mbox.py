@@ -378,7 +378,11 @@ class Mailbox:
 
     ####################################################################
     #
-    async def _dispatch_or_pend_notifications(self, notifications: List[str]):
+    async def _dispatch_or_pend_notifications(
+        self,
+        notifications: Union[str, List[str]],
+        dont_notify: Optional["Authenticated"] = None,
+    ):
         """
         A helper function for sending out notifications to clients.
 
@@ -401,12 +405,25 @@ class Mailbox:
               allowed to send untagged messages to the client, but they need to
               be UID messages.
 
+        NOTE: When this is called as part of a `resync()` being done as part of
+        a `SELECT` command, the code processing the `SELECT` comamnd will
+        generate and send the necessary notifications, so we should NOT include
+        that client, indicated by the `dont_notify` parameter, in the clients
+        we are sending notifcations to.
+
         in any case we were doing this logic in several places this collects it
         in one place.
         """
         if not notifications:
             return
+        if isinstance(notifications, str):
+            notifications = [notifications]
+
         for c in self.clients.values():
+            # Skip over the client we are not going to send notifications to.
+            #
+            if c == dont_notify:
+                continue
             if c.idling:
                 await c.client.push(*notifications)
             else:
@@ -721,7 +738,9 @@ class Mailbox:
                     notifications.append(f"* {num_msgs} EXISTS\r\n")
                 if num_recent != self.num_recent:
                     notifications.append(f"* {num_recent} RECENT\r\n")
-                await self._dispatch_or_pend_notifications(notifications)
+                await self._dispatch_or_pend_notifications(
+                    notifications, dont_notify=dont_notify
+                )
 
             # Make sure to update our mailbox object with the new counts.
             #
@@ -833,29 +852,24 @@ class Mailbox:
             #
             flags_str = " ".join(flags)
             msg_idx = msg_keys.index(msg_key) + 1
-            clients = []
-            for client in self.clients.values():
-                if dont_notify and client.name == dont_notify.name:
-                    continue
-                clients.append(client)
 
-            for client in clients:
-                uidstr = ""
-                if publish_uids:
-                    try:
-                        uidstr = f" UID {self.uids[msg_idx - 1]}"
-                    except IndexError:
-                        logger.error(
-                            "Mailbox: %s: UID command but "
-                            "message index: %d is not inside list "
-                            "of UIDs, whose length is: %d",
-                            self.name,
-                            (msg_idx - 1),
-                            len(self.uids),
-                        )
-                await client.client.push(
-                    f"* {msg_idx} FETCH (FLAGS ({flags_str}){uidstr})\r\n"
-                )
+            uidstr = ""
+            if publish_uids:
+                try:
+                    uidstr = f" UID {self.uids[msg_idx - 1]}"
+                except IndexError:
+                    logger.error(
+                        "Mailbox: %s: UID command but "
+                        "message index: %d is not inside list "
+                        "of UIDs, whose length is: %d",
+                        self.name,
+                        (msg_idx - 1),
+                        len(self.uids),
+                    )
+            msg = f"* {msg_idx} FETCH (FLAGS ({flags_str}){uidstr})\r\n"
+            await self._dispatch_or_pend_notifications(
+                [msg], dont_notify=dont_notify
+            )
 
     ##################################################################
     #
@@ -2133,6 +2147,9 @@ class Mailbox:
                 seqs = await self.mailbox.aget_sequences()
                 for key in msg_keys:
                     msg = await self.get_and_cache_msg(key)
+                    # XXX We should make sure that the message's sequences
+                    #     match what we loaded above just in case it was a
+                    #     cached message and its sequence info was not updated.
                     match action:
                         case StoreAction.ADD_FLAGS | StoreAction.REMOVE_FLAGS:
                             for flag in flags:

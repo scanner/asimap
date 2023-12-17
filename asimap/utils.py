@@ -136,6 +136,12 @@ class UpgradeableReadWriteLock:
 
     ####################################################################
     #
+    # XXX Maybe we should make this take a boolean.. that is "noop if this task
+    #     already has the read lock." That way you can safely "nest" readlock
+    #     calls since they are only via context manager, the nested state is
+    #     entirely handled by the context manager.
+    #     (We could do the same with write locks?)
+    #
     @asynccontextmanager
     async def read_lock(self):
         cur_task = asyncio.current_task()
