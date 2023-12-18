@@ -18,7 +18,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, Optional, Union
 
 # 3rd party imports
 #
@@ -711,8 +711,68 @@ class IMAPUserServer:
 
     ##################################################################
     #
-    async def check_all_folders(self, force=False):
+    async def check_folder(
+        self, mbox_name: str, mtime: int, force: bool = False
+    ):
+        r"""
+        Check the mtime for a single folder. If it is newer than the mtime
+        passed in then do a resync of that folder.
+
+        If the folder is an active folder it may cause messages to be generated
+        and sent to clients that are watching it in some way.
+
+        The folder's \Marked and \Unmarked attributes maybe set in
+        the process of this run.
+
+        - `force` : If True this will force a full resync on all
+                    mailbox regardless of their mtimes.
         """
+        path = os.path.join(self.mailbox._path, mbox_name)
+        seq_path = os.path.join(path, ".mh_sequences")
+        try:
+            fmtime = await asimap.mbox.Mailbox.get_actual_mtime(
+                self.mailbox, mbox_name
+            )
+            if (fmtime > mtime) or force:
+                # The mtime differs we probably need resync.
+                #
+                logger.debug(
+                    "doing resync on '%s' stored mtime: %d, actual mtime: %d",
+                    mbox_name,
+                    mtime,
+                    fmtime,
+                )
+                m = await self.get_mailbox(mbox_name, 30)
+                if (m.mtime >= fmtime) and not force:
+                    # Looking at the mailbox object its mtime is NOT
+                    # earlier than the mtime of the folder so we can
+                    # skip this resync. But commit the mailbox data to the
+                    # db so that the actual mtime value is stored.
+                    #
+                    # (This may be because someone updated the mailbox before
+                    # this task actaully ran.)
+                    #
+                    await m.commit_to_db()
+                else:
+                    await m.resync(force=force)
+        except MailboxInconsistency as e:
+            # If hit one of these exceptions they are usually
+            # transient.  we will skip it. The command processor in
+            # client.py knows how to handle these better.
+            #
+            logger.warning("skipping '%s' due to: %s", mbox_name, str(e))
+        except (OSError, IOError) as e:
+            if e.errno == errno.ENOENT:
+                logger.error(
+                    "One of %s or %s does not exist for mtime check",
+                    path,
+                    seq_path,
+                )
+
+    ##################################################################
+    #
+    async def check_all_folders(self, force: bool = False):
+        r"""
         This goes through all of the folders and sees if any of the mtimes we
         have on disk disagree with the mtimes we have in the database.
 
@@ -721,87 +781,41 @@ class IMAPUserServer:
         If the folder is an active folder it may cause messages to be generated
         and sent to clients that are watching it in some way.
 
-        The folder's \\Marked and \\Unmarked attributes maybe set in
+        The folder's \Marked and \Unmarked attributes maybe set in
         the process of this run.
 
         - `force` : If True this will force a full resync on all
                     mailbox regardless of their mtimes.
         """
         start_time = time.time()
-        # Get all of the folders and mtimes we know about from the sqlite db at
-        # the beginning. This takes more memory (not _that_ much really in the
-        # grand scheme of things) but it gives the answers in one go-round to
-        # the db and we get to deal with the data in an easier format.
+        # Go through all of the folders and mtimes we know about from the
+        # sqlite db.
         #
-        mboxes: List[Tuple[str, float]] = []
-        async for row in self.db.query(
-            "select name, mtime from mailboxes where attributes "
-            "not like '%%ignored%%' order by name"
-        ):
-            mboxes.append(row)
-
-        # Now go through all of the extant mailboxes and see
-        # if their mtimes have changed warranting us to force them to resync.
-        #
-        # XXX We should probably skip folders that are active and have been
-        #     resync'd in the last 30 seconds because those are already checked
-        #     by another process.
-        #
-        for mbox_name, mtime in mboxes:
-            # If this mailbox is active and has a client idling on it then we
-            # can skip doing a resync here. It has been handled already.
-            #
-            if mbox_name in self.active_mailboxes and (
-                any(
-                    x.cmd_processor.idling
-                    for x in self.active_mailboxes[mbox_name].clients.values()
-                )
+        kount = 0
+        async with asyncio.TaskGroup() as tg:
+            async for mbox_name, mtime in self.db.query(
+                "SELECT name, mtime FROM mailboxes WHERE attributes "
+                "NOT LIKE '%%ignored%%' ORDER BY name"
             ):
-                continue
-
-            path = os.path.join(self.mailbox._path, mbox_name)
-            seq_path = os.path.join(path, ".mh_sequences")
-            try:
-                fmtime = await asimap.mbox.Mailbox.get_actual_mtime(
-                    self.mailbox, mbox_name
-                )
-                if (fmtime > mtime) or force:
-                    # The mtime differs.. force the mailbox to resync.
-                    #
-                    self.log.debug(
-                        "check_all_folders: doing resync on '%s' "
-                        "stored mtime: %d, actual mtime: %d"
-                        % (mbox_name, mtime, fmtime)
-                    )
-                    m = self.get_mailbox(mbox_name, 30)
-                    if (m.mtime >= fmtime) and not force:
-                        # Looking at the actual mailbox its mtime is NOT
-                        # earlier than the mtime of the actual folder so we can
-                        # skip this resync. But commit the mailbox data to the
-                        # db so that the actual mtime value is stored.
-                        #
-                        await m.commit_to_db()
-                    else:
-                        # Yup, we need to resync this folder.
-                        await m.resync(force=force)
-            except MailboxInconsistency as e:
-                # If hit one of these exceptions they are usually
-                # transient.  we will skip it. The command processor in
-                # client.py knows how to handle these better.
+                # can skip doing a check since it is already active.
                 #
-                self.log.warn(
-                    "check_all_folders: skipping '%s' due to: "
-                    "%s" % (mbox_name, str(e))
-                )
-            except (OSError, IOError) as e:
-                if e.errno == errno.ENOENT:
-                    self.log.error(
-                        "check_all_folders: One of %s or %s does "
-                        "not exist for mtime check" % (path, seq_path)
+                if mbox_name in self.active_mailboxes and (
+                    any(
+                        x.idling
+                        for x in self.active_mailboxes[
+                            mbox_name
+                        ].clients.values()
                     )
+                ):
+                    continue
 
-        self.log.debug(
-            "check_all_folders finished, Took %f seconds"
-            % (time.time() - start_time)
+                # Otherwise check folder for updates.
+                #
+                kount += 1
+                tg.create_task(self.check_folder(mbox_name, mtime))
+
+        logger.debug(
+            "check_all_folders finished, Took %f seconds to check %d folders",
+            (time.time() - start_time),
+            kount,
         )
-        return

@@ -713,26 +713,24 @@ class Authenticated(BaseClientHandler):
         # for the hierarchy sepration character.
         #
         if cmd.mailbox_name == "" and cmd.list_mailbox == "":
-            await self.client.push(r'* LIST (\Noselect) "/" ""', "\r\n")
+            await self.client.push(r'* LIST (\Noselect) "/" ""' + "\r\n")
             return
 
-        results = await Mailbox.list(
-            cmd.mailbox_name, cmd.list_mailbox, self.server, lsub
-        )
         res = "LIST"
         if lsub:
             res = "LSUB"
 
-        for mbox_name, attributes in results:
+        async for mbox_name, attributes in Mailbox.list(
+            cmd.mailbox_name, cmd.list_mailbox, self.server, lsub
+        ):
             mbox_name = "INBOX" if mbox_name.lower() == "inbox" else mbox_name
 
             # If the mailbox name has a space in it we need to present
             # it to the client with quotes.
             #
-            mbox_name = '"{mbox_name}"' if " " in mbox_name else mbox_name
+            mbox_name = f'"{mbox_name}"' if " " in mbox_name else mbox_name
             msg = f'* {res} ({" ".join(attributes)}) "/" {mbox_name}\r\n'
             await self.client.push(msg)
-        return None
 
     ####################################################################
     #

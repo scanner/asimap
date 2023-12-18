@@ -19,6 +19,7 @@ from ..client import (
     ClientState,
     PreAuthenticated,
 )
+from ..mbox import Mailbox
 from ..parse import IMAPClientCommand
 from .conftest import client_push_responses
 
@@ -175,6 +176,7 @@ async def test_authenticated_client_handler_commands(
         r"A007 UNSELECT INBOX",
         r"A008 EXAMINE INBOX",
         r'A009 RENAME INBOX "inbox_copy"',
+        r"A001 NOOP",
         r"A010 DELETE INBOX",
         r"A011 DELETE bar",
         r"A012 CREATE foo",
@@ -240,6 +242,7 @@ async def test_authenticated_client_handler_commands(
             "* 0 RECENT",
             "A009 OK RENAME command completed",
         ],
+        ["A001 OK NOOP command completed"],
         ["A010 NO You are not allowed to delete the inbox"],
         ["A011 NO No such mailbox: 'bar'"],
         ["A012 OK CREATE command completed"],
@@ -283,10 +286,59 @@ async def test_authenticated_client_handler_commands(
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_authenticated_client_subscribe_and_list(
-    mailbox_with_bunch_of_email, imap_user_server_and_client
+async def test_authenticated_client_list(
+    faker, mailbox_with_bunch_of_email, imap_user_server_and_client
 ):
     server, imap_client = imap_user_server_and_client
     _ = mailbox_with_bunch_of_email
+
+    # Let us make several other folders.
+    #
+    folders = ["inbox"]
+    for _ in range(5):
+        folder_name = faker.word()
+        await Mailbox.create(folder_name, server)
+        folders.append(folder_name)
+        for _ in range(3):
+            sub_folder = f"{folder_name}/{faker.word()}"
+            if sub_folder in folders:
+                continue
+            await Mailbox.create(sub_folder, server)
+            folders.append(sub_folder)
+
+    folders = sorted(folders)
+
     client_handler = Authenticated(imap_client, server)
-    assert client_handler
+    cmd = IMAPClientCommand('A001 LIST "" ""\r\n')
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == [
+        r'* LIST (\Noselect) "/" ""',
+        "A001 OK LIST command completed",
+    ]
+
+    cmd = IMAPClientCommand('A001 LIST "" "*"\r\n')
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert len(results) == len(folders) + 1
+    assert results[-1] == "A001 OK LIST command completed"
+    for result, folder in zip(results[:-1], folders):
+        assert result.startswith("* LIST (")
+        result_fname = result.split()[-1]
+        assert folder.lower() == result_fname.lower()
+
+    # Create one folder with a space in its name to make sure quoting works
+    # properly.
+    #
+    TEST_SPACE = "test space"
+    await Mailbox.create(TEST_SPACE, server)
+    folders.append(TEST_SPACE)
+    cmd = IMAPClientCommand('A002 LIST "" "test*"\r\n')
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert len(results) == 2
+    assert results[0].endswith(f'"{TEST_SPACE}"')
+    assert results[1] == "A002 OK LIST command completed"
