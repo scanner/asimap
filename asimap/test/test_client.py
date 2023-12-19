@@ -4,6 +4,7 @@ the Mailbox, basically.
 """
 # system imports
 #
+import random
 
 # 3rd party imports
 #
@@ -347,3 +348,74 @@ async def test_authenticated_client_list(
     assert len(results) == 2
     assert results[0].endswith(f'"{TEST_SPACE}"')
     assert results[1] == "A002 OK LIST command completed"
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_authenticated_client_subscribe_lsub_unsubscribe(
+    faker, mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    server, imap_client = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+
+    # Let us make several other folders.
+    #
+    folders = ["inbox"]
+    for _ in range(5):
+        folder_name = faker.word()
+        await Mailbox.create(folder_name, server)
+        folders.append(folder_name)
+        for _ in range(3):
+            sub_folder = f"{folder_name}/{faker.word()}"
+            if sub_folder in folders:
+                continue
+            await Mailbox.create(sub_folder, server)
+            folders.append(sub_folder)
+
+    folders = sorted(folders)
+
+    client_handler = Authenticated(imap_client, server)
+
+    # Subscribe to five random folders (usually we are going to subscribe to
+    # every folder..)
+    #
+    subscribed = sorted(random.sample(folders, 5))
+    for idx, subscribe in enumerate(subscribed):
+        cmd = IMAPClientCommand(f'A00{idx} SUBSCRIBE "{subscribe}"')
+        cmd.parse()
+        await client_handler.command(cmd)
+        results = client_push_responses(imap_client)
+        assert results == [f"A00{idx} OK SUBSCRIBE command completed"]
+        mbox = await server.get_mailbox(subscribe)
+        assert mbox.subscribed
+
+    cmd = IMAPClientCommand('A001 LSUB "" "*"\r\n')
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert len(results) - 1 == len(subscribed)
+    assert results[-1] == "A001 OK LSUB command completed"
+    for result, subscribe in zip(results[:-1], subscribed):
+        assert result.startswith("* LSUB (")
+        result_fname = result.split()[-1]
+        assert subscribe.lower() == result_fname.lower()
+
+    # and unsubscribe..
+    #
+    for idx, subscribe in enumerate(subscribed):
+        cmd = IMAPClientCommand(f'A00{idx} UNSUBSCRIBE "{subscribe}"')
+        cmd.parse()
+        await client_handler.command(cmd)
+        results = client_push_responses(imap_client)
+        assert results == [f"A00{idx} OK UNSUBSCRIBE command completed"]
+        mbox = await server.get_mailbox(subscribe)
+        assert mbox.subscribed is False
+
+    # and lsub will have no results
+    #
+    cmd = IMAPClientCommand('A001 LSUB "" "*"\r\n')
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == ["A001 OK LSUB command completed"]
