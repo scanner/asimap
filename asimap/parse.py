@@ -10,7 +10,7 @@ import mailbox
 import os.path
 import re
 from datetime import date
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import List, Optional, Tuple, Union
 
 # asimapd imports
@@ -102,6 +102,17 @@ flag_to_str = {
     StoreAction.ADD_FLAGS: "+FLAGS",
     StoreAction.REMOVE_FLAGS: "-FLAGS",
 }
+
+
+#######################################################################
+#
+class StatusAtt(StrEnum):
+    MESSAGES = "messages"
+    RECENT = "recent"
+    UIDNEXT = "uidnext"
+    UIDVALIDITY = "uidvalidity"
+    UNSEEN = "unseen"
+
 
 # Attributes of a fetch command. Note that the order is important. We need to
 # match the longest strings with the common prefix first to insure that we
@@ -1670,10 +1681,10 @@ class IMAPClientCommand(object):
         "UNSEEN"
         """
         stats_atts = ["messages", "recent", "uidnext", "uidvalidity", "unseen"]
-        for status in stats_atts:
+        for status in StatusAtt:
             stat = self._p_simple_string(status, silent=True)
             if stat is not None:
-                return stat
+                return status
         raise BadSyntax(
             value="expected a status attribute: %s" % str(stats_atts)
         )

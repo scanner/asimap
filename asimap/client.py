@@ -18,7 +18,7 @@ from asimap import __version__
 from .auth import User, authenticate
 from .exceptions import AuthenticationException, Bad, MailboxInconsistency, No
 from .mbox import Mailbox, NoSuchMailbox
-from .parse import IMAPClientCommand
+from .parse import IMAPClientCommand, StatusAtt
 from .throttle import check_allow, login_failed
 
 # Allow circular imports for annotations
@@ -193,7 +193,7 @@ class BaseClientHandler:
 
     ##################################################################
     #
-    def debug_log_cmd(self, cmd):
+    def debug_log_cmd(self, cmd: IMAPClientCommand):
         """
         More DRY.. we were basically calling this on every IMAP command
         so instead going to put it into the base class.
@@ -251,7 +251,7 @@ class BaseClientHandler:
     #
     ##################################################################
     #
-    async def do_done(self, cmd):
+    async def do_done(self, cmd: IMAPClientCommand):
         """
         We have gotten a DONE. This is only called when we are idling.
 
@@ -278,7 +278,7 @@ class BaseClientHandler:
 
     #########################################################################
     #
-    async def do_namespace(self, cmd):
+    async def do_namespace(self, cmd: IMAPClientCommand):
         """
         We currently only support a single personal name space. No leading
         prefix is used on personal mailboxes and '/' is the hierarchy
@@ -293,7 +293,7 @@ class BaseClientHandler:
 
     #########################################################################
     #
-    async def do_id(self, cmd):
+    async def do_id(self, cmd: IMAPClientCommand):
         """
         Construct an ID response... uh.. lookup the rfc that defines this.
 
@@ -315,7 +315,7 @@ class BaseClientHandler:
 
     #########################################################################
     #
-    async def do_idle(self, cmd):
+    async def do_idle(self, cmd: IMAPClientCommand):
         """
         The idle command causes the server to wait until the client sends
         us a 'DONE' continuation. During that time the client can not send
@@ -340,7 +340,7 @@ class BaseClientHandler:
 
     #########################################################################
     #
-    async def do_logout(self, cmd):
+    async def do_logout(self, cmd: IMAPClientCommand):
         """
         This just sets our state to 'logged out'. Our caller will take the
         appropriate actions to finishing a client's log out request.
@@ -403,7 +403,7 @@ class PreAuthenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_login(self, cmd):
+    async def do_login(self, cmd: IMAPClientCommand):
         """
         Process a LOGIN command with a username and password from the IMAP
         client.
@@ -519,7 +519,7 @@ class Authenticated(BaseClientHandler):
 
     #########################################################################
     #
-    async def do_noop(self, cmd):
+    async def do_noop(self, cmd: IMAPClientCommand):
         """
         Do nothing.. but send any pending messages and do a resync.. but when
         doing a resync only send the exists/recent to us (the mailbox might
@@ -538,13 +538,13 @@ class Authenticated(BaseClientHandler):
 
     #########################################################################
     #
-    async def do_authenticate(self, cmd):
+    async def do_authenticate(self, cmd: IMAPClientCommand):
         await self.notifies()
         raise Bad("client already is in the authenticated state")
 
     #########################################################################
     #
-    async def do_login(self, cmd):
+    async def do_login(self, cmd: IMAPClientCommand):
         await self.notifies()
         raise Bad("client already is in the authenticated state")
 
@@ -584,7 +584,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_unselect(self, cmd):
+    async def do_unselect(self, cmd: IMAPClientCommand):
         """
         Unselect a mailbox. Similar to close, except it does not do an expunge.
 
@@ -608,7 +608,7 @@ class Authenticated(BaseClientHandler):
 
     #########################################################################
     #
-    async def do_examine(self, cmd):
+    async def do_examine(self, cmd: IMAPClientCommand):
         """
         examine a specific mailbox (just like select, but read only)
         """
@@ -616,7 +616,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_create(self, cmd):
+    async def do_create(self, cmd: IMAPClientCommand):
         """
         Create the specified mailbox.
 
@@ -628,7 +628,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_delete(self, cmd):
+    async def do_delete(self, cmd: IMAPClientCommand):
         """
         Delete the specified mailbox.
 
@@ -640,7 +640,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_rename(self, cmd):
+    async def do_rename(self, cmd: IMAPClientCommand):
         """
         Renames a mailbox from one name to another.
 
@@ -655,7 +655,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_subscribe(self, cmd):
+    async def do_subscribe(self, cmd: IMAPClientCommand):
         """
         The SUBSCRIBE command adds the specified mailbox name to the
         server's set of "active" or "subscribed" mailboxes as returned by
@@ -674,7 +674,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_unsubscribe(self, cmd):
+    async def do_unsubscribe(self, cmd: IMAPClientCommand):
         """
         The UNSUBSCRIBE command removes the specified mailbox name
         from the server's set of "active" or "subscribed" mailboxes as
@@ -734,11 +734,10 @@ class Authenticated(BaseClientHandler):
 
     ####################################################################
     #
-    async def do_lsub(self, cmd):
+    async def do_lsub(self, cmd: IMAPClientCommand):
         """
         The lsub command lists mailboxes we are subscribed to with the
-        'SUBSCRIBE' command. Since we do not support subscribing to
-        mailboxes, this list will always be empty, no?
+        'SUBSCRIBE' command.
 
         Arguments:
         - `cmd`: The IMAP command we are executing
@@ -747,7 +746,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_status(self, cmd):
+    async def do_status(self, cmd: IMAPClientCommand):
         """
         Get the designated mailbox and return the requested status
         attributes to our client.
@@ -761,32 +760,27 @@ class Authenticated(BaseClientHandler):
         async with mbox.lock.read_lock():
             await mbox.resync()
 
-        result = []
-        for att in cmd.status_att_list:
-            if att == "messages":
-                result.append("MESSAGES %d" % mbox.num_msgs)
-            elif att == "recent":
-                result.append("RECENT %d" % mbox.num_recent)
-            elif att == "uidnext":
-                result.append("UIDNEXT %d" % mbox.next_uid)
-            elif att == "uidvalidity":
-                result.append("UIDVALIDITY %d" % mbox.uid_vv)
-            elif att == "unseen":
-                if "unseen" in mbox.sequences:
-                    result.append("UNSEEN %d" % len(mbox.sequences["unseen"]))
-                else:
-                    result.append("UNSEEN 0")
-            else:
-                raise Bad("Unsupported STATUS attribute '%s'" % att)
+            result: List[str] = []
+            for att in cmd.status_att_list:
+                match att:
+                    case StatusAtt.MESSAGES:
+                        result.append(f"MESSAGES {mbox.num_msgs}")
+                    case StatusAtt.RECENT:
+                        result.append(f"RECENT {mbox.num_recent}")
+                    case StatusAtt.UIDNEXT:
+                        result.append(f"UIDNEXT {mbox.next_uid}")
+                    case StatusAtt.UIDVALIDITY:
+                        result.append(f"UIDVALIDITY {mbox.uid_vv}")
+                    case StatusAtt.UNSEEN:
+                        result.append(f"UNSEEN {len(mbox.sequences['unseen'])}")
 
         await self.client.push(
             f'* STATUS "{cmd.mailbox_name}" ({" ".join(result)})\r\n'
         )
-        return
 
     ##################################################################
     #
-    async def do_append(self, cmd):
+    async def do_append(self, cmd: IMAPClientCommand):
         """
         Append a message to a mailbox.
 
@@ -812,7 +806,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_check(self, cmd):
+    async def do_check(self, cmd: IMAPClientCommand):
         """
         state: must be selected
 
@@ -865,7 +859,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_close(self, cmd):
+    async def do_close(self, cmd: IMAPClientCommand):
         """
         state: must be selected
 
@@ -911,7 +905,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_expunge(self, cmd):
+    async def do_expunge(self, cmd: IMAPClientCommand):
         """
         Delete all messages marked with 'Delete' from the mailbox and send out
         untagged expunge messages...
@@ -956,7 +950,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_search(self, cmd):
+    async def do_search(self, cmd: IMAPClientCommand):
         """
         Search... NOTE: Can not send untagged EXPUNGE messages during this
         command.
@@ -1019,7 +1013,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_fetch(self, cmd):
+    async def do_fetch(self, cmd: IMAPClientCommand):
         """
         Fetch data from the messages indicated in the command.
 
@@ -1079,7 +1073,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_store(self, cmd):
+    async def do_store(self, cmd: IMAPClientCommand):
         """
         The STORE command alters data associated with a message in the
         mailbox.  Normally, STORE will return the updated value of the
@@ -1159,7 +1153,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_copy(self, cmd):
+    async def do_copy(self, cmd: IMAPClientCommand):
         """
         Copy the given set of messages to the destination mailbox.
 

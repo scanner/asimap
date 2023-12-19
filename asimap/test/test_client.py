@@ -170,6 +170,7 @@ async def test_authenticated_client_handler_commands(
         r"A001 NOOP",
         r"A002 AUTHENTICATE KERBEROS_V4",
         r"A003 LOGIN foo bar",
+        r"A003.5 STATUS inbox (MESSAGES recent UIDNEXT uidvalidity unseen)",
         r"A004 SELECT INBOX",
         r"A005 SELECT INBOX",  # Exercise already-selected logic
         r"A006 UNSELECT INBOX",
@@ -185,6 +186,10 @@ async def test_authenticated_client_handler_commands(
         ["A001 OK NOOP command completed"],
         ["A002 BAD client already is in the authenticated state"],
         ["A003 BAD client already is in the authenticated state"],
+        [
+            '* STATUS "inbox" (MESSAGES 20 RECENT 20 UIDNEXT 21 UIDVALIDITY 1 UNSEEN 20)',
+            "A003.5 OK STATUS command completed",
+        ],
         [
             "* 20 EXISTS",
             "* 20 RECENT",
