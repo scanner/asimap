@@ -661,7 +661,6 @@ class IMAPClientCommand(object):
         # as a message structure right away (I hope this works in all cases,
         # even with draft messages.)
         #
-        # self.message = email.message_from_string(self._p_string())
         self.message = mailbox.MHMessage(self._p_string())
         return
 

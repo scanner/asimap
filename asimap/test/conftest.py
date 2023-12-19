@@ -92,7 +92,10 @@ def assert_email_equal(
         for header, value in msg1.items():
             if header.lower() in ignore_headers:
                 continue
-            assert msg2[header] == value
+            h1, h2 = decode_headers([msg2[header], value])
+            h1 = h1.translate(REPLACE_LINESEP).strip()
+            h2 = h2.translate(REPLACE_LINESEP).strip()
+            assert h1 == h2
     else:
         assert len(msg1.keys()) == len(msg2.keys())
         keys = set(msg1.keys())

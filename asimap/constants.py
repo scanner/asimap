@@ -8,6 +8,8 @@ Various global constants.
 # Here we set the list of defined system flags (flags that may be set on a
 # message) and the subset of those flags that may not be set by a  user.
 #
+# XXX Convert these to StrEnum's.
+#
 SYSTEM_FLAGS = (
     r"\Answered",
     r"\Deleted",

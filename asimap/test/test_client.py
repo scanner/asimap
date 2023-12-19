@@ -5,6 +5,7 @@ the Mailbox, basically.
 # system imports
 #
 import random
+from email.policy import SMTP
 
 # 3rd party imports
 #
@@ -22,7 +23,8 @@ from ..client import (
 )
 from ..mbox import Mailbox
 from ..parse import IMAPClientCommand
-from .conftest import client_push_responses
+from ..utils import UID_HDR
+from .conftest import assert_email_equal, client_push_responses
 
 
 ####################################################################
@@ -419,3 +421,56 @@ async def test_authenticated_client_subscribe_lsub_unsubscribe(
     await client_handler.command(cmd)
     results = client_push_responses(imap_client)
     assert results == ["A001 OK LSUB command completed"]
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_authenticated_client_append(
+    email_factory, mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    server, imap_client = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+    client_handler = Authenticated(imap_client, server)
+
+    msg = email_factory()
+    msg_as_string = msg.as_string()
+
+    cmd = IMAPClientCommand(
+        f'A001 APPEND inbox (\\Flagged) "05-jan-1999 20:55:23 +0000" {{{len(msg_as_string)}+}}\r\n{msg_as_string}'
+    )
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == ["A001 OK [APPENDUID 1 21] APPEND command completed"]
+
+    # Get the message from the mailbox..
+    #
+    mbox = await server.get_mailbox("inbox")
+    appended_msg = await mbox.mailbox.aget_message(21)
+    assert_email_equal(msg, appended_msg, ignore_headers=[UID_HDR])
+
+    # Let us append again, but this time with the mailbox selected. We should
+    # get untagged updates from the mailbox for the new message.
+    #
+    cmd = IMAPClientCommand("A002 SELECT inbox")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    msg = email_factory()
+    msg_as_string = msg.as_string(policy=SMTP)
+
+    cmd = IMAPClientCommand(
+        f'A003 APPEND inbox (\\Flagged) "05-jan-1999 20:55:23 +0000" {{{len(msg_as_string)}+}}\r\n{msg_as_string}'
+    )
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == [
+        "* 22 EXISTS",
+        "* 22 RECENT",
+        r"* 22 FETCH (FLAGS (\Recent \Flagged \Seen))",
+        "A003 OK [APPENDUID 1 22] APPEND command completed",
+    ]
+    appended_msg = await mbox.mailbox.aget_message(22)
+    assert_email_equal(msg, appended_msg, ignore_headers=[UID_HDR])

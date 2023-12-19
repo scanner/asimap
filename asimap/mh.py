@@ -167,7 +167,7 @@ class MH(mailbox.MH):
                 contents = await f.read()
         except OSError as e:
             if e.errno == errno.ENOENT:
-                raise KeyError("No message with key: %s" % key)
+                raise KeyError(f"No message with key: {key}")
             else:
                 raise
 

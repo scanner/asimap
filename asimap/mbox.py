@@ -694,8 +694,8 @@ class Mailbox:
                         found_uids = await self._update_msg_uids(
                             msg_keys[start_idx:], seq
                         )
-
                         found_uids = self.uids[:start_idx] + found_uids
+
                         # Calculate what UID's were deleted and what order they
                         # were deleted in and send expunges as necessary to all
                         # connected clients.
@@ -801,7 +801,6 @@ class Mailbox:
         # We build up the set of messages that have changed flags
         #
         changed_msg_keys = set()
-
         # If any sequence exists now that did not exist before, or does not
         # exist now but did exist before then all of those messages in those
         # sequences have changed flags.
@@ -1061,7 +1060,6 @@ class Mailbox:
         - `horizon`: The delta back in time from the mtime of the folder we use
           as the mtime for messages considered 'new'
         """
-
         # We use self.mtime (instead of getting the mtime from the actual
         # folder) because we want to find all messages that have been modified
         # since the folder was last scanned.
@@ -1069,15 +1067,18 @@ class Mailbox:
         # Since we are looking for the first modified message we can stop our
         # scan the instant we find a msg with a mtime greater than self.mtime.
         #
-        if not msg_keys == 0:
+        # Maybe we should scan from the end of the mailbox backwards and look
+        # for the first message with an mtime less than the folder/horizon.
+        #
+        if not msg_keys:
             return None
         horizon_mtime = self.mtime - horizon
         found = None
-        for msg_key in msg_keys:
+        for msg_key in sorted(msg_keys, reverse=True):
             try:
                 msg_path = mbox_msg_path(self.mailbox, msg_key)
                 mtime = await aiofiles.os.path.getmtime(str(msg_path))
-                if int(mtime) > horizon_mtime:
+                if int(mtime) <= horizon_mtime:
                     found = msg_key
                     break
             except OSError as e:
@@ -1669,7 +1670,6 @@ class Mailbox:
         # flag
         #
         msg.add_sequence("Recent")
-
         async with (self.mailbox.lock_folder(), self.lock.write_lock()):
             # NOTE: This updates the .mh_sequences folder
             #

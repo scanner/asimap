@@ -787,22 +787,22 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        # You can append while you have commands in the command
-        # queue, but no notifies are sent in that case.
-        #
-        if self.process_or_queue(cmd, queue=False):
-            await self.notifies()
+        await self.notifies()
 
         try:
-            mbox = self.server.get_mailbox(cmd.mailbox_name, expiry=0)
-            uid = mbox.append(cmd.message, cmd.flag_list, cmd.date_time)
+            mbox = await self.server.get_mailbox(cmd.mailbox_name, expiry=10)
+            async with mbox.lock.read_lock():
+                uid = await mbox.append(
+                    cmd.message, cmd.flag_list, cmd.date_time
+                )
         except NoSuchMailbox:
             # For APPEND and COPY if the mailbox does not exist we
             # MUST supply the TRYCREATE flag so we catch the generic
             # exception and return the appropriate NO result.
             #
-            raise No("[TRYCREATE] No such mailbox: '%s'" % cmd.mailbox_name)
-        return "[APPENDUID %d %d]" % (mbox.uid_vv, uid)
+            raise No(f"[TRYCREATE] No such mailbox: '{cmd.mailbox_name}'")
+        await self.send_pending_notifications()
+        return f"[APPENDUID {mbox.uid_vv} {uid}]"
 
     ##################################################################
     #
