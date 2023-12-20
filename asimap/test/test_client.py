@@ -45,7 +45,7 @@ async def test_client_handler_idle_done(imap_client_proxy):
     results = client_push_responses(imap_client)
     assert results == ["+ idling"]
     assert client_handler.idling is True
-    await client_handler.do_done(None)
+    await client_handler.do_done()
     results = client_push_responses(imap_client)
     assert results == ["A001 OK IDLE terminated"]
     assert client_handler.idling is False
@@ -474,3 +474,32 @@ async def test_authenticated_client_append(
     ]
     appended_msg = await mbox.mailbox.aget_message(22)
     assert_email_equal(msg, appended_msg, ignore_headers=[UID_HDR])
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_authenticated_client_check(
+    mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    server, imap_client = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+    client_handler = Authenticated(imap_client, server)
+
+    # `check` without `select` will fail with No
+    #
+    cmd = IMAPClientCommand("A001 CHECK")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == ["A001 NO Client must be in the selected state"]
+
+    cmd = IMAPClientCommand("A001 SELECT INBOX")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    cmd = IMAPClientCommand("A002 CHECK")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == ["A002 OK CHECK command completed"]
