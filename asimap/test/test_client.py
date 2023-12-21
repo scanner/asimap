@@ -22,7 +22,7 @@ from ..client import (
     PreAuthenticated,
 )
 from ..mbox import Mailbox
-from ..parse import IMAPClientCommand
+from ..parse import IMAPClientCommand, StoreAction
 from ..utils import UID_HDR
 from .conftest import assert_email_equal, client_push_responses
 
@@ -503,3 +503,66 @@ async def test_authenticated_client_check(
     await client_handler.command(cmd)
     results = client_push_responses(imap_client)
     assert results == ["A002 OK CHECK command completed"]
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_authenticated_client_close(
+    mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    server, imap_client = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+    client_handler = Authenticated(imap_client, server)
+
+    cmd = IMAPClientCommand("A001 CLOSE")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == ["A001 NO Client must be in the selected state"]
+
+    # Messages that are marked `\Deleted` are removed when the mbox is closed.
+    #
+    mbox = await server.get_mailbox("inbox")
+    async with mbox.lock.read_lock():
+        msg_keys = await mbox.mailbox.akeys()
+        to_delete = sorted(random.sample(msg_keys, 5))
+        await mbox.store(to_delete, StoreAction.ADD_FLAGS, [r"\Deleted"])
+
+    # Closing when we had done 'EXAMINE' does not result in messages being
+    # purged.
+    #
+    cmd = IMAPClientCommand("A002 EXAMINE INBOX")
+    cmd.parse()
+    await client_handler.command(cmd)
+    client_push_responses(imap_client)
+
+    cmd = IMAPClientCommand("A003 CLOSE")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == ["A003 OK CLOSE command completed"]
+
+    # And get the message keys again.. should have no changes from the previous
+    # set.
+    #
+    new_msg_keys = await mbox.mailbox.akeys()
+    assert new_msg_keys == msg_keys
+
+    # Now SELECT the inbox, and then close it.. the messages we had marked
+    # `\Deleted` should be removed from the mbox.
+    #
+    cmd = IMAPClientCommand("A004 SELECT INBOX")
+    cmd.parse()
+    await client_handler.command(cmd)
+    client_push_responses(imap_client)
+
+    cmd = IMAPClientCommand("A005 CLOSE")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == ["A005 OK CLOSE command completed"]
+
+    new_msg_keys = await mbox.mailbox.akeys()
+    for msg_key in to_delete:
+        assert msg_key not in new_msg_keys

@@ -860,7 +860,7 @@ class Authenticated(BaseClientHandler):
         self.state = ClientState.AUTHENTICATED
         mbox = None
         if self.mbox:
-            self.mbox.unselected(self)
+            self.mbox.unselected(self.name)
             mbox = self.mbox
             self.mbox = None
 
@@ -876,8 +876,9 @@ class Authenticated(BaseClientHandler):
         # does its work 'silently.'
         #
         if mbox:
-            await mbox.resync()
-            await mbox.expunge()
+            async with mbox.lock.read_lock():
+                await mbox.resync()
+                await mbox.expunge()
 
     ##################################################################
     #
