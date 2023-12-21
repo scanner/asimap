@@ -890,12 +890,6 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
-        # If there are commands pending in the queue this gets put on the queue
-        # waiting for those to be finished before processing.
-        #
-        if not self.process_or_queue(cmd):
-            return False
-
         if self.state != ClientState.SELECTED:
             raise No("Client must be in the selected state")
 
@@ -907,23 +901,24 @@ class Authenticated(BaseClientHandler):
             self.unceremonious_bye("Your selected mailbox no longer exists")
             return
 
-        self.send_pending_notifications()
+        async with self.mbox.lock.read_lock():
+            await self.notifies()
 
-        # If we selected the mailbox via 'examine' then we can not make any
-        # changes anyways...
-        #
-        if self.examine:
-            return
+            # If we selected the mailbox via 'examine' then we can not make any
+            # changes anyways...
+            #
+            if self.examine:
+                return
 
-        # In order for the EXPUNGE operation to immediately send EXPUNGE
-        # messages to this client we will do a bit of a hack and indicate that
-        # this client is "idling" while the operation is running.
-        #
-        try:
-            self.idling = True
-            await self.mbox.expunge()
-        finally:
-            self.idling = False
+            # In order for the EXPUNGE operation to immediately send EXPUNGE
+            # messages to this client we will do a bit of a hack and indicate that
+            # this client is "idling" while the operation is running.
+            #
+            try:
+                self.idling = True
+                await self.mbox.expunge()
+            finally:
+                self.idling = False
 
     ##################################################################
     #
