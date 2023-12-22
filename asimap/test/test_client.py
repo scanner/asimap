@@ -649,15 +649,43 @@ async def test_authenticated_client_expunge(
 async def test_authenticated_client_search(
     mailbox_with_bunch_of_email, imap_user_server_and_client
 ):
+    """
+    Search is tested mostly `test_search`.. so we only need a very simple
+    search.
+    """
     server, imap_client = imap_user_server_and_client
     _ = mailbox_with_bunch_of_email
     client_handler = Authenticated(imap_client, server)
 
-    cmd = IMAPClientCommand("A001 EXPUNGE")
+    cmd = IMAPClientCommand("A001 SEARCH UNSEEN")
     cmd.parse()
     await client_handler.command(cmd)
     results = client_push_responses(imap_client)
     assert results == ["A001 NO Client must be in the selected state"]
 
-    # Messages that are marked `\Deleted` are removed when the mbox is closed.
+    # Every message in the inbox should be unseen.. so our response should have
+    # all these message indicies in it.
     #
+    mbox = await server.get_mailbox("inbox")
+    msg_keys = await mbox.mailbox.akeys()
+
+    cmd = IMAPClientCommand("A004 SELECT INBOX")
+    cmd.parse()
+    await client_handler.command(cmd)
+    client_push_responses(imap_client)
+
+    cmd = IMAPClientCommand("A001 SEARCH UNSEEN")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    expected = f"* SEARCH {' '.join(str(x) for x in msg_keys)}"
+    assert results == [expected, "A001 OK SEARCH command completed"]
+
+    # and do a UID search
+    #
+    cmd = IMAPClientCommand("A001 UID SEARCH UNSEEN")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    expected = f"* SEARCH {' '.join(str(x) for x in msg_keys)}"
+    assert results == [expected, "A001 OK SEARCH command completed"]
