@@ -1099,12 +1099,16 @@ class Authenticated(BaseClientHandler):
             )
             if cmd.silent:
                 await self.mbox.resync(
-                    dont_notify=self, publish_uids=cmd.uid_command
+                    optional=False,
+                    dont_notify=self,
+                    publish_uids=cmd.uid_command,
                 )
             else:
                 try:
                     self.idling = True
-                    await self.mbox.resync(publish_uids=cmd.uid_command)
+                    await self.mbox.resync(
+                        optional=False, publish_uids=cmd.uid_command
+                    )
                 finally:
                     self.idling = False
 
