@@ -204,7 +204,7 @@ _atom_re = re.compile(_atom)
 # find those.
 #
 _fetch_att_macros = r"(all)|(full)|(fast)"
-_fetch_att_macros_re = re.compile(_fetch_att_macros)
+_fetch_att_macros_re = re.compile(_fetch_att_macros, flags=re.IGNORECASE)
 
 # A list_atom is just like an atom, except we allow list_wildcards ('*'
 # and '%')
