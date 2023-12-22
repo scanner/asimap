@@ -641,3 +641,23 @@ async def test_authenticated_client_expunge(
     new_msg_keys = await mbox.mailbox.akeys()
     for msg_key in to_delete:
         assert msg_key not in new_msg_keys
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_authenticated_client_search(
+    mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    server, imap_client = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+    client_handler = Authenticated(imap_client, server)
+
+    cmd = IMAPClientCommand("A001 EXPUNGE")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == ["A001 NO Client must be in the selected state"]
+
+    # Messages that are marked `\Deleted` are removed when the mbox is closed.
+    #

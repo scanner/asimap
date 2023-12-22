@@ -82,9 +82,6 @@ class BaseClientHandler:
                     client we are handling. This lets us send messages to that
                     IMAP client.
         """
-        self.log = logging.getLogger(
-            "%s.%s" % (__name__, self.__class__.__name__)
-        )
         self.client = client
         self.state: ClientState = ClientState.NOT_AUTHENTICATED
         self.name = client.name
@@ -150,19 +147,19 @@ class BaseClientHandler:
         except No as e:
             result = f"{imap_command.tag} NO {e}\r\n"
             await self.client.push(result)
-            self.log.debug(result)
+            logger.debug(result)
             return
         except Bad as e:
             result = f"{imap_command.tag} BAD {e}\r\n"
             await self.client.push(result)
-            self.log.debug(result)
+            logger.debug(result)
             return
         except KeyboardInterrupt:
             sys.exit(0)
         except Exception as e:
             result = f"{imap_command.tag} BAD Unhandled exception: {e}\r\n"
             await self.client.push(result)
-            self.log.debug(result)
+            logger.debug(result)
             raise
 
         # If there was no result from running this command then everything went
@@ -202,13 +199,21 @@ class BaseClientHandler:
         - `cmd`: The IMAP command we are executing
         """
         if self.mbox:
-            self.log.debug(
+            logger.debug(
                 "state: %s, mbox: %s, cmd: %s"
                 % (self.state.value, self.mbox.name, str(cmd))
             )
         else:
-            self.log.debug("state: %s, cmd: %s" % (self.state.value, str(cmd)))
+            logger.debug("state: %s, cmd: %s" % (self.state.value, str(cmd)))
         return
+
+    ####################################################################
+    #
+    def pending_expunges(self) -> bool:
+        """
+        Return True if any of the pending notifications are EXPUNGE's
+        """
+        return any("EXPUNGE" in x for x in self.pending_notifications)
 
     ##################################################################
     #
@@ -302,7 +307,7 @@ class BaseClientHandler:
         """
         await self.send_pending_notifications()
         self.client_id = cmd.id_dict
-        self.log.info(
+        logger.info(
             "Client at %s identified itself with: %s"
             % (
                 self.client.name,
@@ -377,9 +382,6 @@ class PreAuthenticated(BaseClientHandler):
     def __init__(self, client: "IMAPClient"):
         """ """
         super().__init__(client)
-        self.log = logging.getLogger(
-            "%s.%s" % (__name__, self.__class__.__name__)
-        )
         self.user: Optional[User] = None
         return
 
@@ -444,7 +446,7 @@ class PreAuthenticated(BaseClientHandler):
                 raise No("You have no mailbox directory setup")
 
             self.state = ClientState.AUTHENTICATED
-            self.log.info(
+            logger.info(
                 "%s logged in from %s" % (str(self.user), self.client.name)
             )
         except AuthenticationException as e:
@@ -477,9 +479,6 @@ class Authenticated(BaseClientHandler):
         self, client: "IMAPClientProxy", user_server: "IMAPUserServer"
     ):
         super().__init__(client)
-        self.log = logging.getLogger(
-            f"{__name__}.{self.__class__.__name__}-{client.name}"
-        )
         self.server = user_server
         self.mbox = None
         self.state = ClientState.AUTHENTICATED
@@ -911,8 +910,8 @@ class Authenticated(BaseClientHandler):
                 return
 
             # In order for the EXPUNGE operation to immediately send EXPUNGE
-            # messages to this client we will do a bit of a hack and indicate that
-            # this client is "idling" while the operation is running.
+            # messages to this client we will do a bit of a hack and indicate
+            # that this client is "idling" while the operation is running.
             #
             try:
                 self.idling = True
@@ -952,36 +951,24 @@ class Authenticated(BaseClientHandler):
         # and receive the pending expunges. Unless this is a UID command. It is
         # okay to send pending expunges during the operations of a UID SEARCH.
         #
-        await self.mbox.resync()
-        if len(self.pending_notifications) > 0:
-            if cmd.uid_command:
-                self.send_pending_notifications()
-            else:
-                raise No("There are pending untagged responses")
-
-        count = 0
-        while True:
+        async with self.mbox.lock.read_lock():
+            await self.mbox.resync()
+            if self.pending_expunges():
+                if cmd.uid_command:
+                    self.send_pending_notifications()
+                else:
+                    raise No("There are pending untagged responses")
             try:
-                count += 1
-                results = await self.mbox.search(cmd.search_key, cmd)
-
-                # Only send back results to the IMAP client if we actually have
-                # results to send to it and this command does NOT need to be
-                # continued.
-                #
-                if not cmd.needs_continuation and results and len(results) > 0:
-                    await self.client.push(
-                        "* SEARCH %s\r\n" % " ".join([str(x) for x in results])
-                    )
-                break
+                results = await self.mbox.search(
+                    cmd.search_key, cmd.uid_command
+                )
+                await self.client.push(
+                    f"* SEARCH {' '.join(str(x) for x in results)}\r\n"
+                )
             except MailboxInconsistency as e:
                 self.server.msg_cache.clear_mbox(self.mbox.name)
-                self.log.warn("do_search: %s, Try %d" % (str(e), count))
-                if count > 5:
-                    raise e
+                logger.warning("Mailbox %s: %s", self.mbox.name, str(e))
                 await self.mbox.resync(optional=False)
-
-        return None
 
     ##################################################################
     #
@@ -1003,7 +990,10 @@ class Authenticated(BaseClientHandler):
             self.unceremonious_bye("Your selected mailbox no longer exists")
             return
 
-        async with (self.mbox.lock.read_lock(), self.mailbox.lock_folder()):
+        async with (
+            self.mbox.lock.read_lock(),
+            self.mbox.mailbox.lock_folder(),
+        ):
             await self.mbox.resync()
 
             # If this client has pending EXPUNGE messages then we return a
@@ -1012,9 +1002,9 @@ class Authenticated(BaseClientHandler):
             # command. It is okay to send pending expunges during the
             # operations of a UID FETCH.
             #
-            if self.pending_notifications:
+            if self.pending_expunges():
                 if cmd.uid_command:
-                    self.send_pending_notifications()
+                    await self.send_pending_notifications()
                 else:
                     # If a client continues to pound us asking for FETCH's when
                     # there are pending EXPUNGE's give them the finger by
@@ -1024,23 +1014,25 @@ class Authenticated(BaseClientHandler):
                     # learn the error of their ways.
                     #
                     self.fetch_while_pending_count += 1
-                    if self.fetch_while_pending_count > 10:
+                    if self.fetch_while_pending_count > 3:
                         self.unceremonious_bye("You have pending EXPUNGEs.")
                         return
                     else:
                         raise No("There are pending EXPUNGEs.")
+            else:
+                await self.send_pending_notifications()
 
             self.fetch_while_pending_count = 0
             try:
                 async for idx, results in self.mbox.fetch(
-                    cmd.msg_set, cmd.fetch_atts, cmd
+                    cmd.msg_set, cmd.fetch_atts, cmd.uid_command
                 ):
                     await self.client.push(
                         f"* {idx} FETCH {' '.join(results)}\r\n"
                     )
             except MailboxInconsistency as exc:
                 # Touching the mailbox will cause a more than cursory resync
-                await self.mailbox.atouch()
+                await self.mbox.mailbox.atouch()
                 raise No(f"Problem while fetching: {exc}")
 
     ##################################################################
@@ -1070,58 +1062,51 @@ class Authenticated(BaseClientHandler):
             self.unceremonious_bye("Your selected mailbox no longer exists")
             return
 
-        # If there are commands pending in the queue this gets put on the queue
-        # waiting for those to be finished before processing.
-        #
-        if not self.process_or_queue(cmd):
-            return False
-
-        # If this client has pending EXPUNGE messages then we return a tagged
-        # No response.. the client should see this and do a NOOP or such and
-        # receive the pending expunges.  Unless this is a UID command. It is
-        # okay to send pending expunges during the operations of a UID FETCH.
-        #
-        if len(self.pending_notifications) > 0:
-            if cmd.uid_command:
-                self.send_pending_notifications()
+        async with (
+            self.mbox.lock.read_lock(),
+            self.mbox.mailbox.lock_folder(),
+        ):
+            # If this client has pending EXPUNGE messages then we return a
+            # tagged No response.. the client should see this and do a NOOP or
+            # such and receive the pending expunges.  Unless this is a UID
+            # command. It is okay to send pending expunges during the
+            # operations of a UID FETCH.
+            #
+            await self.mbox.resync()
+            if self.pending_expunges():
+                if cmd.uid_command:
+                    self.send_pending_notifications()
+                else:
+                    raise No("There are pending EXPUNGEs.")
             else:
-                raise No("There are pending EXPUNGEs.")
+                await self.send_pending_notifications()
 
-        # XXX should we do this resync above the self.pending_notifications
-        #     check?
-        self.mbox.resync(notify=cmd.uid_command)
-
-        # We do not issue any messages to the client here. This is done
-        # automatically when 'resync' is called because resync will examine the
-        # in-memory copy of the sequences with what is on disk and if there are
-        # differences issue FETCH messages for each message with different
-        # flags.
-        #
-        # Unless 'SILENT' was set in which case we still notify all other
-        # clients listening to this mailbox, but not this client.
-        #
-        # XXX We can use the 'client is idling' trick here for sending the
-        #     updated flags via fetches instead of the 'dont_notify=self' stuff
-        #     here.
-        self.mbox.store(cmd.msg_set, cmd.store_action, cmd.flag_list, cmd)
-        if cmd.silent:
-            self.mbox.resync(
-                notify=False, dont_notify=self, publish_uids=cmd.uid_command
+            # We do not issue any messages to the client here. This is done
+            # automatically when 'resync' is called because resync will examine
+            # the in-memory copy of the sequences with what is on disk and if
+            # there are differences issue FETCH messages for each message with
+            # different flags.
+            #
+            # Unless 'SILENT' was set in which case we still notify all other
+            # clients listening to this mailbox, but not this client.
+            #
+            # XXX We can use the 'client is idling' trick here for sending the
+            #     updated flags via fetches instead of the 'dont_notify=self'
+            #     stuff here.
+            #
+            await self.mbox.store(
+                cmd.msg_set, cmd.store_action, cmd.flag_list, cmd.uid_command
             )
-        else:
-            self.mbox.resync(notify=False, publish_uids=cmd.uid_command)
-
-        # If 'needs_continuation' is True then we have actually only partially
-        # processed this command. We push this command on to the end of the
-        # command_queue for this folder. It will get picked off and processed
-        # later through the event loop. The command itself keeps track of where
-        # it is in terms of processing.
-        #
-        if cmd.needs_continuation:
-            self.mbox.command_queue.append((self, cmd))
-            return False
-
-        return
+            if cmd.silent:
+                await self.mbox.resync(
+                    dont_notify=self, publish_uids=cmd.uid_command
+                )
+            else:
+                try:
+                    self.idling = True
+                    await self.mbox.resync(publish_uids=cmd.uid_command)
+                finally:
+                    self.idling = False
 
     ##################################################################
     #
@@ -1145,14 +1130,12 @@ class Authenticated(BaseClientHandler):
             self.unceremonious_bye("Your selected mailbox no longer exists")
             return
 
-        # The copy can be done immediately. However, we can not send pending
-        # expunges if this client has queued commands.
-        #
-        if not self.mbox.has_queued_commands(self):
-            self.send_pending_notifications()
+        await self.notifies()
 
         try:
-            dest_mbox = self.server.get_mailbox(cmd.mailbox_name, expiry=0)
+            dest_mbox = await self.server.get_mailbox(
+                cmd.mailbox_name, expiry=10
+            )
             src_uids, dst_uids = self.mbox.copy(
                 cmd.msg_set, dest_mbox, cmd.uid_command
             )
@@ -1162,16 +1145,6 @@ class Authenticated(BaseClientHandler):
             # exception and return the appropriate NO result.
             #
             raise No("[TRYCREATE] No such mailbox: '%s'" % cmd.mailbox_name)
-        finally:
-            # If 'needs_continuation' is True then we have actually only
-            # partially processed this command. We push this command on to the
-            # end of the command_queue for this folder. It will get picked off
-            # and processed later through the event loop. The command itself
-            # keeps track of where it is in terms of processing.
-            #
-            if cmd.needs_continuation:
-                self.mbox.command_queue.append((self, cmd))
-                return False
 
         # NOTE: I tip my hat to: http://stackoverflow.com/questions/3429510/
         # pythonic-way-to-convert-a-list-of-integers-into-a-string-of-
@@ -1193,10 +1166,15 @@ class Authenticated(BaseClientHandler):
                 ":".join(map(str, (g[0], g[-1])[: len(g)])) for g in dst_uids
             )
         except Exception as e:
-            self.log.error(
-                "do_copy: Unable to generate src and dst uid lists."
-                " Exception: %s, src_uids: %s, dst_uids: %s"
-                % (str(e), str(src_uids), str(dst_uids))
+            logger.error(
+                "Unable to generate src and dst uid lists. Source mailbox: "
+                "%s, dest mailbox: %s Exception: %s, src_uids: %s, dst_uids: "
+                "%s",
+                self.mbox.name,
+                dest_mbox.name,
+                str(e),
+                str(src_uids),
+                str(dst_uids),
             )
             raise e
 

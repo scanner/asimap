@@ -46,6 +46,9 @@ UID_RE = re.compile(r"(\d+)\s*\.\s*(\d+)")
 #
 UID_HDR = "X-asimapd-uid"
 
+LOGGED_IN_USER: Optional[str] = None
+# REMOTE_ADDRESS:Optional[str] = None
+
 ####################################################################
 #
 # Provide os.utime as an asyncio function via aiosfiles `wrap` async decorator
@@ -287,7 +290,10 @@ def setup_asyncio_logging() -> None:
 ####################################################################
 #
 def setup_logging(
-    logdir: "StrPath", debug: bool, username: Optional[str] = None
+    logdir: "StrPath",
+    debug: bool,
+    username: Optional[str] = None,
+    remote_addr: Optional[str] = None,
 ):
     """
     Set up the logger. We log either to files in 'logdir'
@@ -297,10 +303,33 @@ def setup_logging(
           daemon mode.. maybe we should exit with a warning before we
           try to enter daemon mode if logdir == 'stderr'
 
+    NOTE: We also use a custom log record factory to add `username` and
+          `remaddr` fields to the log record.
+
     XXX Move this to use a logging config file if one is provided.
         ie: log to stderr normally, but if there is a logging config file
         use that.
     """
+    global LOGGED_IN_USER
+    LOGGED_IN_USER = username if username else "username_notset"
+    old_factory = logging.getLogRecordFactory()
+
+    def log_record_factory(*args, **kwargs):
+        """
+        We add a log record factory to our logging system so that we can
+        add as a fundamental part of our log records the logged in user and
+        remote address if they are set to our log records.
+
+        One of the purposes is that when asimapd is run inside of a docker
+        container all the individual user_server processes will have all their
+        logs mixed together in the logs collected by docker and we need to be
+        able to separate them by user (and by remote address)
+        """
+        record = old_factory(*args, **kwargs)
+        record.username = LOGGED_IN_USER
+        return record
+
+    logging.setLogRecordFactory(log_record_factory)
     if debug:
         level = logging.DEBUG
     else:
@@ -327,7 +356,7 @@ def setup_logging(
         )
     h.setLevel(level)
     formatter = logging.Formatter(
-        "%(asctime)s %(process)d %(module)s.%(funcName)s %(levelname)s: "
+        "%(asctime)s %(username)s %(process)d %(module)s.%(funcName)s %(levelname)s: "
         "%(message)s"
     )
     h.setFormatter(formatter)
