@@ -437,6 +437,14 @@ async def test_authenticated_client_append(
     msg_as_string = msg.as_string()
 
     cmd = IMAPClientCommand(
+        f'A001 APPEND NOSUCHMAILBOX (\\Flagged) "05-jan-1999 20:55:23 +0000" {{{len(msg_as_string)}+}}\r\n{msg_as_string}'
+    )
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == ["A001 NO [TRYCREATE] No such mailbox: 'NOSUCHMAILBOX'"]
+
+    cmd = IMAPClientCommand(
         f'A001 APPEND inbox (\\Flagged) "05-jan-1999 20:55:23 +0000" {{{len(msg_as_string)}+}}\r\n{msg_as_string}'
     )
     cmd.parse()
@@ -772,6 +780,12 @@ async def test_authenticated_client_store(
 
     for idx in range(1, 6):
         assert results[idx - 1] == rf"* {idx} FETCH (FLAGS (\Recent \Seen))"
+
+    cmd = IMAPClientCommand(r"A001 STORE 6:10 +FLAGS.SILENT \Seen")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == ["A001 OK STORE command completed"]
 
 
 ####################################################################
