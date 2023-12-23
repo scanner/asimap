@@ -1140,7 +1140,7 @@ class Authenticated(BaseClientHandler):
             dest_mbox = await self.server.get_mailbox(
                 cmd.mailbox_name, expiry=10
             )
-            src_uids, dst_uids = self.mbox.copy(
+            src_uids, dst_uids = await self.mbox.copy(
                 cmd.msg_set, dest_mbox, cmd.uid_command
             )
         except NoSuchMailbox:

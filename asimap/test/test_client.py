@@ -772,3 +772,52 @@ async def test_authenticated_client_store(
 
     for idx in range(1, 6):
         assert results[idx - 1] == rf"* {idx} FETCH (FLAGS (\Recent \Seen))"
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_authenticated_client_copy(
+    mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    """
+    Search is tested mostly `test_search`.. so we only need a very simple
+    search.
+    """
+    server, imap_client = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+    client_handler = Authenticated(imap_client, server)
+
+    cmd = IMAPClientCommand(r"A001 COPY 2:6 MEETING")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == ["A001 NO Client must be in the selected state"]
+
+    cmd = IMAPClientCommand("A002 SELECT inbox")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    cmd = IMAPClientCommand(r"A003 COPY 2:6 MEETING")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == ["A003 NO [TRYCREATE] No such mailbox: 'MEETING'"]
+
+    cmd = IMAPClientCommand("A004 CREATE MEETING")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    results = client_push_responses(imap_client)
+    cmd = IMAPClientCommand(r"A003 COPY 2:6 MEETING")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == ["A003 OK [COPYUID 2 2:6 1:5] COPY command completed"]
+
+    dst_mbox = await server.get_mailbox("MEETING")
+    msg_keys = await dst_mbox.mailbox.akeys()
+    assert len(msg_keys) == 5
+
+    # Not going to both inspecting the messages.. the `test_mbox` tests should
+    # be good enough for that.
