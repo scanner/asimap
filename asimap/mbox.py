@@ -257,9 +257,8 @@ class Mailbox:
         #
         mh_seq_fname = mbox_msg_path(mbox.mailbox, ".mh_sequences")
         if not await aiofiles.os.path.exists(mh_seq_fname):
-            f = await aiofiles.open(mh_seq_fname, "rb+")
+            f = await aiofiles.open(mh_seq_fname, "a")
             await f.close()
-            open(mh_seq_fname, "a").close()
             os.chmod(mh_seq_fname, stat.S_IRUSR | stat.S_IWUSR)
 
         async with mbox.lock.read_lock():

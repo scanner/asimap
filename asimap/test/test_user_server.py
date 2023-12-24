@@ -4,6 +4,7 @@ Test the user server.
 # system imports
 #
 from datetime import datetime
+from pathlib import Path
 
 # 3rd party imports
 #
@@ -131,3 +132,46 @@ async def test_expire_inactive_folders(
     await server.expire_inactive_folders()
     assert len(server.active_mailboxes) == len(folders) - 1
     assert mbox1.name not in server.active_mailboxes
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_find_all_folders(
+    faker, mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    """
+    Search is tested mostly `test_search`.. so we only need a very simple
+    search.
+    """
+    server, imap_client = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+
+    # Let us make several other folders.
+    #
+    folders = ["inbox"]
+    for _ in range(5):
+        folder_name = faker.word()
+        fpath = Path(server.mailbox._path) / folder_name
+        fpath.mkdir()
+        folders.append(folder_name)
+        for _ in range(3):
+            sub_folder = f"{folder_name}/{faker.word()}"
+            if sub_folder in folders:
+                continue
+            fpath = Path(server.mailbox._path) / sub_folder
+            fpath.mkdir()
+            folders.append(sub_folder)
+
+    folders = sorted(folders)
+
+    await server.find_all_folders()
+
+    # After it finds all the folders they will be active for a bit.
+    #
+    assert len(server.active_mailboxes) == len(folders)
+
+    # and they should each be in the active mailboxes dict.
+    #
+    for folder in folders:
+        assert folder in server.active_mailboxes
