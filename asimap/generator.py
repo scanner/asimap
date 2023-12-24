@@ -83,57 +83,6 @@ class TextGenerator(Generator):
         )
 
 
-####################################################################
-#
-def _msg_as_string(msg: Message, headers: bool = True):
-    """
-    Instead of having to create the StringIO, TextGenerator, call flatten
-    and return the contents fo the StringIO we wrap all those in this
-    convenience function.
-    """
-    fp = StringIO()
-    g = TextGenerator(fp, mangle_from_=False, headers=headers)
-    g.flatten(msg)
-    msg_str = fp.getvalue()
-    msg_str = msg_str if msg_str.endswith("\r\n") else msg_str + "\r\n"
-    return msg_str
-
-
-####################################################################
-#
-def msg_as_string(msg: Message, headers: bool = True) -> str:
-    return _msg_as_string(msg, headers=headers)
-
-
-####################################################################
-#
-def msg_as_string_nc(msg: Message, headers: bool = True) -> str:
-    return _msg_as_string(msg, headers=headers)
-
-
-####################################################################
-#
-def get_msg_size(msg: Message, headers: bool = True) -> int:
-    """
-    We need to know the size of a message in octets in several different
-    contexts. Our TextGenerator is what we use to flatten messages for sending
-    to IMAP clients, so we want to also use it to be the canonical description
-    of a message's size.
-    """
-    msg_str = msg_as_string(msg, headers=headers)
-    return len(msg_str)
-
-
-####################################################################
-#
-def get_msg_size_nc(msg: Message, headers: bool = True) -> int:
-    """
-    No-cache variant..
-    """
-    msg_str = _msg_as_string(msg, headers=headers)
-    return len(msg_str)
-
-
 ############################################################################
 #
 class HeaderGenerator(Generator):
@@ -275,6 +224,57 @@ class HeaderGenerator(Generator):
         # and this is always included in our response to IMAP clients.
         #
         self.write(self._NL)
+
+
+####################################################################
+#
+def _msg_as_string(msg: Message, headers: bool = True):
+    """
+    Instead of having to create the StringIO, TextGenerator, call flatten
+    and return the contents fo the StringIO we wrap all those in this
+    convenience function.
+    """
+    fp = StringIO()
+    g = TextGenerator(fp, mangle_from_=False, headers=headers)
+    g.flatten(msg)
+    msg_str = fp.getvalue()
+    msg_str = msg_str if msg_str.endswith("\r\n") else msg_str + "\r\n"
+    return msg_str
+
+
+####################################################################
+#
+def msg_as_string(msg: Message, headers: bool = True) -> str:
+    return _msg_as_string(msg, headers=headers)
+
+
+####################################################################
+#
+def msg_as_string_nc(msg: Message, headers: bool = True) -> str:
+    return _msg_as_string(msg, headers=headers)
+
+
+####################################################################
+#
+def get_msg_size(msg: Message, headers: bool = True) -> int:
+    """
+    We need to know the size of a message in octets in several different
+    contexts. Our TextGenerator is what we use to flatten messages for sending
+    to IMAP clients, so we want to also use it to be the canonical description
+    of a message's size.
+    """
+    msg_str = msg_as_string(msg, headers=headers)
+    return len(msg_str)
+
+
+####################################################################
+#
+def get_msg_size_nc(msg: Message, headers: bool = True) -> int:
+    """
+    No-cache variant..
+    """
+    msg_str = _msg_as_string(msg, headers=headers)
+    return len(msg_str)
 
 
 ####################################################################
