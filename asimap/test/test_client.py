@@ -638,8 +638,16 @@ async def test_authenticated_client_expunge(
     cmd.parse()
     await client_handler.command(cmd)
     results = client_push_responses(imap_client)
-    assert len(results) - 1 == len(to_delete)
-    assert results[-1] == "A005 OK EXPUNGE command completed"
+    # Since this client is _sending_ the EXPUNGE command it is alright for it
+    # to get back the untagged `EXISTS` response from the server .. hence
+    # len(results) - 3 -- 3 for the "OK", "EXISTS", and "RECENT".
+    #
+    assert len(results) - 3 == len(to_delete)
+    assert results[-3:] == [
+        "* 15 EXISTS",
+        "* 15 RECENT",
+        "A005 OK EXPUNGE command completed",
+    ]
     for deleted, result in zip(sorted(to_delete, reverse=True), results):
         assert f"* {deleted} EXPUNGE" == result
 

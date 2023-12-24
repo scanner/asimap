@@ -540,6 +540,8 @@ async def test_mbox_expunge_with_client(
         "* 4 EXPUNGE",
         "* 3 EXPUNGE",
         "* 2 EXPUNGE",
+        "* 16 EXISTS",
+        "* 16 RECENT",
     ]
     assert mbox.uids == [
         1,

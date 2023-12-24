@@ -1774,7 +1774,7 @@ class Mailbox:
         # Unless a client is sitting in IDLE, then it is okay send them
         # exists/recents.
         #
-        await self.resync()
+        await self.resync(optional=False)
 
     ##################################################################
     #
