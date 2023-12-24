@@ -754,7 +754,8 @@ class IMAPUserServer:
                     #
                     await m.commit_to_db()
                 else:
-                    await m.resync(force=force)
+                    async with m.lock.read_lock():
+                        await m.resync(force=force)
         except MailboxInconsistency as e:
             # If hit one of these exceptions they are usually
             # transient.  we will skip it. The command processor in
@@ -812,7 +813,7 @@ class IMAPUserServer:
                 # Otherwise check folder for updates.
                 #
                 kount += 1
-                tg.create_task(self.check_folder(mbox_name, mtime))
+                tg.create_task(self.check_folder(mbox_name, mtime, force=force))
 
         logger.debug(
             "check_all_folders finished, Took %f seconds to check %d folders",
