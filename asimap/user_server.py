@@ -632,17 +632,17 @@ class IMAPUserServer:
         """
         async with self.active_mailboxes_lock.read_lock():
             for name, mbox in self.active_mailboxes.items():
-                if any(x.cmd_processor.idling for x in mbox.clients.values()):
+                if any(x.idling for x in mbox.clients.values()):
                     try:
-                        await mbox.resync()
+                        async with mbox.lock.read_lock():
+                            await mbox.resync()
                     except MailboxInconsistency as e:
                         # If hit one of these exceptions they are usually
                         # transient.  we will skip it. The command processor in
                         # client.py knows how to handle these better.
                         #
-                        self.log.warn(
-                            "check-all-active: skipping '%s' due to: "
-                            "%s" % (name, str(e))
+                        logger.warning(
+                            "Skipping mailbox '%s' due to: %s", name, str(e)
                         )
 
     ##################################################################
@@ -742,7 +742,7 @@ class IMAPUserServer:
                     mtime,
                     fmtime,
                 )
-                m = await self.get_mailbox(mbox_name, 30)
+                m = await self.get_mailbox(mbox_name, 10)
                 if (m.mtime >= fmtime) and not force:
                     # Looking at the mailbox object its mtime is NOT
                     # earlier than the mtime of the folder so we can
