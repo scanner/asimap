@@ -3,14 +3,17 @@ Test the user server.
 """
 # system imports
 #
+from datetime import datetime
 
 # 3rd party imports
 #
 import pytest
+from dirty_equals import IsDatetime
 
 # Project imports
 #
 from ..client import Authenticated
+from ..mbox import Mailbox
 from ..parse import IMAPClientCommand
 from ..user_server import IMAPUserServer
 from .conftest import client_push_responses
@@ -58,3 +61,73 @@ async def test_check_all_active_folders(
     # Check all active folders will now scan the inbox.
     #
     await server.check_all_active_folders()
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_expire_inactive_folders(
+    faker, mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    """
+    Search is tested mostly `test_search`.. so we only need a very simple
+    search.
+    """
+    server, imap_client = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+
+    # Let us make several other folders.
+    #
+    folders = ["inbox"]
+    for _ in range(5):
+        folder_name = faker.word()
+        await Mailbox.create(folder_name, server)
+        folders.append(folder_name)
+        for _ in range(3):
+            sub_folder = f"{folder_name}/{faker.word()}"
+            if sub_folder in folders:
+                continue
+            await Mailbox.create(sub_folder, server)
+            folders.append(sub_folder)
+
+    folders = sorted(folders)
+
+    client_handler = Authenticated(imap_client, server)
+
+    # Get a handle on two mailboxes.
+    #
+    mbox1 = await server.get_mailbox(folders[2])
+    mbox2 = await server.get_mailbox(folders[3])
+
+    # Select the inbox (so we have one folder with no expiry time at all)
+    #
+    cmd = IMAPClientCommand("A001 SELECT INBOX\r\n")
+    cmd.parse()
+    await client_handler.command(cmd)
+
+    # We should have three active mailboxes now.
+    #
+    assert len(server.active_mailboxes) == len(folders)
+
+    # The inbox will have no expiry since a client has it selected.
+    #
+    inbox = await server.get_mailbox("inbox")
+    assert inbox.expiry is None
+
+    # mbox1 and mbox2 have a positive expiry.
+    #
+    assert mbox1.expiry == IsDatetime(ge=datetime.now(), unix_number=True)
+    assert mbox2.expiry == IsDatetime(ge=datetime.now(), unix_number=True)
+
+    await server.expire_inactive_folders()
+
+    # no expiries since they all hvae expiry times in the future.
+    #
+    assert len(server.active_mailboxes) == len(folders)
+
+    # For mbox1's expiry time back to the unix epoch.
+    #
+    mbox1.expiry = 0.0
+    await server.expire_inactive_folders()
+    assert len(server.active_mailboxes) == len(folders) - 1
+    assert mbox1.name not in server.active_mailboxes
