@@ -175,3 +175,36 @@ async def test_find_all_folders(
     #
     for folder in folders:
         assert folder in server.active_mailboxes
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_check_all_folders(
+    faker, mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    """
+    Search is tested mostly `test_search`.. so we only need a very simple
+    search.
+    """
+    server, imap_client = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+
+    # Let us make several other folders.
+    #
+    folders = ["inbox"]
+    for _ in range(5):
+        folder_name = faker.word()
+        await Mailbox.create(folder_name, server)
+        folders.append(folder_name)
+        for _ in range(3):
+            sub_folder = f"{folder_name}/{faker.word()}"
+            if sub_folder in folders:
+                continue
+            await Mailbox.create(sub_folder, server)
+            folders.append(sub_folder)
+
+    # basically all the sub-components of this action are already tested.
+    # We are making sure that this code that invokes them runs.
+    #
+    await server.check_all_folders(force=True)
