@@ -89,12 +89,9 @@ class Database:
         - `maildir`: The directory where our database file lives.
         """
         maildir = Path(maildir)
-        self.log = logging.getLogger(
-            "%s.%s" % (__name__, self.__class__.__name__)
-        )
         self.maildir = maildir
         self.db_filename = os.path.join(self.maildir, "asimap.db")
-        self.log.debug("Opening database file: '%s'" % self.db_filename)
+        logger.debug("Opening database file: '%s'" % self.db_filename)
         self.conn: aiosqlite.Connection
 
     ####################################################################
@@ -145,8 +142,8 @@ class Database:
         # Apply all the migrations that have not been applied yet.
         #
         for idx, migration in enumerate(MIGRATIONS[version:], start=version):
-            self.log.info(
-                "Applying migration version %d (%s)" % (idx, migration.__name__)
+            logger.info(
+                "Applying migration version %d (%s)", idx, migration.__name__
             )
             await migration(self.conn)
             await self.execute(

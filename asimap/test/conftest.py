@@ -170,6 +170,10 @@ def user_factory(mailbox_dir):
             maildir = mailbox_dir / user.username
             maildir.mkdir(parents=True, exist_ok=True)
             user.maildir = maildir
+            inbox = user.maildir / "inbox"
+            inbox.mkdir()
+            mh_seq = inbox / ".mh_sequences"
+            mh_seq.touch()
         return user
 
     yield make_user
@@ -190,7 +194,6 @@ def password_file_factory(tmp_path):
         with pw_file_location.open("w") as f:
             for user in users:
                 f.write(f"{user.username}:{user.pw_hash}:{user.maildir}\n")
-                print(f"{user.username}:{user.pw_hash}:{user.maildir}\n")
         setattr(asimap.auth, "PW_FILE_LOCATION", pw_file_location)
         return pw_file_location
 
@@ -270,7 +273,13 @@ def good_received_imap_messages():
 ####################################################################
 #
 @pytest.fixture
-def imap_server(faker, ssl_certs, user_factory, password_file_factory):
+def imap_server(
+    faker,
+    ssl_certs,
+    user_factory,
+    password_file_factory,
+    bunch_of_email_in_folder,
+):
     """
     Starts an IMAP Server in a separate thread and yields an imaplib client
     connected to that server (along with other data like username, password,
@@ -282,6 +291,8 @@ def imap_server(faker, ssl_certs, user_factory, password_file_factory):
     password = faker.password()
     user = user_factory(password=password)
     pw_file = password_file_factory([user])
+
+    bunch_of_email_in_folder(mh_dir=user.maildir)
 
     ca, server_cert = ssl_certs
     host = "127.0.0.1"
@@ -357,9 +368,9 @@ def mh_folder(tmp_path):
     """
     Create the Mail dir and the inbox dir inside that mail dir.
     """
-    mh_dir = tmp_path / "Mail"
 
-    def mk_folder(folder: str = "inbox"):
+    def mk_folder(folder: str = "inbox", mh_dir: Optional[Path] = None):
+        mh_dir = tmp_path / "Mail" if mh_dir is None else mh_dir
         mh = MH(mh_dir)
         m_folder = mh.add_folder(folder)
         return (mh_dir, mh, m_folder)
@@ -383,8 +394,9 @@ def bunch_of_email_in_folder(email_factory, mh_folder):
         num_emails: int = 20,
         folder: str = "inbox",
         sequence: Optional[Union[list, tuple, Iterable]] = None,
+        mh_dir: Optional[Path] = None,
     ):
-        (mh_dir, _, m_folder) = mh_folder(folder)
+        (mh_dir, _, m_folder) = mh_folder(folder, mh_dir)
         if sequence is None:
             sequence = list(range(1, num_emails + 1))
         for i, key in zip(range(num_emails), sequence):
