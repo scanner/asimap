@@ -12,3 +12,5 @@ venv*
 .isorted
 .blackened
 .coverage
+.package
+dist

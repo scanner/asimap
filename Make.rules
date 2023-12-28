@@ -2,6 +2,7 @@
 
 ACTIVATE := source $(ROOT_DIR)/venv/bin/activate &&
 PYTHON ?= python3.12
+VERSION := $(shell PYTHONPATH=`pwd` python -c 'import asimap ; print(asimap.__version__)')
 
 .git/hooks/pre-commit .git/hooks/pre-push: venv
 	@$(ACTIVATE) pre-commit install
@@ -77,9 +78,4 @@ prettier: .prettier
 mypy: venv  ## Run `mypy` over `app/` and `scripts/`
 	@$(ACTIVATE) mypy --install-types --non-interactive --explicit-package-bases ./app/ ./scripts/
 
-.build_pkg: venv $(PY_FILES) pyproject.toml README.md LICENSE ## Builds the python package for asimap
-	PYTHONPATH=`pwd` $(ACTIVATE) python -m build
-	@touch .build_pkg
-build_pkg: .build_pkg
-
-.PHONY: requirements formatting lint squeegee isort black mypy build_pkg
+.PHONY: requirements formatting lint squeegee isort black mypy

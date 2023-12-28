@@ -1,7 +1,6 @@
 -r production.txt
 -r lint.txt
 
-async-timeout
 build
 codetiming
 dirty-equals

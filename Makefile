@@ -39,14 +39,18 @@ ssl/ssl_key.pem ssl/ssl_crt.pem:
 certs: ssl ssl/ssl_key.pem ssl/ssl_crt.pem	## uses `mkcert` to create certificates for local development.
 
 
-.package: venv $(PY_FILES) pyproject.toml README.md LICENSE
+.package: venv $(PY_FILES) pyproject.toml README.md LICENSE Makefile
 	PYTHONPATH=`pwd` $(ACTIVATE) python -m build
 	@touch .package
 
 package: .package ## build python package (.tar.gz and .whl)
 
+install: package  ## Install asimap via pip install of the package wheel
+	pip install -U $(ROOT_DIR)/dist/asimap-$(VERSION)-py3-none-any.whl
 
 release: package  ## Make a releases.
+
+publish: package  ## Publish the package to pypi.
 
 help:	## Show this help.
 	@grep -hE '^[A-Za-z0-9_ \-]*?:.*##.*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'

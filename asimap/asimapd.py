@@ -47,7 +47,6 @@ from pathlib import Path
 #
 from docopt import docopt
 from dotenv import load_dotenv
-from rich.traceback import install as rich_install
 
 # Application imports
 #
@@ -56,8 +55,6 @@ from asimap import auth
 from asimap.server import IMAPServer
 from asimap.user_server import set_user_server_program
 from asimap.utils import setup_asyncio_logging, setup_logging
-
-rich_install(show_locals=True)
 
 logger = logging.getLogger("asimap.asimapd")
 
