@@ -404,7 +404,6 @@ async def test_fetch_body_section_text(mailbox_with_mimekit_email):
 
     msg_parts = email_msg.get_payload()
     msg_body = msg_as_string(msg_parts[0], headers=False)
-
     assert res_length == len(msg_body)
     assert msg_body == result_body
 
@@ -490,7 +489,6 @@ async def test_fetch_body_section_header(mailbox_with_mimekit_email):
 
     msg_parts = email_msg.get_payload()
     msg_headers = msg_headers_as_string(msg_parts[0])
-
     assert res_length == len(msg_headers)
     assert msg_headers == result_body
 
@@ -591,7 +589,6 @@ async def test_fetch_body_text_with_partials(mailbox_with_mimekit_email):
         msg_body = msg_as_string(email_msg, headers=False)
         size = len(msg_body)
         mid = int(size / 2)
-        print(f"calculated size: {size}, mid point: {mid}")
 
         fetch = FetchAtt(FetchOp.BODY, section=["TEXT"], partial=(0, mid))
         result1 = await fetch.fetch(ctx)

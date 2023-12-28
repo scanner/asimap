@@ -11,19 +11,13 @@ import email.utils
 import logging
 from email.message import EmailMessage
 from enum import StrEnum
-from io import StringIO
 from typing import List, Optional, Set, Tuple, Union
 
 # asimap imports
 #
 from .constants import seq_to_flag
 from .exceptions import Bad
-from .generator import (
-    HeaderGenerator,
-    TextGenerator,
-    msg_as_string,
-    msg_headers_as_string,
-)
+from .generator import msg_as_string, msg_headers_as_string
 
 logger = logging.getLogger("asimap.fetch")
 
@@ -210,108 +204,95 @@ class FetchAtt:
 
     ####################################################################
     #
-    def body_single_section(
-        self, msg: EmailMessage, section: List[int | str]
+    def _single_section(
+        self, msg: EmailMessage, section: Union[int | str]
     ) -> str:
-        # fp = StringIO()
-        if isinstance(section[0], int):
-            # The want a sub-part. Get that sub-part. Watch
-            # out for messages that are not multipart. You can
-            # get a sub-part of these as long as it is only
-            # sub-part #1.
-            #
-            # g = TextGenerator(fp, headers=False)
-
-            if section[0] == 1 and not msg.is_multipart():
-                # The logic is simpler to read this way.. if
-                # they want section 1 and this message is NOT
-                # a multipart message, then do the same as
-                # 'TEXT'
+        """
+        Flatten message text from single top level section.
+        """
+        if isinstance(section, int):
+            if section == 1 and not msg.is_multipart():
+                # If they want section 1 and this message is NOT multipart then
+                # this is equivalent to `BODY[TEXT]`
                 #
                 return msg_as_string(msg, headers=False)
-            else:
-                # Otherwise, get the sub-part they are after
-                #
-                if section[0] != 1 and not msg.is_multipart():
-                    raise BadSection(
-                        "Trying to retrieve section %d "
-                        "and this message is not "
-                        "multipart" % section[0]
-                    )
-                try:
-                    # msg = msg.get_payload(section[0] - 1)
-                    return msg_as_string(
-                        msg.get_payload(section[0] - 1), headers=False
-                    )
-                except IndexError:
-                    raise BadSection(
-                        "Section %d does not exist in "
-                        "this message sub-part" % section[0]
-                    )
-        elif isinstance(section[0], str) and section[0].upper() == "TEXT":
-            # They want this entire section as text, minus the headers.
+
+            # Otherwise, get the sub-part of the message that they are after
             #
-            # g = TextGenerator(fp, headers=False)
-            return msg_as_string(msg, headers=False)
-        elif isinstance(section[0], (list, tuple)):
-            # They want the headers (or all the headers but the ones indicated)
-            #
-            if section[0][0].upper() == "HEADER.FIELDS":
-                # g = HeaderGenerator(
-                #     fp, headers=section[0][1], skip=False
-                # )
-                return msg_headers_as_string(
-                    msg, headers=section[0][1], skip=False
-                )
-            elif section[0][0].upper() == "HEADER.FIELDS.NOT":
-                # g = HeaderGenerator(
-                #     fp, headers=section[0][1], skip=True
-                # )
-                return msg_headers_as_string(
-                    msg, headers=section[0][1], skip=True
-                )
-            else:
+            if section != 1 and not msg.is_multipart():
                 raise BadSection(
-                    "Section value must be either "
-                    "HEADER.FIELDS or HEADER.FIELDS.NOT, "
-                    f"not: {section[0][0]}"
+                    f"Trying to retrieve section {section} and this message "
+                    "is not multipart"
                 )
 
-        # g = HeaderGenerator(fp)
-        if isinstance(section[0], str) and section[0].upper() == "MIME":
-            # XXX just use the generator as it is for MIME.. I know
-            # this is not quite right in that it will accept more
-            # then it should, but it will otherwise work.
-            #
-            # pass
-            return msg_headers_as_string(msg)
-        elif isinstance(section[0], str) and section[0].upper() == "HEADER":
-            # if the content type is message/rfc822 then to
-            # get the headers we need to use the first
-            # sub-part of this message.
-            #
-            if (
-                msg.is_multipart()
-                and msg.get_content_type() == "message/rfc822"
-            ):
-                # msg = msg.get_payload(0)
-                return msg_headers_as_string(msg.get_payload(0))
-        else:
-            self.log.warn(f"body: Unexpected section[0] value: {repr(section)}")
-            raise BadSection(
-                f"{str(self)}: Unexpected section value: {repr(section[0])}"
-            )
-        return msg_headers_as_string(msg)
+            try:
+                # NOTE: IMAP sections are 1 based. Sections in the message are
+                #       0-based.
+                #
+                return msg_as_string(
+                    msg.get_payload(section - 1), headers=False
+                )
+            except IndexError:
+                raise BadSection(
+                    f"Section {section} does not exist in this message sub-part"
+                )
+        elif isinstance(section, str) and section.upper() == "TEXT":
+            return msg_as_string(msg, headers=False)
+        elif isinstance(section, (list, tuple)):
+            if section[0].upper() == "HEADER.FIELDS":
+                return msg_headers_as_string(
+                    msg, headers=section[1], skip=False
+                )
+            elif section[0].upper() == "HEADER.FIELDS.NOT":
+                return msg_headers_as_string(msg, headers=section[1], skip=True)
+            else:
+                raise BadSection(
+                    "Section value must be either HEADER.FIELDS or "
+                    f"HEADER.FIELDS.NOT, not: '{section[0]}'"
+                )
+        # ELSE: section is a str.
+        #
+        if not isinstance(section, str):
+            self.log.warn(f"body: Unexpected section value: '{section}'")
+            raise BadSection(f"{self}: Unexpected section value: '{section}'")
+
+        match section.upper():
+            case "MIME":
+                # XXX just use the generator as it is for MIME.. I know this is
+                #     not quite right in that it will accept more then it
+                #     should, but it will otherwise work.
+                #
+                return msg_headers_as_string(msg)
+            case "HEADER":
+                # if the content type is message/rfc822 then to
+                # get the headers we need to use the first
+                # sub-part of this message.
+                #
+                if (
+                    msg.is_multipart()
+                    and msg.get_content_type() == "message/rfc822"
+                ):
+                    return msg_headers_as_string(msg.get_payload(0))
+                else:
+                    return msg_headers_as_string(msg)
+            case _:
+                self.log.warn(f"body: Unexpected section value: '{section}'")
+                raise BadSection(
+                    f"{self}: Unexpected section value: '{section}'"
+                )
 
     ####################################################################
     #
-    def body_sections(self, msg: EmailMessage, section: List[int | str]) -> str:
-        """
-        Get a section of a body
-        """
+    def _body(
+        self, msg: EmailMessage, section: Union[None, List[int | str]]
+    ) -> str:
+        if not section:
+            return msg_as_string(msg)
+
         if len(section) == 1:
-            return self.body_single_section(msg, section)
-        elif isinstance(section[0], int):
+            return self._single_section(msg, section[0])
+
+        if isinstance(section[0], int):
             # We have an integer sub-section. This means that we
             # need to pull apart the message (it MUST be a
             # multi-part message) and pass to a recursive
@@ -322,166 +303,36 @@ class FetchAtt:
             if not msg.is_multipart():
                 raise BadSection(
                     f"Message does not contain subsection {section[0]} "
-                    f"(section list: {section}"
+                    f"(section list: {section})"
                 )
             try:
-                msg = msg.get_payload(section[0] - 1)
+                return self._body(msg.get_payload(section[0] - 1), section[1:])
             except TypeError:
                 raise BadSection(
                     f"Message does not contain subsection {section[0]} "
                     f"(section list: {section})"
                 )
-            return self.body(msg, section[1:])
-        raise BadSection(f"Section selector '{section}' can not be parsed")
+        return msg_as_string(msg)
 
-    #######################################################################
+    ####################################################################
     #
-    def body(
-        self, msg: EmailMessage, section: Optional[List[int | str]]
-    ) -> str:
+    def body(self, msg: EmailMessage, section: Union[None, List[int | str]]):
         """
-        Fetch the appropriate part of the message and return it to the
-        user.
+        Fetch the appropriate section of the message, flatten into a string
+        and return it to the user.
         """
-        msg_text = None
-        g: Optional[Union[TextGenerator, HeaderGenerator]] = None
-        if not section:
-            # They want the entire message.
-            #
-            # This really only ever is the case as our first invocation of the
-            # body() method. All further recursive calls will always have at
-            # least one element in the section list when they are called.
-            #
-            msg_text = msg_as_string(msg)
-        else:
-            if len(section) == 1:
-                fp = StringIO()
-                if isinstance(section[0], int):
-                    # The want a sub-part. Get that sub-part. Watch
-                    # out for messages that are not multipart. You can
-                    # get a sub-part of these as long as it is only
-                    # sub-part #1.
-                    #
-                    g = TextGenerator(fp, headers=False)
+        msg_text = self._body(msg, section)
 
-                    if section[0] == 1 and not msg.is_multipart():
-                        # The logic is simpler to read this way.. if
-                        # they want section 1 and this message is NOT
-                        # a multipart message, then do the same as
-                        # 'TEXT' ie: We will fall through to the end of this
-                        # function where we will take the generator
-                        # already created above and use it.
-                        #
-                        pass
-                    else:
-                        # Otherwise, get the sub-part they are after
-                        # as the message to pass to the generator.
-                        #
-                        if section[0] != 1 and not msg.is_multipart():
-                            raise BadSection(
-                                "Trying to retrieve section %d "
-                                "and this message is not "
-                                "multipart" % section[0]
-                            )
-                        try:
-                            msg = msg.get_payload(section[0] - 1)
-                        except IndexError:
-                            raise BadSection(
-                                "Section %d does not exist in "
-                                "this message sub-part" % section[0]
-                            )
-                elif (
-                    isinstance(section[0], str) and section[0].upper() == "TEXT"
-                ):
-                    g = TextGenerator(fp, headers=False)
-                elif isinstance(section[0], (list, tuple)):
-                    if section[0][0].upper() == "HEADER.FIELDS":
-                        g = HeaderGenerator(
-                            fp, headers=section[0][1], skip=False
-                        )
-                    elif section[0][0].upper() == "HEADER.FIELDS.NOT":
-                        g = HeaderGenerator(
-                            fp, headers=section[0][1], skip=True
-                        )
-                    else:
-                        raise BadSection(
-                            "Section value must be either "
-                            "HEADER.FIELDS or HEADER.FIELDS.NOT, "
-                            f"not: {section[0][0]}"
-                        )
-                else:
-                    g = HeaderGenerator(fp)
-                    if (
-                        isinstance(section[0], str)
-                        and section[0].upper() == "MIME"
-                    ):
-                        # XXX just use the generator as it is for MIME.. I know
-                        # this is not quite right in that it will accept more
-                        # then it should, but it will otherwise work.
-                        #
-                        pass
-                    elif (
-                        isinstance(section[0], str)
-                        and section[0].upper() == "HEADER"
-                    ):
-                        # if the content type is message/rfc822 then to
-                        # get the headers we need to use the first
-                        # sub-part of this message.
-                        #
-                        if (
-                            msg.is_multipart()
-                            and msg.get_content_type() == "message/rfc822"
-                        ):
-                            msg = msg.get_payload(0)
-                    else:
-                        self.log.warn(
-                            f"body: Unexpected section[0] value: {repr(section)}"
-                        )
-                        raise BadSection(
-                            f"{str(self)}: Unexpected section value: {repr(section[0])}"
-                        )
-            elif isinstance(section[0], int):
-                # We have an integer sub-section. This means that we
-                # need to pull apart the message (it MUST be a
-                # multi-part message) and pass to a recursive
-                # invocation of this function the sub-part and the
-                # section list (with the top element of the section
-                # list removed.)
-                #
-                if not msg.is_multipart():
-                    raise BadSection(
-                        f"Message does not contain subsection {section[0]} "
-                        f"(section list: {section}"
-                    )
-                try:
-                    msg = msg.get_payload(section[0] - 1)
-                except TypeError:
-                    raise BadSection(
-                        f"Message does not contain subsection {section[0]} "
-                        f"(section list: {section})"
-                    )
-                return self.body(msg, section[1:])
-
-            # We should have a generator that will give us the text
-            # that we want. If we do not then we were not able to find
-            # an appropriate section to parse.
-            #
-            if g is None:
-                raise BadSection(
-                    f"Section selector '{section}' can not be parsed"
-                )
-            g.flatten(msg)
-            msg_text = fp.getvalue()
-
-        # We have our message text we need to return to our caller.
-        # truncate if it we also have a 'partial' defined.
+        # We need to always terminate with crlf.
         #
         msg_text = msg_text if msg_text.endswith("\r\n") else msg_text + "\r\n"
+
+        # If this is a partial only return the bits asked for.
+        #
         if self.partial:
             msg_text = msg_text[self.partial[0] : self.partial[1]]
 
-        # We return all of these body sections as a length prefixed
-        # IMAP string.
+        # Return literal length encoded string.
         #
         return f"{{{len(msg_text)}}}\r\n{msg_text}"
 
