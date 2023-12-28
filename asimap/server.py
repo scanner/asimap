@@ -3,6 +3,8 @@ This is the heart of the main server. This is what accepts incoming
 network connections, authenticates users, spawns userserver's, and
 relays IMAP messages between an IMAP client and a userserver.
 """
+# system imports
+#
 import asyncio
 import logging
 import os
@@ -11,10 +13,6 @@ import re
 import socket
 import ssl
 import string
-
-# system imports
-#
-import sys
 import time
 from typing import Dict, List, Optional, Union
 
@@ -127,7 +125,6 @@ class IMAPSubprocess:
             args.append(f"--trace_file={self.options.trace_file}")
         args.append(self.user.username)
 
-        sys.stderr.write(f"Starting subprocess: {cmd} {args}\n")
         logger.info(
             f"Starting user server, cmd: '{cmd} {' '.join(args)}', in "
             f"directory '{self.user.maildir}'"
@@ -140,7 +137,6 @@ class IMAPSubprocess:
             close_fds=True,
             cwd=self.user.maildir,
         )
-        sys.stderr.write("   * subprocess started\n")
 
         self.is_alive = True
         # Start a task that waits on the subprocess and cleans up after it
@@ -161,25 +157,16 @@ class IMAPSubprocess:
             random.SystemRandom().choice(string.ascii_uppercase + string.digits)
             for _ in range(32)
         )
-        sys.stderr.write(" .... writing subprocess key\n")
         self.subprocess_key = bytes(sk, "latin-1")
         self.subprocess.stdin.write(self.subprocess_key + b"\n")
-        sys.stderr.write(" .... waiting on writing subprocess key\n")
         await self.subprocess.stdin.drain()
-        sys.stderr.write(" .... closing subprocess stdin\n")
         self.subprocess.stdin.close()
-        sys.stderr.write(" .... waiting on closing subprocess stdin\n")
         await self.subprocess.stdin.wait_closed()
-        sys.stderr.write(" .... waiting on reading port from subprocess\n")
         logger.debug("Reading port from subprocess.")
         try:
-            sys.stderr.write("  **** BEFORE SUBPROCESS READ\n")
             m = await self.subprocess.stdout.readline()
-            sys.stderr.write("  **** AFTER SUBPROCESs READ\n")
             self.port = int(str(m, "latin-1").strip())
-            sys.stderr.write(f" **** Read port for subprocess: {self.port}\n")
         except ValueError as e:
-            sys.stderr.write(f" **** Error reading port from subprocess: {e}\n")
             logger.exception(
                 "Unable to read port definition from subprocess: %s", e
             )
@@ -279,10 +266,10 @@ class IMAPServer:
         try:
             async with self.asyncio_server:
                 await self.asyncio_server.serve_forever()
-        except asyncio.exceptions.CancelledError:
-            pass
+        except asyncio.exceptions.CancelledError as exc:
+            logger.info("IMAP Server main loop cancelled %s", exc)
         except Exception as exc:
-            logger.exception(f"IMAP Server exited with exception: {exc}")
+            logger.exception("IMAP Server exited with exception: %s", exc)
             raise
         finally:
             # Close any open clients, and await those tasks completing.
@@ -291,7 +278,6 @@ class IMAPServer:
             #     do when shutting down the server will likely grow and we need
             #     to catch exceptions.
             #
-            print("IMAP Server exiting for some reason")
             logger.debug("IMAP Server exiting for some reason")
             clients = [c.close() for c in self.imap_client_tasks.values()]
             tasks = [task for task in self.imap_client_tasks.keys()]
@@ -745,14 +731,10 @@ class IMAPSubprocessInterface:
             USER_IMAP_SUBPROCESSES[user.username] = self.subprocess
 
         if not self.subprocess.is_alive:
-            sys.stderr.write("imap user server starting subprocess\n")
             await self.subprocess.start()
 
         # And initiate a connection to the subprocess.
         #
-        sys.stderr.write(
-            f"subprocess listening on {self.subprocess.port}. Connecting.\n"
-        )
         logger.debug("connecting to subprocess on %d", self.subprocess.port)
         reader, writer = await asyncio.open_connection(
             "127.0.0.1",
@@ -771,7 +753,6 @@ class IMAPSubprocessInterface:
         # writer.write(self.subprocess.subprocess_key + b"\n")
         # await writer.drain()
         # result = await reader.readline()
-        # sys.stderr.write(f"Got first result from subprocess: {str(result,'latin-1')}")
         # assert result and result == b"accepted"
 
         # Now start a task that will listen for data from the subprocess and
