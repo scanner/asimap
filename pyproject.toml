@@ -1,3 +1,59 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "asimap"
+dynamic = ["version"]
+authors = [
+  { name="Scanner Luce", email="scanner@apricot.com" },
+]
+maintainers = [
+  { name="Scanner Luce", email="scanner@apricot.com" },
+]
+description = "An IMAP server that uses `mailbox.MH` as its storage"
+keywords = ["email", "imap"]
+readme = "README.md"
+requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+]
+
+dependencies = [
+  "aiofiles",
+  "aiosqlite",
+  "docopt",
+  "python-dotenv",
+  "sentry-sdk"
+]
+
+[project.scripts]
+asimapd = "asimap.asimapd:main"
+asimapd_user = "asimap.asimapd_user:main"
+
+[project.urls]
+Homepage = "https://github.com/scanner/asimap"
+Issues = "https://github.com/scanner/asimap/issues"
+Changelog = "https://github.com/scanner/asimap/blob/main/CHANGELOG.md"
+
+[tool.hatch.version]
+path = "asimap/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+include = [
+   "asimap",
+   "docs",
+   "LICENSE",
+   "README.md",
+]
+exclude = [
+   "asimap/test",
+   "docs/rfcs",
+   ".gitignore",
+]
+
 [tool.black]
 line-length = 80
 exclude = '''

@@ -339,9 +339,7 @@ def imap_user_server_program():
     When running integration tests that need to log in as a user we need to
     say where the user server program is.
     """
-    asimapd_user_prg = (
-        Path(__file__).parent.parent.parent / "scripts/asimapd_user.py"
-    )
+    asimapd_user_prg = Path(__file__).parent.parent / "asimapd_user.py"
     set_user_server_program(asimapd_user_prg)
 
 

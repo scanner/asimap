@@ -77,4 +77,9 @@ prettier: .prettier
 mypy: venv  ## Run `mypy` over `app/` and `scripts/`
 	@$(ACTIVATE) mypy --install-types --non-interactive --explicit-package-bases ./app/ ./scripts/
 
-.PHONY: requirements formatting lint squeegee isort black mypy
+.build_pkg: venv $(PY_FILES) pyproject.toml README.md LICENSE ## Builds the python package for asimap
+	PYTHONPATH=`pwd` $(ACTIVATE) python -m build
+	@touch .build_pkg
+build_pkg: .build_pkg
+
+.PHONY: requirements formatting lint squeegee isort black mypy build_pkg

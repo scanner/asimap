@@ -2,8 +2,10 @@
 -r lint.txt
 
 async-timeout
+build
 codetiming
 dirty-equals
+hatch
 ipython
 pytest
 pytest-asyncio

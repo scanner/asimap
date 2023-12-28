@@ -4,7 +4,7 @@ include $(ROOT_DIR)/Make.rules
 DOCKER_BUILDKIT := 1
 LATEST_TAG := $(shell git describe --abbrev=0)
 
-.PHONY: clean lint test test_units test_integrations mypy logs shell restart delete down up build dirs help
+.PHONY: clean lint test test_units test_integrations mypy logs shell restart delete down up build dirs help package publish
 
 test_integrations: venv
 	PYTHONPATH=`pwd` $(ACTIVATE) pytest -m integration
@@ -20,7 +20,7 @@ coverage: venv
 	coverage html
 	open 'htmlcov/index.html'
 
-build: requirements/production.txt requirements/development.txt	## `docker build` for both `prod` and `dev` targets
+build: build_pkg requirements/production.txt requirements/development.txt	## `docker build` for both `prod` and `dev` targets
 	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --target prod
 	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --target dev
 
@@ -38,7 +38,13 @@ ssl/ssl_key.pem ssl/ssl_crt.pem:
 
 certs: ssl ssl/ssl_key.pem ssl/ssl_crt.pem	## uses `mkcert` to create certificates for local development.
 
-package:  ## build python package
+
+.package: venv $(PY_FILES) pyproject.toml README.md LICENSE
+	PYTHONPATH=`pwd` $(ACTIVATE) python -m build
+	@touch .package
+
+package: .package ## build python package (.tar.gz and .whl)
+
 
 release: package  ## Make a releases.
 
