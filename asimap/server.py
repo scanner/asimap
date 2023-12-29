@@ -82,7 +82,7 @@ class IMAPSubprocess:
     ##################################################################
     #
     def __init__(
-        self, user: User, debug: bool = False, logdir: Optional[str] = None
+        self, user: User, debug: bool = False, log_config: Optional[str] = None
     ):
         """
 
@@ -92,13 +92,11 @@ class IMAPSubprocess:
                   is passed to the subprocess so that it can look up which unix
                   user to switch to for handling that user's mailbox.
         """
-        if logdir is None:
-            logdir = "stderr"
+        self.log_config = log_config
         self.debug = debug
         self.trace_enabled = False
         self.trace_file = None
         self.user = user
-        self.logdir = logdir
         self.is_alive = False
         self.port: int
         self.subprocess: asyncio.subprocess.Process
@@ -115,8 +113,8 @@ class IMAPSubprocess:
         """
         cmd = asimap.user_server.USER_SERVER_PROGRAM
         args = []
-        if self.logdir:
-            args.append(f"--logdir={self.logdir}")
+        if self.log_config:
+            args.append(f"--log-config={self.log_config}")
         if self.debug:
             args.append("--debug")
         if self.trace_enabled:
@@ -226,12 +224,14 @@ class IMAPServer:
         port: int,
         ssl_context: ssl.SSLContext,
         trace: Optional[str] = None,
+        log_config: Optional[str] = None,
         debug: bool = False,
     ):
         self.address = address
         self.port = port
         self.ssl_context = ssl_context
         self.trace = trace
+        self.log_config = log_config
         self.debug = debug
         self.asyncio_server: asyncio.Server
         self.imap_client_tasks: Dict[asyncio.Task, IMAPClient] = {}

@@ -6,35 +6,46 @@
 The AS IMAP Daemon. This is intended to be run as root. It provides an
 IMAP service that is typically backed by MH mail folders.
 
+NOTE: For all command line options that can also be specified via an env. var:
+      the command line option will override the env. var if set.
+
 Usage:
   asimapd [--address=<i>] [--port=<p>] [--cert=<cert>] [--key=<key>]
-          [--trace=<trace>] [--debug] [--logdir=<d>] [--pwfile=<pwfile>]
+          [--trace=<trace>] [--debug] [--log-config=<lc>]
+          [--pwfile=<pwfile>]
 
 Options:
   --version
   -h, --help         Show this text and exit
-  --address=<i>      The address to listen on. [default: '0.0.0.0']
-  --port=<p>         Port to listen on. [default: 993]
-  --cert=<cert>      SSL Certificate file
-  --key=<key>        SSL Certificate key file
+  --address=<i>      The address to listen on. Defaults to '0.0.0.0'.
+                     The env. var is `ADDRESS`.
+  --port=<p>         Port to listen on. Defaults to: 993.
+                     The env. var is `PORT`
+  --cert=<cert>      SSL Certificate file. If not set defaults to
+                     `/opt/asimap/ssl/cert.pem`. The env var is SSL_CERT
+  --key=<key>        SSL Certificate key file. If not set defaults to
+                     `/opt/asimap/ssl/key.pem`. The env var is SSL_KEY
   --trace=<trace>    The per user subprocesses will each open up a trace file
                      and write to it all messages sent and received. One line
                      per message. The message will be a timestamp, a relative
                      timestamp, the direction of the message (sent/received),
                      and the message itself.The tracefiles will be written to
                      the log dir and will be named <username>-asimap.trace
-  --debug            Debugging output messages enabled
-  --logdir=<d>       Path to the directory where log files are stored. Since
-                     this is a multiprocess server which each sub-process
-                     running as a different user we have a log file for the
-                     main server and then a separate log file for each
-                     sub-process. One sub-process per user. The main logfile
-                     will be called 'asimapd.log'. Each sub-process's logfile
-                     will be called '<user>-asimapd.log'. If this is set
-                     to 'stderr' then we will not log to a file but emit all
-                     messages for all processes on stderr. [default: stderr]
-  --pwfile=<pwfile>  The file that contains the users and their hashed passwords
 
+  --debug            Will set the default logging level to `DEBUG` thus
+                     enabling all of the debug logging. The env var is `DEBUG`
+
+  --log-config=<lc>  The log config file. This file may be either a JSON file
+                     that follows the python logging configuration dictionary
+                     schema or a file that coforms to the python logging
+                     configuration file format. If no file is specified it will
+                     check in /opt/asimap, /etc, /usr/local/etc, /opt/local/etc
+                     for a file named `asimapd_log.cfg` or `asimapd_log.json`.
+                     If no valid file can be found or loaded it will defaut to
+                     logging to stdout. The env. var is `LOG_CONFIG`
+
+  --pwfile=<pwfile>  The file that contains the users and their hashed passwords
+                     The env. var is `PWFILE`. Defaults to `/opt/asimap/pwfile`
 """
 # system imports
 #
@@ -46,7 +57,7 @@ from pathlib import Path
 # 3rd party imports
 #
 from docopt import docopt
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
 # Application imports
 #
@@ -67,7 +78,6 @@ def main():
     daemon mode if necessary, setup the asimap library and start
     accepting connections.
     """
-    load_dotenv()
     args = docopt(__doc__, version=VERSION)
     address = args["--address"]
     port = int(args["--port"])
@@ -75,8 +85,38 @@ def main():
     ssl_key_file = args["--key"]
     trace = args["--trace"]
     debug = args["--debug"]
-    logdir = args["--logdir"]
+    log_config = args["--log-config"]
     pwfile = args["--pwfile"]
+
+    config = dotenv_values()
+
+    # If docopt is not, see if the option is set in the config. If it not set
+    # there either, then set it to the default value.
+    #
+    if address is None:
+        address = config["ADDRESS"] if "ADDRESS" in config else "0.0.0.0"
+    if port is None:
+        port = config["PORT"] if "PORT" in config else 993
+    if ssl_cert_file is None:
+        ssl_cert_file = (
+            config["SSL_CERT"]
+            if "SSL_CERT" in config
+            else "/opt/asimap/ssl/cert.pem"
+        )
+    if ssl_key_file is None:
+        ssl_key_file = (
+            config["SSL_KEY"]
+            if "SSL_KEY" in config
+            else "/opt/asimap/ssl/key.pem"
+        )
+    if debug is None:
+        debug = config["DEBUG"] if "DEBUG" in config else False
+    if log_config is None:
+        log_config = config["LOG_CONFIG"] if "LOG_CONFIG" in config else None
+    if pwfile is None:
+        pwfile = (
+            config["PWFILE"] if "PWFILE" in config else "/opt/asimap/pwfile"
+        )
 
     # If a password file was specified overwrote the default location for the
     # password file in the asimap.auth module.
@@ -87,7 +127,7 @@ def main():
     # After we setup our logging handlers and formatters set up for asyncio
     # logging so that logging calls do not block the asyncio event loop.
     #
-    setup_logging(logdir, debug)
+    setup_logging(log_config, debug)
     setup_asyncio_logging()
     logger.info("Starting")
 
@@ -126,7 +166,14 @@ def main():
     logger.debug("user server program is: '%s'", user_server_program)
     set_user_server_program(user_server_program)
 
-    server = IMAPServer(address, port, ssl_context, trace=trace, debug=debug)
+    server = IMAPServer(
+        address,
+        port,
+        ssl_context,
+        trace=trace,
+        log_config=log_config,
+        debug=debug,
+    )
     try:
         asyncio.run(server.run())
     except KeyboardInterrupt:

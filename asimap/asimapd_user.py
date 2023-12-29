@@ -16,29 +16,33 @@ It expects to be run within the directory where the user's asimapd db file for
 their mail spool is.
 
 Usage:
-  asimapd_user.py [--trace] [--logdir=<logdir>] [--debug] <username>
+  asimapd_user.py [--trace] [--log-config=<lc>] [--debug] <username>
 
 Options:
   --version
   -h, --help    Show this text and exit
-  --debug       Debugging output messages enabled
 
-  --logdir=<d>  Path to the directory where log files are stored. Since this is
-                a multiprocess server which each sub-process running as a
-                different user we have a log file for the main server and then
-                a separate log file for each sub-process. One sub-process per
-                user. The main logfile will be called 'asimapd.log'. Each
-                sub-process's logfile will be called '<user>-asimapd.log'. If
-                this is set to 'stderr' then we will not log to a file but emit
-                all messages for all processes on stderr. [default: stderr]
+  --debug            Will set the default logging level to `DEBUG` thus
+                     enabling all of the debuggign logging.
 
-  --trace       The per user subprocesses will each open up a trace file and
-                write to it all messages sent and received. One line per
-                message. The message will be a timestamp, a relative timestamp,
-                the direction of the message (sent/received), and the message
-                itself.The tracefiles will be written to the log dir and will
-                be named <username>-asimap.trace. Traces will be written to the
-                directory specified by `--logdir` (or stderr if not specified.)
+  --log-config=<lc>  The log config file. This file may be either a JSON file
+                     that follows the python logging configuration dictionary
+                     schema or a file that coforms to the python logging
+                     configuration file format. If no file is specified it will
+                     check in /etc, /usr/local/etc, /opt/local/etc for a file
+                     named `asimapd_log.cfg` or `asimapd_log.json`.  If no
+                     valid file can be found or loaded it will defaut to
+                     logging to stdout.
+
+  --trace            The per user subprocesses will each open up a trace file
+                     and write to it all messages sent and received. One line
+                     per message. The message will be a timestamp, a relative
+                     timestamp, the direction of the message (sent/received),
+                     and the message itself.The tracefiles will be written to
+                     the log dir and will be named
+                     <username>-asimap.trace. Traces will be written to the
+                     directory specified by `--logdir` (or stderr if not
+                     specified.)
 
 XXX We communicate with the server via localhost TCP sockets. We REALLY should
     set up some sort of authentication key that the server must use when
@@ -54,7 +58,6 @@ from pathlib import Path
 # 3rd party imports
 #
 from docopt import docopt
-from dotenv import load_dotenv
 
 # Application imports
 #
@@ -63,7 +66,7 @@ from asimap import __version__ as VERSION
 from asimap.user_server import IMAPUserServer
 from asimap.utils import setup_asyncio_logging, setup_logging
 
-logger = logging.getLogger("asimapd_user")
+logger = logging.getLogger("asimap.asimapd_user")
 
 
 #############################################################################
@@ -84,23 +87,22 @@ def main():
     Parse arguments, setup logging, setup tracing, create the user server
     object and start the asyncio main event loop on the user server.
     """
-    load_dotenv()
     args = docopt(__doc__, version=VERSION)
     trace_enabled = args["--trace"]
     debug = args["--debug"]
-    logdir = args["--logdir"]
+    log_config = args["--log-config"]
     username = args["<username>"]
 
     # After we setup our logging handlers and formatters set up for asyncio
     # logging so that logging calls do not block the asyncio event loop.
     #
-    setup_logging(logdir, debug, username=username)
+    setup_logging(log_config, debug, username=username)
     setup_asyncio_logging()
 
     if trace_enabled:
         logger.debug("Tracing enabled")
         asimap.trace.TRACE_ENABLED = True
-        asimap.trace.enable_tracing(logdir)
+        # asimap.trace.enable_tracing(logdir)
         asimap.trace.trace({"trace_format": "1.0"})
 
     try:

@@ -1,10 +1,9 @@
 -r production.txt
+-r build.txt
 -r lint.txt
 
-build
 codetiming
 dirty-equals
-hatch
 ipython
 pytest
 pytest-asyncio

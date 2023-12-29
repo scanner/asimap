@@ -1,7 +1,3 @@
-#!/usr/bin/env python
-#
-# File: $Id$
-#
 """
 This module contains utility functions that do not properly belong to any
 class or module. This started with the utilities to pass an fd betwene
@@ -13,7 +9,9 @@ may move over in to a module dedicated for that.
 import asyncio
 import atexit
 import email.utils
+import json
 import logging
+import logging.config
 import logging.handlers
 import os
 import re
@@ -45,6 +43,17 @@ UID_RE = re.compile(r"(\d+)\s*\.\s*(\d+)")
 # The MHmessage header that is used for holding a messages uid.
 #
 UID_HDR = "X-asimapd-uid"
+
+DEFAULT_LOG_CONFIG_FILES = [
+    Path("/opt/asimap/asimapd_log.json"),
+    Path("/opt/asimap/asimapd_log.cfg"),
+    Path("/etc/asimapd_log.json"),
+    Path("/etc/asimapd_log.cfg"),
+    Path("/usr/local/etc/asimapd_log.json"),
+    Path("/usr/local/etc/asimapd_log.cfg"),
+    Path("/opt/local/etc/asimapd_log.json"),
+    Path("/opt/local/etc/asimapd_log.cfg"),
+]
 
 LOGGED_IN_USER: Optional[str] = None
 # REMOTE_ADDRESS:Optional[str] = None
@@ -290,7 +299,7 @@ def setup_asyncio_logging() -> None:
 ####################################################################
 #
 def setup_logging(
-    logdir: "StrPath",
+    log_config: Optional["StrPath"],
     debug: bool,
     username: Optional[str] = None,
     remote_addr: Optional[str] = None,
@@ -330,34 +339,41 @@ def setup_logging(
         return record
 
     logging.setLogRecordFactory(log_record_factory)
-    if debug:
-        level = logging.DEBUG
-    else:
-        level = logging.INFO
-
-    # We define our logging config on the root loggger.
-    #
     root_logger = logging.getLogger()
-    root_logger.setLevel(level)
 
-    h: Union[logging.StreamHandler, logging.handlers.RotatingFileHandler]
-    if logdir == "stderr":
-        # Do not log to a file, log to stderr.
-        #
-        h = logging.StreamHandler()
+    if debug:
+        root_logger.setLevel(logging.DEBUG)
+
+    # Attempt to load the logging config passed in. If we are not able to load
+    # that then check a bunch of common directories. If none of those work, log
+    # to stderr.
+    #
+    if log_config is not None:
+        log_config = Path(log_config)
+        if log_config.suffix == ".json":
+            cfg = json.loads(log_config.read_text())
+            logging.config.dictConfig(cfg)
+        else:
+            logging.config.fileConfig(str(log_config))
+        return
+
+    for log_config in DEFAULT_LOG_CONFIG_FILES:
+        if log_config.exists():
+            if log_config.suffix == ".json":
+                cfg = json.loads(log_config.read_text())
+                logging.config.dictConfig(cfg)
+            else:
+                logging.config.fileConfig(str(log_config))
+            return
+
+    h = logging.StreamHandler()
+    if debug:
+        h.setLevel(logging.DEBUG)
     else:
-        # Rotate on every 10mb, keep 5 files.
-        #
-        logdir = Path(logdir)
-        log_file_name = f"{username}-asimapd.log" if username else "asimapd.log"
-        log_file_basename = logdir / log_file_name
-        h = logging.handlers.RotatingFileHandler(
-            log_file_basename, maxBytes=10485760, backupCount=5
-        )
-    h.setLevel(level)
+        h.setLevel(logging.INFO)
     formatter = logging.Formatter(
-        "%(asctime)s %(username)s %(process)d %(module)s.%(funcName)s %(levelname)s: "
-        "%(message)s"
+        "%(asctime)s %(username)s %(process)d %(module)s.%(funcName)s "
+        "%(levelname)s: %(message)s"
     )
     h.setFormatter(formatter)
     root_logger.addHandler(h)

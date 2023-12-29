@@ -45,13 +45,13 @@ path = "asimap/__init__.py"
 [tool.hatch.build.targets.sdist]
 include = [
    "asimap",
-   "docs",
    "LICENSE",
    "README.md",
 ]
 exclude = [
    "asimap/test",
-   "docs/rfcs",
+   "docs",
+   "venv",
    ".gitignore",
 ]
 

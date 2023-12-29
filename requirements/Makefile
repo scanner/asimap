@@ -15,7 +15,7 @@ venv_req:
 %.txt: %.in venv_req
 	$(ACTIVATE) pip-compile --resolver=backtracking --strip-extras --quiet --output-file "$@" "$<"
 
-development.txt: production.txt lint.txt
+development.txt: production.txt lint.txt build.txt
 
 clean:
 	@rm -rf venv_req

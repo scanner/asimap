@@ -20,9 +20,9 @@ coverage: venv
 	coverage html
 	open 'htmlcov/index.html'
 
-build: build_pkg requirements/production.txt requirements/development.txt	## `docker build` for both `prod` and `dev` targets
-	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --target prod
-	@COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --target dev
+build: requirements/build.txt requirements/development.txt	## `docker build` for both `prod` and `dev` targets
+	COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg VERSION=$(VERSION) --target prod .
+	COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg VERSION=$(VERSION) --target dev .
 
 ssl:
 	@mkdir $(ROOT_DIR)/ssl
@@ -46,11 +46,11 @@ certs: ssl ssl/ssl_key.pem ssl/ssl_crt.pem	## uses `mkcert` to create certificat
 package: .package ## build python package (.tar.gz and .whl)
 
 install: package  ## Install asimap via pip install of the package wheel
-	pip install -U $(ROOT_DIR)/dist/asimap-$(VERSION)-py3-none-any.whl
+	pip install -U ./dist/asimap-$(VERSION)-py3-none-any.whl
 
-release: package  ## Make a releases.
+release: package  ## Make a release. Tag based on the version.
 
-publish: package  ## Publish the package to pypi.
+publish: package  ## Publish the package to pypi
 
 help:	## Show this help.
 	@grep -hE '^[A-Za-z0-9_ \-]*?:.*##.*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
