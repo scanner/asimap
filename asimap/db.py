@@ -130,9 +130,9 @@ class Database:
         version = 0
         try:
             row = await self.fetchone(
-                "select version from versions order by version desc limit 1"
+                "SELECT version FROM versions ORDER BY version DESC LIMIT 1"
             )
-            version = int(row["version"]) + 1
+            version = int(row[0]) + 1
         except aiosqlite.OperationalError as e:
             # if we have no versions table then our first migration is 0.
             #

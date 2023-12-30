@@ -102,14 +102,14 @@ def main():
         ssl_cert_file = (
             config["SSL_CERT"]
             if "SSL_CERT" in config
-            else "/opt/asimap/ssl/cert.pem"
+            else "/opt/asimap/ssl/ssl_crt.pem"
         )
     ssl_cert_file = Path(ssl_cert_file)
     if ssl_key_file is None:
         ssl_key_file = (
             config["SSL_KEY"]
             if "SSL_KEY" in config
-            else "/opt/asimap/ssl/key.pem"
+            else "/opt/asimap/ssl/ssl_key.pem"
         )
     ssl_key_file = Path(ssl_key_file)
     if debug is None:

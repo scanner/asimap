@@ -587,7 +587,7 @@ class Mailbox:
                     and uid >= self.next_uid
                 ):
                     logger.warning(
-                        "Mailbox: %s, last message uid: %d, next_uid: %d - "
+                        "Mailbox %s: last message uid: %d, next_uid: %d - "
                         "mismatch forcing full resync",
                         self.name,
                         uid,
@@ -608,9 +608,10 @@ class Mailbox:
                 #
                 if len(msg_keys) < len(self.uids):
                     logger.warning(
-                        "resync: number of messages in folder (%d) "
+                        "Mailbox %s: number of messages in folder (%d) "
                         "is less than list of cached uids: %d. "
                         "Forcing resync.",
+                        self.name,
                         len(msg_keys),
                         len(self.uids),
                     )
@@ -623,8 +624,7 @@ class Mailbox:
                     # self.uid's array is properly filled.
                     #
                     logger.debug(
-                        "resync: mailbox %s, forced rescanning all %d "
-                        "messages",
+                        "Mailbox %s: forced rescanning all %d " "messages",
                         self.name,
                         len(msg_keys),
                     )
@@ -681,6 +681,7 @@ class Mailbox:
                         start_idx = msg_keys.index(start)
                         logger.debug(
                             "Mailbox %s: rescanning from %d to %d",
+                            self.name,
                             start,
                             msg_keys[-1],
                         )
@@ -707,7 +708,7 @@ class Mailbox:
                 self.server.msg_cache.clear_mbox(self.name)
                 if self.uids:
                     logger.info(
-                        "Mailbox: '%s': List of msgs is empty, but "
+                        "Mailbox %s: List of msgs is empty, but "
                         "list of uid's was not. Emptying.",
                         self.name,
                     )
@@ -857,7 +858,7 @@ class Mailbox:
                     uidstr = f" UID {self.uids[msg_idx - 1]}"
                 except IndexError:
                     logger.error(
-                        "Mailbox: %s: UID command but "
+                        "Mailbox %s: UID command but "
                         "message index: %d is not inside list "
                         "of UIDs, whose length is: %d",
                         self.name,

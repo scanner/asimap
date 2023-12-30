@@ -14,7 +14,7 @@ def main():
     """
     Connect to imap server on localhost, using ssl, authenticate
     """
-    imap = imaplib.IMAP4_SSL(host="127.0.0.1", port=2121)
+    imap = imaplib.IMAP4_SSL(host="127.0.0.1", port=993)
     print(f"IMAP Connection: {imap}")
     resp = imap.capability()
     print(f"Server capabilities: {resp}")
@@ -22,8 +22,10 @@ def main():
     print(f"login response: {resp}")
     resp = imap.capability()
     print(f"Server capabilities (again): {resp}")
-    # resp = imap.list()
-    # print(f"List response: {resp}")
+    resp = imap.list()
+    print(f"List response: {resp}")
+    resp = imap.select("inbox")
+    print(f"Select inbox response: {resp}")
     print("Logging out")
     resp = imap.logout()
     print(f"Server LOGOUT: {resp}")

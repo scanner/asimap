@@ -16,10 +16,52 @@ steps:
 
 ---
 kind: pipeline
+name: Build and Publish Docker Image
+
+depends_on:
+  - AS IMAP Tests
+
+steps:
+  - name: Build prod
+    image: plugins/docker
+    settings:
+      username:
+        from_secret: GHCR_USER
+      password:
+        from_secret: GHCR_PAT
+      repo: ghcr.io/scanner/asimap
+      registry: ghcr.io
+      auto_tag: true
+      target: prod
+      build_args:
+        - VERSION=$(DRONE_TAG)
+
+  - name: Build dev
+    image: plugins/docker
+    settings:
+      username:
+        from_secret: GHCR_USER
+      password:
+        from_secret: GHCR_PAT
+      repo: ghcr.io/scanner/asimap
+      registry: ghcr.io
+      auto_tag: true
+      auto_tag_suffix: dev
+      target: dev
+      build_args:
+        - VERSION=$(DRONE_TAG)
+
+trigger:
+  event:
+    - tag
+
+---
+kind: pipeline
 name: Build Notify
 
 depends_on:
   - AS IMAP Tests
+  - Build and Publish Docker Image
 
 trigger:
   status:

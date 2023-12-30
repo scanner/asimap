@@ -423,6 +423,7 @@ class PreAuthenticated(BaseClientHandler):
             # down our responses to them.
             #
             await asyncio.sleep(10)
+            logger.error("%s: Too many authentication failures", self.name)
             raise Bad("Too many authentication failures")
 
         # XXX This should poke the authentication mechanism we were passed
@@ -434,6 +435,9 @@ class PreAuthenticated(BaseClientHandler):
         #
         await self.send_pending_notifications()
         if self.state == ClientState.AUTHENTICATED:
+            logger.info(
+                "%s: client already is in the authenticated state", self.name
+            )
             raise Bad("client already is in the authenticated state")
 
         try:
@@ -443,6 +447,11 @@ class PreAuthenticated(BaseClientHandler):
             # login if they have no maildir.
             #
             if not (self.user.maildir.exists() and self.user.maildir.is_dir()):
+                logger.error(
+                    "%s: Either '%s' does not exist, or it is not a directory.",
+                    self.name,
+                    str(self.user.maildir),
+                )
                 raise No("You have no mailbox directory setup")
 
             self.state = ClientState.AUTHENTICATED
