@@ -51,13 +51,14 @@ Options:
 #
 import asyncio
 import logging
+import os
 import ssl
 from pathlib import Path
 
 # 3rd party imports
 #
 from docopt import docopt
-from dotenv import dotenv_values
+from dotenv import load_dotenv
 
 # Application imports
 #
@@ -89,36 +90,42 @@ def main():
     log_config = args["--log-config"]
     pwfile = args["--pwfile"]
 
-    config = dotenv_values()
+    load_dotenv()
 
-    # If docopt is not, see if the option is set in the config. If it not set
+    # If docopt is not, see if the option is set in the os.environ. If it not set
     # there either, then set it to the default value.
     #
     if address is None:
-        address = config["ADDRESS"] if "ADDRESS" in config else "0.0.0.0"
+        address = (
+            os.environ["ADDRESS"] if "ADDRESS" in os.environ else "0.0.0.0"
+        )
     if port is None:
-        port = config["PORT"] if "PORT" in config else 993
+        port = os.environ["PORT"] if "PORT" in os.environ else 993
     if ssl_cert_file is None:
         ssl_cert_file = (
-            config["SSL_CERT"]
-            if "SSL_CERT" in config
+            os.environ["SSL_CERT"]
+            if "SSL_CERT" in os.environ
             else "/opt/asimap/ssl/ssl_crt.pem"
         )
     ssl_cert_file = Path(ssl_cert_file)
     if ssl_key_file is None:
         ssl_key_file = (
-            config["SSL_KEY"]
-            if "SSL_KEY" in config
+            os.environ["SSL_KEY"]
+            if "SSL_KEY" in os.environ
             else "/opt/asimap/ssl/ssl_key.pem"
         )
     ssl_key_file = Path(ssl_key_file)
     if debug is None:
-        debug = config["DEBUG"] if "DEBUG" in config else False
+        debug = bool(os.environ["DEBUG"]) if "DEBUG" in os.environ else False
     if log_config is None:
-        log_config = config["LOG_CONFIG"] if "LOG_CONFIG" in config else None
+        log_config = (
+            os.environ["LOG_OS.ENVIRON"] if "LOG_CONFIG" in os.environ else None
+        )
     if pwfile is None:
         pwfile = (
-            config["PWFILE"] if "PWFILE" in config else "/opt/asimap/pwfile"
+            os.environ["PWFILE"]
+            if "PWFILE" in os.environ
+            else "/opt/asimap/pwfile"
         )
 
     # If a password file was specified overwrote the default location for the

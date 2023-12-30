@@ -83,12 +83,14 @@ async def authenticate(username: str, password: str) -> User:
     NOTE: Obviously this is meant for "small" numbers of users in the hundreds
           range.
     """
+    global PW_FILE_LAST_TIMESTAMP
     mtime = await aiofiles.os.path.getmtime(PW_FILE_LOCATION)
     if mtime > PW_FILE_LAST_TIMESTAMP:
         logger.info(
             "Reading password file due to last modified: %s", PW_FILE_LOCATION
         )
         await read_users_from_file(PW_FILE_LOCATION)
+        PW_FILE_LAST_TIMESTAMP = mtime
 
     if username not in USERS:
         raise NoSuchUser(f"No such user '{username}'")

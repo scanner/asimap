@@ -58,6 +58,7 @@ from pathlib import Path
 # 3rd party imports
 #
 from docopt import docopt
+from dotenv import load_dotenv
 
 # Application imports
 #
@@ -87,6 +88,7 @@ def main():
     Parse arguments, setup logging, setup tracing, create the user server
     object and start the asyncio main event loop on the user server.
     """
+    load_dotenv()
     args = docopt(__doc__, version=VERSION)
     trace_enabled = args["--trace"]
     debug = args["--debug"]

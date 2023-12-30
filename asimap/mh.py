@@ -12,7 +12,7 @@ import os
 import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
-from mailbox import FormatError, MHMessage, NotEmptyError
+from mailbox import FormatError, MHMessage, NotEmptyError, _lock_file
 from typing import TYPE_CHECKING, Dict, List, TypeAlias, Union
 
 # 3rd party imports
@@ -90,6 +90,20 @@ class MH(mailbox.MH):
         seq_path = os.path.join(self._path, ".mh_sequences")
         await utime(self._path, (mtime, mtime))
         await utime(seq_path, (mtime, mtime))
+
+    ####################################################################
+    #
+    def lock(self):
+        """
+        Lock the mailbox. We turn off dotlock'ing because it updates the
+        folder's mtime, which will causes unnecessary resyncs. We still export
+        whatever is dropping mail in to the folder to use dotlocking, but that
+        is fine.
+        """
+        if not self._locked:
+            self._file = open(os.path.join(self._path, ".mh_sequences"), "rb+")
+            _lock_file(self._file, dotlock=False)
+            self._locked = True
 
     ####################################################################
     #
