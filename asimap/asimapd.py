@@ -80,7 +80,8 @@ def main():
     """
     args = docopt(__doc__, version=VERSION)
     address = args["--address"]
-    port = int(args["--port"])
+    port = args["--port"]
+    port = int(port) if port else None
     ssl_cert_file = args["--cert"]
     ssl_key_file = args["--key"]
     trace = args["--trace"]
@@ -103,12 +104,14 @@ def main():
             if "SSL_CERT" in config
             else "/opt/asimap/ssl/cert.pem"
         )
+    ssl_cert_file = Path(ssl_cert_file)
     if ssl_key_file is None:
         ssl_key_file = (
             config["SSL_KEY"]
             if "SSL_KEY" in config
             else "/opt/asimap/ssl/key.pem"
         )
+    ssl_key_file = Path(ssl_key_file)
     if debug is None:
         debug = config["DEBUG"] if "DEBUG" in config else False
     if log_config is None:
@@ -123,6 +126,11 @@ def main():
     #
     if pwfile:
         setattr(auth, "PW_FILE_LOCATION", pwfile)
+
+    if not ssl_cert_file.exists() or not ssl_key_file.exists():
+        raise FileNotFoundError(
+            f"Both '{ssl_cert_file}' and '{ssl_key_file}' must exist."
+        )
 
     # After we setup our logging handlers and formatters set up for asyncio
     # logging so that logging calls do not block the asyncio event loop.
