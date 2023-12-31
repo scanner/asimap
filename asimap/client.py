@@ -155,13 +155,15 @@ class BaseClientHandler:
             logger.debug(result)
             return
         except ConnectionResetError as e:
+            mbox_name = self.mbox.name if self.mbox else "no mailbox"
             logger.debug(
-                "%s: Connection lost while doing %s: %s",
+                "%s, mailbox: %s - Connection lost while doing %s: %s",
                 self.name,
+                mbox_name,
                 str(imap_command),
                 e,
             )
-            return
+            raise
         except KeyboardInterrupt:
             sys.exit(0)
         except Exception as e:
