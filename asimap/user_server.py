@@ -229,7 +229,11 @@ class IMAPClientProxy:
                     )
                     return
 
-        except (asyncio.exceptions.IncompleteReadError, ConnectionResetError):
+        except (
+            asyncio.exceptions.IncompleteReadError,
+            ConnectionResetError,
+            socket.error,
+        ):
             # Either we got an EOF while waiting for a line terminator. or the
             # client disconnected and we do not really care.
             #
