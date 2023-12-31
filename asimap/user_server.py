@@ -16,7 +16,7 @@ import re
 import socket
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, Optional, Union
 
@@ -35,6 +35,7 @@ import asimap.parse
 from .client import Authenticated
 from .db import Database
 from .exceptions import MailboxInconsistency
+from .mbox import Mailbox
 from .mh import MH
 from .trace import trace
 from .utils import UpgradeableReadWriteLock
@@ -177,10 +178,10 @@ class IMAPClientProxy:
                     self.log.info(f"Client sent invalid message start: {msg!r}")
                     client_connected = False
                     break
-                self.log.debug(f"start: message: {str(msg,'latin-1')}")
                 length = int(m.group(1))
                 msg = await self.reader.readexactly(length)
                 imap_msg = str(msg, "latin-1")
+                logger.debug("IMAP Message: %s", imap_msg)
                 await self.trace("RECEIVED", {"data": imap_msg})
 
                 # We special case if the client is idling. In this state we
@@ -335,7 +336,7 @@ class IMAPUserServer:
         self.uid_vv = 0
 
         # A dict of the active mailboxes. An active mailbox is one that has an
-        # instance of an asimap.mbox.Mailbox class.
+        # instance of an Mailbox class.
         #
         # We keep active mailboxes around when IMAP clients are poking them in
         # some way. Active mailboxes are gotten rid of after a certain amount
@@ -343,7 +344,7 @@ class IMAPUserServer:
         #
         # The key is the mailbox name.
         #
-        self.active_mailboxes: Dict[str, asimap.mbox.Mailbox] = {}
+        self.active_mailboxes: Dict[str, Mailbox] = {}
 
         # Need to acquire the lock if we are adding or removing a mailbox from
         # the active mailboxes.
@@ -570,7 +571,7 @@ class IMAPUserServer:
             self.expiry = time.time() + 1800
             self.log.debug(
                 "No more IMAP clients. Expiry set for %s",
-                datetime.fromtimestamp(self.expiry),
+                datetime.fromtimestamp(self.expiry, timezone.utc).astimezone(),
             )
 
         self.log.debug("IMAP Client task done (disconnected): %s", client.name)
@@ -619,7 +620,7 @@ class IMAPUserServer:
             async with self.active_mailboxes_lock.write_lock():
                 # otherwise.. make an instance of this mailbox.
                 #
-                mbox = await asimap.mbox.Mailbox.new(name, self, expiry=expiry)
+                mbox = await Mailbox.new(name, self, expiry=expiry)
                 self.active_mailboxes[name] = mbox
                 return mbox
 
@@ -630,20 +631,23 @@ class IMAPUserServer:
         Like 'check_all_folders' except this only checks folders that are
         active and have clients in IDLE listening to them.
         """
-        async with self.active_mailboxes_lock.read_lock():
-            for name, mbox in self.active_mailboxes.items():
-                if any(x.idling for x in mbox.clients.values()):
-                    try:
-                        async with mbox.lock.read_lock():
-                            await mbox.resync()
-                    except MailboxInconsistency as e:
-                        # If hit one of these exceptions they are usually
-                        # transient.  we will skip it. The command processor in
-                        # client.py knows how to handle these better.
-                        #
-                        logger.warning(
-                            "Skipping mailbox '%s' due to: %s", name, str(e)
-                        )
+
+        async def read_lock_resync(mbox: Mailbox):
+            try:
+                async with mbox.lock.read_lock():
+                    await mbox.resync()
+            except MailboxInconsistency as e:
+                # If hit one of these exceptions they are usually
+                # transient.  we will skip it. The command processor in
+                # client.py knows how to handle these better.
+                #
+                logger.warning("Skipping mailbox '%s' due to: %s", name, str(e))
+
+        async with asyncio.TaskGroup() as tg:
+            async with self.active_mailboxes_lock.read_lock():
+                for name, mbox in self.active_mailboxes.items():
+                    if any(x.idling for x in mbox.clients.values()):
+                        tg.create_task(read_lock_resync(mbox))
 
     ##################################################################
     #
@@ -683,7 +687,6 @@ class IMAPUserServer:
         """
         start_time = time.time()
         extant_mboxes = {}
-        mboxes_to_create = []
         async for row in self.db.query(
             "SELECT name, mtime FROM mailboxes ORDER BY name"
         ):
@@ -691,19 +694,14 @@ class IMAPUserServer:
             extant_mboxes[name] = mtime
 
         maildir_root_len = len(str(self.maildir)) + 1
-        for root, dirs, files in self.maildir.walk(follow_symlinks=True):
-            for dir in dirs:
-                dirname = str(root / dir)[maildir_root_len:]
-                if dirname not in extant_mboxes:
-                    mboxes_to_create.append(dirname)
+        async with asyncio.TaskGroup() as tg:
+            for root, dirs, files in self.maildir.walk(follow_symlinks=True):
+                for dir in dirs:
+                    dirname = str(root / dir)[maildir_root_len:]
+                    if dirname not in extant_mboxes:
+                        tg.create_task(self.get_mailbox(dirname, expiry=0))
+                        await asyncio.sleep(0)
 
-        # Now 'mboxes_to_create' is a list of full mailbox names that were in
-        # the file system but not in the database. Instantiate these (with the
-        # create flag set so that we will not get any nasty surpises about
-        # missing .mh_sequence files)
-        #
-        for mbox_name in mboxes_to_create:
-            await self.get_mailbox(mbox_name, expiry=0)
         logger.debug(
             "find_all_folders: finished. Took %f seconds",
             time.time() - start_time,
@@ -730,9 +728,7 @@ class IMAPUserServer:
         path = os.path.join(self.mailbox._path, mbox_name)
         seq_path = os.path.join(path, ".mh_sequences")
         try:
-            fmtime = await asimap.mbox.Mailbox.get_actual_mtime(
-                self.mailbox, mbox_name
-            )
+            fmtime = await Mailbox.get_actual_mtime(self.mailbox, mbox_name)
             if (fmtime > mtime) or force:
                 # The mtime differs we probably need resync.
                 #

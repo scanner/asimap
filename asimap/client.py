@@ -154,6 +154,14 @@ class BaseClientHandler:
             await self.client.push(result)
             logger.debug(result)
             return
+        except ConnectionResetError as e:
+            logger.debug(
+                "%s: Connection lost while doing %s: %s",
+                self.name,
+                str(imap_command),
+                e,
+            )
+            return
         except KeyboardInterrupt:
             sys.exit(0)
         except Exception as e:

@@ -25,9 +25,10 @@ dependencies = [
   "aiofiles>=23.2.1",
   "aiosqlite>=0.19.0",
   "async-timeout>=4.0.3",
+  "charset-normalizer>=3.3.2",
   "docopt>=0.6.2",
   "python-dotenv>=1.0.0",
-  "sentry-sdk>=1.39.1"
+  "sentry-sdk>=1.39.1",
 ]
 
 [project.scripts]

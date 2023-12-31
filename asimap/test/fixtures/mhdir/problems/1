@@ -1,0 +1,27 @@
+Delivery-Date: Thu, 06 Oct 1994 15:16:41 -0400
+Received: from netcom19.netcom.com (johndoe@netcom19.netcom.com [1.2.3.4]) by apricot.com (8.6.9/8.6.9) with ESMTP id PAA08652 for <scanner@apricot.com>; Thu, 6 Oct 1994 15:16:23 -0400
+Received: by netcom19.netcom.com (8.6.9/Netcom)
+	id MAA28112; Thu, 6 Oct 1994 12:11:14 -0700
+From: johndoe@netcom.com (J0hn)
+Message-Id: <199410061911.MAA28112@netcom19.netcom.com>
+Subject: Look at my 8bit email that says it is 7bit
+To: scanner@apricot.com
+Date: Thu, 6 Oct 1994 12:11:13 -0700 (PDT)
+X-Mailer: ELM [version 2.4 PL23]
+MIME-Version: 1.0
+Content-Type: text/plain; charset=US-ASCII
+Content-Transfer-Encoding: 7bit
+X-asimapd-uid: 0000000072.0000000088
+
+
+Hey Scanner,
+
+  Test your unicode email parsing on this message baby!
+
+
+--
+  John Doe [J0hn] | johndoe@netcom.com
+Û²±°±²Û²±°±²Û²±°±²Û²±°±²Û²±°±²Û²±°±²Û²±°±²Û²±°±²Û²±°±²Û²±°±²Û²±°±²Û²±°±²Û²±°±²Û
+²°°°°°°°°°°°±±±±±±±±±±±²²²²²²²²²Colorful Sky Re²²²²²²²²²±±±±±±±±±±±°°°°°°°°°°°²
+±°°°°°°°°°°°±±±±±±±±±±±²²²²²²²²²²²Pretty Blue²²²²²²²²²²²±±±±±±±±±±±°°°°°°°°°°°±
+°±²Û²±°±²Û²±°±²Û²±°±²Û²±°±²Û²±°±²Û²±°±²Û²±°±²Û²±°±²Û²±°±²Û²±°±²Û²±°±²Û²±°±²Û²±°

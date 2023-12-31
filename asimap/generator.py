@@ -16,6 +16,10 @@ from functools import lru_cache
 from io import StringIO
 from typing import List, Optional, TextIO
 
+# 3rd party imports
+#
+from charset_normalizer import detect, from_bytes
+
 logger = logging.getLogger("asimap.generator")
 
 
@@ -235,7 +239,40 @@ def _msg_as_string(msg: Message, headers: bool = True):
     """
     fp = StringIO()
     g = TextGenerator(fp, mangle_from_=False, headers=headers)
-    g.flatten(msg)
+    # g.flatten(msg)
+    try:
+        g.flatten(msg)
+    except UnicodeEncodeError as exc:
+        # Some email messages say that they are "us-ascii" but have in them
+        # characters that are >128 because people put all sorts of stuff in
+        # their email messages. When this happens we make a copy of the message
+        # and set its character set to be `latin-1` which will let us have 8bit
+        # bytes.
+        #
+        payload = msg.get_payload(decode=True)
+        detect_result = detect(payload)
+        payload = str(from_bytes(payload).best())
+        encoding = (
+            str(detect_result["encoding"])
+            if detect_result["encoding"] is not None
+            else "iso-8859-1"
+        )
+        payload = payload.encode(encoding)
+        print(f"converted payload: {payload}")
+
+        logger.warning(
+            "Unable to flatten message %r: %s. Original encoding maybe: %s",
+            msg,
+            exc,
+            encoding,
+        )
+        nmsg = deepcopy(msg)
+        del msg["content-transfer-encoding"]
+        nmsg.set_payload(payload, charset=encoding)
+        fp = StringIO()
+        g = TextGenerator(fp, mangle_from_=False, headers=headers)
+        g.flatten(msg)
+
     msg_str = fp.getvalue()
     msg_str = msg_str if msg_str.endswith("\r\n") else msg_str + "\r\n"
     return msg_str

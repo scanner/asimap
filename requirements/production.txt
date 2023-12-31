@@ -12,6 +12,8 @@ async-timeout==4.0.3
     # via -r production.in
 certifi==2023.11.17
     # via sentry-sdk
+charset-normalizer==3.3.2
+    # via -r production.in
 docopt==0.6.2
     # via -r production.in
 python-dotenv==1.0.0

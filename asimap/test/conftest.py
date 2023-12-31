@@ -22,6 +22,7 @@ from typing import Iterable, List, Optional, Union
 import pytest
 import pytest_asyncio
 import trustme
+from charset_normalizer import from_path
 
 # project imports
 #
@@ -541,6 +542,21 @@ def static_email_factory():
 ####################################################################
 #
 @pytest.fixture
+def problematic_email_factory():
+    """
+    in our time on the internet we have seen lots of problematic email with
+    various issues.We need to make sure that we handle these reasonably well
+    """
+    dir = Path(__file__).parent / "fixtures" / "mhdir" / "problems"
+    return (
+        str(from_path(msg_file).best()) for msg_file in sorted(dir.iterdir())
+    )
+    # return (msg_file.read_bytes() for msg_file in sorted(dir.iterdir()))
+
+
+####################################################################
+#
+@pytest.fixture
 def lots_of_headers_email():
     """
     Just get one email with lots of headers.
@@ -596,6 +612,27 @@ async def mailbox_with_mimekit_email(
     server = imap_user_server
     (mh_dir, _, m_folder) = mh_folder(NAME)
     for msg_text in static_email_factory:
+        msg = MHMessage(msg_text)
+        msg.add_sequence("unseen")
+        m_folder.add(msg)
+    mbox = await server.get_mailbox(NAME)
+    return mbox
+
+
+####################################################################
+#
+@pytest_asyncio.fixture
+async def mailbox_with_problematic_email(
+    mh_folder, problematic_email_factory, imap_user_server
+):
+    """
+    Create a mailbox filled with all of our static email fixtures
+    (originally all from the MimeKit fixture test data)
+    """
+    NAME = "inbox"
+    server = imap_user_server
+    (mh_dir, _, m_folder) = mh_folder(NAME)
+    for msg_text in problematic_email_factory:
         msg = MHMessage(msg_text)
         msg.add_sequence("unseen")
         m_folder.add(msg)

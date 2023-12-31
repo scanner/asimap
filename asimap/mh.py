@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Dict, List, TypeAlias, Union
 #
 import aiofiles
 import aiofiles.os
+from charset_normalizer import from_bytes
 
 # project imports
 #
@@ -28,6 +29,8 @@ if TYPE_CHECKING:
     from _typeshed import StrPath
 
 Sequences: TypeAlias = Dict[str, List[int]]
+
+LINESEP = str(mailbox.linesep, "ascii")
 
 
 ####################################################################
@@ -178,7 +181,23 @@ class MH(mailbox.MH):
         path = os.path.join(self._path, str(key))
         try:
             async with aiofiles.open(path, mode="rb") as f:
+                # NOTE: We are using the magic of `charset_normalizer` because
+                #       not all messages are nicely decodable into unicode.  We
+                #       look at the encoding of the best guess and if it is one
+                #       of the acceptable ones, we pass it unconverted.
+                #
                 contents = await f.read()
+                result = from_bytes(contents).best()
+
+                if result and result.encoding not in (
+                    "ascii",
+                    "latin_1",
+                    "iso2022_jp",
+                ):
+                    # print(f"**** guessed encodings: {result.could_be_from_charset}")
+                    contents = str(result)
+                # contents = str(from_bytes(await f.read()).best())
+
         except OSError as e:
             if e.errno == errno.ENOENT:
                 raise KeyError(f"No message with key: {key}")
@@ -254,12 +273,13 @@ class MH(mailbox.MH):
             keys = await self.akeys()
             new_key = max(keys) + 1 if keys else 1
             new_path = os.path.join(self._path, str(new_key))
-            data = message.as_bytes(policy=email.policy.default)
+            # data = message.as_bytes(policy=email.policy.default)
+            data = message.as_string(policy=email.policy.default)
 
-            async with aiofiles.open(new_path, mode="wb") as f:
+            async with aiofiles.open(new_path, mode="w") as f:
                 await f.write(data)
-                if not data.endswith(mailbox.linesep):
-                    await f.write(mailbox.linesep)
+                if not data.endswith(LINESEP):
+                    await f.write(LINESEP)
 
             # A MHMessage object has MH folder sequence data attached to it.
             # So, when we write it, we have to update the `.mh_sequences` file
@@ -277,11 +297,13 @@ class MH(mailbox.MH):
             if not await aiofiles.os.path.exists(path):
                 raise KeyError(f"No message with key: {key}")
 
-            data = message.as_bytes(policy=email.policy.default)
-            async with aiofiles.open(path, "wb") as f:
+            # data = message.as_bytes(policy=email.policy.default)
+            data = message.as_string(policy=email.policy.default)
+            # async with aiofiles.open(path, "wb") as f:
+            async with aiofiles.open(path, "w") as f:
                 await f.write(data)
-                if not data.endswith(mailbox.linesep):
-                    await f.write(mailbox.linesep)
+                if not data.endswith(LINESEP):
+                    await f.write(LINESEP)
             await self._adump_sequences(message, key)
 
     ####################################################################

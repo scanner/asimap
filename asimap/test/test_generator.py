@@ -246,3 +246,17 @@ X-Mailer: Microsoft Outlook Express 6.00.2900.5931\r\n\r\n"""
 
     headers = msg_headers_as_string(msg, to_skip, skip=True)
     assert headers == expected
+
+
+####################################################################
+#
+def test_generator_problematic_email(problematic_email_factory):
+    """
+    Not all emails can be flattened out of the box without some jiggery
+    pokery.  Such as messages that say they are 7-bit us-ascii but are actually
+    8-bit latin-1.
+    """
+    for msg_bytes in problematic_email_factory:
+        msg = MHMessage(msg_bytes)
+        msg_text = msg_as_string(msg)
+        assert msg_text

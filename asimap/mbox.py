@@ -2055,8 +2055,12 @@ class Mailbox:
                 now = time.time()
                 total_time = now - start_time
                 fetch_time = now - fetch_started
-                mean_yield_time = fmean(fetch_yield_times)
-                median_yield_time = median(fetch_yield_times)
+                mean_yield_time = (
+                    fmean(fetch_yield_times) if fetch_yield_times else 0.0
+                )
+                median_yield_time = (
+                    median(fetch_yield_times) if fetch_yield_times else 0.0
+                )
                 stdev_yield_time = (
                     stdev(fetch_yield_times, mean_yield_time)
                     if len(fetch_yield_times) > 2

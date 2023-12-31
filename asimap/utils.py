@@ -320,7 +320,7 @@ def setup_logging(
         use that.
     """
     global LOGGED_IN_USER
-    LOGGED_IN_USER = username if username else "username_notset"
+    LOGGED_IN_USER = username if username else "no_user"
     old_factory = logging.getLogRecordFactory()
 
     def log_record_factory(*args, **kwargs):
@@ -345,17 +345,19 @@ def setup_logging(
         root_logger.setLevel(logging.DEBUG)
 
     # Attempt to load the logging config passed in. If we are not able to load
-    # that then check a bunch of common directories. If none of those work, log
-    # to stderr.
+    # that then check a bunch of common directories. If none of those work, use
+    # a default config that logs to stderr.
     #
     if log_config is not None:
         log_config = Path(log_config)
-        if log_config.suffix == ".json":
-            cfg = json.loads(log_config.read_text())
-            logging.config.dictConfig(cfg)
-        else:
-            logging.config.fileConfig(str(log_config))
-        return
+        if log_config.exists():
+            if log_config.suffix == ".json":
+                cfg = json.loads(log_config.read_text())
+                logging.config.dictConfig(cfg)
+            else:
+                logging.config.fileConfig(str(log_config))
+            return
+        print(f"WARNING: Logging config '{log_config}' does not exist")
 
     for log_config in DEFAULT_LOG_CONFIG_FILES:
         if log_config.exists():
@@ -366,17 +368,51 @@ def setup_logging(
                 logging.config.fileConfig(str(log_config))
             return
 
-    h = logging.StreamHandler()
-    if debug:
-        h.setLevel(logging.DEBUG)
-    else:
-        h.setLevel(logging.INFO)
-    formatter = logging.Formatter(
-        "%(asctime)s %(username)s %(process)d %(module)s.%(funcName)s "
-        "%(levelname)s: %(message)s"
-    )
-    h.setFormatter(formatter)
-    root_logger.addHandler(h)
+    # h = logging.StreamHandler()
+    # if debug:
+    #     h.setLevel(logging.DEBUG)
+    # else:
+    #     h.setLevel(logging.INFO)
+    # formatter = logging.Formatter(
+    #     "%(asctime)s %(username)s %(process)d %(module)s.%(funcName)s "
+    #     "%(levelname)s: %(message)s"
+    # )
+    # h.setFormatter(formatter)
+    # root_logger.addHandler(h)
+
+    # If no logging config file is specified then this is what will be used.
+    # It is formatted as a logging config dict.
+    #
+    DEFAULT_LOGGING_CONFIG = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "basic": {
+                "format": "[{asctime}] {username:<30} {levelname}:{module}.{funcName}: {message}",
+                "style": "{",
+            },
+        },
+        "handlers": {
+            "console": {
+                "class": "logging.StreamHandler",
+                "formatter": "basic",
+                "stream": "ext://sys.stderr",
+            },
+        },
+        "loggers": {
+            "asimap": {
+                "handlers": ["console"],
+                "level": "DEBUG" if debug else "INFO",
+                "propagate": True,
+            },
+            "core.run": {  # This is used by sqlite3 and is noisy at debug.
+                "handlers": ["console"],
+                "level": "ERROR",
+                "propagate": True,
+            },
+        },
+    }
+    logging.config.dictConfig(DEFAULT_LOGGING_CONFIG)
 
 
 ############################################################################

@@ -158,7 +158,11 @@ async def test_fetch_bodystructure(mailbox_with_mimekit_email):
             result = await fetch.fetch(ctx)
 
         assert result.startswith("BODYSTRUCTURE ")
-        assert result[14:] == expected
+        if result[14:] != expected:
+            pytest.fail(
+                f"Message {msg_key} failed fetch: result {result[14:]} != expected {expected}"
+            )
+        # assert result[14:] == expected
 
 
 ####################################################################
