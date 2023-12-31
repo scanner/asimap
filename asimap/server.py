@@ -484,6 +484,8 @@ class IMAPClient:
                 self.ibuffer = []
                 client_connected = await self.subprocess_intf.message(msg)
 
+        except ssl.SSLError as exc:
+            logger.error("%s: SSLError: %s", self, exc)
         except asyncio.exceptions.IncompleteReadError:
             # We got an EOF while waiting for a line terminator. Client
             # disconnecrted and we do not really care.

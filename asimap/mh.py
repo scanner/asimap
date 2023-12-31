@@ -194,9 +194,7 @@ class MH(mailbox.MH):
                     "latin_1",
                     "iso2022_jp",
                 ):
-                    # print(f"**** guessed encodings: {result.could_be_from_charset}")
                     contents = str(result)
-                # contents = str(from_bytes(await f.read()).best())
 
         except OSError as e:
             if e.errno == errno.ENOENT:
