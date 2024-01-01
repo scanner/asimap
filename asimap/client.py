@@ -147,12 +147,12 @@ class BaseClientHandler:
         except No as e:
             result = f"{imap_command.tag} NO {e}\r\n"
             await self.client.push(result)
-            logger.debug(result)
+            logger.debug(result.strip())
             return
         except Bad as e:
             result = f"{imap_command.tag} BAD {e}\r\n"
             await self.client.push(result)
-            logger.debug(result)
+            logger.debug(result.strip())
             return
         except ConnectionResetError as e:
             mbox_name = self.mbox.name if self.mbox else "no mailbox"
@@ -168,7 +168,7 @@ class BaseClientHandler:
             sys.exit(0)
         except Exception as e:
             result = f"{imap_command.tag} BAD Unhandled exception: {e}\r\n"
-            await self.client.push(result)
+            await self.client.push(result.strip())
             logger.debug(result)
             raise
 
