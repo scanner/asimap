@@ -19,7 +19,17 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from queue import SimpleQueue
-from typing import TYPE_CHECKING, List, Optional, Set, Tuple, TypeAlias, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    TypeAlias,
+    Union,
+)
 
 # 3rd party module imports
 #
@@ -372,7 +382,7 @@ def setup_logging(
     # If no logging config file is specified then this is what will be used.
     # It is formatted as a logging config dict.
     #
-    DEFAULT_LOGGING_CONFIG = {
+    DEFAULT_LOGGING_CONFIG: Dict[str, Any] = {
         "version": 1,
         "disable_existing_loggers": False,
         "formatters": {
@@ -391,24 +401,12 @@ def setup_logging(
                 "formatter": "basic",
                 "stream": "ext://sys.stderr",
             },
-            "trace_file": {
-                "class": "logging.handlers.RotatingFileHandler",
-                "formatter": "trace",
-                "filename": f"/opt/asimap/traces/{LOGGED_IN_USER}-asimapd.trace",
-                "maxBytes": 20971520,
-                "backupCount": 5,
-            },
         },
         "loggers": {
             "asimap": {
                 "handlers": ["console"],
                 "level": "DEBUG" if debug else "INFO",
                 "propagate": True,
-            },
-            "asimap.trace": {
-                "handlers": ["trace_file"],
-                "level": "INFO",
-                "propagate": False,
             },
             "core.run": {  # This is used by sqlite3 and is noisy at debug.
                 "handlers": ["console"],
@@ -417,7 +415,34 @@ def setup_logging(
             },
         },
     }
+
+    # Add the trace file sections only if the trace dir exists.
+    #
+    warn_no_trace_dir = False
+    if trace_dir:
+        trace_dir = Path(trace_dir)
+        if trace_dir.exists() and trace_dir.is_dir():
+            DEFAULT_LOGGING_CONFIG["handlers"]["trace_file"] = {
+                "class": "logging.handlers.RotatingFileHandler",
+                "formatter": "trace",
+                "filename": f"{trace_dir}/{LOGGED_IN_USER}-asimapd.trace",
+                "maxBytes": 20971520,
+                "backupCount": 5,
+            }
+            DEFAULT_LOGGING_CONFIG["loggers"]["asimap.trace"] = {
+                "handlers": ["trace_file"],
+                "level": "INFO",
+                "propagate": False,
+            }
+        else:
+            warn_no_trace_dir = True
     logging.config.dictConfig(DEFAULT_LOGGING_CONFIG)
+    if warn_no_trace_dir:
+        logger = logging.getLogger("asimap.utils")
+        logger.warning(
+            "Unable to set up tracing because trace dir '%s' either does not exist or is not a directory.",
+            trace_dir,
+        )
 
 
 ############################################################################
