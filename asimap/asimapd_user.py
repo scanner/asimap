@@ -16,7 +16,8 @@ It expects to be run within the directory where the user's asimapd db file for
 their mail spool is.
 
 Usage:
-  asimapd_user.py [--trace] [--log-config=<lc>] [--debug] <username>
+  asimapd_user.py [--trace] [--trace-dir=<td>] [--log-config=<lc>]
+                  [--debug] <username>
 
 Options:
   --version
@@ -34,15 +35,23 @@ Options:
                      valid file can be found or loaded it will defaut to
                      logging to stdout.
 
-  --trace            The per user subprocesses will each open up a trace file
-                     and write to it all messages sent and received. One line
-                     per message. The message will be a timestamp, a relative
-                     timestamp, the direction of the message (sent/received),
-                     and the message itself.The tracefiles will be written to
-                     the log dir and will be named
-                     <username>-asimap.trace. Traces will be written to the
-                     directory specified by `--logdir` (or stderr if not
-                     specified.)
+  --trace            For debugging and generating protocol test data `trace`
+                     can be enabled. When enabled messages will appear on the
+                     `asimap.trace` logger where the `message` part of the log
+                     message is a JSON dump of the message being sent or
+                     received. This only happens for post-authentication IMAP
+                     messages (so nothing about logging in is recorded.)
+                     However the logs are copious! The default logger will dump
+                     trace logs where `--trace-dir` specifies.
+
+  --trace-dir=<td>   The directory trace log files are written to. Unless
+                     overriden by specifying a custom log config! Since traces
+                     use the logging system if you supply a custom log config
+                     and turn tracing on that will override this. By default
+                     trace logs will be written to `/opt/asimap/traces/`. By
+                     default the traces will be written using a
+                     RotatingFileHandler with a size of 20mb, and backup count
+                     of 5 using the pythonjsonlogger.jsonlogger.JsonFormatter.
 
 XXX We communicate with the server via localhost TCP sockets. We REALLY should
     set up some sort of authentication key that the server must use when
@@ -72,11 +81,9 @@ logger = logging.getLogger("asimap.asimapd_user")
 
 #############################################################################
 #
-async def create_and_start_user_server(
-    maildir: Path, debug: bool, trace_enabled: bool
-):
+async def create_and_start_user_server(maildir: Path, debug: bool, trace: bool):
     server = await IMAPUserServer.new(
-        Path.cwd(), debug=debug, trace_enabled=trace_enabled
+        Path.cwd(), debug=debug, trace_enabled=trace
     )
     await server.run()
 
@@ -90,7 +97,8 @@ def main():
     """
     load_dotenv()
     args = docopt(__doc__, version=VERSION)
-    trace_enabled = args["--trace"]
+    trace = args["--trace"]
+    trace_dir = args["--trace-dir"]
     debug = args["--debug"]
     log_config = args["--log-config"]
     username = args["<username>"]
@@ -98,19 +106,16 @@ def main():
     # After we setup our logging handlers and formatters set up for asyncio
     # logging so that logging calls do not block the asyncio event loop.
     #
-    setup_logging(log_config, debug, username=username)
+    setup_logging(log_config, debug, username=username, trace_dir=trace_dir)
     setup_asyncio_logging()
 
-    if trace_enabled:
+    if trace:
         logger.debug("Tracing enabled")
         asimap.trace.TRACE_ENABLED = True
-        # asimap.trace.enable_tracing(logdir)
         asimap.trace.trace({"trace_format": "1.0"})
 
     try:
-        asyncio.run(
-            create_and_start_user_server(Path.cwd(), debug, trace_enabled)
-        )
+        asyncio.run(create_and_start_user_server(Path.cwd(), debug, trace))
     except KeyboardInterrupt:
         logger.warning("Keyboard interrupt, exiting")
 

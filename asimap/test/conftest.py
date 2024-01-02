@@ -42,15 +42,17 @@ REPLACE_LINESEP = {ord("\r"): None, ord("\n"): None}
 ####################################################################
 #
 def client_push_responses(
-    client: Union[IMAPClient, IMAPClientProxy]
+    client: Union[IMAPClient, IMAPClientProxy], strip: bool = True
 ) -> List[str]:
     """
     A helper function that returns all of the push's for this client since
     the last time this function was called.
     """
     results = [
-        y.strip() for x in client.push.call_args_list for y in x.args  # type: ignore [attr-defined]
+        y for x in client.push.call_args_list for y in x.args  # type: ignore [attr-defined]
     ]
+    if strip:
+        results = [x.strip() for x in results]
     client.push.call_args_list = []  # type: ignore [attr-defined]
     return results
 

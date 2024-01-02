@@ -303,6 +303,7 @@ def setup_logging(
     debug: bool,
     username: Optional[str] = None,
     remote_addr: Optional[str] = None,
+    trace_dir: Optional["StrPath"] = None,
 ):
     """
     Set up the logger. We log either to files in 'logdir'
@@ -368,18 +369,6 @@ def setup_logging(
                 logging.config.fileConfig(str(log_config))
             return
 
-    # h = logging.StreamHandler()
-    # if debug:
-    #     h.setLevel(logging.DEBUG)
-    # else:
-    #     h.setLevel(logging.INFO)
-    # formatter = logging.Formatter(
-    #     "%(asctime)s %(username)s %(process)d %(module)s.%(funcName)s "
-    #     "%(levelname)s: %(message)s"
-    # )
-    # h.setFormatter(formatter)
-    # root_logger.addHandler(h)
-
     # If no logging config file is specified then this is what will be used.
     # It is formatted as a logging config dict.
     #
@@ -391,6 +380,10 @@ def setup_logging(
                 "format": "[{asctime}] {username:<30} {levelname}:{module}.{funcName}: {message}",
                 "style": "{",
             },
+            "trace": {
+                "()": "pythonjsonlogger.jsonlogger.JsonFormatter",
+                "format": "%(message)s",
+            },
         },
         "handlers": {
             "console": {
@@ -398,12 +391,24 @@ def setup_logging(
                 "formatter": "basic",
                 "stream": "ext://sys.stderr",
             },
+            "trace_file": {
+                "class": "logging.handlers.RotatingFileHandler",
+                "formatter": "trace",
+                "filename": f"/opt/asimap/traces/{LOGGED_IN_USER}-asimapd.trace",
+                "maxBytes": 20971520,
+                "backupCount": 5,
+            },
         },
         "loggers": {
             "asimap": {
                 "handlers": ["console"],
                 "level": "DEBUG" if debug else "INFO",
                 "propagate": True,
+            },
+            "asimap.trace": {
+                "handlers": ["trace_file"],
+                "level": "INFO",
+                "propagate": False,
             },
             "core.run": {  # This is used by sqlite3 and is noisy at debug.
                 "handlers": ["console"],

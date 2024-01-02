@@ -13,8 +13,7 @@ import re
 import socket
 import ssl
 import string
-import time
-from typing import Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 # 3rd party imports
 #
@@ -26,8 +25,11 @@ from sentry_sdk.integrations.asyncio import AsyncioIntegration
 import asimap.user_server
 
 from .auth import User
-from .client import CAPABILITIES, PreAuthenticated
+from .client import CAPABILITIES, ClientState, PreAuthenticated
 from .parse import BadCommand, parse_cmd_from_msg
+
+if TYPE_CHECKING:
+    from _typeshed import StrPath
 
 logger = logging.getLogger("asimap.server")
 
@@ -82,7 +84,12 @@ class IMAPSubprocess:
     ##################################################################
     #
     def __init__(
-        self, user: User, debug: bool = False, log_config: Optional[str] = None
+        self,
+        user: User,
+        debug: bool = False,
+        log_config: Optional[str] = None,
+        trace: Optional[bool] = False,
+        trace_dir: Optional["StrPath"] = None,
     ):
         """
 
@@ -94,8 +101,8 @@ class IMAPSubprocess:
         """
         self.log_config = log_config
         self.debug = debug
-        self.trace_enabled = False
-        self.trace_file = None
+        self.trace = trace
+        self.trace_dir = trace_dir
         self.user = user
         self.is_alive = False
         self.port: int
@@ -117,10 +124,10 @@ class IMAPSubprocess:
             args.append(f"--log-config={self.log_config}")
         if self.debug:
             args.append("--debug")
-        if self.trace_enabled:
+        if self.trace:
             args.append("--trace")
-        if self.trace_file:
-            args.append(f"--trace_file={self.options.trace_file}")
+        if self.trace_dir:
+            args.append(f"--trace-dir={self.trace_dir}")
         args.append(self.user.username)
 
         logger.info(
@@ -140,7 +147,10 @@ class IMAPSubprocess:
         # Start a task that waits on the subprocess and cleans up after it
         # terminates.
         #
-        self.wait_task = asyncio.create_task(self.subprocess_wait())
+        self.wait_task = asyncio.create_task(
+            self.subprocess_wait(),
+            name=f"IMAPSubprocess({self.user}).subprocess_wait()",
+        )
         self.wait_task.add_done_callback(self.subprocess_wait_done)
 
         if self.subprocess.stdin is None:
@@ -187,7 +197,7 @@ class IMAPSubprocess:
     #
     async def subprocess_wait(self):
         """
-        A task that waits for the subprocess to exist and sets a flag when
+        A task that waits for the subprocess to exit and sets a flag when
         that happens.
         """
         rc = await self.subprocess.wait()
@@ -223,7 +233,8 @@ class IMAPServer:
         address: str,
         port: int,
         ssl_context: ssl.SSLContext,
-        trace: Optional[str] = None,
+        trace: Optional[bool] = False,
+        trace_dir: Optional["StrPath"] = None,
         log_config: Optional[str] = None,
         debug: bool = False,
     ):
@@ -231,6 +242,7 @@ class IMAPServer:
         self.port = port
         self.ssl_context = ssl_context
         self.trace = trace
+        self.trace_dir = trace_dir
         self.log_config = log_config
         self.debug = debug
         self.asyncio_server: asyncio.Server
@@ -260,10 +272,10 @@ class IMAPServer:
         self.asyncio_server = await asyncio.start_server(
             self.new_client, self.address, self.port, ssl=self.ssl_context
         )
-        addrs = ", ".join(
-            str(sock.getsockname()) for sock in self.asyncio_server.sockets
-        )
-        logger.debug("Serving on %s", addrs)
+        # addrs = ", ".join(
+        #     str(sock.getsockname()) for sock in self.asyncio_server.sockets
+        # )
+        # logger.debug("Serving on %s", addrs)
         try:
             async with self.asyncio_server:
                 await self.asyncio_server.serve_forever()
@@ -306,7 +318,9 @@ class IMAPServer:
         client_handler = IMAPClient(
             self, peer_name, rem_addr, port, reader, writer
         )
-        task = asyncio.create_task(client_handler.start(), name=peer_name)
+        task = asyncio.create_task(
+            client_handler.start(), name=f"client_handler({peer_name})"
+        )
         task.add_done_callback(self.client_done)
         self.imap_client_tasks[task] = client_handler
 
@@ -371,7 +385,6 @@ class IMAPClient:
         self.writer = writer
         self.imap_server = imap_server
         self.debug = imap_server.debug
-        self.trace_file = None
         self.done = False
 
         self.reading_string_literal = False
@@ -396,18 +409,6 @@ class IMAPClient:
                 d = bytes(d, "latin-1")
             self.writer.write(d)
         await self.writer.drain()
-
-        if self.trace_file:
-            msg = [
-                str(d, "latin-1") if isinstance(d, bytes) else d for d in data
-            ]
-            await self.trace_file(
-                {
-                    "time": time.time(),
-                    "data": "".join(msg),
-                    "msg_type": "SEND",
-                }
-            )
 
     ####################################################################
     #
@@ -484,9 +485,12 @@ class IMAPClient:
                 self.ibuffer = []
                 client_connected = await self.subprocess_intf.message(msg)
 
-        except ssl.SSLError as exc:
-            logger.error("%s: SSLError: %s", self, exc)
-        except asyncio.exceptions.IncompleteReadError:
+        except (
+            asyncio.exceptions.IncompleteReadError,
+            ConnectionResetError,
+            socket.error,
+            ssl.SSLError,
+        ):
             # We got an EOF while waiting for a line terminator. Client
             # disconnecrted and we do not really care.
             #
@@ -730,7 +734,13 @@ class IMAPSubprocessInterface:
         if user.username in USER_IMAP_SUBPROCESSES:
             self.subprocess = USER_IMAP_SUBPROCESSES[user.username]
         else:
-            self.subprocess = IMAPSubprocess(user, debug=self.debug)
+            self.subprocess = IMAPSubprocess(
+                user,
+                debug=self.debug,
+                log_config=self.imap_client.imap_server.log_config,
+                trace=self.imap_client.imap_server.trace,
+                trace_dir=self.imap_client.imap_server.trace_dir,
+            )
             USER_IMAP_SUBPROCESSES[user.username] = self.subprocess
 
         if not self.subprocess.is_alive:
@@ -761,7 +771,10 @@ class IMAPSubprocessInterface:
         # Now start a task that will listen for data from the subprocess and
         # sent it on to the IMAP Client.
         #
-        self.wait_task = asyncio.create_task(self.msgs_to_client())
+        self.wait_task = asyncio.create_task(
+            self.msgs_to_client(),
+            name=f"IMAPSubprocessInterface({user.username},{self.peername})",
+        )
         self.wait_task.add_done_callback(self.msgs_to_client_done)
 
     ####################################################################
@@ -777,7 +790,11 @@ class IMAPSubprocessInterface:
                     break
                 msg = await self.reader.readuntil(b"\r\n")
                 await self.imap_client.push(msg)
-        except asyncio.IncompleteReadError:
+        except (
+            asyncio.IncompleteReadError,
+            ConnectionResetError,
+            socket.error,
+        ):
             pass
         finally:
             # either the connection to the subprocess was closed or the
@@ -797,5 +814,5 @@ class IMAPSubprocessInterface:
         logger.debug(
             "msgs_to_client task: either IMAP client or closed connection"
         )
-        self.client_handler.state = "not_authenticated"
+        self.client_handler.state = ClientState.NOT_AUTHENTICATED
         self.wait_task = None

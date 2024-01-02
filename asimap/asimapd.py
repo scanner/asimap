@@ -11,7 +11,7 @@ NOTE: For all command line options that can also be specified via an env. var:
 
 Usage:
   asimapd [--address=<i>] [--port=<p>] [--cert=<cert>] [--key=<key>]
-          [--trace=<trace>] [--debug] [--log-config=<lc>]
+          [--trace] [--trace-dir=<td>] [--debug] [--log-config=<lc>]
           [--pwfile=<pwfile>]
 
 Options:
@@ -25,12 +25,24 @@ Options:
                      `/opt/asimap/ssl/cert.pem`. The env var is SSL_CERT
   --key=<key>        SSL Certificate key file. If not set defaults to
                      `/opt/asimap/ssl/key.pem`. The env var is SSL_KEY
-  --trace=<trace>    The per user subprocesses will each open up a trace file
-                     and write to it all messages sent and received. One line
-                     per message. The message will be a timestamp, a relative
-                     timestamp, the direction of the message (sent/received),
-                     and the message itself.The tracefiles will be written to
-                     the log dir and will be named <username>-asimap.trace
+
+  --trace            For debugging and generating protocol test data `trace`
+                     can be enabled. When enabled messages will appear on the
+                     `asimap.trace` logger where the `message` part of the log
+                     message is a JSON dump of the message being sent or
+                     received. This only happens for post-authentication IMAP
+                     messages (so nothing about logging in is recorded.)
+                     However the logs are copious! The default logger will dump
+                     trace logs where `--trace-dir` specifies.
+
+  --trace-dir=<td>   The directory trace log files are written to. Unless
+                     overriden by specifying a custom log config! Since traces
+                     use the logging system if you supply a custom log config
+                     and turn tracing on that will override this. By default
+                     trace logs will be written to `/opt/asimap/traces/`. By
+                     default the traces will be written using a
+                     RotatingFileHandler with a size of 20mb, and backup count
+                     of 5 using the pythonjsonlogger.jsonlogger.JsonFormatter.
 
   --debug            Will set the default logging level to `DEBUG` thus
                      enabling all of the debug logging. The env var is `DEBUG`
@@ -86,14 +98,15 @@ def main():
     ssl_cert_file = args["--cert"]
     ssl_key_file = args["--key"]
     trace = args["--trace"]
+    trace_dir = args["--trace-dir"]
     debug = args["--debug"]
     log_config = args["--log-config"]
     pwfile = args["--pwfile"]
 
     load_dotenv()
 
-    # If docopt is not, see if the option is set in the os.environ. If it not set
-    # there either, then set it to the default value.
+    # If docopt is not, see if the option is set in the os.environ. If it not
+    # set there either, then set it to the default value.
     #
     if address is None:
         address = (
@@ -119,7 +132,15 @@ def main():
         debug = bool(os.environ["DEBUG"]) if "DEBUG" in os.environ else False
     if log_config is None:
         log_config = (
-            os.environ["LOG_OS.ENVIRON"] if "LOG_CONFIG" in os.environ else None
+            os.environ["LOG_CONFIG"] if "LOG_CONFIG" in os.environ else None
+        )
+    if trace is None:
+        trace = os.environ["TRACE"] if "TRACE" in os.environ else False
+    if trace_dir is None:
+        trace_dir = (
+            os.environ["TRACE_DIR"]
+            if "TRACE_DIR" in os.environ
+            else Path("/opt/asimap/traces")
         )
     if pwfile is None:
         pwfile = (
@@ -142,9 +163,9 @@ def main():
     # After we setup our logging handlers and formatters set up for asyncio
     # logging so that logging calls do not block the asyncio event loop.
     #
-    setup_logging(log_config, debug)
+    setup_logging(log_config, debug, trace_dir=trace_dir)
     setup_asyncio_logging()
-    logger.info("Starting")
+    logger.info("ASIMAPD Starting")
 
     ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
     ssl_context.check_hostname = False
@@ -186,6 +207,7 @@ def main():
         port,
         ssl_context,
         trace=trace,
+        trace_dir=trace_dir,
         log_config=log_config,
         debug=debug,
     )

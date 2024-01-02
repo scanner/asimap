@@ -28,6 +28,7 @@ dependencies = [
   "charset-normalizer>=3.3.2",
   "docopt>=0.6.2",
   "python-dotenv>=1.0.0",
+  "python-json-logger>=2.0.7",
   "sentry-sdk>=1.39.1",
 ]
 

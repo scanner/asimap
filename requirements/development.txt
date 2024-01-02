@@ -277,6 +277,8 @@ python-dateutil==2.8.2
     # via faker
 python-dotenv==1.0.0
     # via -r production.txt
+python-json-logger==2.0.7
+    # via -r production.txt
 pytz==2023.3.post1
     # via dirty-equals
 pyyaml==6.0.1

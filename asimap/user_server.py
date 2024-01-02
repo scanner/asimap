@@ -107,9 +107,10 @@ class IMAPClientProxy:
         port: int,
         reader: asyncio.StreamReader,
         writer: asyncio.StreamWriter,
+        trace_enabled: Optional[bool] = False,
     ):
         self.log = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-
+        self.trace_enabled = trace_enabled
         self.name = name
         self.rem_addr = rem_addr
         self.port = port
@@ -128,7 +129,7 @@ class IMAPClientProxy:
             if not self.writer.is_closing():
                 self.writer.close()
             await self.writer.wait_closed()
-            await self.trace("CLOSE", {})
+            self.trace("CLOSE", {})
         except socket.error:
             pass
         except Exception as exc:
@@ -160,7 +161,7 @@ class IMAPClientProxy:
             #
             # {\d+}\n< ... \d octects
             #
-            await self.trace("CONNECT", {})
+            self.trace("CONNECT", {})
             client_connected = True
             while client_connected:
                 # Read until b'\n'. Trim off the '\n'. If the message is
@@ -181,8 +182,7 @@ class IMAPClientProxy:
                 length = int(m.group(1))
                 msg = await self.reader.readexactly(length)
                 imap_msg = str(msg, "latin-1")
-                logger.debug("IMAP Message: %s", imap_msg)
-                await self.trace("RECEIVED", {"data": imap_msg})
+                self.trace("RECEIVED", {"data": imap_msg})
 
                 # We special case if the client is idling. In this state we
                 # look for ONLY a 'DONE' non-tagged message and when we get
@@ -190,9 +190,13 @@ class IMAPClientProxy:
                 # processor.
                 #
                 if self.cmd_processor.idling:
-                    if imap_msg.lower().strip() != "done":
+                    ls_imap_msg = imap_msg.lower().strip()
+                    if ls_imap_msg.endswith("idle"):
+                        await self.push("+ idling")
+                    elif ls_imap_msg != "done":
                         await self.push(
-                            f"* BAD Expected 'DONE' not: {imap_msg}\r\n"
+                            # f"* BAD Expected 'DONE' not: {imap_msg}\r\n"
+                            f"* NO Expected 'DONE' not: {imap_msg}\r\n"
                         )
                     else:
                         await self.cmd_processor.do_done()
@@ -249,7 +253,7 @@ class IMAPClientProxy:
 
     ####################################################################
     #
-    async def trace(self, msg_type, msg):
+    def trace(self, msg_type, msg):
         """
         We like to include the 'identity' of the IMAP Client handler in
         our trace messages so we can tie to gether which messages come
@@ -263,7 +267,7 @@ class IMAPClientProxy:
         """
         msg["connection"] = self.name
         msg["msg_type"] = msg_type
-        await trace(msg)
+        trace(msg)
 
     ####################################################################
     #
@@ -273,13 +277,14 @@ class IMAPClientProxy:
         which in turn sends it to the IMAP client.
         """
         for d in data:
-            if isinstance(d, str):
-                d = bytes(d, "latin-1")
+            d = bytes(d, "latin-1") if isinstance(d, str) else d
             self.writer.write(d)
         await self.writer.drain()
 
-        msg = [str(d, "latin-1") if isinstance(d, bytes) else d for d in data]
-        await self.trace("SEND", {"data": "".join(msg)})
+        if self.trace_enabled:
+            for d in data:
+                msg = str(d, "latin-1") if isinstance(d, bytes) else d
+                self.trace("SEND", {"data": msg})
 
     ##################################################################
     #
@@ -321,6 +326,7 @@ class IMAPUserServer:
         """
         self.maildir = maildir
         self.debug = debug
+        self.trace_enabled = trace_enabled
 
         self.log = logging.getLogger(
             "%s.%s" % (__name__, self.__class__.__name__)
@@ -504,7 +510,13 @@ class IMAPUserServer:
         name = f"{rem_addr}:{port}"
         self.log.debug(f"New IMAP client proxy: {name}")
         client_handler = IMAPClientProxy(
-            self, name, rem_addr, port, reader, writer
+            self,
+            name,
+            rem_addr,
+            port,
+            reader,
+            writer,
+            trace_enabled=self.trace_enabled,
         )
         task = asyncio.create_task(client_handler.start(), name=name)
         task.add_done_callback(self.client_done)

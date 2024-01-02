@@ -714,8 +714,7 @@ async def test_authenticated_client_fetch(
     mailbox_with_bunch_of_email, imap_user_server_and_client
 ):
     """
-    Search is tested mostly `test_search`.. so we only need a very simple
-    search.
+    simple fetches
     """
     server, imap_client = imap_user_server_and_client
     _ = mailbox_with_bunch_of_email
@@ -749,6 +748,46 @@ async def test_authenticated_client_fetch(
         _, subj, frm = (x.strip() for x in results[idx - 1].split("\r\n"))
         assert msg["Subject"] == subj.split(":")[1].strip()
         assert msg["From"] == frm.split(":")[1].strip()
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_authenticated_client_fetch_lotta_fields(
+    mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    """
+    Test a more involved fetch that the apple mail client frequently does.
+    """
+    server, imap_client = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+    client_handler = Authenticated(imap_client, server)
+
+    mbox = await server.get_mailbox("inbox")
+    msg_keys = await mbox.mailbox.akeys()
+
+    cmd = IMAPClientCommand("A004 SELECT INBOX")
+    cmd.parse()
+    await client_handler.command(cmd)
+    client_push_responses(imap_client)
+
+    cmd = IMAPClientCommand(
+        f"A001 FETCH 1:{len(msg_keys)} (INTERNALDATE UID RFC822.SIZE FLAGS BODY.PEEK[HEADER.FIELDS (date subject from to cc message-id in-reply-to references content-type x-priority x-uniform-type-identifier x-universally-unique-identifier list-id list-unsubscribe bimi-indicator bimi-location x-bimi-indicator-hash authentication-results dkim-signature)])"
+    )
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client, strip=False)
+    assert results[-1] == "A001 OK FETCH command completed\r\n"
+    for msg_key in msg_keys:
+        # msg = await mbox.mailbox.aget_message(msg_key)
+        print(f"msg key: {msg_key:>3}, result: {repr(results[msg_key-1])}")
+        res = [x for x in results[msg_key - 1].split("\r\n")]
+        print(f"msg key: {msg_key:>3} -- number of results: {len(res)}")
+        for r in res:
+            print(f"    result: {r}")
+        # _, subj, frm = (x.strip() for x in results[msg_key - 1].split("\r\n"))
+        # assert msg["Subject"] == subj.split(":")[1].strip()
+        # assert msg["From"] == frm.split(":")[1].strip()
 
 
 ####################################################################

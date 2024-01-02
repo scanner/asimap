@@ -6,6 +6,7 @@ A simple IMAP client to test our server with
 # system imports
 #
 import imaplib
+from typing import Union
 
 
 #############################################################################
@@ -22,14 +23,30 @@ def main():
     print(f"login response: {resp}")
     resp = imap.capability()
     print(f"Server capabilities (again): {resp}")
-    resp = imap.list()
-    print(f"List response: {resp}")
-    resp = imap.select("inbox")
-    print(f"Select inbox response: {resp}")
+    ok, resp = imap.list()
+    print(f"List response: {ok}")
+    if ok.lower() == "ok":
+        mbox: Union[str, bytes]
+        for mbox in resp:
+            mbox = str(mbox, "latin-1").split(" ")[-1]
+            ok, r = imap.subscribe(mbox)
+            if ok.lower() != "ok":
+                print(f"Subscribe for {mbox} failed: {r}")
+    resp = imap.lsub()
+    print(f"lsub response: {resp}")
+    mbox = "inbox"
+    resp = imap.select(mbox)
+    print(f"Select {mbox} response: {resp}")
+    resp = imap.fetch(
+        "1:*",
+        "(INTERNALDATE UID RFC822.SIZE FLAGS BODY.PEEK[HEADER.FIELDS (date subject from to cc message-id in-reply-to references content-type x-priority x-uniform-type-identifier x-universally-unique-identifier list-id list-unsubscribe bimi-indicator bimi-location x-bimi-indicator-hash authentication-results dkim-signature)])",
+    )
+    print(f"FETCH response: {resp}")
+    resp = imap.close()
+    print(f"Close response: {resp}")
     print("Logging out")
     resp = imap.logout()
     print(f"Server LOGOUT: {resp}")
-    # imap.close()
 
 
 ############################################################################

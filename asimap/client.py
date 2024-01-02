@@ -215,7 +215,6 @@ class BaseClientHandler:
             )
         else:
             logger.debug("state: %s, cmd: %s" % (self.state.value, str(cmd)))
-        return
 
     ####################################################################
     #
@@ -933,10 +932,11 @@ class Authenticated(BaseClientHandler):
             # that this client is "idling" while the operation is running.
             #
             try:
+                idling = self.idling
                 self.idling = True
                 await self.mbox.expunge()
             finally:
-                self.idling = False
+                self.idling = idling
 
     ##################################################################
     #
@@ -1124,12 +1124,13 @@ class Authenticated(BaseClientHandler):
                 )
             else:
                 try:
+                    idling = self.idling
                     self.idling = True
                     await self.mbox.resync(
                         optional=False, publish_uids=cmd.uid_command
                     )
                 finally:
-                    self.idling = False
+                    self.idling = idling
 
     ##################################################################
     #

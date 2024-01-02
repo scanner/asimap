@@ -2020,6 +2020,11 @@ class Mailbox:
                         if msg_key in seqs["Recent"]:
                             seqs["Recent"].remove(msg_key)
                             seq_changed = True
+                            logger.debug(
+                                "mailbox: %s - msg %d, Removed `Recent`",
+                                self.name,
+                                msg_key,
+                            )
 
                     # If we dif a FETCH BODY (but NOT a BODY.PEEK) then the
                     # message is removed from the 'unseen' sequence (if it was
@@ -2036,6 +2041,12 @@ class Mailbox:
                         if msg_key not in seqs["Seen"]:
                             seqs["Seen"].append(msg_key)
                             seq_changed = True
+                        if seq_changed:
+                            logger.debug(
+                                "mailbox: %s - msg %d, fetched body, removed `unseen`",
+                                self.name,
+                                msg_key,
+                            )
 
                     # Done applying FETCH to all of the indicated messages.  If
                     # the sequences changed we need to write them back out to
@@ -2050,6 +2061,9 @@ class Mailbox:
                     yield (idx, iter_results)
                     num_results += 1
                     await asyncio.sleep(0)
+
+                if seq_changed:
+                    await self.resync(optional=False)
 
             finally:
                 now = time.time()
@@ -2078,9 +2092,6 @@ class Mailbox:
                     median_yield_time,
                     stdev_yield_time,
                 )
-
-                if seq_changed:
-                    await self.resync()
 
     ##################################################################
     #
