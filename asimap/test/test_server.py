@@ -80,3 +80,15 @@ def test_server_list_status_select(
     )
     status, resp = imap.logout()
     assert status == "BYE"
+
+
+# ####################################################################
+# #
+# @pytest.mark.integration
+# def test_server_two_clients(
+#     bunch_of_email_in_folder, imap_server, imap_user_server_program
+# ):
+#     """
+#     Make sure that if we have multiple clients basic operations work fine
+#     """
+#     pass

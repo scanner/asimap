@@ -27,6 +27,7 @@ import asimap.user_server
 from .auth import User
 from .client import CAPABILITIES, ClientState, PreAuthenticated
 from .parse import BadCommand, parse_cmd_from_msg
+from .utils import UpgradeableReadWriteLock
 
 if TYPE_CHECKING:
     from _typeshed import StrPath
@@ -52,6 +53,7 @@ RE_LITERAL_STRING_START = re.compile(rb"\{(\d+)(\+)?\}$")
 # The key is the username. The value is an IMAPSubprocess
 #
 USER_IMAP_SUBPROCESSES: Dict[str, "IMAPSubprocess"] = {}
+USER_IMAP_SUBPROCESSES_LOCK = UpgradeableReadWriteLock()
 
 
 ##################################################################
@@ -296,9 +298,11 @@ class IMAPServer:
             tasks = [task for task in self.imap_client_tasks.keys()]
             await asyncio.gather(*clients, return_exceptions=True)
             await asyncio.gather(*tasks, return_exceptions=True)
-            for subp in USER_IMAP_SUBPROCESSES.values():
-                if subp.is_alive:
-                    subp.terminate()
+            async with USER_IMAP_SUBPROCESSES_LOCK.read_lock():
+                async with USER_IMAP_SUBPROCESSES_LOCK.write_lock():
+                    for subp in USER_IMAP_SUBPROCESSES.values():
+                        if subp.is_alive:
+                            subp.terminate()
 
     ####################################################################
     #
@@ -314,7 +318,6 @@ class IMAPServer:
         """
         rem_addr, port = writer.get_extra_info("peername")
         peer_name = f"{rem_addr}:{port}"
-        logger.debug(f"New client: {peer_name}")
         client_handler = IMAPClient(
             self, peer_name, rem_addr, port, reader, writer
         )
@@ -323,6 +326,11 @@ class IMAPServer:
         )
         task.add_done_callback(self.client_done)
         self.imap_client_tasks[task] = client_handler
+        logger.debug(
+            "New client: %s, number of clients: %d",
+            peer_name,
+            len(self.imap_client_tasks),
+        )
 
     ####################################################################
     #
@@ -731,20 +739,29 @@ class IMAPSubprocessInterface:
         know which IMAP client is sending it commands based on which TCP
         connection the command comes in on)
         """
-        if user.username in USER_IMAP_SUBPROCESSES:
-            self.subprocess = USER_IMAP_SUBPROCESSES[user.username]
-        else:
-            self.subprocess = IMAPSubprocess(
-                user,
-                debug=self.debug,
-                log_config=self.imap_client.imap_server.log_config,
-                trace=self.imap_client.imap_server.trace,
-                trace_dir=self.imap_client.imap_server.trace_dir,
-            )
-            USER_IMAP_SUBPROCESSES[user.username] = self.subprocess
+        # Some mail clients establish a several connections immediately so we
+        # need to make user that no one else tries to startup a subprocess.
+        #
+        # XXX This is pretty simplistic but we should break it out into only
+        #     two sections where we need the write lock: when setting the value
+        #     in the dict, and when starting the subprocess if it is not alive.
+        #
+        async with USER_IMAP_SUBPROCESSES_LOCK.read_lock():
+            async with USER_IMAP_SUBPROCESSES_LOCK.write_lock():
+                if user.username in USER_IMAP_SUBPROCESSES:
+                    self.subprocess = USER_IMAP_SUBPROCESSES[user.username]
+                else:
+                    self.subprocess = IMAPSubprocess(
+                        user,
+                        debug=self.debug,
+                        log_config=self.imap_client.imap_server.log_config,
+                        trace=self.imap_client.imap_server.trace,
+                        trace_dir=self.imap_client.imap_server.trace_dir,
+                    )
+                    USER_IMAP_SUBPROCESSES[user.username] = self.subprocess
 
-        if not self.subprocess.is_alive:
-            await self.subprocess.start()
+                if not self.subprocess.is_alive:
+                    await self.subprocess.start()
 
         # And initiate a connection to the subprocess.
         #
@@ -811,8 +828,6 @@ class IMAPSubprocessInterface:
         Our task for listening for messages from the subprocess has
         finished.
         """
-        logger.debug(
-            "msgs_to_client task: either IMAP client or closed connection"
-        )
+        logger.debug("%s:  Either IMAP client or closed connection", str(task))
         self.client_handler.state = ClientState.NOT_AUTHENTICATED
         self.wait_task = None
