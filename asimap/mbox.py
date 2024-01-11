@@ -2652,9 +2652,9 @@ class Mailbox:
         #
         mbox_match = "^" + re.escape(mbox_match) + "$"
 
-        # Every '\*' becomes '.*' and every % becomes [^/]
+        # Every '*' becomes '.*' and every % becomes [^/]
         #
-        mbox_match = mbox_match.replace(r"\*", r".*").replace(r"\%", r"[^\/]*")
+        mbox_match = mbox_match.replace(r"\*", r".*").replace(r"%", r"[^\/]*")
 
         # NOTE: We do not present to the IMAP client any folders that
         #       have the flag 'ignored' set on them.
