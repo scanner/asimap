@@ -1047,7 +1047,7 @@ class Authenticated(BaseClientHandler):
                     cmd.msg_set, cmd.fetch_atts, cmd.uid_command
                 ):
                     await self.client.push(
-                        f"* {idx} FETCH {' '.join(results)}\r\n"
+                        f"* {idx} FETCH ({' '.join(results)})\r\n"
                     )
             except MailboxInconsistency as exc:
                 # Touching the mailbox will cause a more than cursory resync
