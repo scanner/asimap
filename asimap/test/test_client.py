@@ -745,7 +745,9 @@ async def test_authenticated_client_fetch(
     assert results[-1] == "A001 OK FETCH command completed"
     for idx in range(1, 6):
         msg = await mbox.mailbox.aget_message(idx)
-        _, subj, frm = (x.strip() for x in results[idx - 1].split("\r\n"))
+        inter = [x.strip() for x in results[idx - 1].split("\r\n")]
+        subj = inter[1]
+        frm = inter[2]
         assert msg["Subject"] == subj.split(":")[1].strip()
         assert msg["From"] == frm.split(":")[1].strip()
 
