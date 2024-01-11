@@ -4,7 +4,6 @@
 
 codetiming
 dirty-equals
-imapclient
 ipython
 pytest
 pytest-asyncio

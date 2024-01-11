@@ -1,7 +1,5 @@
-autopep8
 black
 coverage
-flake8
 isort
 mypy
 pip-tools

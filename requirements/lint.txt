@@ -4,8 +4,6 @@
 #
 #    pip-compile --output-file=lint.txt --strip-extras lint.in
 #
-autopep8==2.0.4
-    # via -r lint.in
 black==23.12.1
     # via -r lint.in
 build==1.0.3
@@ -28,16 +26,12 @@ distlib==0.3.8
     # via virtualenv
 filelock==3.13.1
     # via virtualenv
-flake8==6.1.0
-    # via -r lint.in
 identify==2.5.33
     # via pre-commit
 importlib-metadata==7.0.1
     # via yapf
 isort==5.13.2
     # via -r lint.in
-mccabe==0.7.0
-    # via flake8
 mypy==1.8.0
     # via -r lint.in
 mypy-extensions==1.0.0
@@ -61,14 +55,8 @@ platformdirs==4.1.0
     #   yapf
 pre-commit==3.6.0
     # via -r lint.in
-pycodestyle==2.11.1
-    # via
-    #   autopep8
-    #   flake8
 pycparser==2.21
     # via cffi
-pyflakes==3.1.0
-    # via flake8
 pyproject-hooks==1.0.0
     # via build
 pyyaml==6.0.1

@@ -215,7 +215,14 @@ class IMAPSubprocess:
         Terminate the subprocess.
         """
         if self.subprocess:
-            self.subprocess.terminate()
+            try:
+                self.subprocess.terminate()
+            except ProcessLookupError as exc:
+                logger.error(
+                    "Unable to terminate user '%s' subprocess: %s",
+                    self.user.username,
+                    str(exc),
+                )
 
 
 ########################################################################
@@ -828,6 +835,6 @@ class IMAPSubprocessInterface:
         Our task for listening for messages from the subprocess has
         finished.
         """
-        logger.debug("%s:  Either IMAP client or closed connection", str(task))
+        logger.debug("%s: client connection done", task.get_name())
         self.client_handler.state = ClientState.NOT_AUTHENTICATED
         self.wait_task = None

@@ -16,8 +16,6 @@ asttokens==2.4.1
     # via stack-data
 async-timeout==4.0.3
     # via -r production.txt
-autopep8==2.0.4
-    # via -r lint.txt
 black==23.12.1
     # via -r lint.txt
 build==1.0.3
@@ -91,8 +89,6 @@ filelock==3.13.1
     #   -r build.txt
     #   -r lint.txt
     #   virtualenv
-flake8==6.1.0
-    # via -r lint.txt
 h11==0.14.0
     # via
     #   -r build.txt
@@ -128,7 +124,7 @@ idna==3.6
     #   requests
     #   trustme
 imapclient==3.0.1
-    # via -r development.in
+    # via -r production.txt
 importlib-metadata==7.0.1
     # via
     #   -r build.txt
@@ -159,10 +155,6 @@ markdown-it-py==3.0.0
     #   rich
 matplotlib-inline==0.1.6
     # via ipython
-mccabe==0.7.0
-    # via
-    #   -r lint.txt
-    #   flake8
 mdurl==0.1.2
     # via
     #   -r build.txt
@@ -230,19 +222,10 @@ ptyprocess==0.7.0
     #   pexpect
 pure-eval==0.2.2
     # via stack-data
-pycodestyle==2.11.1
-    # via
-    #   -r lint.txt
-    #   autopep8
-    #   flake8
 pycparser==2.21
     # via
     #   -r lint.txt
     #   cffi
-pyflakes==3.1.0
-    # via
-    #   -r lint.txt
-    #   flake8
 pygments==2.17.2
     # via
     #   -r build.txt

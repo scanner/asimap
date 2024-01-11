@@ -59,15 +59,15 @@ lint: venv .git/hooks/pre-commit	## Run all pre-commit hooks. Note: this only ru
 PY_FILES=$(shell find $(ROOT_DIR)/asimap/ $(ROOT_DIR)/scripts/ -type f -name '*.py')
 JS_FILES=$(shell find $(ROOT_DIR)/asimap/ $(ROOT_DIR)/scripts/ -type f -name '*.js')
 .blackened: $(PY_FILES) venv
-	@$(ACTIVATE) black $(ROOT_DIR)/app/ $(ROOT_DIR)/scripts/
+	@$(ACTIVATE) black $(ROOT_DIR)/asimap/ $(ROOT_DIR)/scripts/
 	@touch .blackened
 
 .isorted: $(PY_FILES) venv
-	@$(ACTIVATE) isort $(ROOT_DIR)/app/ $(ROOT_DIR)/scripts/
+	@$(ACTIVATE) isort $(ROOT_DIR)/asimap/ $(ROOT_DIR)/scripts/
 	@touch .isorted
 
 .prettier: $(JS_FILES)
-	@npx prettier --write $(ROOT_DIR)/app
+	@npx prettier --write $(ROOT_DIR)/asimap
 	@touch .prettier
 
 formatting: isort black prettier	## Run `isort`, `black`, `prettier` over all files in project.

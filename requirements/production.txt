@@ -16,6 +16,8 @@ charset-normalizer==3.3.2
     # via -r production.in
 docopt==0.6.2
     # via -r production.in
+imapclient==3.0.1
+    # via -r production.in
 python-dotenv==1.0.0
     # via -r production.in
 python-json-logger==2.0.7
