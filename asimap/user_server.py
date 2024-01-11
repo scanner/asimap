@@ -277,7 +277,13 @@ class IMAPClientProxy:
         which in turn sends it to the IMAP client.
         """
         for d in data:
-            d = bytes(d, "latin-1") if isinstance(d, str) else d
+            try:
+                d = bytes(d, "latin-1") if isinstance(d, str) else d
+            except UnicodeEncodeError:
+                # Mnugh.. you think latin-1 would work, but sometimes we just
+                # need to go with UTF-8.
+                #
+                d = bytes(d, "utf-8") if isinstance(d, str) else d
             self.writer.write(d)
         await self.writer.drain()
 
