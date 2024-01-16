@@ -2040,12 +2040,6 @@ class Mailbox:
                         if msg_key not in seqs["Seen"]:
                             seqs["Seen"].append(msg_key)
                             seq_changed = True
-                        if seq_changed:
-                            logger.debug(
-                                "mailbox: %s - msg %d, fetched body, removed `unseen`",
-                                self.name,
-                                msg_key,
-                            )
 
                     # Done applying FETCH to all of the indicated messages.  If
                     # the sequences changed we need to write them back out to
@@ -2053,7 +2047,6 @@ class Mailbox:
                     #
                     if seq_changed:
                         async with self.lock.write_lock():
-                            logger.debug("sequences were modified, saving")
                             await self.mailbox.aset_sequences(seqs)
 
                     fetch_yield_times.append(time.time() - single_fetch_started)
