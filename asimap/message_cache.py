@@ -360,15 +360,6 @@ class MessageCache:
         for msg_item in self.msgs_by_mailbox[mbox]:
             self.cur_size -= msg_item[1]
         del self.msgs_by_mailbox[mbox]
-        logger.debug(
-            "Clear mbox %s from the message cache, "
-            "new size: %d (%.1f%% full, %.1fMib)",
-            mbox,
-            self.cur_size,
-            (self.cur_size / self.max_size) * 100,
-            (self.cur_size / 1048576),
-        )
-        return
 
     ##################################################################
     #
@@ -378,4 +369,3 @@ class MessageCache:
         """
         self.msgs_by_mailbox = {}
         self.cur_size = 0
-        return
