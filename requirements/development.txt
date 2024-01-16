@@ -124,7 +124,7 @@ idna==3.6
     #   requests
     #   trustme
 imapclient==3.0.1
-    # via -r production.txt
+    # via -r development.in
 importlib-metadata==7.0.1
     # via
     #   -r build.txt

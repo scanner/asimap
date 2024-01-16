@@ -3,7 +3,6 @@ aiosqlite
 async-timeout
 charset_normalizer
 docopt
-imapclient
 python-dotenv
 python-json-logger
 sentry-sdk
