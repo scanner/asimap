@@ -1073,14 +1073,12 @@ class Mailbox:
         if not msg_keys:
             return None
         horizon_mtime = self.mtime - horizon
-        found = None
         for msg_key in sorted(msg_keys, reverse=True):
             try:
                 msg_path = mbox_msg_path(self.mailbox, msg_key)
                 mtime = await aiofiles.os.path.getmtime(str(msg_path))
-                if int(mtime) <= horizon_mtime:
-                    found = msg_key
-                    break
+                if int(mtime) > horizon_mtime:
+                    return msg_key
             except OSError as e:
                 if e.errno == errno.ENOENT:
                     self.log.error(
@@ -1088,7 +1086,7 @@ class Mailbox:
                         "exists, errno: %s" % (msg_key, str(e))
                     )
                 raise
-        return found
+        return None
 
     ##################################################################
     #
@@ -1896,6 +1894,7 @@ class Mailbox:
         assert self.lock.this_task_has_read_lock()  # XXX remove when confident
 
         start_time = time.time()
+        fetch_started = start_time
         seq_changed = False
         num_results = 0
         async with self.mailbox.lock_folder():
