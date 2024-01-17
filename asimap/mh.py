@@ -13,6 +13,7 @@ import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from mailbox import FormatError, MHMessage, NotEmptyError, _lock_file
+from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, TypeAlias, Union
 
 # 3rd party imports
@@ -170,6 +171,11 @@ class MH(mailbox.MH):
             if await aiofiles.os.path.isdir(os.path.join(self._path, entry)):
                 result.append(entry)
         return sorted(result)
+
+    ####################################################################
+    #
+    def get_message_path(self, key: int) -> Path:
+        return Path(os.path.join(self._path, str(key)))
 
     ####################################################################
     #

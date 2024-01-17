@@ -14,6 +14,7 @@ import re
 import shutil
 import stat
 import time
+import traceback
 from collections import defaultdict
 from datetime import datetime
 from mailbox import FormatError, MHMessage, NoSuchMailboxError, NotEmptyError
@@ -537,7 +538,7 @@ class Mailbox:
         # If `optional` is set (the default) and the mtime is the same as what
         # is on disk then we can totally skip this resync run.
         #
-        if not force and optional and start_mtime <= self.mtime:
+        if force is False and optional is True and start_mtime <= self.mtime:
             return
         logger.debug(
             "mailbox: %s, force: %s, optional: %s, start mtime: %d, self.mtime: %d",
@@ -547,6 +548,10 @@ class Mailbox:
             start_mtime,
             self.mtime,
         )
+        if optional is False:
+            lines = list(traceback.format_stack(limit=2))
+            stack = lines[0].strip().replace("\n", ";")
+            logger.debug("mailbox: %s, stack: %s", self.name, stack)
 
         async with (self.mailbox.lock_folder(), self.lock.write_lock()):
             # Whenever we resync the mailbox we update the sequence for
@@ -1237,6 +1242,8 @@ class Mailbox:
                 # monotonically increasing from the previous uid then
                 # we have to redo the rest of the folder.
                 #
+                msg_path = self.mailbox.get_message_path(msg_key)
+                msg_mtime = await aiofiles.os.path.getmtime(str(msg_path))
                 msg = await self.mailbox.aget_message(msg_key)
                 if UID_HDR not in msg:
                     uid_vv = (None,)
@@ -1271,10 +1278,13 @@ class Mailbox:
                 #       before or not, is added to the `Recent` sequence.
                 #
                 if msg is None:
+                    msg_path = self.mailbox.get_message_path(msg_key)
+                    msg_mtime = await aiofiles.os.path.getmtime(str(msg_path))
                     msg = await self.mailbox.aget_message(msg_key)
                 del msg[UID_HDR]
                 msg[UID_HDR] = f"{self.uid_vv:010d}.{self.next_uid:010d}"
                 await self.mailbox.asetitem(msg_key, msg)
+                await utime(msg_path, (msg_mtime, msg_mtime))
                 uids_found.append(self.next_uid)
                 self.next_uid += 1
 
