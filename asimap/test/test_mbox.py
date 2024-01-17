@@ -61,7 +61,7 @@ async def test_mailbox_init(imap_user_server):
     """
     server = imap_user_server
     NAME = "inbox"
-    mbox = await Mailbox.new(NAME, server)
+    mbox = await server.get_mailbox(NAME)
     assert mbox
     assert mbox.id
     assert mbox.last_resync == IsNow(unix_number=True)
@@ -112,7 +112,7 @@ async def test_mailbox_init_with_messages(
     NAME = "inbox"
     bunch_of_email_in_folder(folder=NAME)
     server = imap_user_server
-    mbox = await Mailbox.new(NAME, server)
+    mbox = await server.get_mailbox(NAME)
     assert mbox.uid_vv == 1
     assert r"\Marked" in mbox.attributes
     assert r"\HasNoChildren" in mbox.attributes
@@ -158,7 +158,7 @@ async def test_mailbox_gets_new_message(
     NAME = "inbox"
     bunch_of_email_in_folder(folder=NAME)
     server = imap_user_server
-    mbox = await Mailbox.new(NAME, server)
+    mbox = await server.get_mailbox(NAME)
     last_resync = mbox.last_resync
 
     # We need to sleep at least one second for mbox.last_resync to change (we
@@ -195,7 +195,7 @@ async def test_mailbox_sequence_change(
     NAME = "inbox"
     bunch_of_email_in_folder(folder=NAME)
     server = imap_user_server
-    mbox = await Mailbox.new(NAME, server)
+    mbox = await server.get_mailbox(NAME)
     last_resync = mbox.last_resync
 
     # We need to sleep at least one second for mbox.last_resync to change (we
@@ -244,7 +244,7 @@ async def test_mbox_resync_msg_with_wrong_uidvv(
     NAME = "inbox"
     bunch_of_email_in_folder(folder=NAME)
     server = imap_user_server
-    mbox = await Mailbox.new(NAME, server)
+    mbox = await server.get_mailbox(NAME)
     last_resync = mbox.last_resync
 
     # We need to sleep at least one second for mbox.last_resync to change (we
@@ -300,7 +300,7 @@ async def test_mbox_resync_earlier_msg_with_wrong_uidvv(
         sequence=range(start_at, start_at + num_msgs),
     )
     server = imap_user_server
-    mbox = await Mailbox.new(NAME, server)
+    mbox = await server.get_mailbox(NAME)
     last_resync = mbox.last_resync
 
     # We need to sleep at least one second for mbox.last_resync to change (we
@@ -656,8 +656,8 @@ async def test_mailbox_search(mailbox_with_bunch_of_email):
 @pytest.mark.asyncio
 async def test_mailbox_fetch(mailbox_with_bunch_of_email):
     """
-    Search is tested mostly `test_search`.. so we only need a very simple
-    search.
+    Fetch is tested mostly `test_fetch`.. so we only need a very simple
+    fetch.
     """
     # We know this mailbox has messages numbered from 1 to 20.
     #
@@ -759,6 +759,68 @@ async def test_mailbox_fetch(mailbox_with_bunch_of_email):
             msg = await mbox.mailbox.aget_message(msg_key)
             assert seen in msg.get_sequences()
             assert unseen not in msg.get_sequences()
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mailbox_fetch_after_new_messages(
+    faker, bunch_of_email_in_folder, mailbox_with_bunch_of_email
+):
+    """
+    Makes sure that doing a fetch after a folder has gotten new messages
+    and done a resync works. (Working on a bug where it seems the uids do not
+    match up and this might be a caching problem.)
+    """
+    mbox = mailbox_with_bunch_of_email
+
+    # Now add one message to the folder.
+    #
+    bunch_of_email_in_folder(folder=mbox.name, num_emails=1)
+    msg_keys = await mbox.mailbox.akeys()
+
+    # Set a random uid to the new message, handling the case where it was moved
+    # here from another folder.
+    #
+    new_msg = msg_keys[-1]
+    msg = await mbox.mailbox.aget_message(new_msg)
+    uid_vv = faker.pyint()
+    uid = faker.pyint()
+    msg[UID_HDR] = f"{uid_vv:010d}.{uid:010d}"
+    await mbox.mailbox.asetitem(new_msg, msg)
+
+    async with mbox.lock.read_lock():
+        await mbox.resync(optional=False)
+    assert len(msg_keys) == mbox.num_msgs
+    search_op = IMAPSearch("all")
+
+    # Get the UID's of all the messages in the folder.
+    #
+    async with mbox.lock.read_lock():
+        search_results = await mbox.search(search_op, uid_cmd=True)
+
+    # Fetch the flags of the messages by uid we got from the search results
+    #
+    fetch_ops = [
+        FetchAtt(FetchOp.FLAGS),
+        FetchAtt(
+            FetchOp.BODY,
+            section=[["HEADER.FIELDS", ["Date", "From"]]],
+            peek=True,
+        ),
+    ]
+
+    async with mbox.lock.read_lock():
+        async for fetch_result in mbox.fetch(
+            search_results, fetch_ops, uid_cmd=True
+        ):
+            msg_key, results = fetch_result
+            for result in results:
+                if result.startswith("UID "):
+                    uid = int(result.split(" ")[1])
+                    # message keys are 1-based, search results list is 0-based.
+                    #
+                    assert uid == search_results[msg_key - 1]
 
 
 ####################################################################

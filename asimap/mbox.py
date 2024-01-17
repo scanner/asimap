@@ -1930,7 +1930,8 @@ class Mailbox:
             fetch_started = time.time()
 
             try:
-                # IF there are no messages in the mailbox there are no results.
+                fetch_yield_times = []
+                # If there are no messages in the mailbox there are no results.
                 #
                 if not msgs:
                     # If there are no messages but they asked for some messages
@@ -1998,7 +1999,6 @@ class Mailbox:
                 # first message in the folder, ie: msgs[0].
                 #
                 fetch_started = time.time()
-                fetch_yield_times = []
                 for idx in msg_idxs:
                     single_fetch_started = time.time()
                     try:
