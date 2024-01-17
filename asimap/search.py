@@ -126,7 +126,6 @@ class SearchContext(object):
         # Just to make sure that the message is cached.
         #
         msg = await self.email_message()
-        print(repr(msg_as_string(msg)))
         self._msg_size = get_msg_size(msg)  # len(msg_as_string(msg))
         return self._msg_size
 
