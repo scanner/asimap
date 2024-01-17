@@ -326,7 +326,7 @@ async def test_mbox_resync_earlier_msg_with_wrong_uidvv(
     await mbox.mailbox.asetitem(new_msg, msg)
 
     async with mbox.lock.read_lock():
-        await mbox.resync(optional=False, force=True)
+        await mbox.resync()
 
     seqs = await mbox.mailbox.aget_sequences()
     assert r"\Marked" in mbox.attributes

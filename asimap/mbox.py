@@ -513,7 +513,8 @@ class Mailbox:
         # see if we need to do a full scan we have this value before anything
         # we have done in this routine has a chance to modify it.
         #
-        self.last_resync = int(time.time())
+        start_time = time.time()
+        self.last_resync = int(start_time)
 
         # We do NOT resync mailboxes marked '\Noselect'. These mailboxes
         # essentially do not exist as far as any IMAP client can really tell.
@@ -793,6 +794,13 @@ class Mailbox:
         #
         await self.check_set_haschildren_attr()
         await self.commit_to_db()
+        end_time = time.time()
+        logger.debug(
+            "non-trivial resync finished. Duration: %f, num messages: %d, num recent: %d",
+            (end_time - start_time),
+            self.num_msgs,
+            self.num_recent,
+        )
 
     ##################################################################
     #
@@ -1096,7 +1104,7 @@ class Mailbox:
         if not msg_keys:
             return None
         horizon_mtime = self.mtime - horizon
-        for msg_key in sorted(msg_keys, reverse=True):
+        for msg_key in sorted(msg_keys):
             try:
                 msg_path = mbox_msg_path(self.mailbox, msg_key)
                 mtime = await aiofiles.os.path.getmtime(str(msg_path))
