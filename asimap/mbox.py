@@ -538,6 +538,14 @@ class Mailbox:
         #
         if not force and optional and start_mtime <= self.mtime:
             return
+        logger.debug(
+            "mailbox: %s, force: %s, optional: %s, start mtime: %d, self.mtime: %d",
+            self.name,
+            force,
+            optional,
+            start_mtime,
+            self.mtime,
+        )
 
         async with (self.mailbox.lock_folder(), self.lock.write_lock()):
             # Whenever we resync the mailbox we update the sequence for
@@ -579,7 +587,9 @@ class Mailbox:
                 #       what is stored in the folder then set that uid +1 to be
                 #       the next_uid, and force a resync of the folder.
                 #
-                uid_vv, uid = await self.get_uid_from_msg(msg_keys[-1])
+                uid_vv, uid = await self.get_uid_from_msg(
+                    msg_keys[-1], cache=False
+                )
                 if (
                     uid is not None
                     and uid_vv is not None
@@ -624,7 +634,7 @@ class Mailbox:
                     # self.uid's array is properly filled.
                     #
                     logger.debug(
-                        "Mailbox %s: forced rescanning all %d " "messages",
+                        "Mailbox %s: forced rescanning all %d messages",
                         self.name,
                         len(msg_keys),
                     )
@@ -653,15 +663,21 @@ class Mailbox:
                     # Given these two references to a message choose the lower
                     # of the two and scan from that point forward.
                     #
-                    async with asyncio.TaskGroup() as tg:
-                        first_new_task = tg.create_task(
-                            self._find_first_new_message(msg_keys, horizon=30)
-                        )
-                        first_wo_uid_task = tg.create_task(
-                            self._find_msg_without_uidvv(msg_keys)
-                        )
-                    first_new_msg = first_new_task.result()
-                    first_msg_wo_uid = first_wo_uid_task.result()
+                    # async with asyncio.TaskGroup() as tg:
+                    #     first_new_task = tg.create_task(
+                    #         self._find_first_new_message(msg_keys, horizon=30)
+                    #     )
+                    #     first_wo_uid_task = tg.create_task(
+                    #         self._find_msg_without_uidvv(msg_keys)
+                    #     )
+                    # first_new_msg = first_new_task.result()
+                    # first_msg_wo_uid = first_wo_uid_task.result()
+                    first_new_msg = await self._find_first_new_message(
+                        msg_keys, horizon=30
+                    )
+                    first_msg_wo_uid = await self._find_msg_without_uidvv(
+                        msg_keys
+                    )
 
                     # If either of these is NOT None then we have some subset
                     # of messages we need to scan. If both of these ARE None
@@ -669,6 +685,12 @@ class Mailbox:
                     # deal with in the mailbox.
                     #
                     if first_new_msg or first_msg_wo_uid:
+                        logger.debug(
+                            "first new message: %s, first msg wo uid: %s",
+                            first_new_msg,
+                            first_msg_wo_uid,
+                        )
+
                         # Start at the lower of these two message keys.
                         # 'start' is they MH message key. 'start_idx' index in
                         # to the list of message keys for 'start'
@@ -953,6 +975,7 @@ class Mailbox:
             which = self.uids.index(uid) + 1
             self.uids.remove(uid)
             notifications.append(f"* {which} EXPUNGE\r\n")
+        self.uids = uids
         await self._dispatch_or_pend_notifications(notifications)
 
     ##################################################################
@@ -1097,7 +1120,7 @@ class Mailbox:
         This is a helper function for 'resync()'
 
         It looks through the folder from the highest numbered message down to
-        find for the first message a valid uid_vv.
+        find for the first message with a valid uid_vv.
 
         In general messages are only added to the end of a folder and this is
         usually just a fraction of the entire folder's contents. Even after a
@@ -1120,7 +1143,7 @@ class Mailbox:
         msg_keys = sorted(msg_keys, reverse=True)
         found = None
         for msg_key in msg_keys:
-            uid_vv, uid = await self.get_uid_from_msg(msg_key)
+            uid_vv, uid = await self.get_uid_from_msg(msg_key, cache=False)
             if uid_vv == self.uid_vv:
                 return found
             else:
@@ -1191,10 +1214,6 @@ class Mailbox:
         #
         num_msgs = len(msg_keys)
         for i, msg_key in enumerate(msg_keys):
-            # If we overflow the cache every insertion will also be a deletion
-            # so after a certain point stop caching messages.
-            #
-            cache = True if i < 1000 else False
             if i % 200 == 0:
                 logger.debug(
                     "mailbox: %s, check/update uids, at count %d, "
@@ -1204,13 +1223,19 @@ class Mailbox:
                     msg_key,
                     num_msgs,
                 )
-
+            msg = None
             if not redoing_rest_of_folder:
                 # If the uid_vv is different or the uid is NOT
                 # monotonically increasing from the previous uid then
                 # we have to redo the rest of the folder.
                 #
-                uid_vv, uid = await self.get_uid_from_msg(msg_key, cache=cache)
+                msg = await self.mailbox.aget_message(msg_key)
+                if UID_HDR not in msg:
+                    uid_vv = (None,)
+                    uid = None
+                else:
+                    uid_vv, uid = get_uidvv_uid(msg[UID_HDR])
+
                 if (
                     uid_vv is None
                     or uid_vv != self.uid_vv
@@ -1237,26 +1262,23 @@ class Mailbox:
                 # NOTE: Every message we set a uid on, whether it had one
                 #       before or not, is added to the `Recent` sequence.
                 #
-                uid_vv, uid = await self.set_uid_in_msg(
-                    msg_key, self.next_uid, cache=cache
-                )
+                if msg is None:
+                    msg = await self.mailbox.aget_message(msg_key)
+                del msg[UID_HDR]
+                msg[UID_HDR] = f"{self.uid_vv:010d}.{self.next_uid:010d}"
+                await self.mailbox.asetitem(msg_key, msg)
                 uids_found.append(self.next_uid)
                 self.next_uid += 1
 
-                # IF the msg is not already in the Recent sequence add it.
+                # If the message is in the cache remove it.
+                #
+                self.server.msg_cache.remove(self.name, msg_key)
+
+                # If the msg is not already in the Recent sequence add it.
                 #
                 if msg_key not in seq["Recent"]:
                     seq_changed = True
                     seq["Recent"].append(msg_key)
-
-                    # If the message is in the cache, make sure it also
-                    # gets the `Recent` sequence.
-                    #
-                    msg = self.server.msg_cache.get(
-                        self.name, msg_key, do_not_update=True
-                    )
-                    if msg:
-                        update_message_sequences(msg_key, msg, seq)
 
         # If we had to redo the folder then we believe it is indeed now
         # interesting so set the \Marked attribute on it.
@@ -1894,12 +1916,12 @@ class Mailbox:
         assert self.lock.this_task_has_read_lock()  # XXX remove when confident
 
         start_time = time.time()
-        fetch_started = start_time
         seq_changed = False
         num_results = 0
         async with self.mailbox.lock_folder():
             msgs = await self.mailbox.akeys()
             seqs = await self.mailbox.aget_sequences()
+            fetch_started = time.time()
 
             try:
                 # IF there are no messages in the mailbox there are no results.
@@ -2019,11 +2041,6 @@ class Mailbox:
                         if msg_key in seqs["Recent"]:
                             seqs["Recent"].remove(msg_key)
                             seq_changed = True
-                            logger.debug(
-                                "mailbox: %s - msg %d, Removed `Recent`",
-                                self.name,
-                                msg_key,
-                            )
 
                     # If we dif a FETCH BODY (but NOT a BODY.PEEK) then the
                     # message is removed from the 'unseen' sequence (if it was
@@ -2074,9 +2091,10 @@ class Mailbox:
                 )
 
                 logger.debug(
-                    "FETCH finished, num results: %d, total duration: %f, "
+                    "FETCH finished, mailbox: '%s', num results: %d, total duration: %f, "
                     "fetch duration: %f, mean time per fetch: %f, median: "
                     "%f, stdev: %f",
+                    self.name,
                     num_results,
                     total_time,
                     fetch_time,

@@ -12,6 +12,7 @@ import time
 from email.header import decode_header
 from email.headerregistry import Address
 from email.message import EmailMessage, Message
+from email.policy import SMTP
 from email.utils import format_datetime
 from mailbox import MH, MHMessage
 from pathlib import Path
@@ -398,12 +399,32 @@ def bunch_of_email_in_folder(email_factory, mh_folder):
         mh_dir: Optional[Path] = None,
     ):
         (mh_dir, _, m_folder) = mh_folder(folder, mh_dir)
+        set_msgs_by_seq = True
         if sequence is None:
+            set_msgs_by_seq = False
             sequence = list(range(1, num_emails + 1))
+        seqs = m_folder.get_sequences()
+        unseen_seq = seqs["unseen"] if "unseen" in seqs else []
+
+        # We add messages to the folder one of two ways: if no sequence was
+        # provied as an argument, then just add the messages to the folder
+        # using the mailbox native `add` method.
+        #
+        # If sequences WAS provided the caller wants us to put messages in
+        # specific keys.
+        #
         for i, key in zip(range(num_emails), sequence):
             msg = MHMessage(email_factory())
-            msg.add_sequence("unseen")
-            m_folder.add(msg)
+            if set_msgs_by_seq:
+                msg_path = Path(m_folder._path) / str(key)
+                msg_path.write_text(msg.as_string(policy=SMTP))
+                unseen_seq.append(key)
+            else:
+                msg.add_sequence("unseen")
+                m_folder.add(msg)
+
+        if set_msgs_by_seq:
+            m_folder.set_sequences({"unseen": unseen_seq})
         return mh_dir
 
     return create_emails

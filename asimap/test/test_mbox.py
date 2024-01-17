@@ -284,6 +284,65 @@ async def test_mbox_resync_msg_with_wrong_uidvv(
 ####################################################################
 #
 @pytest.mark.asyncio
+async def test_mbox_resync_earlier_msg_with_wrong_uidvv(
+    faker, bunch_of_email_in_folder, imap_user_server
+):
+    """
+    What happens if a message with a wrong uid gets added to the beginnign
+    of the mailbox.
+    """
+    NAME = "inbox"
+    start_at = 10
+    num_msgs = 20
+    bunch_of_email_in_folder(
+        folder=NAME,
+        num_emails=num_msgs,
+        sequence=range(start_at, start_at + num_msgs),
+    )
+    server = imap_user_server
+    mbox = await Mailbox.new(NAME, server)
+    last_resync = mbox.last_resync
+
+    # We need to sleep at least one second for mbox.last_resync to change (we
+    # only consider seconds)
+    #
+    await asyncio.sleep(1)
+
+    async with mbox.lock.read_lock():
+        await mbox.resync(optional=False, force=True)
+
+    # Now add one message to the folder.
+    #
+    bunch_of_email_in_folder(folder=NAME, num_emails=1, sequence=[1])
+    msg_keys = await mbox.mailbox.akeys()
+
+    # and give this new message some random uid_vv/uid.
+    #
+    new_msg = msg_keys[1]
+    msg = await mbox.mailbox.aget_message(new_msg)
+    uid_vv = faker.pyint()
+    uid = faker.pyint()
+    msg[UID_HDR] = f"{uid_vv:010d}.{uid:010d}"
+    await mbox.mailbox.asetitem(new_msg, msg)
+
+    async with mbox.lock.read_lock():
+        await mbox.resync(optional=False, force=True)
+
+    seqs = await mbox.mailbox.aget_sequences()
+    assert r"\Marked" in mbox.attributes
+    assert mbox.last_resync > last_resync
+    assert mbox.num_msgs == len(msg_keys)
+    assert mbox.sequences == seqs
+    assert len(mbox.sequences["unseen"]) == len(msg_keys)
+    assert mbox.sequences["unseen"] == msg_keys
+    assert mbox.sequences["Recent"] == msg_keys
+    assert len(mbox.sequences["Seen"]) == 0
+    await assert_uids_match_msgs(msg_keys, mbox)
+
+
+####################################################################
+#
+@pytest.mark.asyncio
 async def test_mbox_resync_two_tasks_racing(
     bunch_of_email_in_folder, imap_user_server
 ):
