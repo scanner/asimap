@@ -1050,8 +1050,12 @@ class Authenticated(BaseClientHandler):
                         f"* {idx} FETCH ({' '.join(results)})\r\n"
                     )
             except MailboxInconsistency as exc:
-                # Touching the mailbox will cause a more than cursory resync
-                await self.mbox.mailbox.atouch()
+                # Force a resync of this mailbox. Likely something was fiddling
+                # messages directly (an nmh command run from the command line)
+                # and what the mbox thinks the internal state is does not
+                # actually match the state of the folder.
+                #
+                await self.mbox.resync(force=True)
                 raise No(f"Problem while fetching: {exc}")
 
     ##################################################################

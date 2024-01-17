@@ -490,7 +490,7 @@ class Mailbox:
           updates we will ONLY sent exists/recent messages to the client passed
           in via `only_notify` (and those clients in IDLE)
 
-        - `dont_notify`: A client. If this is set then if we issue and
+        - `dont_notify`: A client. If this is set then if we issue
           FETCH messages we will NOT include this client.
 
         - `publish_uids`: If True when we issue FETCH messages for messages
@@ -1818,9 +1818,7 @@ class Mailbox:
 
         Arguments:
         - `search`: An IMAPSearch object instance
-        - `cmd`: The IMAP command. We need this in case this is a continuation
-          command and this contains our continuation state, as well as whether
-          or not this is a UID command.
+        - `uid_cmd`: whether or not this is a UID command.
         """
         assert self.lock.this_task_has_read_lock()  # XXX remove when confident
 
