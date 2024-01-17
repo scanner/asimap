@@ -23,7 +23,7 @@ import aiofiles
 #
 from .constants import flag_to_seq
 from .exceptions import MailboxInconsistency
-from .generator import msg_as_string
+from .generator import get_msg_size, msg_as_string
 from .utils import UID_HDR, get_uidvv_uid, parsedate
 
 if TYPE_CHECKING:
@@ -126,8 +126,8 @@ class SearchContext(object):
         # Just to make sure that the message is cached.
         #
         msg = await self.email_message()
-
-        self._msg_size = len(msg_as_string(msg))
+        print(repr(msg_as_string(msg)))
+        self._msg_size = get_msg_size(msg)  # len(msg_as_string(msg))
         return self._msg_size
 
     ##################################################################
@@ -180,7 +180,7 @@ class SearchContext(object):
         EmailMessage is more modern and easier to work with, so this method
         will re-parse the message into an EmailMessage.
 
-        NOTE: Why do we have to do this? Because use the MHMessage's sequence
+        NOTE: Why do we have to do this? Because we use the MHMessage's sequence
               features and that is by force an email.Message.
         """
         if self._email_msg:
