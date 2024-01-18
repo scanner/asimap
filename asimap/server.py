@@ -776,6 +776,7 @@ class IMAPSubprocessInterface:
         reader, writer = await asyncio.open_connection(
             "127.0.0.1",
             self.subprocess.port,
+            limit=131_072,
         )
         self.reader = reader
         self.writer = writer
@@ -816,10 +817,15 @@ class IMAPSubprocessInterface:
                 await self.imap_client.push(msg)
         except (
             asyncio.IncompleteReadError,
+            asyncio.LimitOverrunError,
             ConnectionResetError,
             socket.error,
         ):
             pass
+        except Exception:
+            logger.exception(
+                "error either reading or pushing message to imap client"
+            )
         finally:
             # either the connection to the subprocess was closed or the
             # connection to the IMAP client was closed. In either case attempt

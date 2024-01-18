@@ -335,7 +335,7 @@ async def test_authenticated_client_list(
     for result, folder in zip(results[:-1], folders):
         assert result.startswith("* LIST (")
         result_fname = result.split()[-1]
-        assert folder.lower() == result_fname.lower()
+        assert f'"{folder.lower()}"' == result_fname.lower()
 
     # Create one folder with a space in its name to make sure quoting works
     # properly.
@@ -401,7 +401,7 @@ async def test_authenticated_client_subscribe_lsub_unsubscribe(
     for result, subscribe in zip(results[:-1], subscribed):
         assert result.startswith("* LSUB (")
         result_fname = result.split()[-1]
-        assert subscribe.lower() == result_fname.lower()
+        assert f'"{subscribe.lower()}"' == result_fname.lower()
 
     # and unsubscribe..
     #
