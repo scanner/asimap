@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Dict, Optional, Union
 # 3rd party imports
 #
 import sentry_sdk
+from async_timeout import timeout
 from sentry_sdk.integrations.asyncio import AsyncioIntegration
 
 # asimap imports
@@ -285,7 +286,22 @@ class IMAPClientProxy:
                 #
                 d = bytes(d, "utf-8") if isinstance(d, str) else d
             self.writer.write(d)
-        await self.writer.drain()
+        if not self.writer.is_closing():
+            # If the drain takes more than 2 seconds something has likely gone
+            # wrong. Exit out. This blocking can hold on to locks too long.
+            #
+            try:
+                async with timeout(2):
+                    await self.writer.drain()
+            except asyncio.TimeoutError as exc:
+                logger.warning(
+                    "Closing writer stream for %s, %s, reason: timed out "
+                    "attempting push: %s",
+                    self.name,
+                    self.rem_addr,
+                    exc,
+                )
+                self.writer.close()
 
         if self.trace_enabled:
             for d in data:
