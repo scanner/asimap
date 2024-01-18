@@ -186,7 +186,7 @@ class UpgradeableReadWriteLock:
                 self._readers -= 1
                 self._readers_tasks.remove(cur_task)
                 if self._readers == self._want_write:
-                    self._read_ready.notify()
+                    self._read_ready.notify_all()
 
     ####################################################################
     #
