@@ -273,7 +273,7 @@ class Mailbox:
             # And make sure our mailbox on disk state is up to snuff and update
             # our db if we need to.
             #
-            await mbox.resync(force=force_resync, optional=False)
+            await mbox.resync(force=force_resync)
         return mbox
 
     ####################################################################
@@ -1938,9 +1938,11 @@ class Mailbox:
             msgs = await self.mailbox.akeys()
             seqs = await self.mailbox.aget_sequences()
             fetch_started = time.time()
+            fetch_finished_time = None
 
             try:
                 fetch_yield_times = []
+                yield_times = []
                 # If there are no messages in the mailbox there are no results.
                 #
                 if not msgs:
@@ -2083,38 +2085,48 @@ class Mailbox:
                             await self.mailbox.aset_sequences(seqs)
 
                     fetch_yield_times.append(time.time() - single_fetch_started)
-                    yield (idx, iter_results)
                     num_results += 1
-                    await asyncio.sleep(0)
+                    yield_start = time.time()
+                    yield (idx, iter_results)
+                    yield_times.append(time.time() - yield_start)
 
+                fetch_finished_time = time.time()
                 if seq_changed:
                     await self.resync(optional=False)
 
             finally:
                 now = time.time()
                 total_time = now - start_time
-                fetch_time = now - fetch_started
-                mean_yield_time = (
+                fetch_time = (
+                    fetch_finished_time - fetch_started
+                    if fetch_finished_time is not None
+                    else 9999999.9
+                )
+                mean_yield_time = fmean(yield_times) if yield_times else 0.0
+
+                mean_fetch_yield_time = (
                     fmean(fetch_yield_times) if fetch_yield_times else 0.0
                 )
                 median_yield_time = (
                     median(fetch_yield_times) if fetch_yield_times else 0.0
                 )
                 stdev_yield_time = (
-                    stdev(fetch_yield_times, mean_yield_time)
+                    stdev(fetch_yield_times, mean_fetch_yield_time)
                     if len(fetch_yield_times) > 2
                     else 0.0
                 )
 
                 logger.debug(
-                    "FETCH finished, mailbox: '%s', num results: %d, total duration: %f, "
-                    "fetch duration: %f, mean time per fetch: %f, median: "
+                    "FETCH finished, mailbox: '%s', msg_set: %r, num results: %d, total duration: %f, "
+                    "fetch duration: %f, mean time per network yield: %f, mean time per fetch: %f, median: "
                     "%f, stdev: %f",
                     self.name,
+                    msg_set,
                     num_results,
                     total_time,
                     fetch_time,
                     mean_yield_time,
+                    mean_fetch_yield_time,
                     median_yield_time,
                     stdev_yield_time,
                 )
