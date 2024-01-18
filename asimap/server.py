@@ -806,8 +806,9 @@ class IMAPSubprocessInterface:
     #
     async def msgs_to_client(self):
         """
-        Listen for messages from the subprocess on `self.reader`. When we
-        get them send them on to the IMAP client.
+        This is the asyncio task that listens for messages from the
+        subprocess on `self.reader`. When we get data, send it to the IMAP
+        client.
         """
         try:
             while True:
@@ -817,11 +818,16 @@ class IMAPSubprocessInterface:
                 await self.imap_client.push(msg)
         except (
             asyncio.IncompleteReadError,
-            asyncio.LimitOverrunError,
             ConnectionResetError,
             socket.error,
         ):
             pass
+        except asyncio.LimitOverrunError as exc:
+            logger.warning(
+                "Hit limit overrun on reader from user subprocess for sending "
+                "to IMAP Client: %s",
+                exc,
+            )
         except Exception:
             logger.exception(
                 "error either reading or pushing message to imap client"
