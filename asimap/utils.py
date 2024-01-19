@@ -608,10 +608,10 @@ async def find_header_in_binary_file(
     If no match is found `None` is returned.
     """
     fname = str(fname)
-    header_b = bytes(header, "latin-1")
+    header_b = bytes(header, "latin-1").lower()
     async with aiofiles.open(fname, "rb") as f:
         async for line in f:
-            line = line.strip()
+            line = line.strip().lower()
             if len(line) == 0:
                 return None
             if line.startswith(header_b):
@@ -653,7 +653,7 @@ async def update_replace_header_in_binary_file(fname: "StrPath", header: str):
     """
     fname = str(fname)
     headerb = bytes(header, "latin-1")
-    header_name = headerb.split(b":")[0]
+    header_name = headerb.split(b":")[0].lower()
     new_fname = fname + "-" + str(time.time())
     in_header = True
     found_header = False
@@ -666,7 +666,7 @@ async def update_replace_header_in_binary_file(fname: "StrPath", header: str):
                         in_header = False
                         if not found_header:
                             await output.write(headerb + b"\n")
-                    elif line.startswith(header_name):
+                    elif line.lower().startswith(header_name):
                         found_header = True
                         line = headerb + b"\n"
                 await output.write(line)
