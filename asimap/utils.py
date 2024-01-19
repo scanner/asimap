@@ -15,6 +15,8 @@ import logging.config
 import logging.handlers
 import os
 import re
+import stat
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,6 +35,8 @@ from typing import (
 
 # 3rd party module imports
 #
+import aiofiles
+import aiofiles.os
 from aiofiles.ospath import wrap as aiofiles_wrap
 from async_timeout import timeout
 
@@ -577,3 +581,95 @@ def with_timeout(t: int):
         return run
 
     return wrapper
+
+
+##################################################################
+#
+async def find_header_in_binary_file(
+    fname: "StrPath", header: str
+) -> Union[str | None]:
+    """
+    Convert the header string given as an argument to bytes. The string
+    must be encodable as `latin-1`. If not an encoding error will be
+    raised.
+
+    The file indicated by fname is opened "rb" and read as binary line by
+    line. If any line begins with the `header`, the line is converted to a
+    string, again using `latin-1` encoding, and returned. If that fails an
+    encoding error will be raised.
+
+    NOTE: The entire line, including the matched `header` string is
+    returned, but it will be `strip()`d of any leading or trailing white
+    space.
+
+    The search progresses until two blank lines or the end of the file is
+    reached.
+
+    If no match is found `None` is returned.
+    """
+    fname = str(fname)
+    header_b = bytes(header, "latin-1")
+    async with aiofiles.open(fname, "rb") as f:
+        async for line in f:
+            line = line.strip()
+            if len(line) == 0:
+                return None
+            if line.startswith(header_b):
+                return str(line, "latin-1")
+    return None
+
+
+####################################################################
+#
+async def update_replace_header_in_binary_file(fname: "StrPath", header: str):
+    """
+    This will go through the file indicating by fname, as a binary file,
+    and if it encounters a line that begins with the same header as `header` it
+    will replace that existing line with `header`.
+
+    It will only replace/update a line in the _headers_ of the file. The
+    headers are separated from the rest of the file by a blank line.
+
+    If the header can not be found in the files existing headers, then the
+    given header line will be added to the headers of the file.
+
+    `header` must be encodable via `latin-1` to a bytes.
+
+    `header` is expected to consist of the "header name" followed by a colon,
+    followed by the "header data".
+
+    eg: "foo: hello there"
+
+    `foo` is the header. ` hello there` is the header data.
+    Spaces are not allowed in the header.
+
+    So with `foo: hello there` if a line begins with `foo:` it will be replaced
+    with `foo: hello there`.
+
+    This operation is done by writing a new file adjacent to the one specfied
+    via `fname`. When the new file has been written, its timestamp and mode
+    will be set to the same as the file it is replacing and then renamed over
+    the existing file.
+    """
+    fname = str(fname)
+    headerb = bytes(header, "latin-1")
+    header_name = headerb.split(b":")[0]
+    new_fname = fname + "-" + str(time.time())
+    in_header = True
+    found_header = False
+    stats = await aiofiles.os.stat(fname)
+    async with aiofiles.open(fname, "rb") as input:
+        async with aiofiles.open(new_fname, "wb") as output:
+            async for line in input:
+                if in_header:
+                    if line == b"\n":
+                        in_header = False
+                        if not found_header:
+                            await output.write(headerb + b"\n")
+                    elif line.startswith(header_name):
+                        found_header = True
+                        line = headerb + b"\n"
+                await output.write(line)
+    os.chmod(new_fname, stat.S_IMODE(stats.st_mode))
+    await utime(new_fname, (stats.st_mtime, stats.st_mtime))
+    await aiofiles.os.rename(new_fname, fname)

@@ -4,6 +4,7 @@ Test our util functions
 # System imports
 #
 import asyncio
+import email.policy
 from queue import SimpleQueue
 
 # 3rd party imports
@@ -16,9 +17,12 @@ from async_timeout import timeout
 #
 from ..exceptions import Bad
 from ..utils import (
+    UID_HDR,
     UpgradeableReadWriteLock,
+    find_header_in_binary_file,
     get_uidvv_uid,
     sequence_set_to_list,
+    update_replace_header_in_binary_file,
     utime,
     with_timeout,
 )
@@ -531,3 +535,92 @@ async def test_rwlock_check_read_lock():
             pass
         assert urw_lock.this_task_has_read_lock() is True
     assert urw_lock.this_task_has_read_lock() is False
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_find_header_in_binary_file(tmp_path, faker, email_factory):
+    """
+    Make some emails with and without the UID_HDR, save them to files and
+    then validate that the UID_HDR can be found when it exists and returns None
+    when it does not exist.
+    """
+    expected_uidvv_uids = [
+        f"{faker.pyint():010d}.{faker.pyint(max_value=9999999):010d}"
+        for _ in range(5)
+    ]
+    for idx, uidvv_uid in enumerate(expected_uidvv_uids):
+        msg = email_factory()
+        msg[UID_HDR] = uidvv_uid
+        msg_file = tmp_path / f"uid_hdr_msg-{idx:02d}.msg"
+        msg_file.write_bytes(msg.as_bytes(policy=email.policy.default))
+
+    for msg_file, expected in zip(
+        sorted(tmp_path.glob("*.msg")), expected_uidvv_uids
+    ):
+        uid_hdr = await find_header_in_binary_file(msg_file, UID_HDR)
+        assert uid_hdr
+        hdr, value = [x.strip() for x in uid_hdr.split(":")]
+        assert value == expected
+
+    # And try a file with no uid header.
+    #
+    msg = email_factory()
+    msg_file = tmp_path / "nouid-hdr.msg"
+    msg_file.write_bytes(msg.as_bytes(policy=email.policy.default))
+    uid_hdr = await find_header_in_binary_file(msg_file, UID_HDR)
+    assert uid_hdr is None
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_update_replace_header_in_binary_file(
+    tmp_path, faker, email_factory
+):
+    """
+    Create a bunch of files with email in them. Some without asimap uid
+    hdrs, some with.
+
+    Update all messages with a set of uid's, and then validate that they are
+    set properly.
+    """
+    NUM_MSGS = 10
+    expected_hdrs = [
+        f"{faker.pyint():010d}.{faker.pyint(max_value=9999999):010d}"
+        for _ in range(NUM_MSGS)
+    ]
+
+    # Generate 5 with uid headers
+    #
+    for idx in range(int(NUM_MSGS / 2)):
+        msg = email_factory()
+        msg[
+            UID_HDR
+        ] = f"{faker.pyint():010d}.{faker.pyint(max_value=9999999):010d}"
+        msg_file = tmp_path / f"uid_hdr_msg-{idx:02d}.msg"
+        msg_file.write_bytes(msg.as_bytes(policy=email.policy.default))
+
+    # Generate 5 without uid headers
+    #
+    for idx in range(int(NUM_MSGS / 2), NUM_MSGS):
+        msg = email_factory()
+        msg_file = tmp_path / f"uid_hdr_msg-{idx:02d}.msg"
+        msg_file.write_bytes(msg.as_bytes(policy=email.policy.default))
+
+    # Now update all the messages with out generated uid headers.
+    #
+    for msg_file, hdr in zip(sorted(tmp_path.glob("*.msg")), expected_hdrs):
+        hdr = f"{UID_HDR}: {hdr}"
+        await update_replace_header_in_binary_file(msg_file, hdr)
+
+    # And then validate that all the headers are set correctly.
+    #
+    for msg_file, expected in zip(
+        sorted(tmp_path.glob("*.msg")), expected_hdrs
+    ):
+        uid_hdr = await find_header_in_binary_file(msg_file, UID_HDR)
+        assert uid_hdr
+        hdr, value = [x.strip() for x in uid_hdr.split(":")]
+        assert value == expected
