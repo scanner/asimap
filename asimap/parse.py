@@ -1756,7 +1756,6 @@ class IMAPClientCommand(object):
             return self._p_re(_quoted_re)[1:-1]
         except NoMatch:
             literal_length = int(self._p_re(_lit_ref_re, group=1))
-            #            print "got literal length: %s" % literal_length
 
             # Huh. We have a literal string. This means the client sent us
             # the length of the actual string. The reader that called us
@@ -1774,7 +1773,6 @@ class IMAPClientCommand(object):
                 )
             str = self.input[:literal_length]
             self.input = self.input[literal_length:]
-            #            print "Literal string is: '%s'" % str
             return str
 
     #######################################################################

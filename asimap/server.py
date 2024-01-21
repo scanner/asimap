@@ -451,7 +451,7 @@ class IMAPClient:
                 # not of 0 length then append it to our incremental buffer.
                 #
                 msg = await self.reader.readuntil(self.LINE_TERMINATOR)
-                msg = msg[:-2]
+                msg = msg.rstrip()
                 if msg:
                     self.ibuffer.append(msg)
 
@@ -482,6 +482,12 @@ class IMAPClient:
                     # Read the string literal.
                     #
                     msg = await self.reader.readexactly(literal_str_length)
+
+                    # NOTE: the crlf following the string literal was stripped
+                    #       off above, but we need this put back on so that we
+                    #       can properly parse the string literal, because it
+                    #       is '{\d}\r\n'
+                    self.ibuffer.append(b"\r\n")
                     self.ibuffer.append(msg)
 
                     # Loop back to read what is either a b'\r\n' or maybe
