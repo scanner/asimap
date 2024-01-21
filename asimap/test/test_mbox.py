@@ -43,6 +43,7 @@ async def assert_uids_match_msgs(msg_keys: List[int], mbox: Mailbox):
     assert len(msg_keys) == len(mbox.uids)
     for msg_key, uid in zip(msg_keys, mbox.uids):
         msg = await mbox.mailbox.aget_message(msg_key)
+        assert UID_HDR in msg
         uid_vv, msg_uid = get_uidvv_uid(msg[UID_HDR])
         assert uid_vv == mbox.uid_vv
         assert uid == msg_uid
@@ -318,7 +319,7 @@ async def test_mbox_resync_earlier_msg_with_wrong_uidvv(
 
     # and give this new message some random uid_vv/uid.
     #
-    new_msg = msg_keys[1]
+    new_msg = msg_keys[0]
     msg = await mbox.mailbox.aget_message(new_msg)
     uid_vv = faker.pyint()
     uid = faker.pyint()
@@ -326,7 +327,7 @@ async def test_mbox_resync_earlier_msg_with_wrong_uidvv(
     await mbox.mailbox.asetitem(new_msg, msg)
 
     async with mbox.lock.read_lock():
-        await mbox.resync()
+        await mbox.resync(optional=False, force=True)
 
     seqs = await mbox.mailbox.aget_sequences()
     assert r"\Marked" in mbox.attributes

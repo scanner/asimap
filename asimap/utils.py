@@ -16,6 +16,7 @@ import logging.handlers
 import os
 import re
 import stat
+import sys
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -372,7 +373,10 @@ def setup_logging(
             else:
                 logging.config.fileConfig(str(log_config))
             return
-        print(f"WARNING: Logging config '{log_config}' does not exist")
+        print(
+            f"WARNING: Logging config '{log_config}' does not exist",
+            file=sys.stderr,
+        )
 
     for log_config in DEFAULT_LOG_CONFIG_FILES:
         if log_config.exists():
@@ -658,14 +662,18 @@ async def update_replace_header_in_binary_file(fname: "StrPath", header: str):
     in_header = True
     found_header = False
     stats = await aiofiles.os.stat(fname)
+    line_sep = None
     async with aiofiles.open(fname, "rb") as input:
         async with aiofiles.open(new_fname, "wb") as output:
             async for line in input:
+                if line_sep is None:
+                    line_sep = b"\r\n" if line.endswith(b"\r\n") else b"\n"
+
                 if in_header:
-                    if line == b"\n":
+                    if len(line.strip()) == 0:
                         in_header = False
                         if not found_header:
-                            await output.write(headerb + b"\n")
+                            await output.write(headerb + line_sep)
                     elif line.lower().startswith(header_name):
                         found_header = True
                         line = headerb + b"\n"

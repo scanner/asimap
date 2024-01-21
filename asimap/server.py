@@ -177,8 +177,10 @@ class IMAPSubprocess:
             m = await self.subprocess.stdout.readline()
             self.port = int(str(m, "latin-1").strip())
         except ValueError as e:
-            logger.exception(
-                "Unable to read port definition from subprocess: %s", e
+            logger.error(
+                "Unable to read port definition from subprocess, got %s instead: %s",
+                m,
+                e,
             )
             # XXX Uh.. what do we do here? basically the subprocess start
             # failed and we need to tell our caller so they can deal with it.

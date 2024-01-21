@@ -624,3 +624,11 @@ async def test_update_replace_header_in_binary_file(
         assert uid_hdr
         hdr, value = [x.strip() for x in uid_hdr.split(":")]
         assert value == expected
+
+        # Make sure that the UID_HDR only occurs once in the message.
+        #
+        msg = email.message_from_bytes(msg_file.read_bytes())
+        assert UID_HDR in msg
+        hdrs = msg.get_all(UID_HDR)
+        assert len(hdrs) == 1
+        assert hdrs[0] == value
