@@ -167,8 +167,11 @@ class BaseClientHandler:
         except KeyboardInterrupt:
             sys.exit(0)
         except Exception as e:
-            result = f"{imap_command.tag} BAD Unhandled exception: {e}\r\n"
-            await self.client.push(result.strip())
+            result = f"{imap_command.tag} BAD Unhandled exception: {e}"
+            try:
+                await self.client.push(result.strip())
+            except Exception:
+                pass
             logger.debug(result)
             raise
 
