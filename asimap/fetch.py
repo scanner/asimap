@@ -727,7 +727,13 @@ class FetchAtt:
 
         # If there is no extension data then do not bother to include it.
         #
-        if any(x != "NIL" for x in extension_data):
-            for x in extension_data:
-                result.append(x)
+        # if any(x != "NIL" for x in extension_data):
+        #     for x in extension_data:
+        #         result.append(x)
+        #
+        # Extension data should be optional but some IMAP clients seem to
+        # require it. it does no harm to include it as far as I can tell.
+        #
+        for x in extension_data:
+            result.append(x)
         return f"({' '.join(result)})"
