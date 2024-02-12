@@ -6,7 +6,7 @@ authenticate users.
 #
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING, Dict, Union
 
 # 3rd party imports
 #
@@ -103,21 +103,32 @@ async def authenticate(username: str, password: str) -> User:
 
 ####################################################################
 #
-async def read_users_from_file(pw_file_name: str) -> None:
+async def read_users_from_file(pw_file_name: "StrPath") -> None:
     """
     Reads all the user entries from the password file, construction User
     objects for each one. Then updates `USERS` with new dict of User objects.
+
+    NOTE: If the `maildir` path in the password file is not absolute then the
+          path is considered relative to the location of the password file.
+
+    NOTE: We should put this in to a common "apricot systematic" module that
+          can be shared by both asimapd and as_email_service.
     """
+    pw_file_name = Path(pw_file_name)
     users = {}
-    async with aiofiles.open(pw_file_name, "r") as f:
+    async with aiofiles.open(str(pw_file_name), "r") as f:
         async for line in f:
             line = line.strip()
             if not line or line[0] == "#":
                 continue
             try:
+                maildir: Union[str | Path]
                 username, pw_hash, maildir = [
                     x.strip() for x in line.split(":")
                 ]
+                maildir = Path(maildir)
+                if not maildir.is_absolute():
+                    maildir = pw_file_name.parent / maildir
                 users[username] = User(username, maildir, pw_hash)
             except ValueError as exc:
                 logger.error(
