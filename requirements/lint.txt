@@ -4,7 +4,7 @@
 #
 #    pip-compile --output-file=lint.txt --strip-extras lint.in
 #
-black==23.12.1
+black==24.2.0
     # via -r lint.in
 build==1.0.3
     # via pip-tools
@@ -16,9 +16,9 @@ click==8.1.7
     # via
     #   black
     #   pip-tools
-coverage==7.4.0
+coverage==7.4.1
     # via -r lint.in
-cryptography==41.0.7
+cryptography==42.0.2
     # via
     #   types-pyopenssl
     #   types-redis
@@ -26,7 +26,7 @@ distlib==0.3.8
     # via virtualenv
 filelock==3.13.1
     # via virtualenv
-identify==2.5.33
+identify==2.5.34
     # via pre-commit
 importlib-metadata==7.0.1
     # via yapf
@@ -48,12 +48,12 @@ pathspec==0.12.1
     # via black
 pip-tools==7.3.0
     # via -r lint.in
-platformdirs==4.1.0
+platformdirs==4.2.0
     # via
     #   black
     #   virtualenv
     #   yapf
-pre-commit==3.6.0
+pre-commit==3.6.1
     # via -r lint.in
 pycparser==2.21
     # via cffi
@@ -61,27 +61,27 @@ pyproject-hooks==1.0.0
     # via build
 pyyaml==6.0.1
     # via pre-commit
-ruff==0.1.9
+ruff==0.2.1
     # via -r lint.in
 tomli==2.0.1
     # via yapf
-types-aiofiles==23.2.0.0
+types-aiofiles==23.2.0.20240106
     # via -r lint.in
 types-cachetools==5.3.0.7
     # via -r lint.in
-types-pyopenssl==23.3.0.0
+types-pyopenssl==24.0.0.20240130
     # via types-redis
-types-pytz==2023.3.1.1
+types-pytz==2024.1.0.20240203
     # via -r lint.in
-types-redis==4.6.0.11
+types-redis==4.6.0.20240106
     # via -r lint.in
-types-requests==2.31.0.10
+types-requests==2.31.0.20240125
     # via -r lint.in
-types-setuptools==69.0.0.0
+types-setuptools==69.0.0.20240125
     # via -r lint.in
 typing-extensions==4.9.0
     # via mypy
-urllib3==2.1.0
+urllib3==2.2.0
     # via types-requests
 virtualenv==20.25.0
     # via pre-commit

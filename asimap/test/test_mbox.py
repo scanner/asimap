@@ -1,6 +1,7 @@
 """
 Tests for the mbox module
 """
+
 # system imports
 #
 import asyncio

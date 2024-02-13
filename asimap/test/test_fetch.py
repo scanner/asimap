@@ -1,6 +1,7 @@
 """
 Fetch.. the part that gets various bits and pieces of messages.
 """
+
 # System imports
 #
 import random

@@ -2,6 +2,7 @@
 Classes and their supporting methods that represent an IMAP Search
 structure.
 """
+
 # system imports
 #
 import asyncio
@@ -330,7 +331,14 @@ class IMAPSearch(object):
                 result.append(f", [{', '.join(elt)}]")
             case SearchOp.NOT:
                 result.append(f", search_key = {self.args['search_key']}")
-            case SearchOp.BEFORE | SearchOp.ON | SearchOp.SENTON | SearchOp.SENTBEFORE | SearchOp.SENTSINCE | SearchOp.SINCE:
+            case (
+                SearchOp.BEFORE
+                | SearchOp.ON
+                | SearchOp.SENTON
+                | SearchOp.SENTBEFORE
+                | SearchOp.SENTSINCE
+                | SearchOp.SINCE
+            ):
                 result.append(f', date = "{self.args["date"]}"')
             case SearchOp.LARGER | SearchOp.SMALLER:
                 result.append(f", n = {self.args['n']}")

@@ -5,6 +5,7 @@ sending to IMAP clients.
 This way all parts of asimapd use the same logic for email text generation and
 size.
 """
+
 # system imports
 #
 import logging
