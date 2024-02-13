@@ -1,6 +1,7 @@
 """
 Test `SearchContext` and `IMAPSearch`
 """
+
 # System imports
 #
 import os

@@ -4,6 +4,7 @@ The module that deals with the mailbox objects.
 There will be a mailbox per MH folder (but not one for the top level
 that holds all the folders.)
 """
+
 # system imports
 #
 import asyncio
@@ -555,7 +556,7 @@ class Mailbox:
             stack = lines[0].strip().replace("\n", ";")
             logger.debug("mailbox: %s, stack: %s", self.name, stack)
 
-        async with (self.mailbox.lock_folder(), self.lock.write_lock()):
+        async with self.mailbox.lock_folder(), self.lock.write_lock():
             # Whenever we resync the mailbox we update the sequence for
             # 'seen' based on 'seen' are all the messages that are NOT in
             # the 'unseen' sequence.
@@ -1854,7 +1855,7 @@ class Mailbox:
         # flag
         #
         msg.add_sequence("Recent")
-        async with (self.mailbox.lock_folder(), self.lock.write_lock()):
+        async with self.mailbox.lock_folder(), self.lock.write_lock():
             # NOTE: This updates the .mh_sequences folder
             #
             key = await self.mailbox.aadd(msg)
@@ -1906,7 +1907,7 @@ class Mailbox:
         if len(seqs["Deleted"]) == 0:
             return
 
-        async with (self.mailbox.lock_folder(), self.lock.write_lock()):
+        async with self.mailbox.lock_folder(), self.lock.write_lock():
             # Remove the msg keys being deleted from the message cache.
             #
             del_keys = set(self.server.msg_cache.msg_keys_for_mbox(self.name))
@@ -2474,7 +2475,7 @@ class Mailbox:
         # 'Recent' after we read it in.)
         #
         dst_keys = []
-        async with (dst_mbox.mailbox.lock_folder(), dst_mbox.lock.read_lock()):
+        async with dst_mbox.mailbox.lock_folder(), dst_mbox.lock.read_lock():
             async with dst_mbox.lock.write_lock():
                 for msg, mtime in copy_msgs:
                     key = await dst_mbox.mailbox.aadd(msg)
@@ -2630,7 +2631,7 @@ class Mailbox:
         mbox = await server.get_mailbox(name)
         do_delete = False
         server.msg_cache.clear_mbox(name)
-        async with (mbox.mailbox.lock_folder(), mbox.lock.read_lock()):
+        async with mbox.mailbox.lock_folder(), mbox.lock.read_lock():
             inferior_mailboxes = await mbox.mailbox.alist_folders()
 
             # You can not delete a mailbox that has the '\Noselect' attribute
@@ -2689,7 +2690,9 @@ class Mailbox:
                     #
                     async with server.active_mailboxes_lock.read_lock():
                         if name in server.active_mailboxes:
-                            async with server.active_mailboxes_lock.write_lock():
+                            async with (
+                                server.active_mailboxes_lock.write_lock()
+                            ):
                                 del server.active_mailboxes[name]
 
                     # Delete all traces of the mailbox from our db.
@@ -2955,7 +2958,7 @@ async def _helper_rename_folder(mbox: Mailbox, new_name: str):
     old_p_name = os.path.dirname(old_name)
     if old_p_name != "":
         m = await srvr.get_mailbox(old_p_name, expiry=10)
-        async with (m.lock.read_lock(), m.lock.write_lock()):
+        async with m.lock.read_lock(), m.lock.write_lock():
             await m.check_set_haschildren_attr()
             await m.commit_to_db()
 
@@ -2965,7 +2968,7 @@ async def _helper_rename_folder(mbox: Mailbox, new_name: str):
     new_p_name = os.path.dirname(new_name)
     if new_p_name != "":
         m = srvr.get_mailbox(new_p_name, expiry=0)
-        async with (m.lock.read_lock(), m.lock.write_lock()):
+        async with m.lock.read_lock(), m.lock.write_lock():
             await m.check_set_haschildren_attr()
             await m.commit_to_db()
 
@@ -3000,8 +3003,8 @@ async def _helper_rename_inbox(mbox: Mailbox, new_name: str):
     #       mailbox is newly created and likely has nothing else poking it.
     #
     async with mbox.mailbox.lock_folder():
-        async with (mbox.lock.read_lock(), mbox.lock.write_lock()):
-            async with (new_mbox.lock.read_lock(), new_mbox.lock.write_lock()):
+        async with mbox.lock.read_lock(), mbox.lock.write_lock():
+            async with new_mbox.lock.read_lock(), new_mbox.lock.write_lock():
                 for key in await mbox.mailbox.akeys():
                     try:
                         msg = await mbox.mailbox.aget_message(key)

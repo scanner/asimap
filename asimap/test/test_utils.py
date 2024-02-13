@@ -1,6 +1,7 @@
 """
 Test our util functions
 """
+
 # System imports
 #
 import asyncio
@@ -596,9 +597,9 @@ async def test_update_replace_header_in_binary_file(
     #
     for idx in range(int(NUM_MSGS / 2)):
         msg = email_factory()
-        msg[
-            UID_HDR
-        ] = f"{faker.pyint():010d}.{faker.pyint(max_value=9999999):010d}"
+        msg[UID_HDR] = (
+            f"{faker.pyint():010d}.{faker.pyint(max_value=9999999):010d}"
+        )
         msg_file = tmp_path / f"uid_hdr_msg-{idx:02d}.msg"
         msg_file.write_bytes(msg.as_bytes(policy=email.policy.default))
 

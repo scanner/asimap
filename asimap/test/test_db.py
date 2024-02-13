@@ -1,6 +1,7 @@
 """
 Test our asyncio sqlite db
 """
+
 # system imports
 #
 from typing import Dict

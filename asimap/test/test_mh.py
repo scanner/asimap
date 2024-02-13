@@ -1,6 +1,7 @@
 """
 Tests for our subclass of `mailbox.MH` that adds some async methods
 """
+
 # system imports
 #
 import random

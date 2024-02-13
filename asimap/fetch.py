@@ -5,6 +5,7 @@ back to the IMAP Client. The FetchAtt class contains the query of what
 the IMAP Client has asked for as well as the ability to process that
 query and generate the body of the `FETCH` response IMAP message.
 """
+
 # system imports
 #
 import email.utils
@@ -177,7 +178,12 @@ class FetchAtt:
         #
         result: Union[str, int]
         match self.attribute:
-            case FetchOp.BODY | FetchOp.BODYSTRUCTURE | FetchOp.ENVELOPE | FetchOp.RFC822_SIZE:
+            case (
+                FetchOp.BODY
+                | FetchOp.BODYSTRUCTURE
+                | FetchOp.ENVELOPE
+                | FetchOp.RFC822_SIZE
+            ):
                 msg = await self.ctx.email_message()
                 match self.attribute:
                     case FetchOp.BODY:

@@ -3,6 +3,7 @@ This module contains the classes and structures that are used to parse an
 IMAP message received from an IMAP client in to structures and invocations of
 commands in other parts of the server.
 """
+
 # system imports
 #
 import logging
