@@ -8,6 +8,7 @@ steps:
     environment:
       PYTHONUNBUFFERED: 1
       PYTHONPATH: /drone/src
+
       DEBUG: true
     commands:
       - pip install -U pip
