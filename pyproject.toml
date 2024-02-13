@@ -1,0 +1,136 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "asimap"
+dynamic = ["version"]
+authors = [
+  { name="Scanner Luce", email="scanner@apricot.com" },
+]
+maintainers = [
+  { name="Scanner Luce", email="scanner@apricot.com" },
+]
+description = "An IMAP server that uses `mailbox.MH` as its storage"
+keywords = ["email", "imap"]
+readme = "README.md"
+requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+]
+
+dependencies = [
+  "aiofiles>=23.2.1",
+  "aiosqlite>=0.19.0",
+  "async-timeout>=4.0.3",
+  "charset-normalizer>=3.3.2",
+  "docopt>=0.6.2",
+  "python-dotenv>=1.0.0",
+  "python-json-logger>=2.0.7",
+  "sentry-sdk>=1.39.1",
+]
+
+[project.scripts]
+asimapd = "asimap.asimapd:main"
+asimapd_user = "asimap.asimapd_user:main"
+
+[project.urls]
+Homepage = "https://github.com/scanner/asimap"
+Issues = "https://github.com/scanner/asimap/issues"
+Changelog = "https://github.com/scanner/asimap/blob/main/CHANGELOG.md"
+
+[tool.hatch.version]
+path = "asimap/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+include = [
+   "asimap",
+   "LICENSE",
+   "README.md",
+]
+exclude = [
+   "asimap/test",
+   "docs",
+   "venv",
+   ".gitignore",
+]
+
+[tool.black]
+line-length = 80
+exclude = '''
+(
+  /(
+      \.tox
+    | .+/migrations
+    | venv*
+    | \.venv
+    | \.pre-commit-cache
+  )/
+)
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 80
+skip_gitignore = true
+filter_files = true
+skip_glob = ["*venv*","*/migrations/*",".*cache"]
+
+[tool.mypy]
+exclude = [
+    '__pycache__',
+    '^\.mnt',
+    '.*[-_]cache',
+    '.git',
+    '\.venv',
+    'venv*',
+    'tmp',
+    'fixtures',
+    'deployment',
+    'docs',
+    'requirements',
+    'migrations'
+]
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+plugins = [
+]
+
+[[tool.mypy.overrides]]
+module = [
+    'boto3',
+    'click',
+    'funcy',
+]
+
+[tool.pytest.ini_options]
+
+markers = [
+    "smoke: marks tests as smoke (deselect with '-m \"not smoke\"')",
+    "integration",
+]
+
+[tool.pylint.MASTER]
+ignore-paths=[ ".*/migrations/.*" ]
+
+[tool.pylint.FORMAT]
+max-module-lines=2000
+
+[tool.pylint.DESIGN]
+max-attributes=15
+max-branches=15
+
+[tool.pylint.BASIC]
+no-docstring-rgx='^_|^Meta$|.+Serializer$|.+ViewSet$|^[Tt]est'
+
+[tool.pylint.'MESSAGES CONTROL']
+disable=[
+    "unnecessary-pass",
+    "import-error",
+    "too-few-public-methods"
+]

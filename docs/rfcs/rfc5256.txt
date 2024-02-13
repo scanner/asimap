@@ -56,7 +56,7 @@ Abstract
 
 
 Crispin & Murchison         Standards Track                     [Page 1]
-
+
 RFC 5256                       IMAP Sort                       June 2008
 
 
@@ -112,7 +112,7 @@ RFC 5256                       IMAP Sort                       June 2008
 
 
 Crispin & Murchison         Standards Track                     [Page 2]
-
+
 RFC 5256                       IMAP Sort                       June 2008
 
 
@@ -168,7 +168,7 @@ RFC 5256                       IMAP Sort                       June 2008
 
 
 Crispin & Murchison         Standards Track                     [Page 3]
-
+
 RFC 5256                       IMAP Sort                       June 2008
 
 
@@ -224,7 +224,7 @@ BASE.6.4.SORT. SORT Command
 
 
 Crispin & Murchison         Standards Track                     [Page 4]
-
+
 RFC 5256                       IMAP Sort                       June 2008
 
 
@@ -280,7 +280,7 @@ RFC 5256                       IMAP Sort                       June 2008
 
 
 Crispin & Murchison         Standards Track                     [Page 5]
-
+
 RFC 5256                       IMAP Sort                       June 2008
 
 
@@ -336,7 +336,7 @@ Result:     OK - thread completed
 
 
 Crispin & Murchison         Standards Track                     [Page 6]
-
+
 RFC 5256                       IMAP Sort                       June 2008
 
 
@@ -392,7 +392,7 @@ RFC 5256                       IMAP Sort                       June 2008
 
 
 Crispin & Murchison         Standards Track                     [Page 7]
-
+
 RFC 5256                       IMAP Sort                       June 2008
 
 
@@ -448,7 +448,7 @@ RFC 5256                       IMAP Sort                       June 2008
 
 
 Crispin & Murchison         Standards Track                     [Page 8]
-
+
 RFC 5256                       IMAP Sort                       June 2008
 
 
@@ -504,7 +504,7 @@ RFC 5256                       IMAP Sort                       June 2008
 
 
 Crispin & Murchison         Standards Track                     [Page 9]
-
+
 RFC 5256                       IMAP Sort                       June 2008
 
 
@@ -560,7 +560,7 @@ RFC 5256                       IMAP Sort                       June 2008
 
 
 Crispin & Murchison         Standards Track                    [Page 10]
-
+
 RFC 5256                       IMAP Sort                       June 2008
 
 
@@ -616,7 +616,7 @@ RFC 5256                       IMAP Sort                       June 2008
 
 
 Crispin & Murchison         Standards Track                    [Page 11]
-
+
 RFC 5256                       IMAP Sort                       June 2008
 
 
@@ -672,7 +672,7 @@ RFC 5256                       IMAP Sort                       June 2008
 
 
 Crispin & Murchison         Standards Track                    [Page 12]
-
+
 RFC 5256                       IMAP Sort                       June 2008
 
 
@@ -728,7 +728,7 @@ BASE.7.2.THREAD. THREAD Response
 
 
 Crispin & Murchison         Standards Track                    [Page 13]
-
+
 RFC 5256                       IMAP Sort                       June 2008
 
 
@@ -784,7 +784,7 @@ thread-data     = "THREAD" [SP 1*thread-list]
 
 
 Crispin & Murchison         Standards Track                    [Page 14]
-
+
 RFC 5256                       IMAP Sort                       June 2008
 
 
@@ -840,7 +840,7 @@ NONWSP          = %x01-08 / %x0a-1f / %x21-ff
 
 
 Crispin & Murchison         Standards Track                    [Page 15]
-
+
 RFC 5256                       IMAP Sort                       June 2008
 
 
@@ -896,7 +896,7 @@ RFC 5256                       IMAP Sort                       June 2008
 
 
 Crispin & Murchison         Standards Track                    [Page 16]
-
+
 RFC 5256                       IMAP Sort                       June 2008
 
 
@@ -952,7 +952,7 @@ RFC 5256                       IMAP Sort                       June 2008
 
 
 Crispin & Murchison         Standards Track                    [Page 17]
-
+
 RFC 5256                       IMAP Sort                       June 2008
 
 
@@ -1008,7 +1008,7 @@ Authors' Addresses
 
 
 Crispin & Murchison         Standards Track                    [Page 18]
-
+
 RFC 5256                       IMAP Sort                       June 2008
 
 
@@ -1064,4 +1064,3 @@ Intellectual Property
 
 
 Crispin & Murchison         Standards Track                    [Page 19]
-

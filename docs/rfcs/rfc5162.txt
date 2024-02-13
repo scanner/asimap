@@ -56,7 +56,7 @@ Abstract
 
 
 Melnikov, et al.            Standards Track                     [Page 1]
-
+
 RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
@@ -112,7 +112,7 @@ Table of Contents
 
 
 Melnikov, et al.            Standards Track                     [Page 2]
-
+
 RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
@@ -168,7 +168,7 @@ RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
 Melnikov, et al.            Standards Track                     [Page 3]
-
+
 RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
@@ -224,7 +224,7 @@ RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
 Melnikov, et al.            Standards Track                     [Page 4]
-
+
 RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
@@ -280,7 +280,7 @@ RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
 Melnikov, et al.            Standards Track                     [Page 5]
-
+
 RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
@@ -336,7 +336,7 @@ RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
 Melnikov, et al.            Standards Track                     [Page 6]
-
+
 RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
@@ -392,7 +392,7 @@ RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
 Melnikov, et al.            Standards Track                     [Page 7]
-
+
 RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
@@ -448,7 +448,7 @@ RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
 Melnikov, et al.            Standards Track                     [Page 8]
-
+
 RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
@@ -504,7 +504,7 @@ RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
 Melnikov, et al.            Standards Track                     [Page 9]
-
+
 RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
@@ -560,7 +560,7 @@ RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
 Melnikov, et al.            Standards Track                    [Page 10]
-
+
 RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
@@ -616,7 +616,7 @@ RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
 Melnikov, et al.            Standards Track                    [Page 11]
-
+
 RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
@@ -672,7 +672,7 @@ RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
 Melnikov, et al.            Standards Track                    [Page 12]
-
+
 RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
@@ -728,7 +728,7 @@ RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
 Melnikov, et al.            Standards Track                    [Page 13]
-
+
 RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
@@ -784,7 +784,7 @@ RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
 Melnikov, et al.            Standards Track                    [Page 14]
-
+
 RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
@@ -840,7 +840,7 @@ RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
 Melnikov, et al.            Standards Track                    [Page 15]
-
+
 RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
@@ -896,7 +896,7 @@ RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
 Melnikov, et al.            Standards Track                    [Page 16]
-
+
 RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
@@ -952,7 +952,7 @@ RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
 Melnikov, et al.            Standards Track                    [Page 17]
-
+
 RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
@@ -1008,7 +1008,7 @@ RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
 Melnikov, et al.            Standards Track                    [Page 18]
-
+
 RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
@@ -1064,7 +1064,7 @@ RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
 Melnikov, et al.            Standards Track                    [Page 19]
-
+
 RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
@@ -1120,7 +1120,7 @@ RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
 Melnikov, et al.            Standards Track                    [Page 20]
-
+
 RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
@@ -1176,7 +1176,7 @@ RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
 Melnikov, et al.            Standards Track                    [Page 21]
-
+
 RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
@@ -1232,7 +1232,7 @@ Authors' Addresses
 
 
 Melnikov, et al.            Standards Track                    [Page 22]
-
+
 RFC 5162               IMAP Quick Mailbox Resync              March 2008
 
 
@@ -1288,4 +1288,3 @@ Intellectual Property
 
 
 Melnikov, et al.            Standards Track                    [Page 23]
-

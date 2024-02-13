@@ -56,7 +56,7 @@ Introduction
 
 
 Crispin                     Standards Track                     [Page 1]
-
+
 RFC 3502                    IMAP MULTIAPPEND                  March 2003
 
 
@@ -112,7 +112,7 @@ RFC 3502                    IMAP MULTIAPPEND                  March 2003
 
 
 Crispin                     Standards Track                     [Page 2]
-
+
 RFC 3502                    IMAP MULTIAPPEND                  March 2003
 
 
@@ -168,7 +168,7 @@ RFC 3502                    IMAP MULTIAPPEND                  March 2003
 
 
 Crispin                     Standards Track                     [Page 3]
-
+
 RFC 3502                    IMAP MULTIAPPEND                  March 2003
 
 
@@ -224,7 +224,7 @@ Modification to IMAP4rev1 Base Protocol Formal Syntax
 
 
 Crispin                     Standards Track                     [Page 4]
-
+
 RFC 3502                    IMAP MULTIAPPEND                  March 2003
 
 
@@ -280,7 +280,7 @@ Normative References
 
 
 Crispin                     Standards Track                     [Page 5]
-
+
 RFC 3502                    IMAP MULTIAPPEND                  March 2003
 
 
@@ -336,7 +336,7 @@ Author's Address
 
 
 Crispin                     Standards Track                     [Page 6]
-
+
 RFC 3502                    IMAP MULTIAPPEND                  March 2003
 
 
@@ -392,4 +392,3 @@ Acknowledgement
 
 
 Crispin                     Standards Track                     [Page 7]
-

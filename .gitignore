@@ -1,8 +1,16 @@
 build
 debug
 .cache
-test/test_mode
+ssl
 *.pyc
 *~
+*.bak
 .pytest_cache
 asimap.egg-info
+venv*
+.tox
+.isorted
+.blackened
+.coverage
+.package
+dist

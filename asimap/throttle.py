@@ -5,12 +5,10 @@
 """
 This module has some simple logic to deal with failed login attempt throttling.
 """
-
 # system imports
 #
-import time
 import logging
-
+import time
 
 # We use a pair of dicts that track how often we have had login attempts
 # against a username or attempts for user names that do not exist.
@@ -33,13 +31,13 @@ import logging
 # timeout period, and the last time they tried to authenticate this user and
 # failed.
 #
-BAD_USER_AUTHS = {}
+BAD_USER_AUTHS: dict[str, tuple[int, float]] = {}
 
 # Key is the ip address of the IMAP client, value is a tuple of number of
 # attempts within the timeout period, and the last time they tried to
 # authenticate this and failed for any reason.
 #
-BAD_IP_AUTHS = {}
+BAD_IP_AUTHS: dict[str, tuple[int, float]] = {}
 
 # How many seconds before we purge an entry from the dicts.
 #
@@ -48,17 +46,20 @@ PURGE_TIME = 60
 # How many attempts are they allowed within PURGE_TIME before we decide that
 # they are trying to brute force something?
 #
-MAX_USER_ATTEMPTS = 4
-MAX_ADDR_ATTEMPTS = 3
-
-# Our module logger..
+# We allow one more attempt for a given address in case an address is basically
+# mulitple different users (like behind a home gateway). This way the bad user
+# will get locked out after 4 attempts but we will allow other users to login
+# successfully from the same ip address.
 #
-log = logging.getLogger(__name__)
+MAX_USER_ATTEMPTS = 4
+MAX_ADDR_ATTEMPTS = 5
+
+logger = logging.getLogger("asimap.throttle")
 
 
 ####################################################################
 #
-def login_failed(user, addr):
+def login_failed(user: str, addr: str):
     """
     We had a login attempt that failed, likely due to a bad password.
     Record this attempt.
@@ -89,15 +90,14 @@ def login_failed(user, addr):
         BAD_USER_AUTHS[user] = (1, now)
 
     if addr in BAD_IP_AUTHS:
-        BAD_IP_AUTHS[user] = (BAD_IP_AUTHS[user][0] + 1, now)
+        BAD_IP_AUTHS[addr] = (BAD_IP_AUTHS[addr][0] + 1, now)
     else:
-        BAD_IP_AUTHS[user] = (1, now)
-    return
+        BAD_IP_AUTHS[addr] = (1, now)
 
 
 ####################################################################
 #
-def check_allow(user, addr):
+def check_allow(user: str, addr: str) -> bool:
     """
     Check the given user and client address to see if they are ones
     that are currently being throttled. Retrun True if either the
@@ -108,40 +108,36 @@ def check_allow(user, addr):
     - `addr`: The IP address that they are trying to login from
     """
 
-    # if the user or client addr is NOT in either of the tracking dicts
-    # then we return True.
-    #
-    if user not in BAD_USER_AUTHS and addr not in BAD_IP_AUTHS:
-        return True
-
     # If user and/or client addr are in the tracking dicts, but the
     # last attempt time is more than <n> seconds ago we clear those
     # entries and return True.
     #
     now = time.time()
     if user in BAD_USER_AUTHS and now - BAD_USER_AUTHS[user][1] > PURGE_TIME:
-        log.info("check_allow: clearing '%s' from BAD_USER_AUTHS" % user)
+        logger.info("check_allow: clearing '%s' from BAD_USER_AUTHS" % user)
         del BAD_USER_AUTHS[user]
     if addr in BAD_IP_AUTHS and now - BAD_IP_AUTHS[addr][1] > PURGE_TIME:
-        log.info("check_allow: clearing '%s' from BAD_IP_AUTHS" % addr)
+        logger.info("check_allow: clearing '%s' from BAD_IP_AUTHS" % addr)
         del BAD_IP_AUTHS[addr]
 
-    # If after purging they are no longer in either dict then we can return
-    # True.
+    # if the user or client addr is NOT in either of the tracking dicts
+    # then we return True.
     #
     if user not in BAD_USER_AUTHS and addr not in BAD_IP_AUTHS:
         return True
 
-    # They entries are still in the dict and not expired (ie: older than the
+    # The entries are still in the dict and not expired (ie: older than the
     # PURGE_TIME). See if they have exceeded the number of allowable attempts.
     #
     if user in BAD_USER_AUTHS and BAD_USER_AUTHS[user][0] > MAX_USER_ATTEMPTS:
-        log.warn("check_allow: too many attempts for user: '%s', from "
-                 "address: %s" % (user, addr))
+        logger.warning(
+            "check_allow: too many attempts for user: '%s', from "
+            "address: %s" % (user, addr)
+        )
         return False
 
     if addr in BAD_IP_AUTHS and BAD_IP_AUTHS[addr][0] > MAX_ADDR_ATTEMPTS:
-        log.warn("check_allow: too many attempts from address: %s" % addr)
+        logger.warning("check_allow: too many attempts from address: %s" % addr)
         return False
 
     # Otherwise they are not yet blocked from attempting to login.

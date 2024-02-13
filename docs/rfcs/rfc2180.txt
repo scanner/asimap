@@ -56,7 +56,7 @@ Status of this Memo
 
 
 Gahrns                       Informational                      [Page 1]
-
+
 RFC 2180         IMAP4 Multi-Accessed Mailbox Practice         July 1997
 
 
@@ -112,7 +112,7 @@ RFC 2180         IMAP4 Multi-Accessed Mailbox Practice         July 1997
 
 
 Gahrns                       Informational                      [Page 2]
-
+
 RFC 2180         IMAP4 Multi-Accessed Mailbox Practice         July 1997
 
 
@@ -168,7 +168,7 @@ RFC 2180         IMAP4 Multi-Accessed Mailbox Practice         July 1997
 
 
 Gahrns                       Informational                      [Page 3]
-
+
 RFC 2180         IMAP4 Multi-Accessed Mailbox Practice         July 1997
 
 
@@ -224,7 +224,7 @@ RFC 2180         IMAP4 Multi-Accessed Mailbox Practice         July 1997
 
 
 Gahrns                       Informational                      [Page 4]
-
+
 RFC 2180         IMAP4 Multi-Accessed Mailbox Practice         July 1997
 
 
@@ -280,7 +280,7 @@ RFC 2180         IMAP4 Multi-Accessed Mailbox Practice         July 1997
 
 
 Gahrns                       Informational                      [Page 5]
-
+
 RFC 2180         IMAP4 Multi-Accessed Mailbox Practice         July 1997
 
 
@@ -336,7 +336,7 @@ RFC 2180         IMAP4 Multi-Accessed Mailbox Practice         July 1997
 
 
 Gahrns                       Informational                      [Page 6]
-
+
 RFC 2180         IMAP4 Multi-Accessed Mailbox Practice         July 1997
 
 
@@ -392,7 +392,7 @@ RFC 2180         IMAP4 Multi-Accessed Mailbox Practice         July 1997
 
 
 Gahrns                       Informational                      [Page 7]
-
+
 RFC 2180         IMAP4 Multi-Accessed Mailbox Practice         July 1997
 
 
@@ -448,7 +448,7 @@ RFC 2180         IMAP4 Multi-Accessed Mailbox Practice         July 1997
 
 
 Gahrns                       Informational                      [Page 8]
-
+
 RFC 2180         IMAP4 Multi-Accessed Mailbox Practice         July 1997
 
 
@@ -504,7 +504,7 @@ RFC 2180         IMAP4 Multi-Accessed Mailbox Practice         July 1997
 
 
 Gahrns                       Informational                      [Page 9]
-
+
 RFC 2180         IMAP4 Multi-Accessed Mailbox Practice         July 1997
 
 
@@ -560,7 +560,7 @@ RFC 2180         IMAP4 Multi-Accessed Mailbox Practice         July 1997
 
 
 Gahrns                       Informational                     [Page 10]
-
+
 RFC 2180         IMAP4 Multi-Accessed Mailbox Practice         July 1997
 
 
@@ -616,7 +616,7 @@ RFC 2180         IMAP4 Multi-Accessed Mailbox Practice         July 1997
 
 
 Gahrns                       Informational                     [Page 11]
-
+
 RFC 2180         IMAP4 Multi-Accessed Mailbox Practice         July 1997
 
 
@@ -672,7 +672,7 @@ RFC 2180         IMAP4 Multi-Accessed Mailbox Practice         July 1997
 
 
 Gahrns                       Informational                     [Page 12]
-
+
 RFC 2180         IMAP4 Multi-Accessed Mailbox Practice         July 1997
 
 
@@ -728,7 +728,7 @@ RFC 2180         IMAP4 Multi-Accessed Mailbox Practice         July 1997
 
 
 Gahrns                       Informational                     [Page 13]
-
+
 RFC 2180         IMAP4 Multi-Accessed Mailbox Practice         July 1997
 
 
@@ -784,4 +784,3 @@ RFC 2180         IMAP4 Multi-Accessed Mailbox Practice         July 1997
 
 
 Gahrns                       Informational                     [Page 14]
-

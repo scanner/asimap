@@ -56,7 +56,7 @@ Abstract
 
 
 Gahrns, et al.               Informational                      [Page 1]
-
+
 RFC 3348             IMAP4 Child Mailbox Extension             July 2002
 
 
@@ -112,7 +112,7 @@ RFC 3348             IMAP4 Child Mailbox Extension             July 2002
 
 
 Gahrns, et al.               Informational                      [Page 2]
-
+
 RFC 3348             IMAP4 Child Mailbox Extension             July 2002
 
 
@@ -168,7 +168,7 @@ RFC 3348             IMAP4 Child Mailbox Extension             July 2002
 
 
 Gahrns, et al.               Informational                      [Page 3]
-
+
 RFC 3348             IMAP4 Child Mailbox Extension             July 2002
 
 
@@ -224,7 +224,7 @@ RFC 3348             IMAP4 Child Mailbox Extension             July 2002
 
 
 Gahrns, et al.               Informational                      [Page 4]
-
+
 RFC 3348             IMAP4 Child Mailbox Extension             July 2002
 
 
@@ -280,7 +280,7 @@ RFC 3348             IMAP4 Child Mailbox Extension             July 2002
 
 
 Gahrns, et al.               Informational                      [Page 5]
-
+
 RFC 3348             IMAP4 Child Mailbox Extension             July 2002
 
 
@@ -336,4 +336,3 @@ Acknowledgement
 
 
 Gahrns, et al.               Informational                      [Page 6]
-

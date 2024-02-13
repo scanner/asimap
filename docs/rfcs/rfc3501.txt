@@ -56,7 +56,7 @@ Abstract
 
 
 Crispin                     Standards Track                     [Page 1]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -112,7 +112,7 @@ Table of Contents
 
 
 Crispin                     Standards Track                     [Page 2]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -168,7 +168,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                     [Page 3]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -224,7 +224,7 @@ IMAP4rev1 Protocol Specification
 
 
 Crispin                     Standards Track                     [Page 4]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -280,7 +280,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                     [Page 5]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -336,7 +336,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                     [Page 6]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -392,7 +392,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                     [Page 7]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -448,7 +448,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                     [Page 8]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -504,7 +504,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                     [Page 9]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -560,7 +560,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 10]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -616,7 +616,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 11]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -672,7 +672,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 12]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -728,7 +728,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 13]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -784,7 +784,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 14]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -840,7 +840,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 15]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -896,7 +896,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 16]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -952,7 +952,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 17]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -1008,7 +1008,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 18]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -1064,7 +1064,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 19]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -1120,7 +1120,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 20]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -1176,7 +1176,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 21]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -1232,7 +1232,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 22]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -1288,7 +1288,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 23]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -1344,7 +1344,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 24]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -1400,7 +1400,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 25]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -1456,7 +1456,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 26]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -1512,7 +1512,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 27]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -1568,7 +1568,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 28]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -1624,7 +1624,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 29]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -1680,7 +1680,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 30]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -1736,7 +1736,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 31]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -1792,7 +1792,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 32]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -1848,7 +1848,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 33]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -1904,7 +1904,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 34]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -1960,7 +1960,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 35]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -2016,7 +2016,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 36]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -2072,7 +2072,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 37]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -2128,7 +2128,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 38]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -2184,7 +2184,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 39]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -2240,7 +2240,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 40]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -2296,7 +2296,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 41]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -2352,7 +2352,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 42]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -2408,7 +2408,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 43]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -2464,7 +2464,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 44]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -2520,7 +2520,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 45]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -2576,7 +2576,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 46]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -2632,7 +2632,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 47]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -2688,7 +2688,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 48]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -2744,7 +2744,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 49]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -2800,7 +2800,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 50]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -2856,7 +2856,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 51]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -2912,7 +2912,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 52]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -2968,7 +2968,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 53]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -3024,7 +3024,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 54]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -3080,7 +3080,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 55]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -3136,7 +3136,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 56]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -3192,7 +3192,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 57]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -3248,7 +3248,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 58]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -3304,7 +3304,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 59]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -3360,7 +3360,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 60]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -3416,7 +3416,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 61]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -3472,7 +3472,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 62]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -3528,7 +3528,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 63]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -3584,7 +3584,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 64]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -3640,7 +3640,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 65]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -3696,7 +3696,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 66]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -3752,7 +3752,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 67]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -3808,7 +3808,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 68]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -3864,7 +3864,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 69]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -3920,7 +3920,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 70]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -3976,7 +3976,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 71]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -4032,7 +4032,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 72]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -4088,7 +4088,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 73]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -4144,7 +4144,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 74]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -4200,7 +4200,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 75]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -4256,7 +4256,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 76]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -4312,7 +4312,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 77]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -4368,7 +4368,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 78]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -4424,7 +4424,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 79]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -4480,7 +4480,7 @@ S:    a006 OK LOGOUT completed
 
 
 Crispin                     Standards Track                    [Page 80]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -4536,7 +4536,7 @@ addr-mailbox    = nstring
 
 
 Crispin                     Standards Track                    [Page 81]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -4592,7 +4592,7 @@ body-ext-1part  = body-fld-md5 [SP body-fld-dsp [SP body-fld-lang
 
 
 Crispin                     Standards Track                    [Page 82]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -4648,7 +4648,7 @@ capability      = ("AUTH=" auth-type) / atom
 
 
 Crispin                     Standards Track                    [Page 83]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -4704,7 +4704,7 @@ date-text       = date-day "-" date-month "-" date-year
 
 
 Crispin                     Standards Track                    [Page 84]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -4760,7 +4760,7 @@ fetch-att       = "ENVELOPE" / "FLAGS" / "INTERNALDATE" /
 
 
 Crispin                     Standards Track                    [Page 85]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -4816,7 +4816,7 @@ lsub            = "LSUB" SP mailbox SP list-mailbox
 
 
 Crispin                     Standards Track                    [Page 86]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -4872,7 +4872,7 @@ msg-att-dynamic = "FLAGS" SP "(" [flag-fetch *(SP flag-fetch)] ")"
 
 
 Crispin                     Standards Track                    [Page 87]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -4928,7 +4928,7 @@ resp-cond-auth  = ("OK" / "PREAUTH") SP resp-text
 
 
 Crispin                     Standards Track                    [Page 88]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -4984,7 +4984,7 @@ section-part    = nz-number *("." nz-number)
 
 
 Crispin                     Standards Track                    [Page 89]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -5040,7 +5040,7 @@ status          = "STATUS" SP mailbox SP
 
 
 Crispin                     Standards Track                    [Page 90]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -5096,7 +5096,7 @@ zone            = ("+" / "-") 4DIGIT
 
 
 Crispin                     Standards Track                    [Page 91]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -5152,7 +5152,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 92]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -5208,7 +5208,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 93]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -5264,7 +5264,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 94]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -5320,7 +5320,7 @@ A.      Normative References
 
 
 Crispin                     Standards Track                    [Page 95]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -5376,7 +5376,7 @@ A.1     Informative References
 
 
 Crispin                     Standards Track                    [Page 96]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -5432,7 +5432,7 @@ B.      Changes from RFC 2060
 
 
 Crispin                     Standards Track                    [Page 97]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -5488,7 +5488,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 98]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -5544,7 +5544,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                    [Page 99]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -5600,7 +5600,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                   [Page 100]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -5656,7 +5656,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                   [Page 101]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -5712,7 +5712,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                   [Page 102]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -5768,7 +5768,7 @@ C.      Key Word Index
 
 
 Crispin                     Standards Track                   [Page 103]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -5824,7 +5824,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                   [Page 104]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -5880,7 +5880,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                   [Page 105]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -5936,7 +5936,7 @@ RFC 3501                         IMAPv4                       March 2003
 
 
 Crispin                     Standards Track                   [Page 106]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -5992,7 +5992,7 @@ Author's Address
 
 
 Crispin                     Standards Track                   [Page 107]
-
+
 RFC 3501                         IMAPv4                       March 2003
 
 
@@ -6048,4 +6048,3 @@ Acknowledgement
 
 
 Crispin                     Standards Track                   [Page 108]
-
