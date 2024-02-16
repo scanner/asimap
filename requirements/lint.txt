@@ -46,7 +46,7 @@ packaging==23.2
     #   build
 pathspec==0.12.1
     # via black
-pip-tools==7.3.0
+pip-tools==7.4.0
     # via -r requirements/lint.in
 platformdirs==4.2.0
     # via
@@ -58,7 +58,9 @@ pre-commit==3.6.1
 pycparser==2.21
     # via cffi
 pyproject-hooks==1.0.0
-    # via build
+    # via
+    #   build
+    #   pip-tools
 pyyaml==6.0.1
     # via pre-commit
 ruff==0.2.1
