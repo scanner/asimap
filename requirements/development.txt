@@ -217,7 +217,7 @@ pluggy==1.4.0
     #   -r requirements/build.txt
     #   hatchling
     #   pytest
-pre-commit==3.6.1
+pre-commit==3.6.2
     # via -r requirements/lint.txt
 prompt-toolkit==3.0.43
     # via ipython
