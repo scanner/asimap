@@ -4,7 +4,7 @@
 #
 #    pip-compile --output-file=build.txt --strip-extras build.in
 #
-anyio==4.2.0
+anyio==4.3.0
     # via httpx
 build==1.0.3
     # via -r build.in
@@ -28,7 +28,7 @@ hatch==1.9.3
     # via -r build.in
 hatchling==1.21.1
     # via hatch
-httpcore==1.0.2
+httpcore==1.0.3
     # via httpx
 httpx==0.26.0
     # via hatch
