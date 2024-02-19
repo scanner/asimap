@@ -289,7 +289,7 @@ ruff==0.2.1
     # via -r requirements/lint.txt
 secretstorage==3.3.3
     # via keyring
-sentry-sdk==1.40.4
+sentry-sdk==1.40.5
     # via -r requirements/production.txt
 shellingham==1.5.4
     # via
