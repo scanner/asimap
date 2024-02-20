@@ -5,22 +5,24 @@
 #    pip-compile --output-file=production.txt --strip-extras production.in
 #
 aiofiles==23.2.1
-    # via -r production.in
-aiosqlite==0.19.0
-    # via -r production.in
+    # via -r requirements/production.in
+aiosqlite==0.20.0
+    # via -r requirements/production.in
 async-timeout==4.0.3
-    # via -r production.in
+    # via -r requirements/production.in
 certifi==2024.2.2
     # via sentry-sdk
 charset-normalizer==3.3.2
-    # via -r production.in
+    # via -r requirements/production.in
 docopt==0.6.2
-    # via -r production.in
+    # via -r requirements/production.in
 python-dotenv==1.0.1
-    # via -r production.in
+    # via -r requirements/production.in
 python-json-logger==2.0.7
-    # via -r production.in
+    # via -r requirements/production.in
 sentry-sdk==1.40.5
-    # via -r production.in
+    # via -r requirements/production.in
+typing-extensions==4.9.0
+    # via aiosqlite
 urllib3==2.2.1
     # via sentry-sdk
