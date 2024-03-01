@@ -285,7 +285,7 @@ rich==13.7.0
     #   -r requirements/build.txt
     #   -r requirements/development.in
     #   hatch
-ruff==0.2.2
+ruff==0.3.0
     # via -r requirements/lint.txt
 secretstorage==3.3.3
     # via keyring
