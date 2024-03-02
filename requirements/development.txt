@@ -52,8 +52,8 @@ click==8.1.7
     #   pip-tools
     #   userpath
 codetiming==1.4.0
-    # via -r development.in
-coverage==7.4.1
+    # via -r requirements/development.in
+coverage==7.4.3
     # via
     #   -r lint.txt
     #   pytest-cov
@@ -136,8 +136,8 @@ inflection==0.5.1
     # via pytest-factoryboy
 iniconfig==2.0.0
     # via pytest
-ipython==8.21.0
-    # via -r development.in
+ipython==8.22.1
+    # via -r requirements/development.in
 isort==5.13.2
     # via -r lint.txt
 jaraco-classes==3.3.1
@@ -242,7 +242,7 @@ pyproject-hooks==1.0.0
     #   -r lint.txt
     #   build
     #   pip-tools
-pytest==8.0.1
+pytest==8.0.2
     # via
     #   -r development.in
     #   pytest-asyncio
@@ -289,8 +289,8 @@ ruff==0.3.0
     # via -r lint.txt
 secretstorage==3.3.3
     # via keyring
-sentry-sdk==1.40.5
-    # via -r production.txt
+sentry-sdk==1.40.6
+    # via -r requirements/production.txt
 shellingham==1.5.4
     # via
     #   -r build.txt
