@@ -16,9 +16,8 @@ click==8.1.7
     # via
     #   black
     #   pip-tools
-coverage==7.4.1
-    # via -r lint.in
-cryptography==42.0.3
+cryptography==42.0.4
+coverage==7.4.3
     # via
     #   types-pyopenssl
     #   types-redis
@@ -63,7 +62,7 @@ pyproject-hooks==1.0.0
     #   pip-tools
 pyyaml==6.0.1
     # via pre-commit
-ruff==0.2.2
+ruff==0.3.0
     # via -r lint.in
 tomli==2.0.1
     # via yapf
@@ -79,7 +78,7 @@ types-redis==4.6.0.20240218
     # via -r lint.in
 types-requests==2.31.0.20240218
     # via -r lint.in
-types-setuptools==69.1.0.20240217
+types-setuptools==69.1.0.20240301
     # via -r lint.in
 typing-extensions==4.9.0
     # via mypy
