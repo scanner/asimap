@@ -6,7 +6,7 @@
 #
 aiofiles==23.2.1
     # via -r production.txt
-aiosqlite==0.19.0
+aiosqlite==0.20.0
     # via -r production.txt
 anyio==4.3.0
     # via
@@ -18,7 +18,7 @@ async-timeout==4.0.3
     # via -r production.txt
 black==24.2.0
     # via -r lint.txt
-build==1.0.3
+build==1.1.1
     # via
     #   -r build.txt
     #   -r lint.txt
@@ -52,15 +52,14 @@ click==8.1.7
     #   pip-tools
     #   userpath
 codetiming==1.4.0
-    # via -r requirements/development.in
+    # via -r development.in
 coverage==7.4.3
     # via
     #   -r lint.txt
     #   pytest-cov
-cryptography==42.0.4
+cryptography==42.0.5
     # via
     #   -r lint.txt
-    #   secretstorage
     #   trustme
     #   types-pyopenssl
     #   types-redis
@@ -83,7 +82,7 @@ executing==2.0.1
     # via stack-data
 factory-boy==3.3.0
     # via pytest-factoryboy
-faker==23.2.1
+faker==23.3.0
     # via factory-boy
 filelock==3.13.1
     # via
@@ -100,11 +99,11 @@ hatchling==1.21.1
     # via
     #   -r build.txt
     #   hatch
-httpcore==1.0.3
+httpcore==1.0.4
     # via
     #   -r build.txt
     #   httpx
-httpx==0.26.0
+httpx==0.27.0
     # via
     #   -r build.txt
     #   hatch
@@ -137,7 +136,7 @@ inflection==0.5.1
 iniconfig==2.0.0
     # via pytest
 ipython==8.22.1
-    # via -r requirements/development.in
+    # via -r development.in
 isort==5.13.2
     # via -r lint.txt
 jaraco-classes==3.3.1
@@ -146,11 +145,7 @@ jaraco-classes==3.3.1
     #   keyring
 jedi==0.19.1
     # via ipython
-jeepney==0.8.0
-    # via
-    #   keyring
-    #   secretstorage
-keyring==24.3.0
+keyring==24.3.1
     # via
     #   -r build.txt
     #   hatch
@@ -264,7 +259,7 @@ pytest-mock==3.12.0
     # via -r development.in
 pytest-sugar==1.0.0
     # via -r development.in
-python-dateutil==2.8.2
+python-dateutil==2.9.0.post0
     # via faker
 python-dotenv==1.0.1
     # via -r production.txt
@@ -280,17 +275,15 @@ requests==2.31.0
     # via requests-mock
 requests-mock==1.11.0
     # via -r development.in
-rich==13.7.0
+rich==13.7.1
     # via
     #   -r build.txt
     #   -r development.in
     #   hatch
 ruff==0.3.0
     # via -r lint.txt
-secretstorage==3.3.3
-    # via keyring
 sentry-sdk==1.40.6
-    # via -r requirements/production.txt
+    # via -r production.txt
 shellingham==1.5.4
     # via
     #   -r build.txt
@@ -300,7 +293,7 @@ six==1.16.0
     #   asttokens
     #   python-dateutil
     #   requests-mock
-sniffio==1.3.0
+sniffio==1.3.1
     # via
     #   -r build.txt
     #   anyio
@@ -317,7 +310,7 @@ tomli-w==1.0.0
     # via
     #   -r build.txt
     #   hatch
-tomlkit==0.12.3
+tomlkit==0.12.4
     # via
     #   -r build.txt
     #   hatch
@@ -325,7 +318,7 @@ traitlets==5.14.1
     # via
     #   ipython
     #   matplotlib-inline
-trove-classifiers==2024.1.31
+trove-classifiers==2024.2.23
     # via
     #   -r build.txt
     #   hatchling
@@ -335,7 +328,7 @@ types-aiofiles==23.2.0.20240106
     # via -r lint.txt
 types-cachetools==5.3.0.7
     # via -r lint.txt
-types-pyopenssl==24.0.0.20240130
+types-pyopenssl==24.0.0.20240228
     # via
     #   -r lint.txt
     #   types-redis
@@ -345,11 +338,13 @@ types-redis==4.6.0.20240218
     # via -r lint.txt
 types-requests==2.31.0.20240218
     # via -r lint.txt
-types-setuptools==69.1.0.20240301
+types-setuptools==69.1.0.20240302
     # via -r lint.txt
-typing-extensions==4.9.0
+typing-extensions==4.10.0
     # via
     #   -r lint.txt
+    #   -r production.txt
+    #   aiosqlite
     #   mypy
     #   pytest-factoryboy
 urllib3==2.2.1
@@ -359,11 +354,11 @@ urllib3==2.2.1
     #   requests
     #   sentry-sdk
     #   types-requests
-userpath==1.9.1
+userpath==1.9.2
     # via
     #   -r build.txt
     #   hatch
-virtualenv==20.25.0
+virtualenv==20.25.1
     # via
     #   -r build.txt
     #   -r lint.txt
