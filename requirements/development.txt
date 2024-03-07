@@ -59,7 +59,7 @@ coverage==7.4.3
     #   pytest-cov
 cryptography==42.0.4
     # via
-    #   -r lint.txt
+    #   -r requirements/lint.txt
     #   secretstorage
     #   trustme
     #   types-pyopenssl
@@ -188,6 +188,7 @@ packaging==23.2
     #   hatch
     #   hatchling
     #   pytest
+    #   pytest-factoryboy
     #   pytest-sugar
 parso==0.8.3
     # via jedi
@@ -202,7 +203,7 @@ pexpect==4.9.0
     #   -r requirements/build.txt
     #   hatch
     #   ipython
-pip-tools==7.4.0
+pip-tools==7.4.1
     # via -r requirements/lint.txt
 platformdirs==4.2.0
     # via
@@ -258,7 +259,7 @@ pytest-cover==3.0.0
     # via pytest-coverage
 pytest-coverage==0.0
     # via -r requirements/development.in
-pytest-factoryboy==2.6.0
+pytest-factoryboy==2.7.0
     # via -r requirements/development.in
 pytest-mock==3.12.0
     # via -r requirements/development.in
@@ -286,7 +287,7 @@ rich==13.7.0
     #   -r requirements/development.in
     #   hatch
 ruff==0.3.0
-    # via -r lint.txt
+    # via -r requirements/lint.txt
 secretstorage==3.3.3
     # via keyring
 sentry-sdk==1.40.6
@@ -344,14 +345,12 @@ types-pytz==2024.1.0.20240203
 types-redis==4.6.0.20240218
     # via -r requirements/lint.txt
 types-requests==2.31.0.20240218
-    # via -r lint.txt
+    # via -r requirements/lint.txt
 types-setuptools==69.1.0.20240301
-    # via -r lint.txt
+    # via -r requirements/lint.txt
 typing-extensions==4.9.0
     # via
     #   -r requirements/lint.txt
-    #   -r requirements/production.txt
-    #   aiosqlite
     #   mypy
     #   pytest-factoryboy
 urllib3==2.2.1
