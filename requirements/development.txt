@@ -136,7 +136,7 @@ inflection==0.5.1
     # via pytest-factoryboy
 iniconfig==2.0.0
     # via pytest
-ipython==8.22.1
+ipython==8.22.2
     # via -r requirements/development.in
 isort==5.13.2
     # via -r requirements/lint.txt
