@@ -203,7 +203,7 @@ pexpect==4.9.0
     #   -r requirements/build.txt
     #   hatch
     #   ipython
-pip-tools==7.4.0
+pip-tools==7.4.1
     # via -r requirements/lint.txt
 platformdirs==4.2.0
     # via
