@@ -286,7 +286,7 @@ rich==13.7.0
     #   -r requirements/build.txt
     #   -r requirements/development.in
     #   hatch
-ruff==0.3.0
+ruff==0.3.1
     # via -r requirements/lint.txt
 secretstorage==3.3.3
     # via keyring
@@ -351,6 +351,8 @@ types-setuptools==69.1.0.20240302
 typing-extensions==4.9.0
     # via
     #   -r requirements/lint.txt
+    #   -r requirements/production.txt
+    #   aiosqlite
     #   mypy
     #   pytest-factoryboy
 urllib3==2.2.1
