@@ -251,7 +251,7 @@ pytest==8.0.2
     #   pytest-factoryboy
     #   pytest-mock
     #   pytest-sugar
-pytest-asyncio==0.23.5
+pytest-asyncio==0.23.5.post1
     # via -r requirements/development.in
 pytest-cov==4.1.0
     # via pytest-cover
@@ -351,6 +351,8 @@ types-setuptools==69.1.0.20240302
 typing-extensions==4.9.0
     # via
     #   -r requirements/lint.txt
+    #   -r requirements/production.txt
+    #   aiosqlite
     #   mypy
     #   pytest-factoryboy
 urllib3==2.2.1
