@@ -168,7 +168,7 @@ more-itertools==10.2.0
     # via
     #   -r requirements/build.txt
     #   jaraco-classes
-mypy==1.8.0
+mypy==1.9.0
     # via -r requirements/lint.txt
 mypy-extensions==1.0.0
     # via
