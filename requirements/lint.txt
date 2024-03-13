@@ -32,7 +32,7 @@ importlib-metadata==7.0.1
     # via yapf
 isort==5.13.2
     # via -r requirements/lint.in
-mypy==1.8.0
+mypy==1.9.0
     # via -r requirements/lint.in
 mypy-extensions==1.0.0
     # via
