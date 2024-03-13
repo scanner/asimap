@@ -77,7 +77,7 @@ types-pytz==2024.1.0.20240203
     # via -r requirements/lint.in
 types-redis==4.6.0.20240218
     # via -r requirements/lint.in
-types-requests==2.31.0.20240218
+types-requests==2.31.0.20240311
     # via -r requirements/lint.in
 types-setuptools==69.1.0.20240302
     # via -r requirements/lint.in
