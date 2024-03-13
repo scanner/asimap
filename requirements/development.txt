@@ -332,7 +332,7 @@ trove-classifiers==2024.1.31
     #   hatchling
 trustme==1.1.0
     # via -r requirements/development.in
-types-aiofiles==23.2.0.20240106
+types-aiofiles==23.2.0.20240311
     # via -r requirements/lint.txt
 types-cachetools==5.3.0.7
     # via -r requirements/lint.txt
