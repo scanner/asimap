@@ -16,7 +16,7 @@ asttokens==2.4.1
     # via stack-data
 async-timeout==4.0.3
     # via -r requirements/production.txt
-black==24.2.0
+black==24.3.0
     # via -r requirements/lint.txt
 build==1.0.3
     # via
