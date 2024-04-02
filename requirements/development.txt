@@ -344,7 +344,7 @@ types-pytz==2024.1.0.20240203
     # via -r requirements/lint.txt
 types-redis==4.6.0.20240311
     # via -r requirements/lint.txt
-types-requests==2.31.0.20240311
+types-requests==2.31.0.20240402
     # via -r requirements/lint.txt
 types-setuptools==69.2.0.20240317
     # via -r requirements/lint.txt
