@@ -67,7 +67,7 @@ ruff==0.3.3
     # via -r requirements/lint.in
 tomli==2.0.1
     # via yapf
-types-aiofiles==23.2.0.20240311
+types-aiofiles==23.2.0.20240403
     # via -r requirements/lint.in
 types-cachetools==5.3.0.7
     # via -r requirements/lint.in
