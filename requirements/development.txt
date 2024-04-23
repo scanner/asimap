@@ -342,7 +342,7 @@ types-pyopenssl==24.0.0.20240130
     #   types-redis
 types-pytz==2024.1.0.20240203
     # via -r requirements/lint.txt
-types-redis==4.6.0.20240311
+types-redis==4.6.0.20240423
     # via -r requirements/lint.txt
 types-requests==2.31.0.20240311
     # via -r requirements/lint.txt
