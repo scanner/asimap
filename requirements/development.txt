@@ -136,7 +136,7 @@ inflection==0.5.1
     # via pytest-factoryboy
 iniconfig==2.0.0
     # via pytest
-ipython==8.22.2
+ipython==8.24.0
     # via -r requirements/development.in
 isort==5.13.2
     # via -r requirements/lint.txt
@@ -353,6 +353,7 @@ typing-extensions==4.9.0
     #   -r requirements/lint.txt
     #   -r requirements/production.txt
     #   aiosqlite
+    #   ipython
     #   mypy
     #   pytest-factoryboy
 urllib3==2.2.1
