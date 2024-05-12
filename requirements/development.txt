@@ -5,80 +5,79 @@
 #    pip-compile --output-file=development.txt --strip-extras development.in
 #
 aiofiles==23.2.1
-    # via -r requirements/production.txt
+    # via -r production.txt
 aiosqlite==0.20.0
-    # via -r requirements/production.txt
+    # via -r production.txt
 anyio==4.3.0
     # via
-    #   -r requirements/build.txt
+    #   -r build.txt
     #   httpx
 asttokens==2.4.1
     # via stack-data
 async-timeout==4.0.3
-    # via -r requirements/production.txt
+    # via -r production.txt
 backports-tarfile==1.1.1
     # via
-    #   -r requirements/build.txt
+    #   -r build.txt
     #   jaraco-context
 black==24.4.2
-    # via -r requirements/lint.txt
+    # via -r lint.txt
 build==1.2.1
     # via
-    #   -r requirements/build.txt
-    #   -r requirements/lint.txt
+    #   -r build.txt
+    #   -r lint.txt
     #   pip-tools
 certifi==2024.2.2
     # via
-    #   -r requirements/build.txt
-    #   -r requirements/production.txt
+    #   -r build.txt
+    #   -r production.txt
     #   httpcore
     #   httpx
     #   requests
     #   sentry-sdk
 cffi==1.16.0
     # via
-    #   -r requirements/lint.txt
+    #   -r lint.txt
     #   cryptography
 cfgv==3.4.0
     # via
-    #   -r requirements/lint.txt
+    #   -r lint.txt
     #   pre-commit
 charset-normalizer==3.3.2
     # via
-    #   -r requirements/production.txt
+    #   -r production.txt
     #   requests
 click==8.1.7
     # via
-    #   -r requirements/build.txt
-    #   -r requirements/lint.txt
+    #   -r build.txt
+    #   -r lint.txt
     #   black
     #   hatch
     #   pip-tools
     #   userpath
 codetiming==1.4.0
-    # via -r requirements/development.in
+    # via -r development.in
 coverage==7.5.1
     # via
-    #   -r requirements/lint.txt
+    #   -r lint.txt
     #   pytest-cov
 cryptography==42.0.7
     # via
-    #   -r requirements/lint.txt
-    #   secretstorage
+    #   -r lint.txt
     #   trustme
     #   types-pyopenssl
     #   types-redis
 decorator==5.1.1
     # via ipython
 dirty-equals==0.7.1.post0
-    # via -r requirements/development.in
+    # via -r development.in
 distlib==0.3.8
     # via
-    #   -r requirements/build.txt
-    #   -r requirements/lint.txt
+    #   -r build.txt
+    #   -r lint.txt
     #   virtualenv
 docopt==0.6.2
-    # via -r requirements/production.txt
+    # via -r production.txt
 executing==2.0.1
     # via stack-data
 factory-boy==3.3.0
@@ -87,49 +86,49 @@ faker==25.1.0
     # via factory-boy
 filelock==3.14.0
     # via
-    #   -r requirements/build.txt
-    #   -r requirements/lint.txt
+    #   -r build.txt
+    #   -r lint.txt
     #   virtualenv
 h11==0.14.0
     # via
-    #   -r requirements/build.txt
+    #   -r build.txt
     #   httpcore
 hatch==1.10.0
-    # via -r requirements/build.txt
+    # via -r build.txt
 hatchling==1.24.2
     # via
-    #   -r requirements/build.txt
+    #   -r build.txt
     #   hatch
 httpcore==1.0.5
     # via
-    #   -r requirements/build.txt
+    #   -r build.txt
     #   httpx
 httpx==0.27.0
     # via
-    #   -r requirements/build.txt
+    #   -r build.txt
     #   hatch
 hyperlink==21.0.0
     # via
-    #   -r requirements/build.txt
+    #   -r build.txt
     #   hatch
 identify==2.5.36
     # via
-    #   -r requirements/lint.txt
+    #   -r lint.txt
     #   pre-commit
 idna==3.7
     # via
-    #   -r requirements/build.txt
+    #   -r build.txt
     #   anyio
     #   httpx
     #   hyperlink
     #   requests
     #   trustme
 imapclient==3.0.1
-    # via -r requirements/development.in
+    # via -r development.in
 importlib-metadata==7.1.0
     # via
-    #   -r requirements/build.txt
-    #   -r requirements/lint.txt
+    #   -r build.txt
+    #   -r lint.txt
     #   keyring
     #   yapf
 inflection==0.5.1
@@ -137,61 +136,57 @@ inflection==0.5.1
 iniconfig==2.0.0
     # via pytest
 ipython==8.24.0
-    # via -r requirements/development.in
+    # via -r development.in
 isort==5.13.2
-    # via -r requirements/lint.txt
+    # via -r lint.txt
 jaraco-classes==3.4.0
     # via
-    #   -r requirements/build.txt
+    #   -r build.txt
     #   keyring
 jaraco-context==5.3.0
     # via
-    #   -r requirements/build.txt
+    #   -r build.txt
     #   keyring
 jaraco-functools==4.0.1
     # via
-    #   -r requirements/build.txt
+    #   -r build.txt
     #   keyring
 jedi==0.19.1
     # via ipython
-jeepney==0.8.0
-    # via
-    #   keyring
-    #   secretstorage
 keyring==25.2.0
     # via
-    #   -r requirements/build.txt
+    #   -r build.txt
     #   hatch
 markdown-it-py==3.0.0
     # via
-    #   -r requirements/build.txt
+    #   -r build.txt
     #   rich
 matplotlib-inline==0.1.7
     # via ipython
 mdurl==0.1.2
     # via
-    #   -r requirements/build.txt
+    #   -r build.txt
     #   markdown-it-py
 more-itertools==10.2.0
     # via
-    #   -r requirements/build.txt
+    #   -r build.txt
     #   jaraco-classes
     #   jaraco-functools
 mypy==1.10.0
-    # via -r requirements/lint.txt
+    # via -r lint.txt
 mypy-extensions==1.0.0
     # via
-    #   -r requirements/lint.txt
+    #   -r lint.txt
     #   black
     #   mypy
 nodeenv==1.8.0
     # via
-    #   -r requirements/lint.txt
+    #   -r lint.txt
     #   pre-commit
 packaging==24.0
     # via
-    #   -r requirements/build.txt
-    #   -r requirements/lint.txt
+    #   -r build.txt
+    #   -r lint.txt
     #   black
     #   build
     #   hatch
@@ -203,107 +198,105 @@ parso==0.8.4
     # via jedi
 pathspec==0.12.1
     # via
-    #   -r requirements/build.txt
-    #   -r requirements/lint.txt
+    #   -r build.txt
+    #   -r lint.txt
     #   black
     #   hatchling
 pexpect==4.9.0
     # via
-    #   -r requirements/build.txt
+    #   -r build.txt
     #   hatch
     #   ipython
 pip-tools==7.4.1
-    # via -r requirements/lint.txt
+    # via -r lint.txt
 platformdirs==4.2.1
     # via
-    #   -r requirements/build.txt
-    #   -r requirements/lint.txt
+    #   -r build.txt
+    #   -r lint.txt
     #   black
     #   hatch
     #   virtualenv
     #   yapf
 pluggy==1.5.0
     # via
-    #   -r requirements/build.txt
+    #   -r build.txt
     #   hatchling
     #   pytest
 pre-commit==3.7.1
-    # via -r requirements/lint.txt
+    # via -r lint.txt
 prompt-toolkit==3.0.43
     # via ipython
 ptyprocess==0.7.0
     # via
-    #   -r requirements/build.txt
+    #   -r build.txt
     #   pexpect
 pure-eval==0.2.2
     # via stack-data
 pycparser==2.22
     # via
-    #   -r requirements/lint.txt
+    #   -r lint.txt
     #   cffi
 pygments==2.18.0
     # via
-    #   -r requirements/build.txt
+    #   -r build.txt
     #   ipython
     #   rich
 pyproject-hooks==1.1.0
     # via
-    #   -r requirements/build.txt
-    #   -r requirements/lint.txt
+    #   -r build.txt
+    #   -r lint.txt
     #   build
     #   pip-tools
 pytest==8.2.0
     # via
-    #   -r requirements/development.in
+    #   -r development.in
     #   pytest-asyncio
     #   pytest-cov
     #   pytest-factoryboy
     #   pytest-mock
     #   pytest-sugar
 pytest-asyncio==0.23.6
-    # via -r requirements/development.in
+    # via -r development.in
 pytest-cov==5.0.0
     # via pytest-cover
 pytest-cover==3.0.0
     # via pytest-coverage
 pytest-coverage==0.0
-    # via -r requirements/development.in
+    # via -r development.in
 pytest-factoryboy==2.7.0
-    # via -r requirements/development.in
+    # via -r development.in
 pytest-mock==3.14.0
-    # via -r requirements/development.in
+    # via -r development.in
 pytest-sugar==1.0.0
-    # via -r requirements/development.in
+    # via -r development.in
 python-dateutil==2.9.0.post0
     # via faker
 python-dotenv==1.0.1
-    # via -r requirements/production.txt
+    # via -r production.txt
 python-json-logger==2.0.7
-    # via -r requirements/production.txt
+    # via -r production.txt
 pytz==2024.1
     # via dirty-equals
 pyyaml==6.0.1
     # via
-    #   -r requirements/lint.txt
+    #   -r lint.txt
     #   pre-commit
 requests==2.31.0
     # via requests-mock
 requests-mock==1.12.1
-    # via -r requirements/development.in
+    # via -r development.in
 rich==13.7.1
     # via
-    #   -r requirements/build.txt
-    #   -r requirements/development.in
+    #   -r build.txt
+    #   -r development.in
     #   hatch
-ruff==0.4.5
-    # via -r requirements/lint.txt
-secretstorage==3.3.3
-    # via keyring
-sentry-sdk==2.3.1
-    # via -r requirements/production.txt
+ruff==0.4.4
+    # via -r lint.txt
+sentry-sdk==2.1.1
+    # via -r production.txt
 shellingham==1.5.4
     # via
-    #   -r requirements/build.txt
+    #   -r build.txt
     #   hatch
 six==1.16.0
     # via
@@ -311,7 +304,7 @@ six==1.16.0
     #   python-dateutil
 sniffio==1.3.1
     # via
-    #   -r requirements/build.txt
+    #   -r build.txt
     #   anyio
     #   httpx
 stack-data==0.6.3
@@ -320,15 +313,15 @@ termcolor==2.4.0
     # via pytest-sugar
 tomli==2.0.1
     # via
-    #   -r requirements/lint.txt
+    #   -r lint.txt
     #   yapf
 tomli-w==1.0.0
     # via
-    #   -r requirements/build.txt
+    #   -r build.txt
     #   hatch
 tomlkit==0.12.5
     # via
-    #   -r requirements/build.txt
+    #   -r build.txt
     #   hatch
 traitlets==5.14.3
     # via
@@ -336,77 +329,77 @@ traitlets==5.14.3
     #   matplotlib-inline
 trove-classifiers==2024.4.10
     # via
-    #   -r requirements/build.txt
+    #   -r build.txt
     #   hatchling
 trustme==1.1.0
-    # via -r requirements/development.in
+    # via -r development.in
 types-aiofiles==23.2.0.20240403
-    # via -r requirements/lint.txt
+    # via -r lint.txt
 types-cachetools==5.3.0.7
-    # via -r requirements/lint.txt
+    # via -r lint.txt
 types-cffi==1.16.0.20240331
     # via
-    #   -r requirements/lint.txt
+    #   -r lint.txt
     #   types-pyopenssl
 types-pyopenssl==24.1.0.20240425
     # via
-    #   -r requirements/lint.txt
+    #   -r lint.txt
     #   types-redis
 types-pytz==2024.1.0.20240417
-    # via -r requirements/lint.txt
+    # via -r lint.txt
 types-redis==4.6.0.20240425
-    # via -r requirements/lint.txt
-types-requests==2.32.0.20240523
-    # via -r requirements/lint.txt
-types-setuptools==70.0.0.20240524
+    # via -r lint.txt
+types-requests==2.31.0.20240406
+    # via -r lint.txt
+types-setuptools==69.5.0.20240423
     # via
-    #   -r requirements/lint.txt
+    #   -r lint.txt
     #   types-cffi
 typing-extensions==4.11.0
     # via
-    #   -r requirements/lint.txt
-    #   -r requirements/production.txt
+    #   -r lint.txt
+    #   -r production.txt
     #   aiosqlite
     #   ipython
     #   mypy
     #   pytest-factoryboy
 urllib3==2.2.1
     # via
-    #   -r requirements/lint.txt
-    #   -r requirements/production.txt
+    #   -r lint.txt
+    #   -r production.txt
     #   requests
     #   sentry-sdk
     #   types-requests
 userpath==1.9.2
     # via
-    #   -r requirements/build.txt
+    #   -r build.txt
     #   hatch
 uv==0.1.42
     # via
-    #   -r requirements/build.txt
+    #   -r build.txt
     #   hatch
 virtualenv==20.26.1
     # via
-    #   -r requirements/build.txt
-    #   -r requirements/lint.txt
+    #   -r build.txt
+    #   -r lint.txt
     #   hatch
     #   pre-commit
 wcwidth==0.2.13
     # via prompt-toolkit
 wheel==0.43.0
     # via
-    #   -r requirements/lint.txt
+    #   -r lint.txt
     #   pip-tools
 yapf==0.40.2
-    # via -r requirements/lint.txt
+    # via -r lint.txt
 zipp==3.18.1
     # via
-    #   -r requirements/build.txt
-    #   -r requirements/lint.txt
+    #   -r build.txt
+    #   -r lint.txt
     #   importlib-metadata
 zstandard==0.22.0
     # via
-    #   -r requirements/build.txt
+    #   -r build.txt
     #   hatch
 
 # The following packages are considered to be unsafe in a requirements file:
