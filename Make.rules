@@ -51,7 +51,7 @@ venv:: $(ROOT_DIR)/venv
 # linting and formatting commands directly. It also runs mypy.
 #
 squeegee: venv isort black mypy	## Manually run isort, black, mypy, and ruff over all project files
-	@$(ACTIVATE) ruff $(ROOT_DIR)
+	@$(ACTIVATE) ruff check $(ROOT_DIR)
 
 lint: venv .git/hooks/pre-commit	## Run all pre-commit hooks. Note: this only runs over files in the git repo (and staged fiels)
 	@$(ACTIVATE) pre-commit run -a
