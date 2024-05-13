@@ -1,0 +1,29 @@
+version: "3"
+
+services:
+  imap: &imap-service
+    image: asimapd:latest
+    container_name: asimapd
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+      target: prod
+      platforms:
+        - "linux/amd64"
+        - "linux/arm64"
+    ports:
+      - "993:993"
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - "${OPT_ASIMAP_DIR}:/opt/asimap"
+    profiles:
+      - prod
+
+  imap-dev:
+    <<: *imap-service
+    image: asimapd:dev
+    container_name: asimapd-dev
+    env_file: dev.env
+    profiles:
+      - dev

@@ -25,8 +25,13 @@ build: requirements/build.txt requirements/development.txt	## `docker build` for
 	COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg VERSION=$(VERSION) --target prod --tag asimap:$(VERSION) --tag asimap:prod .
 	COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg VERSION=$(VERSION) --target dev --tag asimap:$(VERSION)-dev --tag asimap:dev .
 
-ssl:
+asimap_test_dir:   ## Create directories for running local development version
+	@mkdir $(ROOT_DIR)/asimap_test_dir
+
+ssl:     ## Creates the ssl directory used to hold development ssl cert and key
 	@mkdir $(ROOT_DIR)/ssl
+
+dirs: asimap_test_dir ssl
 
 # XXX Should we have an option to NOT use certs/mkcert (either just make
 #     self-signed ourself) in case a developer does not want to go through the
@@ -65,7 +70,7 @@ exec_shell: ## Make a bash shell in the docker-compose running devweb container
 package: .package ## build python package (.tar.gz and .whl)
 
 install: package  ## Install asimap via pip install of the package wheel
-	pip install -U ./dist/asimap-$(VERSION)-py3-none-any.whl
+	pip install -U $(ROOT_DIR)/dist/asimap-$(VERSION)-py3-none-any.whl
 
 release: package  ## Make a release. Tag based on the version.
 
@@ -73,3 +78,7 @@ publish: package  ## Publish the package to pypi
 
 help:	## Show this help.
 	@grep -hE '^[A-Za-z0-9_ \-]*?:.*##.*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
+
+clean::	## Swab the decks! Does not touch docker images or volumes.
+	@rm -rf $(ROOT_DIR)/ssl/*.pem
+	@rm -rf $(ROOT_DIR)/asimap_test_dir
