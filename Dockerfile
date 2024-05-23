@@ -50,7 +50,7 @@ ENV PATH /venv/bin:$PATH
 
 WORKDIR ${APP_HOME}
 
-CMD ["python", "/app/asimap/bin/asimapd"]
+CMD ["python", "/app/asimap/asimapd.py"]
 
 #########################
 #

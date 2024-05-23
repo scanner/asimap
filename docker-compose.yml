@@ -1,9 +1,8 @@
-version: "3"
 
 services:
   imap: &imap-service
-    image: asimapd:latest
-    container_name: asimapd
+    image: asimap:prod
+    container_name: asimap
     build:
       context: .
       dockerfile: ./Dockerfile
@@ -22,7 +21,7 @@ services:
 
   imap-dev:
     <<: *imap-service
-    image: asimapd:dev
-    container_name: asimapd-dev
+    image: asimap:dev
+    container_name: asimap-dev
     profiles:
       - dev
