@@ -81,7 +81,7 @@ types-redis==4.6.0.20240425
     # via -r requirements/lint.in
 types-requests==2.31.0.20240406
     # via -r requirements/lint.in
-types-setuptools==69.5.0.20240513
+types-setuptools==70.0.0.20240523
     # via
     #   -r requirements/lint.in
     #   types-cffi
