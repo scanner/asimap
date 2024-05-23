@@ -24,6 +24,5 @@ services:
     <<: *imap-service
     image: asimapd:dev
     container_name: asimapd-dev
-    env_file: dev.env
     profiles:
       - dev
