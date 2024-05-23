@@ -21,15 +21,14 @@ coverage: venv
 	open 'htmlcov/index.html'
 
 build: requirements/build.txt requirements/development.txt	## `docker build` for both `prod` and `dev` targets
-	echo $(VERSION)
-	COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg VERSION=$(VERSION) --target prod --tag asimap:$(VERSION) --tag asimap:prod .
-	COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg VERSION=$(VERSION) --target dev --tag asimap:$(VERSION)-dev --tag asimap:dev .
+	COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg VERSION=$(LATEST_TAG) --target prod --tag asimap:$(LATEST_TAG) --tag asimap:prod .
+	COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg VERSION=$(LATEST_TAG) --target dev --tag asimap:$(LATEST_TAG)-dev --tag asimap:dev .
 
 asimap_test_dir:   ## Create directories for running local development
-	@mkdir $(ROOT_DIR)/asimap_test_dir
+	@mkdir -p $(ROOT_DIR)/asimap_test_dir/traces
 
 ssl:     ## Creates the ssl directory used to hold development ssl cert and key
-	@mkdir $(ROOT_DIR)/ssl
+	@mkdir -p $(ROOT_DIR)/asimap_test_dir/ssl
 
 dirs: asimap_test_dir ssl
 
@@ -37,12 +36,12 @@ dirs: asimap_test_dir ssl
 #     self-signed ourself) in case a developer does not want to go through the
 #     potential risks associated with mkcert?
 #
-ssl/ssl_key.pem ssl/ssl_crt.pem:
-	@mkcert -key-file $(ROOT_DIR)/ssl/ssl_key.pem \
-                -cert-file $(ROOT_DIR)/ssl/ssl_crt.pem \
+asimap_test_dir/ssl/ssl_key.pem asimap_test_dir/ssl/ssl_crt.pem:
+	@mkcert -key-file $(ROOT_DIR)/asimap_test_dir/ssl/ssl_key.pem \
+                -cert-file $(ROOT_DIR)/asimap_test_dir/ssl/ssl_crt.pem \
                 `hostname` localhost 127.0.0.1 ::1
 
-certs: ssl ssl/ssl_key.pem ssl/ssl_crt.pem	## uses `mkcert` to create certificates for local development.
+certs: ssl asimap_test_dir/ssl/ssl_key.pem asimap_test_dir/ssl/ssl_crt.pem	## uses `mkcert` to create certificates for local development.
 
 up: build dirs certs	## build and then `docker compose up` for the `dev` profile. Use this to rebuild restart services that have changed.
 	@docker compose --profile dev up --remove-orphans --detach
@@ -64,14 +63,13 @@ exec_shell: ## Make a bash shell in the docker-compose running devweb container
 	@docker compose exec devweb /bin/bash
 
 .package: venv $(PY_FILES) pyproject.toml README.md LICENSE Makefile
-	echo $(LATEST_TAG)
 	PYTHONPATH=`pwd` $(ACTIVATE) python -m build
 	@touch .package
 
 package: .package ## build python package (.tar.gz and .whl)
 
 install: package  ## Install asimap via pip install of the package wheel
-	pip install -U $(ROOT_DIR)/dist/asimap-$(VERSION)-py3-none-any.whl
+	pip install -U $(ROOT_DIR)/dist/asimap-$(LATEST_TAG)-py3-none-any.whl
 
 release: package  ## Make a release. Tag based on the version.
 
@@ -81,5 +79,4 @@ help:	## Show this help.
 	@grep -hE '^[A-Za-z0-9_ \-]*?:.*##.*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
 clean::	## Swab the decks! Does not touch docker images or volumes.
-	@rm -rf $(ROOT_DIR)/ssl/*.pem
 	@rm -rf $(ROOT_DIR)/asimap_test_dir
