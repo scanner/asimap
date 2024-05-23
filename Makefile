@@ -25,7 +25,7 @@ build: requirements/build.txt requirements/development.txt	## `docker build` for
 	COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg VERSION=$(VERSION) --target prod --tag asimap:$(VERSION) --tag asimap:prod .
 	COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg VERSION=$(VERSION) --target dev --tag asimap:$(VERSION)-dev --tag asimap:dev .
 
-asimap_test_dir:   ## Create directories for running local development version
+asimap_test_dir:   ## Create directories for running local development
 	@mkdir $(ROOT_DIR)/asimap_test_dir
 
 ssl:     ## Creates the ssl directory used to hold development ssl cert and key
@@ -64,6 +64,7 @@ exec_shell: ## Make a bash shell in the docker-compose running devweb container
 	@docker compose exec devweb /bin/bash
 
 .package: venv $(PY_FILES) pyproject.toml README.md LICENSE Makefile
+	echo $(LATEST_TAG)
 	PYTHONPATH=`pwd` $(ACTIVATE) python -m build
 	@touch .package
 
