@@ -57,7 +57,7 @@ click==8.1.7
     #   userpath
 codetiming==1.4.0
     # via -r requirements/development.in
-coverage==7.5.1
+coverage==7.5.2
     # via
     #   -r requirements/lint.txt
     #   pytest-cov
