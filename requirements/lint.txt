@@ -4,9 +4,9 @@
 #
 #    pip-compile --output-file=lint.txt --strip-extras lint.in
 #
-black==24.2.0
+black==24.4.2
     # via -r lint.in
-build==1.1.1
+build==1.2.1
     # via pip-tools
 cffi==1.16.0
     # via cryptography
@@ -16,23 +16,23 @@ click==8.1.7
     # via
     #   black
     #   pip-tools
-coverage==7.4.3
+coverage==7.5.2
     # via -r lint.in
-cryptography==42.0.5
+cryptography==42.0.7
     # via
     #   types-pyopenssl
     #   types-redis
 distlib==0.3.8
     # via virtualenv
-filelock==3.13.1
+filelock==3.14.0
     # via virtualenv
-identify==2.5.35
+identify==2.5.36
     # via pre-commit
-importlib-metadata==7.0.1
+importlib-metadata==7.1.0
     # via yapf
 isort==5.13.2
     # via -r lint.in
-mypy==1.8.0
+mypy==1.10.0
     # via -r lint.in
 mypy-extensions==1.0.0
     # via
@@ -40,58 +40,62 @@ mypy-extensions==1.0.0
     #   mypy
 nodeenv==1.8.0
     # via pre-commit
-packaging==23.2
+packaging==24.0
     # via
     #   black
     #   build
 pathspec==0.12.1
     # via black
-pip-tools==7.4.0
+pip-tools==7.4.1
     # via -r lint.in
-platformdirs==4.2.0
+platformdirs==4.2.2
     # via
     #   black
     #   virtualenv
     #   yapf
-pre-commit==3.6.2
+pre-commit==3.7.1
     # via -r lint.in
-pycparser==2.21
+pycparser==2.22
     # via cffi
-pyproject-hooks==1.0.0
+pyproject-hooks==1.1.0
     # via
     #   build
     #   pip-tools
 pyyaml==6.0.1
     # via pre-commit
-ruff==0.3.0
+ruff==0.4.5
     # via -r lint.in
 tomli==2.0.1
     # via yapf
-types-aiofiles==23.2.0.20240106
+types-aiofiles==23.2.0.20240403
     # via -r lint.in
 types-cachetools==5.3.0.7
     # via -r lint.in
-types-pyopenssl==24.0.0.20240228
+types-cffi==1.16.0.20240331
+    # via types-pyopenssl
+types-pyopenssl==24.1.0.20240425
     # via types-redis
-types-pytz==2024.1.0.20240203
+types-pytz==2024.1.0.20240417
     # via -r lint.in
-types-redis==4.6.0.20240218
+types-redis==4.6.0.20240425
     # via -r lint.in
-types-requests==2.31.0.20240218
+types-requests==2.32.0.20240523
     # via -r lint.in
-types-setuptools==69.1.0.20240302
-    # via -r lint.in
-typing-extensions==4.10.0
+types-setuptools==70.0.0.20240524
+    # via
+    #   -r lint.in
+    #   types-cffi
+typing-extensions==4.12.0
     # via mypy
 urllib3==2.2.1
     # via types-requests
-virtualenv==20.25.1
+virtualenv==20.26.2
     # via pre-commit
-wheel==0.42.0
+wheel==0.43.0
     # via pip-tools
 yapf==0.40.2
     # via -r lint.in
-zipp==3.17.0
+zipp==3.19.0
     # via importlib-metadata
 
 # The following packages are considered to be unsafe in a requirements file:
