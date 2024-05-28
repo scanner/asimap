@@ -37,6 +37,7 @@ certifi==2024.2.2
     #   sentry-sdk
 cffi==1.16.0
     # via
+    #   -r requirements/build.txt
     #   -r requirements/lint.txt
     #   cryptography
 cfgv==3.4.0
@@ -63,6 +64,7 @@ coverage==7.5.1
     #   pytest-cov
 cryptography==42.0.7
     # via
+    #   -r requirements/build.txt
     #   -r requirements/lint.txt
     #   secretstorage
     #   trustme
@@ -94,7 +96,7 @@ h11==0.14.0
     # via
     #   -r requirements/build.txt
     #   httpcore
-hatch==1.10.0
+hatch==1.12.0
     # via -r requirements/build.txt
 hatchling==1.24.2
     # via
@@ -156,6 +158,7 @@ jedi==0.19.1
     # via ipython
 jeepney==0.8.0
     # via
+    #   -r requirements/build.txt
     #   keyring
     #   secretstorage
 keyring==25.2.0
@@ -239,6 +242,7 @@ pure-eval==0.2.2
     # via stack-data
 pycparser==2.22
     # via
+    #   -r requirements/build.txt
     #   -r requirements/lint.txt
     #   cffi
 pygments==2.18.0
@@ -298,7 +302,9 @@ rich==13.7.1
 ruff==0.4.5
     # via -r requirements/lint.txt
 secretstorage==3.3.3
-    # via keyring
+    # via
+    #   -r requirements/build.txt
+    #   keyring
 sentry-sdk==2.3.1
     # via -r requirements/production.txt
 shellingham==1.5.4
