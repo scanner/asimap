@@ -16,7 +16,7 @@ click==8.1.7
     # via
     #   black
     #   pip-tools
-coverage==7.5.1
+coverage==7.5.3
     # via -r requirements/lint.in
 cryptography==42.0.7
     # via
