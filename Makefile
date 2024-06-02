@@ -59,11 +59,11 @@ delete: clean	## docker compose down for `dev` and `prod` and `make clean`.
 restart:	## docker compose restart for the `dev` profile
 	@docker compose --profile dev restart
 
-shell:	## Make a bash shell an ephemeral devweb container
-	@docker compose run --rm devweb /bin/bash
+shell:	## Make a bash shell an ephemeral dev container
+	@docker compose run --rm imap-dev /bin/bash
 
-exec_shell: ## Make a bash shell in the docker-compose running devweb container
-	@docker compose exec devweb /bin/bash
+exec_shell: ## Make a bash shell in the docker-compose running imap-dev container
+	@docker compose exec imap-dev /bin/bash
 
 .package: venv $(PY_FILES) pyproject.toml README.md LICENSE Makefile
 	PYTHONPATH=`pwd` $(ACTIVATE) python -m build
@@ -84,5 +84,5 @@ help:	## Show this help.
 clean::	## Swab the decks! Does not touch docker images or volumes.
 	@rm -rf $(ROOT_DIR)/asimap_test_dir
 
-logs:	## Tail the logs for devweb, worker, devsmtpd, mailhog
+logs:	## Tail the logs for imap-dev container
 	@docker compose logs -f imap-dev
