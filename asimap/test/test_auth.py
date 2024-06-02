@@ -18,10 +18,12 @@ from ..exceptions import BadAuthentication, NoSuchUser
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_authenticate(faker, user_factory, password_file_factory):
-    password = faker.pystr(min_chars=8, max_chars=32)
+async def test_authenticate(faker, user_factory, password_file_factory) -> None:
+    password = faker.password()
     user = user_factory(password=password)
-    password_file_factory([user])
+    users = [user_factory(password=faker.password()) for _ in range(10)]
+    users.append(user)
+    password_file_factory(users)
     auth_user = await authenticate(user.username, password)
     assert auth_user.username == user.username
     assert auth_user.pw_hash == user.pw_hash

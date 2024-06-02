@@ -16,7 +16,7 @@ from faker import Faker
 
 # project imports
 #
-from ..auth import User
+from ..auth import PWUser
 from ..hashers import make_password
 
 # factory.Faker() is good and all but it delays evaluation and returns a Faker
@@ -31,7 +31,7 @@ fake = Faker()
 #
 class UserFactory(factory.Factory):
     class Meta:
-        model = User
+        model = PWUser
 
     username = factory.Faker("email")
     maildir = factory.LazyAttribute(

@@ -25,7 +25,7 @@ from sentry_sdk.integrations.asyncio import AsyncioIntegration
 #
 import asimap.user_server
 
-from .auth import User
+from .auth import PWUser
 from .client import CAPABILITIES, ClientState, PreAuthenticated
 from .parse import BadCommand, parse_cmd_from_msg
 from .utils import UpgradeableReadWriteLock
@@ -88,7 +88,7 @@ class IMAPSubprocess:
     #
     def __init__(
         self,
-        user: User,
+        user: PWUser,
         debug: bool = False,
         log_config: Optional[str] = None,
         trace: Optional[bool] = False,

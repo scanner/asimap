@@ -193,12 +193,10 @@ def password_file_factory(tmp_path):
     setup the auth module to use it, given the users it is called with.
     """
 
-    def make_pw_file(users):
-        # XXX Maybe should randomize the file name?
+    def make_pw_file(users: List[asimap.auth.PWUser]):
         pw_file_location = tmp_path / "asimap_pwfile.txt"
-        with pw_file_location.open("w") as f:
-            for user in users:
-                f.write(f"{user.username}:{user.pw_hash}:{user.maildir}\n")
+        accounts = {x.username: x for x in users}
+        asimap.auth.write_pwfile(pw_file_location, accounts)
         setattr(asimap.auth, "PW_FILE_LOCATION", pw_file_location)
         return pw_file_location
 
