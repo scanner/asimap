@@ -16,7 +16,7 @@ asttokens==2.4.1
     # via stack-data
 async-timeout==4.0.3
     # via -r production.txt
-backports-tarfile==1.1.1
+backports-tarfile==1.2.0
     # via
     #   -r build.txt
     #   jaraco-context
@@ -27,7 +27,7 @@ build==1.2.1
     #   -r build.txt
     #   -r lint.txt
     #   pip-tools
-certifi==2024.2.2
+certifi==2024.6.2
     # via
     #   -r build.txt
     #   -r production.txt
@@ -57,7 +57,7 @@ click==8.1.7
     #   userpath
 codetiming==1.4.0
     # via -r development.in
-coverage==7.5.2
+coverage==7.5.3
     # via
     #   -r lint.txt
     #   pytest-cov
@@ -82,7 +82,7 @@ executing==2.0.1
     # via stack-data
 factory-boy==3.3.0
     # via pytest-factoryboy
-faker==25.2.0
+faker==25.3.0
     # via factory-boy
 filelock==3.14.0
     # via
@@ -93,7 +93,7 @@ h11==0.14.0
     # via
     #   -r build.txt
     #   httpcore
-hatch==1.11.1
+hatch==1.12.0
     # via -r build.txt
 hatchling==1.24.2
     # via
@@ -135,7 +135,7 @@ inflection==0.5.1
     # via pytest-factoryboy
 iniconfig==2.0.0
     # via pytest
-ipython==8.24.0
+ipython==8.25.0
     # via -r development.in
 isort==5.13.2
     # via -r lint.txt
@@ -179,7 +179,7 @@ mypy-extensions==1.0.0
     #   -r lint.txt
     #   black
     #   mypy
-nodeenv==1.8.0
+nodeenv==1.9.0
     # via
     #   -r lint.txt
     #   pre-commit
@@ -224,7 +224,7 @@ pluggy==1.5.0
     #   pytest
 pre-commit==3.7.1
     # via -r lint.txt
-prompt-toolkit==3.0.44
+prompt-toolkit==3.0.45
     # via ipython
 ptyprocess==0.7.0
     # via
@@ -281,7 +281,7 @@ pyyaml==6.0.1
     # via
     #   -r lint.txt
     #   pre-commit
-requests==2.32.2
+requests==2.32.3
     # via requests-mock
 requests-mock==1.12.1
     # via -r development.in
@@ -290,7 +290,7 @@ rich==13.7.1
     #   -r build.txt
     #   -r development.in
     #   hatch
-ruff==0.4.5
+ruff==0.4.7
     # via -r lint.txt
 sentry-sdk==2.3.1
     # via -r production.txt
@@ -349,13 +349,13 @@ types-pytz==2024.1.0.20240417
     # via -r lint.txt
 types-redis==4.6.0.20240425
     # via -r lint.txt
-types-requests==2.32.0.20240523
+types-requests==2.32.0.20240602
     # via -r lint.txt
 types-setuptools==70.0.0.20240524
     # via
     #   -r lint.txt
     #   types-cffi
-typing-extensions==4.12.0
+typing-extensions==4.12.1
     # via
     #   -r lint.txt
     #   -r production.txt
@@ -374,7 +374,7 @@ userpath==1.9.2
     # via
     #   -r build.txt
     #   hatch
-uv==0.2.4
+uv==0.2.5
     # via
     #   -r build.txt
     #   hatch
@@ -392,7 +392,7 @@ wheel==0.43.0
     #   pip-tools
 yapf==0.40.2
     # via -r lint.txt
-zipp==3.19.0
+zipp==3.19.1
     # via
     #   -r build.txt
     #   -r lint.txt
