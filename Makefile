@@ -72,7 +72,7 @@ exec_shell: ## Make a bash shell in the docker-compose running devweb container
 package: .package ## build python package (.tar.gz and .whl)
 
 install: package  ## Install asimap via pip install of the package wheel
-	pip install -U $(ROOT_DIR)/dist/asimap-$(LATEST_TAG)-py3-none-any.whl
+	pip install --force-reinstall -U $(ROOT_DIR)/dist/asimap-$(LATEST_TAG)-py3-none-any.whl
 
 release: package  ## Make a release. Tag based on the version.
 
