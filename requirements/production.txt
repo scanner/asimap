@@ -10,7 +10,7 @@ aiosqlite==0.20.0
     # via -r production.in
 async-timeout==4.0.3
     # via -r production.in
-certifi==2024.2.2
+certifi==2024.6.2
     # via sentry-sdk
 charset-normalizer==3.3.2
     # via -r production.in
@@ -22,7 +22,7 @@ python-json-logger==2.0.7
     # via -r production.in
 sentry-sdk==2.3.1
     # via -r production.in
-typing-extensions==4.12.0
+typing-extensions==4.12.1
     # via aiosqlite
 urllib3==2.2.1
     # via sentry-sdk
