@@ -14,3 +14,4 @@ venv*
 .coverage
 .package
 dist
+asimap_test_dir

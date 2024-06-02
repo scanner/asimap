@@ -24,13 +24,16 @@ build: requirements/build.txt requirements/development.txt	## `docker build` for
 	COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg VERSION=$(LATEST_TAG) --target prod --tag asimap:$(LATEST_TAG) --tag asimap:prod .
 	COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg VERSION=$(LATEST_TAG) --target dev --tag asimap:$(LATEST_TAG)-dev --tag asimap:dev .
 
-asimap_test_dir:   ## Create directories for running local development
+asimap_test_dir:   ## Create directory running local development
+	@mkdir -p $(ROOT_DIR)/asimap_test_dir
+
+traces_dir:   ## Create traces directory for running local development
 	@mkdir -p $(ROOT_DIR)/asimap_test_dir/traces
 
 ssl:     ## Creates the ssl directory used to hold development ssl cert and key
 	@mkdir -p $(ROOT_DIR)/asimap_test_dir/ssl
 
-dirs: asimap_test_dir ssl
+dirs: asimap_test_dir ssl traces_dir
 
 # XXX Should we have an option to NOT use certs/mkcert (either just make
 #     self-signed ourself) in case a developer does not want to go through the
@@ -80,3 +83,6 @@ help:	## Show this help.
 
 clean::	## Swab the decks! Does not touch docker images or volumes.
 	@rm -rf $(ROOT_DIR)/asimap_test_dir
+
+logs:	## Tail the logs for devweb, worker, devsmtpd, mailhog
+	@docker compose logs -f imap-dev

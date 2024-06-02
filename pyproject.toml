@@ -35,6 +35,7 @@ classifiers = [
 [project.scripts]
 asimapd = "asimap.asimapd:main"
 asimapd_user = "asimap.asimapd_user:main"
+asimapd_set_password = "asimap.set_password:main"
 
 [project.urls]
 Homepage = "https://github.com/scanner/asimap"
@@ -42,7 +43,7 @@ Issues = "https://github.com/scanner/asimap/issues"
 Changelog = "https://github.com/scanner/asimap/blob/main/CHANGELOG.md"
 
 [tool.setuptools.dynamic]
-dependencies = {file = ["requirements/requirements.txt"]}
+dependencies = {file = ["requirements/production.txt"]}
 
 [tool.hatch.version]
 path = "asimap/__init__.py"
