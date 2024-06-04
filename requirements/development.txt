@@ -252,7 +252,7 @@ pyproject-hooks==1.1.0
     #   -r requirements/lint.txt
     #   build
     #   pip-tools
-pytest==8.2.0
+pytest==8.2.2
     # via
     #   -r requirements/development.in
     #   pytest-asyncio
