@@ -63,7 +63,7 @@ pyproject-hooks==1.1.0
     #   pip-tools
 pyyaml==6.0.1
     # via pre-commit
-ruff==0.4.5
+ruff==0.4.8
     # via -r requirements/lint.in
 tomli==2.0.1
     # via yapf
