@@ -50,7 +50,7 @@ ENV PATH /venv/bin:$PATH
 
 WORKDIR ${APP_HOME}
 
-CMD ["python", "/app/asimap/bin/asimapd"]
+CMD ["python", "/app/asimap/asimapd.py"]
 
 #########################
 #
@@ -72,9 +72,8 @@ ENV PYTHONDONTWRITEBYTECODE 1
 #
 COPY --from=builder /app/dist /app/dist
 
-RUN python -m venv --copies /app/venv
-RUN . /app/venv/bin/activate && \
-    pip install --upgrade pip && \
+RUN python -m venv --copies /venv
+RUN . /venv/bin/activate && \
     pip install /app/dist/asimap-${VERSION}-py3-none-any.whl
 
 # Puts the venv's python (and other executables) at the front of the

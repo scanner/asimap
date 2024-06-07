@@ -4,13 +4,13 @@
 #
 #    pip-compile --output-file=build.txt --strip-extras build.in
 #
-anyio==4.3.0
+anyio==4.4.0
     # via httpx
-backports-tarfile==1.1.1
+backports-tarfile==1.2.0
     # via jaraco-context
 build==1.2.1
     # via -r build.in
-certifi==2024.2.2
+certifi==2024.6.2
     # via
     #   httpcore
     #   httpx
@@ -24,7 +24,7 @@ filelock==3.14.0
     # via virtualenv
 h11==0.14.0
     # via httpcore
-hatch==1.10.0
+hatch==1.12.0
     # via -r build.in
 hatchling==1.24.2
     # via hatch
@@ -47,7 +47,7 @@ jaraco-context==5.3.0
     # via keyring
 jaraco-functools==4.0.1
     # via keyring
-keyring==25.2.0
+keyring==25.2.1
     # via hatch
 markdown-it-py==3.0.0
     # via rich
@@ -66,7 +66,7 @@ pathspec==0.12.1
     # via hatchling
 pexpect==4.9.0
     # via hatch
-platformdirs==4.2.1
+platformdirs==4.2.2
     # via
     #   hatch
     #   virtualenv
@@ -90,15 +90,15 @@ tomli-w==1.0.0
     # via hatch
 tomlkit==0.12.5
     # via hatch
-trove-classifiers==2024.4.10
+trove-classifiers==2024.5.22
     # via hatchling
 userpath==1.9.2
     # via hatch
-uv==0.1.42
+uv==0.2.9
     # via hatch
-virtualenv==20.26.1
+virtualenv==20.26.2
     # via hatch
-zipp==3.18.1
+zipp==3.19.2
     # via importlib-metadata
 zstandard==0.22.0
     # via hatch

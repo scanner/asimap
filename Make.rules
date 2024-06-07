@@ -19,7 +19,6 @@ clean::	## Swab the decks! Does not touch docker images or volumes.
 	@rm -rf *.tar.gz junit.xml coverage.xml .cache
 	@rm -rf .tox .eggs .blackened .isorted .ruff_cache
 	@rm -rf venv*
-	@rm -rf ./ssl/*.pem
 	@find $(ROOT_DIR) \( -name \*.orig -o -name \*.bak -o -name \*.rej \) -exec rm '{}' +
 	@make -C requirements/ clean
 	@mkdir .mypy_cache
@@ -51,7 +50,7 @@ venv:: $(ROOT_DIR)/venv
 # linting and formatting commands directly. It also runs mypy.
 #
 squeegee: venv isort black mypy	## Manually run isort, black, mypy, and ruff over all project files
-	@$(ACTIVATE) ruff $(ROOT_DIR)
+	@$(ACTIVATE) ruff check $(ROOT_DIR)
 
 lint: venv .git/hooks/pre-commit	## Run all pre-commit hooks. Note: this only runs over files in the git repo (and staged fiels)
 	@$(ACTIVATE) pre-commit run -a

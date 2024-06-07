@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, List, Optional, Union
 #
 from asimap import __version__
 
-from .auth import User, authenticate
+from .auth import PWUser, authenticate
 from .exceptions import AuthenticationException, Bad, MailboxInconsistency, No
 from .mbox import Mailbox, NoSuchMailbox
 from .parse import IMAPClientCommand, StatusAtt
@@ -395,7 +395,7 @@ class PreAuthenticated(BaseClientHandler):
     def __init__(self, client: "IMAPClient"):
         """ """
         super().__init__(client)
-        self.user: Optional[User] = None
+        self.user: Optional[PWUser] = None
         return
 
     # The following commands are supported in the non-authenticated state.
