@@ -61,7 +61,7 @@ coverage==7.5.3
     # via
     #   -r lint.txt
     #   pytest-cov
-cryptography==42.0.7
+cryptography==42.0.8
     # via
     #   -r lint.txt
     #   trustme
@@ -82,7 +82,7 @@ executing==2.0.1
     # via stack-data
 factory-boy==3.3.0
     # via pytest-factoryboy
-faker==25.3.0
+faker==25.6.0
     # via factory-boy
 filelock==3.14.0
     # via
@@ -179,7 +179,7 @@ mypy-extensions==1.0.0
     #   -r lint.txt
     #   black
     #   mypy
-nodeenv==1.9.0
+nodeenv==1.9.1
     # via
     #   -r lint.txt
     #   pre-commit
@@ -224,7 +224,7 @@ pluggy==1.5.0
     #   pytest
 pre-commit==3.7.1
     # via -r lint.txt
-prompt-toolkit==3.0.45
+prompt-toolkit==3.0.46
     # via ipython
 ptyprocess==0.7.0
     # via
@@ -247,7 +247,7 @@ pyproject-hooks==1.1.0
     #   -r lint.txt
     #   build
     #   pip-tools
-pytest==8.2.1
+pytest==8.2.2
     # via
     #   -r development.in
     #   pytest-asyncio
@@ -290,9 +290,9 @@ rich==13.7.1
     #   -r build.txt
     #   -r development.in
     #   hatch
-ruff==0.4.7
+ruff==0.4.8
     # via -r lint.txt
-sentry-sdk==2.3.1
+sentry-sdk==2.5.0
     # via -r production.txt
 shellingham==1.5.4
     # via
@@ -374,7 +374,7 @@ userpath==1.9.2
     # via
     #   -r build.txt
     #   hatch
-uv==0.2.5
+uv==0.2.9
     # via
     #   -r build.txt
     #   hatch
@@ -392,7 +392,7 @@ wheel==0.43.0
     #   pip-tools
 yapf==0.40.2
     # via -r lint.txt
-zipp==3.19.1
+zipp==3.19.2
     # via
     #   -r build.txt
     #   -r lint.txt
