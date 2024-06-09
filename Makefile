@@ -20,7 +20,7 @@ coverage: venv
 	open 'htmlcov/index.html'
 
 build: version requirements/build.txt requirements/development.txt	## `docker build` for both `prod` and `dev` targets
-	COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg VERSION=$(VERSION) --target prod --tag asimap:$(VERSION) --tag asimap:prod .
+	COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg VERSION="$(VERSION)" --target prod --tag asimap:$(VERSION) --tag asimap:prod .
 	COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg VERSION=$(VERSION) --target dev --tag asimap:$(VERSION)-dev --tag asimap:dev .
 
 asimap_test_dir:   ## Create directory running local development
@@ -71,7 +71,7 @@ exec_shell: ## Make a bash shell in the docker-compose running imap-dev containe
 package: .package ## build python package (.tar.gz and .whl)
 
 install: version package  ## Install asimap via pip install of the package wheel
-	pip install --force-reinstall -U $(ROOT_DIR)/dist/asimap-$(VERSION)-py3-none-any.whl
+	pip install --force-reinstall -U $(ROOT_DIR)/dist/asimap-v$(VERSION)-py3-none-any.whl
 
 # Should mark the published tag as a release on github
 release: package  ## Make a release. Tag based on the version.
@@ -80,7 +80,7 @@ publish: package  ## Publish the package to pypi
 
 tag: version    ## Tag the git repo with the current version of asimapd.
 	@if git rev-parse "$(VERSION)" >/dev/null 2>&1; then \
-	    echo "Tag '$(VERSION)' already exists" ; \
+	    echo "Tag '$(VERSION)' already exists (skipping 'git tag')" ; \
         else \
 	    git tag --sign "$(VERSION)" -m "Version $(VERSION)"; \
             echo "Tagged with '$(VERSION)'" ; \

@@ -48,6 +48,7 @@ venv:: $(ROOT_DIR)/venv
 # Set the Make variable `VERSION` to the version of our project
 version: venv
 	$(eval VERSION := $(shell $(ACTIVATE) hatch version))
+	@echo "Version: $(VERSION)"
 
 # Squeegee vs lint targets. `lint` is pre-commit, so it does what you
 # need done for the pre-commit hook to pass. Squeegee runs the various
