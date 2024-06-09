@@ -35,7 +35,7 @@ steps:
       auto_tag: true
       target: prod
       build_args:
-        - VERSION=$(DRONE_TAG)
+        - VERSION=${DRONE_TAG}
 
   - name: Build dev
     image: plugins/docker
