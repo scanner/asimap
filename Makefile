@@ -71,7 +71,7 @@ exec_shell: ## Make a bash shell in the docker-compose running imap-dev containe
 package: .package ## build python package (.tar.gz and .whl)
 
 install: version package  ## Install asimap via pip install of the package wheel
-	pip install --force-reinstall -U $(ROOT_DIR)/dist/asimap-v$(VERSION)-py3-none-any.whl
+	pip install --force-reinstall -U $(ROOT_DIR)/dist/asimap-$(VERSION)-py3-none-any.whl
 
 # Should mark the published tag as a release on github
 release: package  ## Make a release. Tag based on the version.
@@ -93,7 +93,7 @@ help:	## Show this help.
 	@grep -hE '^[A-Za-z0-9_ \-]*?:.*##.*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
 clean::	## Swab the decks! Does not touch docker images or volumes.
-	@rm -rf $(ROOT_DIR)/asimap_test_dir
+	@rm -rf $(ROOT_DIR)/asimap_test_dir $(ROOT_DIR)/.package $(ROOT_DIR)/dist
 
 logs:	## Tail the logs for imap-dev container
 	@docker compose logs -f imap-dev
