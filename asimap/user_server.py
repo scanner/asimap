@@ -468,17 +468,23 @@ class IMAPUserServer:
         through the main process. Run until the server exits.
         """
         if "SENTRY_DSN" in os.environ:
+            traces_sample_rate = float(
+                os.environ.get("SENTRY_TRACES_SAMPLE_RATE", 0.1)
+            )
+            profiles_sample_rate = float(
+                os.environ.get("SENTRY_PROFILES_SAMPLE_RATE", 0.1)
+            )
             logger.debug("Initializing sentry_sdk")
             sentry_sdk.init(
                 dsn=os.environ["SENTRY_DSN"],
                 # Set traces_sample_rate to 1.0 to capture 100%
                 # of transactions for performance monitoring.
-                traces_sample_rate=1.0,
-                profiles_sample_rate=1.0,
+                traces_sample_rate=traces_sample_rate,
+                profiles_sample_rate=profiles_sample_rate,
                 integrations=[
                     AsyncioIntegration(),
                 ],
-                environment="devel",
+                environment="devel" if self.debug else "production",
             )
         else:
             logger.debug(
