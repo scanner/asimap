@@ -2,14 +2,13 @@
 ROOT_DIR := $(shell git rev-parse --show-toplevel)
 include $(ROOT_DIR)/Make.rules
 DOCKER_BUILDKIT := 1
-LATEST_TAG := $(shell git describe --abbrev=0)
 
-.PHONY: clean lint test test_units test_integrations mypy logs shell restart delete down up build dirs help package publish
+.PHONY: clean lint test test-units test-integrations mypy logs shell restart delete down up build dirs help package publish tag publish-tag
 
-test_integrations: venv
+test-integrations: venv
 	PYTHONPATH=`pwd` $(ACTIVATE) pytest -m integration
 
-test_units: venv
+test-units: venv
 	PYTHONPATH=`pwd` $(ACTIVATE) pytest -m "not integration"
 
 test: venv
@@ -20,9 +19,9 @@ coverage: venv
 	coverage html
 	open 'htmlcov/index.html'
 
-build: requirements/build.txt requirements/development.txt	## `docker build` for both `prod` and `dev` targets
-	COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg VERSION=$(LATEST_TAG) --target prod --tag asimap:$(LATEST_TAG) --tag asimap:prod .
-	COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg VERSION=$(LATEST_TAG) --target dev --tag asimap:$(LATEST_TAG)-dev --tag asimap:dev .
+build: version requirements/build.txt requirements/development.txt	## `docker build` for both `prod` and `dev` targets
+	COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg VERSION=$(VERSION) --target prod --tag asimap:$(VERSION) --tag asimap:prod .
+	COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg VERSION=$(VERSION) --target dev --tag asimap:$(VERSION)-dev --tag asimap:dev .
 
 asimap_test_dir:   ## Create directory running local development
 	@mkdir -p $(ROOT_DIR)/asimap_test_dir
@@ -65,18 +64,30 @@ shell:	## Make a bash shell an ephemeral dev container
 exec_shell: ## Make a bash shell in the docker-compose running imap-dev container
 	@docker compose exec imap-dev /bin/bash
 
-.package: venv $(PY_FILES) pyproject.toml README.md LICENSE Makefile
-	PYTHONPATH=`pwd` $(ACTIVATE) python -m build
+.package: version venv $(PY_FILES) pyproject.toml README.md LICENSE Makefile requirements/build.txt requirements/production.txt
+	@PYTHONPATH=`pwd` $(ACTIVATE) python -m build
 	@touch .package
 
 package: .package ## build python package (.tar.gz and .whl)
 
-install: package  ## Install asimap via pip install of the package wheel
-	pip install --force-reinstall -U $(ROOT_DIR)/dist/asimap-$(LATEST_TAG)-py3-none-any.whl
+install: version package  ## Install asimap via pip install of the package wheel
+	pip install --force-reinstall -U $(ROOT_DIR)/dist/asimap-$(VERSION)-py3-none-any.whl
 
+# Should mark the published tag as a release on github
 release: package  ## Make a release. Tag based on the version.
 
 publish: package  ## Publish the package to pypi
+
+tag: version    ## Tag the git repo with the current version of asimapd.
+	@if git rev-parse "$(VERSION)" >/dev/null 2>&1; then \
+	    echo "Tag '$(VERSION)' already exists" ; \
+        else \
+	    git tag --sign "$(VERSION)" -m "Version $(VERSION)"; \
+            echo "Tagged with '$(VERSION)'" ; \
+        fi
+
+publish-tag: version tag   ## Tag (if not already tagged) and publish the tag of the current version to git `origin` branch
+	@git push origin tag $(VERSION)
 
 help:	## Show this help.
 	@grep -hE '^[A-Za-z0-9_ \-]*?:.*##.*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'

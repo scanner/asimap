@@ -45,6 +45,10 @@ $(ROOT_DIR)/venv: requirements/development.txt
 
 venv:: $(ROOT_DIR)/venv
 
+# Set the Make variable `VERSION` to the version of our project
+version: venv
+	$(eval VERSION := $(shell $(ACTIVATE) hatch version))
+
 # Squeegee vs lint targets. `lint` is pre-commit, so it does what you
 # need done for the pre-commit hook to pass. Squeegee runs the various
 # linting and formatting commands directly. It also runs mypy.
@@ -77,4 +81,4 @@ prettier: .prettier
 mypy: venv  ## Run `mypy` over `app/` and `scripts/`
 	@$(ACTIVATE) mypy --install-types --non-interactive --explicit-package-bases ./app/ ./scripts/
 
-.PHONY: requirements formatting lint squeegee isort black mypy
+.PHONY: requirements formatting lint squeegee isort black mypy version

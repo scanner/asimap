@@ -50,7 +50,7 @@ steps:
       auto_tag_suffix: dev
       target: dev
       build_args:
-        - VERSION=$(DRONE_TAG)
+        - VERSION=${DRONE_TAG}
 
 trigger:
   event:
