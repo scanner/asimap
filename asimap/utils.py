@@ -412,13 +412,6 @@ def setup_logging(
                 "formatter": "basic",
                 "stream": "ext://sys.stderr",
             },
-            "file": {
-                "class": "logging.handlers.RotatingFileHandler",
-                "formatter": "basic",
-                "filename": str(LOG_DIR / f"{LOGGED_IN_USER}-asimapd.log"),
-                "maxBytes": 20971520,
-                "backupCount": 5,
-            },
         },
         "loggers": {
             "asimap": {
@@ -437,6 +430,13 @@ def setup_logging(
     # If the log dir exists the write our logs there.
     #
     if LOG_DIR.exists() and LOG_DIR.is_dir():
+        DEFAULT_LOGGING_CONFIG["handlers"]["file"] = {
+            "class": "logging.handlers.RotatingFileHandler",
+            "formatter": "basic",
+            "filename": str(LOG_DIR / f"{LOGGED_IN_USER}-asimapd.log"),
+            "maxBytes": 20971520,
+            "backupCount": 5,
+        }
         DEFAULT_LOGGING_CONFIG["loggers"]["asimap"]["handlers"] = ["file"]
 
     # Add the trace file sections only if the trace dir exists.
