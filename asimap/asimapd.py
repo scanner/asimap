@@ -128,7 +128,10 @@ def main():
             else "/opt/asimap/ssl/ssl_key.pem"
         )
     ssl_key_file = Path(ssl_key_file)
-    if debug is None:
+    # If debug is not enabled via the command line, see if it is enabled via
+    # the env var.
+    #
+    if not debug:
         debug = bool(os.environ["DEBUG"]) if "DEBUG" in os.environ else False
     if log_config is None:
         log_config = (

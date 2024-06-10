@@ -51,6 +51,8 @@ if TYPE_CHECKING:
 
 MsgSet: TypeAlias = Union[List | Set | Tuple]
 
+LOG_DIR = Path("/opt/asimap/logs")
+
 # RE used to suss out the digits of the uid_vv/uid header in an email
 # message
 #
@@ -425,6 +427,18 @@ def setup_logging(
         },
     }
 
+    # If the log dir exists the write our logs there.
+    #
+    if LOG_DIR.exists() and LOG_DIR.is_dir():
+        DEFAULT_LOGGING_CONFIG["handlers"]["file"] = {
+            "class": "logging.handlers.RotatingFileHandler",
+            "formatter": "basic",
+            "filename": str(LOG_DIR / f"{LOGGED_IN_USER}-asimapd.log"),
+            "maxBytes": 20971520,
+            "backupCount": 5,
+        }
+        DEFAULT_LOGGING_CONFIG["loggers"]["asimap"]["handlers"] = ["file"]
+
     # Add the trace file sections only if the trace dir exists.
     #
     warn_no_trace_dir = False
@@ -446,8 +460,10 @@ def setup_logging(
         else:
             warn_no_trace_dir = True
     logging.config.dictConfig(DEFAULT_LOGGING_CONFIG)
+    logger = logging.getLogger("asimap.utils")
+    logger.info("Logging initialized")
+    logger.debug("Debug enabled")
     if warn_no_trace_dir:
-        logger = logging.getLogger("asimap.utils")
         logger.warning(
             "Unable to set up tracing because trace dir '%s' either does not exist or is not a directory.",
             trace_dir,
