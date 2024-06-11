@@ -476,13 +476,19 @@ class IMAPClientCommand:
                 self._p_simple_string(" ")
                 self.mailbox_name = self._p_mailbox()
             case IMAPCommands.EXAMINE:
-                self._p_examine()
+                self._p_simple_string(" ")
+                self.mailbox_name = self._p_mailbox()
             case IMAPCommands.CREATE:
-                self._p_create()
+                self._p_simple_string(" ")
+                self.mailbox_name = self._p_mailbox()
             case IMAPCommands.DELETE:
-                self._p_delete()
+                self._p_simple_string(" ")
+                self.mailbox_name = self._p_mailbox()
             case IMAPCommands.RENAME:
-                self._p_rename()
+                self._p_simple_string(" ")
+                self.mailbox_src_name = self._p_mailbox()
+                self._p_simple_string(" ")
+                self.mailbox_dst_name = self._p_mailbox()
             case IMAPCommands.SUBSCRIBE:
                 self._p_subscribe()
             case IMAPCommands.UNSUBSCRIBE:
@@ -509,75 +515,6 @@ class IMAPClientCommand:
                 self._p_uid()
             case _:
                 raise UnknownCommand(value=self.command)
-
-    #######################################################################
-    #
-    def _p_authenticate(self):
-        """The authenticate command nominally takes a single parameter that
-        is an atom. (It is up to the execution functions to decide whether or
-        not we honor this authenticator.)
-        """
-        self._p_simple_string(" ")
-        self.auth_mechanism_name = self._p_re(_atom_re)
-        return
-
-    #######################################################################
-    #
-    def _p_login(self):
-        """Parse the arguments for a login command - two astrings: user name
-        and password"""
-        self._p_simple_string(" ")
-        self.user_name = self._p_astring()
-        self._p_simple_string(" ")
-        self.password = self._p_astring()
-        return
-
-    #######################################################################
-    #
-    def _p_select(self):
-        """select  ::= 'SELECT' SPACE mailbox"""
-        self._p_simple_string(" ")
-        self.mailbox_name = self._p_mailbox()
-
-    #######################################################################
-    #
-    def _p_unselect(self):
-        """The unselect has no arguments to parse"""
-        pass
-
-    #######################################################################
-    #
-    def _p_examine(self):
-        """examine  ::= 'EXAMINE' SPACE mailbox"""
-        self._p_simple_string(" ")
-        self.mailbox_name = self._p_mailbox()
-
-    #######################################################################
-    #
-    def _p_create(self):
-        """create  ::= 'CREATE' SPACE mailbox
-        Use of INBOX gives a NO error"""
-        self._p_simple_string(" ")
-        self.mailbox_name = self._p_mailbox()
-
-    #######################################################################
-    #
-    def _p_delete(self):
-        """delete  ::= 'DELETE' SPACE mailbox
-        Use of INBOX gives a NO error"""
-        self._p_simple_string(" ")
-        self.mailbox_name = self._p_mailbox()
-
-    #######################################################################
-    #
-    def _p_rename(self):
-        """rename ::= 'RENAME' SPACE mailbox SPACE mailbox
-        Use of INBOX as a destination gives a NO error
-        """
-        self._p_simple_string(" ")
-        self.mailbox_src_name = self._p_mailbox()
-        self._p_simple_string(" ")
-        self.mailbox_dst_name = self._p_mailbox()
 
     #######################################################################
     #
