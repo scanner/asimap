@@ -696,11 +696,7 @@ class IMAPSubprocessInterface:
         try:
             imap_cmd = parse_cmd_from_msg(msg)
         except BadCommand as e:
-            if imap_cmd.tag is not None:
-                bad = f"{imap_cmd.tag} BAD {e}\r\n"
-            else:
-                bad = f"* BAD {e}\r\n"
-            await self.imap_client.push(bad)
+            await self.imap_client.push(f"* BAD {e}\r\n")
             return True
 
         # Process this IMAP command (dealing with all valid commands before
