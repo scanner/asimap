@@ -21,8 +21,7 @@ import asimap.utils
 from .fetch import STR_TO_FETCH_OP, FetchAtt, FetchOp
 from .search import IMAPSearch
 
-# 3rd party imports
-#
+logger = logging.getLogger("asimap.parse")
 
 
 #######################################################################
@@ -103,6 +102,39 @@ flag_to_str = {
     StoreAction.ADD_FLAGS: "+FLAGS",
     StoreAction.REMOVE_FLAGS: "-FLAGS",
 }
+
+
+#######################################################################
+#
+class IMAPCommands(StrEnum):
+    APPEND = "append"
+    AUTHENTICATE = "authenticate"
+    CAPABILITY = "capability"
+    CHECK = "check"
+    CLOSE = "close"
+    COPY = "copy"
+    CREATE = "create"
+    DELETE = "delete"
+    EXAMINE = "examine"
+    EXPUNGE = "expunge"
+    FETCH = "fetch"
+    ID = "id"
+    IDLE = "idle"
+    LIST = "list"
+    LOGIN = "login"
+    LOGOUT = "logout"
+    LSUB = "lsub"
+    NAMESPACE = "namespace"
+    NOOP = "noop"
+    RENAME = "rename"
+    SEARCH = "search"
+    SELECT = "select"
+    STATUS = "status"
+    STORE = "store"
+    SUBSCRIBE = "subscribe"
+    UID = "uid"
+    UNSELECT = "unselect"
+    UNSUBSCRIBE = "unsubscribe"
 
 
 #######################################################################
@@ -273,7 +305,7 @@ _zone_re = re.compile(_zone)
 
 ############################################################################
 #
-class IMAPClientCommand(object):
+class IMAPClientCommand:
     """This is an IMAP Client Command parser. Given a complete IMAP command it
     will parse in to a structure that can be easily processed by the rest of
     this server.
@@ -290,12 +322,9 @@ class IMAPClientCommand(object):
         Create the IMAPClientCommand object. This does NOT parse the string we
         were given, though. You need to call the 'parse()' method for that.
         """
-        self.log = logging.getLogger(
-            "%s.%s" % (__name__, self.__class__.__name__)
-        )
         self.input = imap_command
         self.uid_command: bool = False
-        self.tag = None
+        self.tag: Optional[str] = None
         self.command: Optional[str] = None
 
     ##################################################################
@@ -405,9 +434,6 @@ class IMAPClientCommand(object):
 
         tag SPACE command command_arguments* CRLF
         """
-
-        # self.log.debug("Parsing IMAP message: '%s'" % self.input)
-
         # We must always begin with a tag. Pull it off. If this fails it will
         # raise an exception that is caught by our caller.
         #
@@ -416,64 +442,73 @@ class IMAPClientCommand(object):
             syntax_error="missing expected tag that prefixes a command",
         )
         self._p_simple_string(" ", syntax_error="expected ' ' after tag")
-        self.command = self._p_re(
+        cmd = self._p_re(
             _atom_re, syntax_error="expected an atom for " "the command name"
-        ).lower()
+        )
+        if not cmd:
+            raise BadCommand(value="No command")
+        self.command = cmd.lower()
 
-        # At this point we have the actual IMAP command being used. We
-        # need to verify that it is a valid IMAP command (and raise an
-        # exception if it is not.) For every known command we
-        # can find a function in our class whose name is derived from the
-        # command.
-        #
-        if not hasattr(self, "_p_%s" % self.command):
-            raise UnknownCommand(value=self.command)
-
-        # Okay. The command was a known command. Now we attempt to parse
-        # its arguments based on the command.
-        #
-        getattr(self, "_p_%s" % self.command)()
-
-        # NOTE: the asynchat we are using swallows the line terminators we tell
-        #       it to look for so the CRLF is not part of our input string. We
-        #       are leaving this code here commented out in case we change our
-        #       mind how this is going to work.
-        #
-        # # commands are terminated by a CRLF
-        # self._p_simple_string('\r\n', syntax_error = "missing expected <cr>"
-        #                       "<lf> at the end of the message")
-
-        return
-
-    #######################################################################
-    #
-    def _p_capability(self):
-        """The capability command has no arguments to parse"""
-        pass
-
-    #######################################################################
-    #
-    def _p_noop(self):
-        """The noop command has no arguments to parse"""
-        pass
-
-    #######################################################################
-    #
-    def _p_namespace(self):
-        """The namespace command has no arguments to parse"""
-        pass
-
-    #######################################################################
-    #
-    def _p_idle(self):
-        """The idle command has no arguments to parse"""
-        pass
-
-    #######################################################################
-    #
-    def _p_logout(self):
-        """The logout command has no arguments to parse"""
-        pass
+        match self.command:
+            # These commands require no further parsing.
+            #
+            case (
+                IMAPCommands.CAPABILITY
+                | IMAPCommands.NOOP
+                | IMAPCommands.NAMESPACE
+                | IMAPCommands.IDLE
+                | IMAPCommands.LOGOUT
+                | IMAPCommands.CHECK
+                | IMAPCommands.CLOSE
+                | IMAPCommands.EXPUNGE
+                | IMAPCommands.UNSELECT
+            ):
+                pass
+            case IMAPCommands.AUTHENTICATE:
+                self._p_simple_string(" ")
+                self.auth_mechanism_name = self._p_re(_atom_re)
+            case IMAPCommands.LOGIN:
+                self._p_simple_string(" ")
+                self.user_name = self._p_astring()
+                self._p_simple_string(" ")
+                self.password = self._p_astring()
+            case IMAPCommands.SELECT:
+                self._p_simple_string(" ")
+                self.mailbox_name = self._p_mailbox()
+            case IMAPCommands.EXAMINE:
+                self._p_examine()
+            case IMAPCommands.CREATE:
+                self._p_create()
+            case IMAPCommands.DELETE:
+                self._p_delete()
+            case IMAPCommands.RENAME:
+                self._p_rename()
+            case IMAPCommands.SUBSCRIBE:
+                self._p_subscribe()
+            case IMAPCommands.UNSUBSCRIBE:
+                self._p_unsubscribe()
+            case IMAPCommands.LIST:
+                self._p_list()
+            case IMAPCommands.LSUB:
+                self._p_lsub()
+            case IMAPCommands.STATUS:
+                self._p_status()
+            case IMAPCommands.ID:
+                self._p_id()
+            case IMAPCommands.APPEND:
+                self._p_append()
+            case IMAPCommands.SEARCH:
+                self._p_search()
+            case IMAPCommands.FETCH:
+                self._p_fetch()
+            case IMAPCommands.STORE:
+                self._p_store()
+            case IMAPCommands.COPY:
+                self._p_copy()
+            case IMAPCommands.UID:
+                self._p_uid()
+            case _:
+                raise UnknownCommand(value=self.command)
 
     #######################################################################
     #
@@ -664,24 +699,6 @@ class IMAPClientCommand(object):
         #
         self.message = mailbox.MHMessage(self._p_string())
         return
-
-    #######################################################################
-    #
-    def _p_check(self):
-        """The check command has no arguments to parse"""
-        pass
-
-    #######################################################################
-    #
-    def _p_close(self):
-        """The close command has no arguments to parse"""
-        pass
-
-    #######################################################################
-    #
-    def _p_expunge(self):
-        """The expunge command has no arguments to parse"""
-        pass
 
     #######################################################################
     #
