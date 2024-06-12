@@ -1,4 +1,5 @@
 aiofiles
+aioretry
 aiosqlite
 async-timeout
 charset_normalizer

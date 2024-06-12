@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Dict
 # 3rd party imports
 #
 import aiosqlite
+from aioretry import RetryInfo, RetryPolicyStrategy, retry
 
 if TYPE_CHECKING:
     from _typeshed import StrPath
@@ -183,6 +184,34 @@ class Database:
 
     ####################################################################
     #
+    def _execute_retry_policy(self, info: RetryInfo) -> RetryPolicyStrategy:
+        """
+        For db operational errors we want to retry if they are due to the
+        db being marked as read only. Our aiosqlite db thread is the only thing
+        that should be touching the db. If we get a read only error it is due
+        to a transient or some fundamental problem with the sqlite db or the
+        underlying file system.
+        """
+        # We only retry on OperationalError's
+        #
+        if not isinstance(info.exception, aiosqlite.OperationalError):
+            return True, 0
+
+        # If we have failed more than 3 times, give up
+        #
+        if info.fails > 3:
+            return True, 0
+
+        # We only retry if the OperationalError is due to a read only db
+        # sleeping for 0.5, 1.0, 1.5 seconds.
+        #
+        if str(info.exception) != "attempt to write a readonly database":
+            return True, 0
+        return False, info.fails * 0.5
+
+    ####################################################################
+    #
+    @retry("_execute_retry_policy")
     async def execute(self, sql: str, *args, commit=False, **kwargs):
         """
         This is for operations that will update the db. INSERT, UPDATE,
