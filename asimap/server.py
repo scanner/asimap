@@ -696,17 +696,37 @@ class IMAPSubprocessInterface:
         try:
             imap_cmd = parse_cmd_from_msg(msg)
         except BadCommand as e:
-            await self.imap_client.push(f"* BAD {e}\r\n")
-            return True
+            # XXX We should track the number of bad commands we get. If it is
+            #     over some sort of limit we should slow down our responses and
+            #     ultimately disconnect the client.
+            try:
+                await self.imap_client.push(f"* BAD {e}\r\n")
+                return True
+            except ConnectionError as e:
+                # Do not need a full stack trace for a connection error.
+                #
+                logger.error(
+                    "Exception sending 'BAD' for %s: %s"
+                    % (self.log_string(), str(e))
+                )
+                return False
 
         # Process this IMAP command (dealing with all valid commands before
         # authenticated.)
         #
         try:
             await self.client_handler.command(imap_cmd)
+        except ConnectionError as e:
+            # Do not need a full stack trace for a connection error.
+            #
+            logger.error(
+                "Exception handling IMAP command '%s' for %s: %s"
+                % (imap_cmd, self.log_string(), str(e))
+            )
+            return False
         except Exception as e:
             logger.exception(
-                "Exception handling IMAP command %s for %s: %s"
+                "Exception handling IMAP command '%s' 'for %s: %s"
                 % (imap_cmd, self.log_string(), str(e))
             )
             try:

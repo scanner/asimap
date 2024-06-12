@@ -6,6 +6,8 @@
 #
 aiofiles==23.2.1
     # via -r production.txt
+aioretry==5.0.2
+    # via -r production.txt
 aiosqlite==0.20.0
     # via -r production.txt
 anyio==4.4.0
