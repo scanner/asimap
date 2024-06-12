@@ -12,7 +12,7 @@ import os.path
 import re
 from datetime import date
 from enum import Enum, StrEnum
-from typing import List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 # asimapd imports
 #
@@ -21,8 +21,7 @@ import asimap.utils
 from .fetch import STR_TO_FETCH_OP, FetchAtt, FetchOp
 from .search import IMAPSearch
 
-# 3rd party imports
-#
+logger = logging.getLogger("asimap.parse")
 
 
 #######################################################################
@@ -103,6 +102,39 @@ flag_to_str = {
     StoreAction.ADD_FLAGS: "+FLAGS",
     StoreAction.REMOVE_FLAGS: "-FLAGS",
 }
+
+
+#######################################################################
+#
+class IMAPCommands(StrEnum):
+    APPEND = "append"
+    AUTHENTICATE = "authenticate"
+    CAPABILITY = "capability"
+    CHECK = "check"
+    CLOSE = "close"
+    COPY = "copy"
+    CREATE = "create"
+    DELETE = "delete"
+    EXAMINE = "examine"
+    EXPUNGE = "expunge"
+    FETCH = "fetch"
+    ID = "id"
+    IDLE = "idle"
+    LIST = "list"
+    LOGIN = "login"
+    LOGOUT = "logout"
+    LSUB = "lsub"
+    NAMESPACE = "namespace"
+    NOOP = "noop"
+    RENAME = "rename"
+    SEARCH = "search"
+    SELECT = "select"
+    STATUS = "status"
+    STORE = "store"
+    SUBSCRIBE = "subscribe"
+    UID = "uid"
+    UNSELECT = "unselect"
+    UNSUBSCRIBE = "unsubscribe"
 
 
 #######################################################################
@@ -273,7 +305,7 @@ _zone_re = re.compile(_zone)
 
 ############################################################################
 #
-class IMAPClientCommand(object):
+class IMAPClientCommand:
     """This is an IMAP Client Command parser. Given a complete IMAP command it
     will parse in to a structure that can be easily processed by the rest of
     this server.
@@ -290,12 +322,9 @@ class IMAPClientCommand(object):
         Create the IMAPClientCommand object. This does NOT parse the string we
         were given, though. You need to call the 'parse()' method for that.
         """
-        self.log = logging.getLogger(
-            "%s.%s" % (__name__, self.__class__.__name__)
-        )
         self.input = imap_command
         self.uid_command: bool = False
-        self.tag = None
+        self.tag: Optional[str] = None
         self.command: Optional[str] = None
 
     ##################################################################
@@ -312,11 +341,11 @@ class IMAPClientCommand(object):
     #
     def __str__(self):
         result = []
-        if self.tag is not None:
+        if self.tag:
             result.append(self.tag)
         else:
             result.append("*")
-        if self.command is not None:
+        if self.command:
             if self.uid_command:
                 result.append("UID")
             result.append(self.command.upper())
@@ -405,9 +434,6 @@ class IMAPClientCommand(object):
 
         tag SPACE command command_arguments* CRLF
         """
-
-        # self.log.debug("Parsing IMAP message: '%s'" % self.input)
-
         # We must always begin with a tag. Pull it off. If this fails it will
         # raise an exception that is caught by our caller.
         #
@@ -416,179 +442,92 @@ class IMAPClientCommand(object):
             syntax_error="missing expected tag that prefixes a command",
         )
         self._p_simple_string(" ", syntax_error="expected ' ' after tag")
-        self.command = self._p_re(
+        cmd = self._p_re(
             _atom_re, syntax_error="expected an atom for " "the command name"
-        ).lower()
+        )
+        if not cmd:
+            raise BadCommand(value="No command")
+        self.command = cmd.lower()
+        self._parse_command(self.command)
 
-        # At this point we have the actual IMAP command being used. We
-        # need to verify that it is a valid IMAP command (and raise an
-        # exception if it is not.) For every known command we
-        # can find a function in our class whose name is derived from the
-        # command.
-        #
-        if not hasattr(self, "_p_%s" % self.command):
-            raise UnknownCommand(value=self.command)
-
-        # Okay. The command was a known command. Now we attempt to parse
-        # its arguments based on the command.
-        #
-        getattr(self, "_p_%s" % self.command)()
-
-        # NOTE: the asynchat we are using swallows the line terminators we tell
-        #       it to look for so the CRLF is not part of our input string. We
-        #       are leaving this code here commented out in case we change our
-        #       mind how this is going to work.
-        #
-        # # commands are terminated by a CRLF
-        # self._p_simple_string('\r\n', syntax_error = "missing expected <cr>"
-        #                       "<lf> at the end of the message")
-
-        return
-
-    #######################################################################
+    ####################################################################
     #
-    def _p_capability(self):
-        """The capability command has no arguments to parse"""
-        pass
-
-    #######################################################################
-    #
-    def _p_noop(self):
-        """The noop command has no arguments to parse"""
-        pass
-
-    #######################################################################
-    #
-    def _p_namespace(self):
-        """The namespace command has no arguments to parse"""
-        pass
-
-    #######################################################################
-    #
-    def _p_idle(self):
-        """The idle command has no arguments to parse"""
-        pass
-
-    #######################################################################
-    #
-    def _p_logout(self):
-        """The logout command has no arguments to parse"""
-        pass
-
-    #######################################################################
-    #
-    def _p_authenticate(self):
-        """The authenticate command nominally takes a single parameter that
-        is an atom. (It is up to the execution functions to decide whether or
-        not we honor this authenticator.)
+    def _parse_command(self, command: str) -> None:
         """
-        self._p_simple_string(" ")
-        self.auth_mechanism_name = self._p_re(_atom_re)
-        return
-
-    #######################################################################
-    #
-    def _p_login(self):
-        """Parse the arguments for a login command - two astrings: user name
-        and password"""
-        self._p_simple_string(" ")
-        self.user_name = self._p_astring()
-        self._p_simple_string(" ")
-        self.password = self._p_astring()
-        return
-
-    #######################################################################
-    #
-    def _p_select(self):
-        """select  ::= 'SELECT' SPACE mailbox"""
-        self._p_simple_string(" ")
-        self.mailbox_name = self._p_mailbox()
-
-    #######################################################################
-    #
-    def _p_unselect(self):
-        """The unselect has no arguments to parse"""
-        pass
-
-    #######################################################################
-    #
-    def _p_examine(self):
-        """examine  ::= 'EXAMINE' SPACE mailbox"""
-        self._p_simple_string(" ")
-        self.mailbox_name = self._p_mailbox()
-
-    #######################################################################
-    #
-    def _p_create(self):
-        """create  ::= 'CREATE' SPACE mailbox
-        Use of INBOX gives a NO error"""
-        self._p_simple_string(" ")
-        self.mailbox_name = self._p_mailbox()
-
-    #######################################################################
-    #
-    def _p_delete(self):
-        """delete  ::= 'DELETE' SPACE mailbox
-        Use of INBOX gives a NO error"""
-        self._p_simple_string(" ")
-        self.mailbox_name = self._p_mailbox()
-
-    #######################################################################
-    #
-    def _p_rename(self):
-        """rename ::= 'RENAME' SPACE mailbox SPACE mailbox
-        Use of INBOX as a destination gives a NO error
+        Parse the valid commands and fill in attributes on self based on
+        that parsing.
         """
-        self._p_simple_string(" ")
-        self.mailbox_src_name = self._p_mailbox()
-        self._p_simple_string(" ")
-        self.mailbox_dst_name = self._p_mailbox()
 
-    #######################################################################
-    #
-    def _p_subscribe(self):
-        """subscribe  ::= 'SUBSCRIBE' SPACE mailbox"""
-
-        self._p_simple_string(" ")
-        self.mailbox_name = self._p_mailbox()
-
-    #######################################################################
-    #
-    def _p_unsubscribe(self):
-        """unsubscribe  ::= 'UNSUBSCRIBE' SPACE mailbox"""
-
-        self._p_simple_string(" ")
-        self.mailbox_name = self._p_mailbox()
-
-    #######################################################################
-    #
-    def _p_list(self):
-        """list ::= 'LIST' SPACE mailbox SPACE list_mailbox"""
-
-        self._p_simple_string(" ")
-        self.mailbox_name = self._p_mailbox()
-        self._p_simple_string(" ")
-        self.list_mailbox = self._p_list_mailbox()
-
-    #######################################################################
-    #
-    def _p_lsub(self):
-        """lsub ::= 'LSUB' SPACE mailbox SPACE list_mailbox"""
-
-        self._p_simple_string(" ")
-        self.mailbox_name = self._p_mailbox()
-        self._p_simple_string(" ")
-        self.list_mailbox = self._p_list_mailbox()
-
-    #######################################################################
-    #
-    def _p_status(self):
-        """status ::= 'STATUS' SPACE mailbox SPACE '(' 1#status_att ')'"""
-
-        self._p_simple_string(" ")
-        self.mailbox_name = self._p_mailbox()
-        self._p_simple_string(" ")
-        self.status_att_list = self._p_paren_list_of(self._p_status_att)
+        match command:
+            # These commands require no further parsing.
+            #
+            case (
+                IMAPCommands.CAPABILITY
+                | IMAPCommands.NOOP
+                | IMAPCommands.NAMESPACE
+                | IMAPCommands.IDLE
+                | IMAPCommands.LOGOUT
+                | IMAPCommands.CHECK
+                | IMAPCommands.CLOSE
+                | IMAPCommands.EXPUNGE
+                | IMAPCommands.UNSELECT
+            ):
+                pass
+            case IMAPCommands.AUTHENTICATE:
+                self._p_simple_string(" ")
+                self.auth_mechanism_name = self._p_re(_atom_re)
+            case IMAPCommands.LOGIN:
+                self._p_simple_string(" ")
+                self.user_name = self._p_astring()
+                self._p_simple_string(" ")
+                self.password = self._p_astring()
+            case (
+                IMAPCommands.SELECT
+                | IMAPCommands.EXAMINE
+                | IMAPCommands.CREATE
+                | IMAPCommands.DELETE
+                | IMAPCommands.SUBSCRIBE
+                | IMAPCommands.UNSUBSCRIBE
+            ):
+                self._p_simple_string(" ")
+                self.mailbox_name = self._p_mailbox()
+            case IMAPCommands.RENAME:
+                self._p_simple_string(" ")
+                self.mailbox_src_name = self._p_mailbox()
+                self._p_simple_string(" ")
+                self.mailbox_dst_name = self._p_mailbox()
+            case IMAPCommands.LIST | IMAPCommands.LSUB:
+                self._p_simple_string(" ")
+                self.mailbox_name = self._p_mailbox()
+                self._p_simple_string(" ")
+                self.list_mailbox = self._p_list_mailbox()
+            case IMAPCommands.STATUS:
+                self._p_simple_string(" ")
+                self.mailbox_name = self._p_mailbox()
+                self._p_simple_string(" ")
+                self.status_att_list = self._p_paren_list_of(self._p_status_att)
+            case IMAPCommands.ID:
+                self._p_id()
+            case IMAPCommands.APPEND:
+                self._p_append()
+            case IMAPCommands.SEARCH:
+                self._p_search()
+            case IMAPCommands.FETCH:
+                self._p_simple_string(" ")
+                self.msg_set = self._p_msg_set()
+                self._p_simple_string(" ")
+                self.fetch_atts = self._p_fetch_atts()
+            case IMAPCommands.STORE:
+                self._p_store()
+            case IMAPCommands.COPY:
+                self._p_simple_string(" ")
+                self.msg_set = self._p_msg_set()
+                self._p_simple_string(" ")
+                self.mailbox_name = self._p_mailbox()
+            case IMAPCommands.UID:
+                self._p_uid()
+            case _:
+                raise UnknownCommand(value=self.command)
 
     #######################################################################
     #
@@ -667,24 +606,6 @@ class IMAPClientCommand(object):
 
     #######################################################################
     #
-    def _p_check(self):
-        """The check command has no arguments to parse"""
-        pass
-
-    #######################################################################
-    #
-    def _p_close(self):
-        """The close command has no arguments to parse"""
-        pass
-
-    #######################################################################
-    #
-    def _p_expunge(self):
-        """The expunge command has no arguments to parse"""
-        pass
-
-    #######################################################################
-    #
     def _p_search(self):
         """search ::= "SEARCH" SPACE ["CHARSET" SPACE astring SPACE]
                    1#search_key
@@ -716,24 +637,6 @@ class IMAPClientCommand(object):
 
     #######################################################################
     #
-    def _p_fetch(self):
-        """fetch ::= "FETCH" SPACE set SPACE ("ALL" / "FULL" /
-                  "FAST" / fetch_att / "(" 1#fetch_att ")")
-        The "fetch" command, like the "search" command, has what amounts to
-        its own little grammar. We parse out the initial part of the
-        message and then we pass the last bit (a single atom or list of
-        message data item names) in to a sub-parsing routine. Unlike
-        "search", though, there is no nesting of data item names, so we
-        expect, always, to get back a list of data item names "FetchAtt"
-        objects.
-        """
-        self._p_simple_string(" ")
-        self.msg_set = self._p_msg_set()
-        self._p_simple_string(" ")
-        self.fetch_atts = self._p_fetch_atts()
-
-    #######################################################################
-    #
     def _p_store(self):
         """store ::= "STORE" SPACE set SPACE store_att_flags"""
         self._p_simple_string(" ")
@@ -762,18 +665,6 @@ class IMAPClientCommand(object):
 
     #######################################################################
     #
-    def _p_copy(self):
-        """copy ::= "COPY" SPACE set SPACE mailbox
-
-        Not much to say here..
-        """
-        self._p_simple_string(" ")
-        self.msg_set = self._p_msg_set()
-        self._p_simple_string(" ")
-        self.mailbox_name = self._p_mailbox()
-
-    #######################################################################
-    #
     def _p_uid(self):
         """uid ::= "UID" SPACE (copy / fetch / search / store / expunge)
 
@@ -796,16 +687,16 @@ class IMAPClientCommand(object):
         # 'uid_command' flag will tell the interpreter how to interpret the
         # command.
         #
-        command = self._p_re(_atom_re).lower()
-        if command not in uid_commands:
+        command = self._p_re(_atom_re)
+        if not command:
+            raise BadCommand("UID command does not list command to run")
+        self.command = command.lower()
+        if self.command not in uid_commands:
             raise BadSyntax(
                 "%s is not a valid UID command: %s"
                 % (command, str(uid_commands))
             )
-        self.command = command
-        if not hasattr(self, "_p_%s" % self.command):
-            raise UnknownCommand(value=self.command)
-        getattr(self, "_p_%s" % self.command)()
+        self._parse_command(self.command)
 
     #
     # Here ends the list of supported commands
@@ -868,7 +759,7 @@ class IMAPClientCommand(object):
 
     #######################################################################
     #
-    def _p_paren_list_of(self, func):
+    def _p_paren_list_of(self, func: Callable):
         """This function does not parse a specific type of singleton
         element. It is specifically for parsing lists of elements that follow a
         specific convention.
@@ -1676,7 +1567,7 @@ class IMAPClientCommand(object):
 
     #######################################################################
     #
-    def _p_status_att(self):
+    def _p_status_att(self) -> str:
         """status_att ::= "MESSAGES" / "RECENT" / "UIDNEXT" / "UIDVALIDITY" /
         "UNSEEN"
         """
@@ -1705,7 +1596,7 @@ class IMAPClientCommand(object):
 
     #######################################################################
     #
-    def _p_mailbox(self):
+    def _p_mailbox(self) -> str:
         """mailbox ::= 'INBOX' / astring
 
         INBOX is case-insensitive.  All case variants of INBOX (e.g. 'iNbOx')
@@ -1725,7 +1616,7 @@ class IMAPClientCommand(object):
 
     #######################################################################
     #
-    def _p_astring(self):
+    def _p_astring(self) -> str:
         """an 'astring' is an 'atom' or a 'string'"""
         try:
             return self._p_re(_atom_re)

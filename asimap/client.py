@@ -469,11 +469,16 @@ class PreAuthenticated(BaseClientHandler):
 
             self.state = ClientState.AUTHENTICATED
             logger.info(
-                "%s logged in from %s" % (str(self.user), self.client.name)
+                "%s logged in from %s", str(self.user), self.client.name
             )
         except AuthenticationException as e:
             # Record this failed authentication attempt
             #
+            logger.warning(
+                "%s: login failed (attempt from %s)",
+                str(self.user),
+                self.client.name,
+            )
             login_failed(cmd.user_name, self.client.rem_addr)
             raise No(str(e))
         return None
