@@ -476,7 +476,7 @@ class PreAuthenticated(BaseClientHandler):
             #
             logger.warning(
                 "%s: login failed (attempt from %s)",
-                str(self.user),
+                cmd.user_name,
                 self.client.name,
             )
             login_failed(cmd.user_name, self.client.rem_addr)
