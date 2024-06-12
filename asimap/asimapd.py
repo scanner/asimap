@@ -168,7 +168,7 @@ def main():
     #
     setup_logging(log_config, debug, trace_dir=trace_dir)
     setup_asyncio_logging()
-    logger.info("ASIMAPD Starting")
+    logger.info("ASIMAPD Starting, version: %s", VERSION)
 
     ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
     ssl_context.check_hostname = False
