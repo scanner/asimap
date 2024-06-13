@@ -418,7 +418,7 @@ class IMAPClientCommand:
                     result.append(self.user_name)
                 case IMAPCommand.ID:
                     id_r = ", ".join(
-                        "{x}:'{y}'" for x, y in self.id_dict.items()
+                        f"{x}:'{y}'" for x, y in self.id_dict.items()
                     )
                     result.append(f"({id_r})")
                 case IMAPCommand.RENAME:
