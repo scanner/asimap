@@ -18,9 +18,11 @@ import time
 import traceback
 from collections import defaultdict
 from datetime import datetime
+from itertools import batched
 from mailbox import FormatError, MHMessage, NoSuchMailboxError, NotEmptyError
 from pathlib import Path
 from statistics import fmean, median, stdev
+from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 # 3rd party imports
@@ -40,7 +42,13 @@ from .constants import (
 from .exceptions import Bad, MailboxInconsistency, No
 from .fetch import FetchAtt, FetchOp
 from .message_cache import MessageCache
-from .mh import MH, Sequences, update_message_sequences
+from .mh import (
+    MH,
+    Sequences,
+    aread_message,
+    awrite_message,
+    update_message_sequences,
+)
 from .parse import StoreAction
 from .search import IMAPSearch, SearchContext
 from .utils import (
@@ -52,7 +60,6 @@ from .utils import (
     sequence_set_to_list,
     update_replace_header_in_binary_file,
     utime,
-    with_timeout,
 )
 
 # Allow circular imports for annotations
@@ -2370,7 +2377,6 @@ class Mailbox:
 
     ##################################################################
     #
-    @with_timeout(15)
     async def copy(
         self, msg_set: MsgSet, dst_mbox: "Mailbox", uid_command: bool = False
     ):
@@ -2384,120 +2390,130 @@ class Mailbox:
         - `uid_command`: True if this is for a UID SEARCH command, which means
           we have to return not message sequence numbers but message UID's.
 
-        NOTE: Since this has to copy messages between mailboxes and ensure that
-              things happen properly this method will get both and write locks
-              on the source and destination mailboxes.
+        The messages are copied into temporary file storage, and then copied in
+        to the destination folder. This lets us copy very large numbers of
+        messages at once, albeit more slowly then only reading and writing
+        once.
 
-              THUS: You *must not* have a readlock on either Mailbox when
-              calling this method (because you can not nest read locks if you
-              also want to get a write lock.)
-
-        NOTE: This method is called with a timeout to catch possible deadlock
-              bugs (it will at least alert us to their existence)
-
-        XXX we read all the messages we are copying into memory, mainly to make
-            sure we do not try to hold read locks/write locks on more than one
-            mailbox at a time in this process.  This means it is possible to
-            run out of memory. If this happens we should consider using a
-            tmpdir to store the messages between the read and write
-            operations. Be alot slower but would almost never run out of room.
+        We also only need to hold one read lock at a time (one for each folder)
         """
-        copy_msgs: List[Tuple[MHMessage, float]] = []
+        # copy_msgs: List[Tuple[MHMessage, float]] = []
+        copy_msgs: List[Tuple[str, List[str], float]] = []
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
 
-        async with self.lock.read_lock():
-            # We get the full list of keys instead of using an iterator because
-            # we need the max id and max uuid.
-            #
-            msgs = await self.mailbox.akeys()
-            uid_vv, uid_max = await self.get_uid_from_msg(msgs[-1], cache=True)
-            if uid_vv is None or uid_max is None:
-                await self.resync()
+            async with self.lock.read_lock():
+                # We get the full list of keys instead of using an iterator
+                # because we need the max id and max uuid.
+                #
+                msgs = await self.mailbox.akeys()
                 uid_vv, uid_max = await self.get_uid_from_msg(
                     msgs[-1], cache=True
                 )
-            assert uid_max  # Makes mypy happy.
+                if uid_vv is None or uid_max is None:
+                    await self.resync()
+                    uid_vv, uid_max = await self.get_uid_from_msg(
+                        msgs[-1], cache=True
+                    )
+                assert uid_max  # Makes mypy happy.
 
-            seq_max = len(msgs)
+                seq_max = len(msgs)
 
-            if uid_command:
-                # If we are doing a 'UID COPY' command we need to use the max
-                # uid for the sequence max.
-                #
-                uid_list = sequence_set_to_list(msg_set, uid_max, uid_command)
-
-                # We want to convert this list of UID's in to message indices
-                # So for every uid we we got out of the msg_set we look up its
-                # index in self.uids and from that construct the msg_idxs
-                # list. Missing UID's are fine. They just do not get added to
-                # the list.
-                #
-                msg_idxs = []
-                for uid in uid_list:
-                    if uid in self.uids:
-                        msg_idx = self.uids.index(uid) + 1
-                        msg_idxs.append(msg_idx)
-            else:
-                msg_idxs = sequence_set_to_list(msg_set, seq_max)
-
-            src_uids = []
-            for idx in msg_idxs:
-                key = msgs[idx - 1]  # NOTE: imap messages start from 1.
-
-                # We are going to read all messages into memory that we are
-                # copying, and then write them out to the destination mbox
-                # outside of the mbox lock (to avoid possible deadlocks.)
-
-                # XXX We copy this message the easy way. This may be
-                #     unacceptably slow if you are copying hundreds of
-                #     messages. Hopefully it will not come down to that but
-                #     beware!
-                #
-                # We do this so we can do the easy way of preserving all the
-                # sequences.
-                #
-                # We get and set the mtime because this is what we use for the
-                # 'internal-date' on a message and it SHOULD be preserved when
-                # copying a message to a new mailbox.
-                #
-                mtime = await aiofiles.os.path.getmtime(
-                    mbox_msg_path(self.mailbox, key)
-                )
-                msg = await self.get_and_cache_msg(key)
-                msg.add_sequence("Recent")
-                copy_msgs.append((msg, mtime))
-                uid_vv, uid = await self.get_uid_from_msg(key)
-                src_uids.append(uid)
-                await asyncio.sleep(0)
-
-        # We have now read all the messages we are copying. Write them to the
-        # dest folder. Sequences are preserved since we are reading and writing
-        # MHMessages (furthermore we added all the messages to the sequence
-        # 'Recent' after we read it in.)
-        #
-        dst_keys = []
-        async with dst_mbox.mailbox.lock_folder(), dst_mbox.lock.read_lock():
-            async with dst_mbox.lock.write_lock():
-                for msg, mtime in copy_msgs:
-                    key = await dst_mbox.mailbox.aadd(msg)
-                    dst_keys.append(key)
-                    await utime(
-                        mbox_msg_path(dst_mbox.mailbox, key), (mtime, mtime)
+                if uid_command:
+                    # If we are doing a 'UID COPY' command we need to use the
+                    # max uid for the sequence max.
+                    #
+                    uid_list = sequence_set_to_list(
+                        msg_set, uid_max, uid_command
                     )
 
-            # Done copying.. resync to give all the messages proper uids for
-            # their new mailbox, update mailbox sequences, etc.
-            #
-            del copy_msgs
-            await dst_mbox.resync(optional=False)
+                    # We want to convert this list of UID's in to message
+                    # indices So for every uid we we got out of the msg_set we
+                    # look up its index in self.uids and from that construct
+                    # the msg_idxs list. Missing UID's are fine. They just do
+                    # not get added to the list.
+                    #
+                    msg_idxs = []
+                    for uid in uid_list:
+                        if uid in self.uids:
+                            msg_idx = self.uids.index(uid) + 1
+                            msg_idxs.append(msg_idx)
+                else:
+                    msg_idxs = sequence_set_to_list(msg_set, seq_max)
 
-            # Now get the uid's for all the newly copied messages.  NOTE: Since
-            # we added the messages in the same order they were copied we know
-            # that our src_uids and dst_uids refer to the correct messages.
+                src_uids = []
+                for idx in msg_idxs:
+                    key = msgs[idx - 1]  # NOTE: imap messages start from 1.
+
+                    # We are going to read all messages into memory that we are
+                    # copying, and then write them out to the destination mbox
+                    # outside of the mbox lock (to avoid possible deadlocks.)
+
+                    # XXX We copy this message the easy way. This may be
+                    #     unacceptably slow if you are copying hundreds of
+                    #     messages. Hopefully it will not come down to that but
+                    #     beware!
+                    #
+                    # We do this so we can do the easy way of preserving all the
+                    # sequences.
+                    #
+                    # We get and set the mtime because this is what we use for
+                    # the 'internal-date' on a message and it SHOULD be
+                    # preserved when copying a message to a new mailbox.
+                    #
+                    mtime = await aiofiles.os.path.getmtime(
+                        mbox_msg_path(self.mailbox, key)
+                    )
+                    msg = await self.get_and_cache_msg(key)
+                    msg.add_sequence("Recent")
+
+                    msg_path = os.path.join(tmp_dir, str(key))
+                    copy_msgs.append((msg_path, msg.get_sequences(), mtime))
+                    await awrite_message(msg, msg_path)
+
+                    uid_vv, uid = await self.get_uid_from_msg(key)
+                    src_uids.append(uid)
+                    await asyncio.sleep(0)
+
+            # We have now read all the messages we are copying. Write them to
+            # the dest folder. Sequences are preserved since we are reading and
+            # writing MHMessages (furthermore we added all the messages to the
+            # sequence 'Recent' after we read it in.)
+
+            # NOTE: Write in batches so we do not lock the destination folder
+            #       the entire time we are adding these messages.
             #
             dst_uids = []
-            for k in dst_keys:
-                uid_vv, uid = await dst_mbox.get_uid_from_msg(k)
-                dst_uids.append(uid)
+            for batch in batched(copy_msgs, 10):
+                dst_keys = []
+                async with (
+                    dst_mbox.mailbox.lock_folder(),
+                    dst_mbox.lock.read_lock(),
+                ):
+                    async with dst_mbox.lock.write_lock():
+                        for msg_path, sequences, mtime in batch:
+                            msg = await aread_message(msg_path)
+                            msg.set_sequences(sequences)
+                            key = await dst_mbox.mailbox.aadd(msg)
+                            dst_keys.append(key)
+                            await utime(
+                                mbox_msg_path(dst_mbox.mailbox, key),
+                                (mtime, mtime),
+                            )
+
+                    # Done copying this batch of messages. Resync to give all
+                    # the messages proper uids for their new mailbox, update
+                    # mailbox sequences, etc.
+                    #
+                    await dst_mbox.resync(optional=False)
+
+                    # Now get the uid's for all the newly copied messages.
+                    # NOTE: Since we added the messages in the same order they
+                    # were copied we know that our src_uids and dst_uids refer
+                    # to the correct messages.
+                    #
+                    for k in dst_keys:
+                        uid_vv, uid = await dst_mbox.get_uid_from_msg(k)
+                        dst_uids.append(uid)
         return src_uids, dst_uids
 
     ##################################################################
