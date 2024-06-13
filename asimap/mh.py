@@ -37,6 +37,55 @@ LINESEP = str(mailbox.linesep, "ascii")
 
 ####################################################################
 #
+async def awrite_message(message: MHMessage, path: str) -> None:
+    """
+    A helper that writes a MHMessage to a file asynchronously.
+
+    THis method exists so modules outside of the `mh` module can write messages
+    in the same way (eg: mbox::copy() )
+    """
+    data = message.as_string(policy=email.policy.default)
+    async with aiofiles.open(path, mode="w") as f:
+        await f.write(data)
+        if not data.endswith(LINESEP):
+            await f.write(LINESEP)
+
+
+####################################################################
+#
+async def aread_message(path: str) -> MHMessage:
+    """
+    A helper for asynchronously reading messages. Counterpart to
+    awrite_message.
+    """
+    try:
+        async with aiofiles.open(path, mode="rb") as f:
+            # NOTE: We are using the magic of `charset_normalizer` because
+            #       not all messages are nicely decodable into unicode.  We
+            #       look at the encoding of the best guess and if it is one
+            #       of the acceptable ones, we pass it unconverted.
+            #
+            contents = await f.read()
+            result = from_bytes(contents).best()
+
+            if result and result.encoding not in (
+                "ascii",
+                "latin_1",
+                "iso2022_jp",
+            ):
+                contents = str(result)
+
+    except OSError as e:
+        if e.errno == errno.ENOENT:
+            raise KeyError(f"No message at: {path}")
+        else:
+            raise
+
+    return MHMessage(contents)
+
+
+####################################################################
+#
 def update_message_sequences(
     msg_key: int, msg: MHMessage, sequences: Sequences
 ):
@@ -186,30 +235,7 @@ class MH(mailbox.MH):
         MHMessage.
         """
         path = os.path.join(self._path, str(key))
-        try:
-            async with aiofiles.open(path, mode="rb") as f:
-                # NOTE: We are using the magic of `charset_normalizer` because
-                #       not all messages are nicely decodable into unicode.  We
-                #       look at the encoding of the best guess and if it is one
-                #       of the acceptable ones, we pass it unconverted.
-                #
-                contents = await f.read()
-                result = from_bytes(contents).best()
-
-                if result and result.encoding not in (
-                    "ascii",
-                    "latin_1",
-                    "iso2022_jp",
-                ):
-                    contents = str(result)
-
-        except OSError as e:
-            if e.errno == errno.ENOENT:
-                raise KeyError(f"No message with key: {key}")
-            else:
-                raise
-
-        msg = MHMessage(contents)
+        msg = await aread_message(path)
         sequences = await self.aget_sequences()
         for name, key_list in sequences.items():
             if key in key_list:
@@ -278,13 +304,7 @@ class MH(mailbox.MH):
             keys = await self.akeys()
             new_key = max(keys) + 1 if keys else 1
             new_path = os.path.join(self._path, str(new_key))
-            # data = message.as_bytes(policy=email.policy.default)
-            data = message.as_string(policy=email.policy.default)
-
-            async with aiofiles.open(new_path, mode="w") as f:
-                await f.write(data)
-                if not data.endswith(LINESEP):
-                    await f.write(LINESEP)
+            await awrite_message(message, new_path)
 
             # A MHMessage object has MH folder sequence data attached to it.
             # So, when we write it, we have to update the `.mh_sequences` file

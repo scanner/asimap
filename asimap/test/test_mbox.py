@@ -951,7 +951,7 @@ async def test_mailbox_copy(mailbox_with_bunch_of_email):
     dst_mbox = await mbox.server.get_mailbox(ARCHIVE)
 
     msg_keys = await mbox.mailbox.akeys()
-    msg_set = sorted(list(random.sample(msg_keys, 5)))
+    msg_set = sorted(list(random.sample(msg_keys, 15)))
 
     src_uids, dst_uids = await mbox.copy(msg_set, dst_mbox)
     assert len(src_uids) == len(dst_uids)
