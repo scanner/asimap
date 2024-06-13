@@ -13,7 +13,7 @@
   ],
   [
     "A999 UID FETCH 4827313:4828442 FLAGS\r\n",
-    "A999 UID FETCH (4827313, 4828442) (FLAGS)"
+    "A999 UID FETCH 4827313:4828442 (FLAGS)"
   ],
   [
     "A999 UID SEARCH 1:100 UID 443:557\r\n",
@@ -69,15 +69,15 @@
   ],
   [
     "A003 STORE 2:4 +FLAGS (\\Deleted)\r\n",
-    "A003 STORE (2, 4) +FLAGS (\\Deleted)"
+    "A003 STORE 2:4 +FLAGS (\\Deleted)"
   ],
   [
     "A003 STORE 2:4 FLAGS \\Seen\r\n",
-    "A003 STORE (2, 4) FLAGS (\\Seen)"
+    "A003 STORE 2:4 FLAGS (\\Seen)"
   ],
   [
     "A003 STORE 2:4 -FLAGS.SILENT (\\Seen \\Flagged)\r\n",
-    "A003 STORE (2, 4) -FLAGS.SILENT (\\Seen,\\Flagged)"
+    "A003 STORE 2:4 -FLAGS.SILENT (\\Seen,\\Flagged)"
   ],
   [
     "A042 STATUS blurdybloop (UIDNEXT MESSAGES)\r\n",
@@ -97,7 +97,7 @@
   ],
   [
     "A003 COPY 2:4 MEETING\r\n",
-    "A003 COPY"
+    "A003 COPY 2:4 MEETING"
   ],
   [
     "A282 SEARCH FLAGGED SINCE 1-Feb-1994 NOT FROM \"Smith\"\r\n",
@@ -141,71 +141,71 @@
   ],
   [
     "A001 FETCH 2:4 ALL",
-    "A001 FETCH (2, 4) (FLAGS INTERNALDATE RFC822.SIZE ENVELOPE)"
+    "A001 FETCH 2:4 (FLAGS INTERNALDATE RFC822.SIZE ENVELOPE)"
   ],
   [
     "A001 FETCH 2:4 all",
-    "A001 FETCH (2, 4) (FLAGS INTERNALDATE RFC822.SIZE ENVELOPE)"
+    "A001 FETCH 2:4 (FLAGS INTERNALDATE RFC822.SIZE ENVELOPE)"
   ],
   [
     "A001 FETCH 2:4 FAST",
-    "A001 FETCH (2, 4) (FLAGS INTERNALDATE RFC822.SIZE)"
+    "A001 FETCH 2:4 (FLAGS INTERNALDATE RFC822.SIZE)"
   ],
   [
     "A001 FETCH 2:4 FULL",
-    "A001 FETCH (2, 4) (FLAGS INTERNALDATE RFC822.SIZE ENVELOPE BODY)"
+    "A001 FETCH 2:4 (FLAGS INTERNALDATE RFC822.SIZE ENVELOPE BODY)"
   ],
   [
     "A654 FETCH 2:4 (FLAGS BODY[HEADER.FIELDS (DATE FROM)])\r\n",
-    "A654 FETCH (2, 4) (FLAGS BODY[HEADER.FIELDS (DATE FROM)])"
+    "A654 FETCH 2:4 (FLAGS BODY[HEADER.FIELDS (DATE FROM)])"
   ],
   [
     "A654 FETCH 2:4 BODY\r\n",
-    "A654 FETCH (2, 4) (BODY)"
+    "A654 FETCH 2:4 (BODY)"
   ],
   [
     "A654 FETCH 2:4 BODY[]<0.2048>\r\n",
-    "A654 FETCH (2, 4) (BODY[]<0.2048>)"
+    "A654 FETCH 2:4 (BODY[]<0.2048>)"
   ],
   [
     "A654 FETCH 2:4 BODY[1.2.3.4.HEADER]\r\n",
-    "A654 FETCH (2, 4) (BODY[1.2.3.4.HEADER])"
+    "A654 FETCH 2:4 (BODY[1.2.3.4.HEADER])"
   ],
   [
     "A654 FETCH 2:4 BODY[HEADER]\r\n",
-    "A654 FETCH (2, 4) (BODY[HEADER])"
+    "A654 FETCH 2:4 (BODY[HEADER])"
   ],
   [
     "A654 FETCH 2:4 BODY[TEXT]\r\n",
-    "A654 FETCH (2, 4) (BODY[TEXT])"
+    "A654 FETCH 2:4 (BODY[TEXT])"
   ],
   [
     "A654 FETCH 2:4 BODY[1]\r\n",
-    "A654 FETCH (2, 4) (BODY[1])"
+    "A654 FETCH 2:4 (BODY[1])"
   ],
   [
     "A654 FETCH 2:4 BODY[3.HEADER]\r\n",
-    "A654 FETCH (2, 4) (BODY[3.HEADER])"
+    "A654 FETCH 2:4 (BODY[3.HEADER])"
   ],
   [
     "A654 FETCH 2:4 BODY[3.TEXT]\r\n",
-    "A654 FETCH (2, 4) (BODY[3.TEXT])"
+    "A654 FETCH 2:4 (BODY[3.TEXT])"
   ],
   [
     "A654 FETCH 2:4 BODY[3.1]\r\n",
-    "A654 FETCH (2, 4) (BODY[3.1])"
+    "A654 FETCH 2:4 (BODY[3.1])"
   ],
   [
     "A654 FETCH 2:4 BODY[4.1.MIME]\r\n",
-    "A654 FETCH (2, 4) (BODY[4.1.MIME])"
+    "A654 FETCH 2:4 (BODY[4.1.MIME])"
   ],
   [
     "A654 FETCH 2:4 BODY[4.2.HEADER]\r\n",
-    "A654 FETCH (2, 4) (BODY[4.2.HEADER])"
+    "A654 FETCH 2:4 (BODY[4.2.HEADER])"
   ],
   [
     "A654 FETCH 2:4 BODY[4.2.2.1]\r\n",
-    "A654 FETCH (2, 4) (BODY[4.2.2.1])"
+    "A654 FETCH 2:4 (BODY[4.2.2.1])"
   ],
   [
     "A683 DELETE blurdybloop\r\n",
