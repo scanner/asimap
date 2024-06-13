@@ -106,7 +106,7 @@ flag_to_str = {
 
 #######################################################################
 #
-class IMAPCommands(StrEnum):
+class IMAPCommand(StrEnum):
     APPEND = "append"
     AUTHENTICATE = "authenticate"
     CAPABILITY = "capability"
@@ -303,6 +303,20 @@ _zone_re = re.compile(_zone)
 #######################################################################
 
 
+####################################################################
+#
+def msg_set_to_str(msg_set: list[int | tuple]) -> str:
+    """
+    Turn a message set into the equivalent IMAP protocol string representation
+    """
+    return ",".join(
+        [
+            (f"{x[0]}:{x[1]}" if isinstance(x, tuple) else str(x))
+            for x in msg_set
+        ]
+    )
+
+
 ############################################################################
 #
 class IMAPClientCommand:
@@ -349,50 +363,69 @@ class IMAPClientCommand:
             if self.uid_command:
                 result.append("UID")
             result.append(self.command.upper())
-            if self.command == "fetch":
-                result.append(",".join(map(str, self.msg_set)))
-                result.append(
-                    "(%s)"
-                    % " ".join(x.dbg(show_peek=True) for x in self.fetch_atts)
-                )
-            elif self.command == "status":
-                result.append(self.mailbox_name)
-                result.append("(%s)" % " ".join(self.status_att_list))
-            elif self.command in (
-                "create",
-                "select",
-                "create",
-                "delete",
-                "examine",
-                "subscribe",
-                "unsubscribe",
-                "append",
-            ):
-                result.append(self.mailbox_name)
-            elif self.command in ("list", "lsub"):
-                result.append('"%s"' % self.mailbox_name)
-                result.append('"%s"' % self.list_mailbox)
-            elif self.command == "search":
-                result.append(str(self.search_key))
-            elif self.command == "store":
-                result.append(",".join(map(str, self.msg_set)))
-                if self.silent:
-                    result.append("%s.SILENT" % flag_to_str[self.store_action])
-                else:
-                    result.append(flag_to_str[self.store_action])
-                result.append("(%s)" % ",".join(self.flag_list))
-            elif self.command == "login":
-                result.append(self.user_name)
-            elif self.command == "id":
-                result.append(
-                    "(%s)"
-                    % ", ".join(
-                        "%s:'%s'" % (x, y) for x, y in self.id_dict.items()
+            match self.command:
+                case (
+                    IMAPCommand.AUTHENTICATE
+                    | IMAPCommand.CAPABILITY
+                    | IMAPCommand.CHECK
+                    | IMAPCommand.CLOSE
+                    | IMAPCommand.EXPUNGE
+                    | IMAPCommand.IDLE
+                    | IMAPCommand.LOGOUT
+                    | IMAPCommand.NAMESPACE
+                    | IMAPCommand.NOOP
+                    | IMAPCommand.UNSELECT
+                ):
+                    # These command have no parameters
+                    pass
+                case IMAPCommand.COPY:
+                    result.append(msg_set_to_str(self.msg_set))
+                    result.append(self.mailbox_name)
+                case IMAPCommand.FETCH:
+                    result.append(msg_set_to_str(self.msg_set))
+                    fetch_atts = " ".join(
+                        x.dbg(show_peek=True) for x in self.fetch_atts
                     )
-                )
-            elif self.command == "rename":
-                result.append('"%s"' % self.mailbox_src_name)
-                result.append('"%s"' % self.mailbox_dst_name)
+                    result.append(f"({fetch_atts})")
+                case IMAPCommand.STATUS:
+                    result.append(self.mailbox_name)
+                    result.append(f"({' '.join(self.status_att_list)})")
+                case (
+                    IMAPCommand.APPEND
+                    | IMAPCommand.CREATE
+                    | IMAPCommand.DELETE
+                    | IMAPCommand.EXAMINE
+                    | IMAPCommand.SELECT
+                    | IMAPCommand.SUBSCRIBE
+                    | IMAPCommand.UNSUBSCRIBE
+                ):
+                    result.append(self.mailbox_name)
+                case IMAPCommand.LIST | IMAPCommand.LSUB:
+                    result.append(f'"{self.mailbox_name}"')
+                    result.append(f'"{self.list_mailbox}"')
+                case IMAPCommand.SEARCH:
+                    result.append(str(self.search_key))
+                case IMAPCommand.STORE:
+                    result.append(msg_set_to_str(self.msg_set))
+                    if self.silent:
+                        result.append(
+                            f"{flag_to_str[self.store_action]}.SILENT"
+                        )
+                    else:
+                        result.append(flag_to_str[self.store_action])
+                    result.append(f"({','.join(self.flag_list)})")
+                case IMAPCommand.LOGIN:
+                    result.append(self.user_name)
+                case IMAPCommand.ID:
+                    id_r = ", ".join(
+                        "{x}:'{y}'" for x, y in self.id_dict.items()
+                    )
+                    result.append(f"({id_r})")
+                case IMAPCommand.RENAME:
+                    result.append(f'"{self.mailbox_src_name}"')
+                    result.append(f'"{self.mailbox_dst_name}"')
+                case _:
+                    raise UnknownCommand(value=self.command)
 
         return " ".join(result)
 
@@ -462,69 +495,69 @@ class IMAPClientCommand:
             # These commands require no further parsing.
             #
             case (
-                IMAPCommands.CAPABILITY
-                | IMAPCommands.NOOP
-                | IMAPCommands.NAMESPACE
-                | IMAPCommands.IDLE
-                | IMAPCommands.LOGOUT
-                | IMAPCommands.CHECK
-                | IMAPCommands.CLOSE
-                | IMAPCommands.EXPUNGE
-                | IMAPCommands.UNSELECT
+                IMAPCommand.CAPABILITY
+                | IMAPCommand.NOOP
+                | IMAPCommand.NAMESPACE
+                | IMAPCommand.IDLE
+                | IMAPCommand.LOGOUT
+                | IMAPCommand.CHECK
+                | IMAPCommand.CLOSE
+                | IMAPCommand.EXPUNGE
+                | IMAPCommand.UNSELECT
             ):
                 pass
-            case IMAPCommands.AUTHENTICATE:
+            case IMAPCommand.AUTHENTICATE:
                 self._p_simple_string(" ")
                 self.auth_mechanism_name = self._p_re(_atom_re)
-            case IMAPCommands.LOGIN:
+            case IMAPCommand.LOGIN:
                 self._p_simple_string(" ")
                 self.user_name = self._p_astring()
                 self._p_simple_string(" ")
                 self.password = self._p_astring()
             case (
-                IMAPCommands.SELECT
-                | IMAPCommands.EXAMINE
-                | IMAPCommands.CREATE
-                | IMAPCommands.DELETE
-                | IMAPCommands.SUBSCRIBE
-                | IMAPCommands.UNSUBSCRIBE
+                IMAPCommand.SELECT
+                | IMAPCommand.EXAMINE
+                | IMAPCommand.CREATE
+                | IMAPCommand.DELETE
+                | IMAPCommand.SUBSCRIBE
+                | IMAPCommand.UNSUBSCRIBE
             ):
                 self._p_simple_string(" ")
                 self.mailbox_name = self._p_mailbox()
-            case IMAPCommands.RENAME:
+            case IMAPCommand.RENAME:
                 self._p_simple_string(" ")
                 self.mailbox_src_name = self._p_mailbox()
                 self._p_simple_string(" ")
                 self.mailbox_dst_name = self._p_mailbox()
-            case IMAPCommands.LIST | IMAPCommands.LSUB:
+            case IMAPCommand.LIST | IMAPCommand.LSUB:
                 self._p_simple_string(" ")
                 self.mailbox_name = self._p_mailbox()
                 self._p_simple_string(" ")
                 self.list_mailbox = self._p_list_mailbox()
-            case IMAPCommands.STATUS:
+            case IMAPCommand.STATUS:
                 self._p_simple_string(" ")
                 self.mailbox_name = self._p_mailbox()
                 self._p_simple_string(" ")
                 self.status_att_list = self._p_paren_list_of(self._p_status_att)
-            case IMAPCommands.ID:
+            case IMAPCommand.ID:
                 self._p_id()
-            case IMAPCommands.APPEND:
+            case IMAPCommand.APPEND:
                 self._p_append()
-            case IMAPCommands.SEARCH:
+            case IMAPCommand.SEARCH:
                 self._p_search()
-            case IMAPCommands.FETCH:
+            case IMAPCommand.FETCH:
                 self._p_simple_string(" ")
                 self.msg_set = self._p_msg_set()
                 self._p_simple_string(" ")
                 self.fetch_atts = self._p_fetch_atts()
-            case IMAPCommands.STORE:
+            case IMAPCommand.STORE:
                 self._p_store()
-            case IMAPCommands.COPY:
+            case IMAPCommand.COPY:
                 self._p_simple_string(" ")
                 self.msg_set = self._p_msg_set()
                 self._p_simple_string(" ")
                 self.mailbox_name = self._p_mailbox()
-            case IMAPCommands.UID:
+            case IMAPCommand.UID:
                 self._p_uid()
             case _:
                 raise UnknownCommand(value=self.command)
