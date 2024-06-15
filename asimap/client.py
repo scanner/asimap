@@ -435,8 +435,12 @@ class PreAuthenticated(BaseClientHandler):
             # failing too often then we provide a bit of a mud room slowing
             # down our responses to them.
             #
+            logger.error(
+                "%s, %s: Too many authentication failures",
+                self.name,
+                cmd.user_name,
+            )
             await asyncio.sleep(10)
-            logger.error("%s: Too many authentication failures", self.name)
             raise Bad("Too many authentication failures")
 
         # XXX This should poke the authentication mechanism we were passed

@@ -86,7 +86,7 @@ factory-boy==3.3.0
     # via pytest-factoryboy
 faker==25.8.0
     # via factory-boy
-filelock==3.14.0
+filelock==3.15.1
     # via
     #   -r build.txt
     #   -r lint.txt
@@ -292,7 +292,7 @@ rich==13.7.1
     #   -r build.txt
     #   -r development.in
     #   hatch
-ruff==0.4.8
+ruff==0.4.9
     # via -r lint.txt
 sentry-sdk==2.5.1
     # via -r production.txt
@@ -376,7 +376,7 @@ userpath==1.9.2
     # via
     #   -r build.txt
     #   hatch
-uv==0.2.10
+uv==0.2.11
     # via
     #   -r build.txt
     #   hatch

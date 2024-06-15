@@ -725,12 +725,19 @@ class IMAPSubprocessInterface:
             )
             return False
         except Exception as e:
-            logger.exception(
-                "Exception handling IMAP command '%s' 'for %s: %s"
-                % (imap_cmd, self.log_string(), str(e))
+            m = (
+                f"Error handling IMAP command '{imap_cmd}' for "
+                f"{self.log_string()}: {e}"
             )
+            if isinstance(e, ConnectionError):
+                logger.error(m)
+            else:
+                logger.exception(m)
             try:
-                m = f"* BAD Internal error processing command {imap_cmd}\r\n"
+                m = (
+                    "* BAD Internal error processing command "
+                    f"{imap_cmd}: {e}\r\n"
+                )
                 await self.imap_client.push(m)
             except Exception:
                 pass
@@ -747,11 +754,19 @@ class IMAPSubprocessInterface:
                         self.client_handler.user
                     )
                 except Exception as e:
-                    logger.exception(
-                        "Exception starting subprocess for %s: "
-                        "%s" % (self.log_string(), str(e))
+                    m = (
+                        "Exception starting/connecting subprocess for "
+                        f"{self.log_string()}: {e}"
                     )
-                    await self.imap_client.push(msg)
+                    if isinstance(e, ConnectionError):
+                        # No need to log stack traces on connection errors.
+                        logger.error(m)
+                    else:
+                        logger.exception(m)
+                    try:
+                        await self.imap_client.push(f"* BAD {e}\r\n")
+                    except Exception:
+                        pass
                     if self.writer:
                         self.writer.close()
                         await self.writer.wait_closed()
@@ -813,6 +828,7 @@ class IMAPSubprocessInterface:
             self.subprocess.port,
             limit=131_072,
         )
+
         self.reader = reader
         self.writer = writer
 
