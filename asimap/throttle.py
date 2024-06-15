@@ -114,10 +114,10 @@ def check_allow(user: str, addr: str) -> bool:
     #
     now = time.time()
     if user in BAD_USER_AUTHS and now - BAD_USER_AUTHS[user][1] > PURGE_TIME:
-        logger.info("check_allow: clearing '%s' from BAD_USER_AUTHS" % user)
+        logger.info("clearing '%s' from BAD_USER_AUTHS" % user)
         del BAD_USER_AUTHS[user]
     if addr in BAD_IP_AUTHS and now - BAD_IP_AUTHS[addr][1] > PURGE_TIME:
-        logger.info("check_allow: clearing '%s' from BAD_IP_AUTHS" % addr)
+        logger.info("clearing '%s' from BAD_IP_AUTHS" % addr)
         del BAD_IP_AUTHS[addr]
 
     # if the user or client addr is NOT in either of the tracking dicts
@@ -131,13 +131,14 @@ def check_allow(user: str, addr: str) -> bool:
     #
     if user in BAD_USER_AUTHS and BAD_USER_AUTHS[user][0] > MAX_USER_ATTEMPTS:
         logger.warning(
-            "check_allow: too many attempts for user: '%s', from "
-            "address: %s" % (user, addr)
+            "Deny: too many attempts for user: '%s', from address: %s",
+            user,
+            addr,
         )
         return False
 
     if addr in BAD_IP_AUTHS and BAD_IP_AUTHS[addr][0] > MAX_ADDR_ATTEMPTS:
-        logger.warning("check_allow: too many attempts from address: %s" % addr)
+        logger.warning("Deny: too many attempts from address: %s" % addr)
         return False
 
     # Otherwise they are not yet blocked from attempting to login.

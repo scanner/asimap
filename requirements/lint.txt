@@ -24,7 +24,7 @@ cryptography==42.0.8
     #   types-redis
 distlib==0.3.8
     # via virtualenv
-filelock==3.14.0
+filelock==3.15.1
     # via virtualenv
 identify==2.5.36
     # via pre-commit
@@ -63,7 +63,7 @@ pyproject-hooks==1.1.0
     #   pip-tools
 pyyaml==6.0.1
     # via pre-commit
-ruff==0.4.8
+ruff==0.4.9
     # via -r lint.in
 tomli==2.0.1
     # via yapf

@@ -20,7 +20,7 @@ click==8.1.7
     #   userpath
 distlib==0.3.8
     # via virtualenv
-filelock==3.14.0
+filelock==3.15.1
     # via virtualenv
 h11==0.14.0
     # via httpcore
@@ -94,7 +94,7 @@ trove-classifiers==2024.5.22
     # via hatchling
 userpath==1.9.2
     # via hatch
-uv==0.2.10
+uv==0.2.11
     # via hatch
 virtualenv==20.26.2
     # via hatch
