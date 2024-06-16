@@ -8,6 +8,7 @@ single connected IMAP client.
 import asyncio
 import logging
 import sys
+import time
 from enum import StrEnum
 from itertools import count, groupby
 from typing import TYPE_CHECKING, List, Optional, Union
@@ -140,7 +141,7 @@ class BaseClientHandler:
         # except the "OK" response and any exceptional errors which are handled
         # by this method.
         #
-        # start_time = time.time()
+        start_time = time.time()
         try:
             result = await getattr(self, f"do_{imap_command.command}")(
                 imap_command
@@ -175,6 +176,17 @@ class BaseClientHandler:
                 pass
             logger.debug(result)
             raise
+        finally:
+            cmd_duration = time.time() - start_time
+            if cmd_duration >= 0.01:
+                # only bother logging commands that take more than 0.01 seconds
+                #
+                logger.debug(
+                    "IMAP Command '%s %s' took %.3f seconds",
+                    imap_command.tag,
+                    imap_command.command,
+                    cmd_duration,
+                )
 
         # If there was no result from running this command then everything went
         # okay and we send back a final 'OK' to the client for processing this

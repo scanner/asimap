@@ -811,7 +811,7 @@ class Mailbox:
         await self.commit_to_db()
         end_time = time.time()
         logger.debug(
-            "non-trivial resync finished. Duration: %f, num messages: %d, num recent: %d",
+            "non-trivial resync finished. Duration: %.3fs, num messages: %d, num recent: %d",
             (end_time - start_time),
             self.num_msgs,
             self.num_recent,
@@ -2271,9 +2271,9 @@ class Mailbox:
                 )
 
                 logger.debug(
-                    "FETCH finished, mailbox: '%s', msg_set: %r, num results: %d, total duration: %f, "
-                    "fetch duration: %f, mean time per network yield: %f, mean time per fetch: %f, median: "
-                    "%f, stdev: %f",
+                    "FETCH finished, mailbox: '%s', msg_set: %r, num results: %d, total duration: %.3fs, "
+                    "fetch duration: %.3fs, mean time per network yield: %.3fs, mean time per fetch: %.3fs, median: "
+                    "%.3fs, stdev: %.3fs",
                     self.name,
                     msg_set,
                     num_results,
@@ -2373,7 +2373,7 @@ class Mailbox:
                         case StoreAction.REPLACE_FLAGS:
                             _help_replace_flags(key, seqs, msg, flags)
                 await self.mailbox.aset_sequences(seqs)
-        logger.debug("Completed, took %f seconds", time.time() - store_start)
+        logger.debug("Completed, took %.3f seconds", time.time() - store_start)
 
     ##################################################################
     #
