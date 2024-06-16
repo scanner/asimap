@@ -1,6 +1,6 @@
 
 services:
-  imap: &imap-service
+  asimap: &imap-service
     image: asimap:prod
     container_name: asimap
     build:
@@ -19,7 +19,7 @@ services:
     profiles:
       - prod
 
-  imap-dev:
+  asimap-dev:
     <<: *imap-service
     image: asimap:dev
     container_name: asimap-dev

@@ -18,8 +18,10 @@ import socket
 import sys
 import time
 from datetime import datetime, timezone
+from itertools import batched
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, Optional, Union
+from statistics import fmean, median, stdev
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 # 3rd party imports
 #
@@ -32,13 +34,13 @@ from sentry_sdk.integrations.asyncio import AsyncioIntegration
 import asimap
 import asimap.mbox
 import asimap.message_cache
-import asimap.parse
 
 from .client import Authenticated
 from .db import Database
 from .exceptions import MailboxInconsistency
 from .mbox import Mailbox
 from .mh import MH
+from .parse import BadCommand, IMAPClientCommand
 from .trace import trace
 from .utils import UpgradeableReadWriteLock
 
@@ -205,10 +207,10 @@ class IMAPClientProxy:
                     return
 
                 try:
-                    imap_cmd = asimap.parse.IMAPClientCommand(imap_msg)
+                    imap_cmd = IMAPClientCommand(imap_msg)
                     imap_cmd.parse()
 
-                except asimap.parse.BadCommand as e:
+                except BadCommand as e:
                     # The command we got from the client was bad...  If we at
                     # least managed to parse the TAG out of the command the
                     # client sent us we use that when sending our response to
@@ -222,8 +224,24 @@ class IMAPClientProxy:
 
                 # Pass the command on to the command processor to handle.
                 #
-                await self.cmd_processor.command(imap_cmd)
-
+                try:
+                    self.server.commands_in_progress += 1
+                    self.server.active_commands.append(imap_cmd)
+                    await self.cmd_processor.command(imap_cmd)
+                finally:
+                    try:
+                        self.server.active_commands.remove(imap_cmd)
+                    except Exception:
+                        pass
+                    self.server.commands_in_progress -= 1
+                    if self.server.commands_in_progress > 0:
+                        logger.debug(
+                            "Commands in progress: %d, %s",
+                            self.server.commands_in_progress,
+                            ", ".join(
+                                x.qstr() for x in self.server.active_commands
+                            ),
+                        )
                 # If our state is "logged_out" after processing the command
                 # then the client has logged out of the authenticated state. We
                 # need to close our connection to the main server process.
@@ -405,6 +423,16 @@ class IMAPUserServer:
         self.db: Database
 
         self.folder_scan_task: Optional[asyncio.Task] = None
+
+        # Statistics for the `check_all_folders` function
+        # key is mbox name, value is a time duration in seconds.
+        #
+        self.folder_check_durations: Dict[str, float] = {}
+
+        # Updated by the IMAPClientProxy when it is processing commands.
+        #
+        self.commands_in_progress: int = 0
+        self.active_commands: List[IMAPClientCommand] = []
 
     ##################################################################
     #
@@ -747,15 +775,15 @@ class IMAPUserServer:
                         tg.create_task(self.get_mailbox(dirname, expiry=0))
                         await asyncio.sleep(0)
 
-        logger.debug(
-            "find_all_folders: finished. Took %f seconds",
-            time.time() - start_time,
-        )
+        logger.debug("Finished. Took %.3f seconds", time.time() - start_time)
 
     ##################################################################
     #
     async def check_folder(
-        self, mbox_name: str, mtime: int, force: bool = False
+        self,
+        mbox_name: str,
+        mtime: int,
+        force: bool = False,
     ):
         r"""
         Check the mtime for a single folder. If it is newer than the mtime
@@ -770,6 +798,7 @@ class IMAPUserServer:
         - `force` : If True this will force a full resync on all
                     mailbox regardless of their mtimes.
         """
+        start_time = time.time()
         path = os.path.join(self.mailbox._path, mbox_name)
         seq_path = os.path.join(path, ".mh_sequences")
         try:
@@ -810,6 +839,7 @@ class IMAPUserServer:
                     path,
                     seq_path,
                 )
+        self.folder_check_durations[mbox_name] = time.time() - start_time
 
     ##################################################################
     #
@@ -834,30 +864,84 @@ class IMAPUserServer:
         # sqlite db.
         #
         kount = 0
-        async with asyncio.TaskGroup() as tg:
-            async for mbox_name, mtime in self.db.query(
-                "SELECT name, mtime FROM mailboxes WHERE attributes "
-                "NOT LIKE '%%ignored%%' ORDER BY name"
+        tasks = []
+        async for mbox_name, mtime in self.db.query(
+            "SELECT name, mtime FROM mailboxes WHERE attributes "
+            "NOT LIKE '%%ignored%%' ORDER BY name"
+        ):
+            # can skip doing a check since it is already active.
+            #
+            if mbox_name in self.active_mailboxes and (
+                any(
+                    x.idling
+                    for x in self.active_mailboxes[mbox_name].clients.values()
+                )
             ):
-                # can skip doing a check since it is already active.
-                #
-                if mbox_name in self.active_mailboxes and (
-                    any(
-                        x.idling
-                        for x in self.active_mailboxes[
-                            mbox_name
-                        ].clients.values()
+                continue
+
+            tasks.append((mbox_name, mtime))
+
+        self.folder_check_durations = {}
+        tg_durations = []
+        for mboxes in batched(tasks, 10):
+            tg_start = time.time()
+            async with asyncio.TaskGroup() as tg:
+                for mbox_name, mtime in mboxes:
+                    kount += 1
+                    tg.create_task(
+                        self.check_folder(mbox_name, mtime, force=force)
                     )
-                ):
-                    continue
+            tg_durations.append(time.time() - tg_start)
 
-                # Otherwise check folder for updates.
-                #
-                kount += 1
-                tg.create_task(self.check_folder(mbox_name, mtime, force=force))
+        # Now point in doing all the math if we are not going to log it.
+        # NOTE: In the future we might submit these as metrics.
+        #
+        if self.debug:
+            tg_durations.sort(reverse=True)
+            mean_tg_durations = fmean(tg_durations)
+            median_tg_durations = median(tg_durations)
+            stddev_tg_durations = (
+                stdev(tg_durations, mean_tg_durations)
+                if len(tg_durations) > 2
+                else 0.0
+            )
+            tg_max_durations = ", ".join(
+                f"{x:.3f}s" for x in sorted(tg_durations, reverse=True)[:10]
+            )
 
-        logger.debug(
-            "check_all_folders finished, Took %f seconds to check %d folders",
-            (time.time() - start_time),
-            kount,
-        )
+            scan_durations = list(self.folder_check_durations.values())
+            mean_scan_duration = fmean(scan_durations)
+            median_scan_duration = median(scan_durations)
+            stddev_scan_duration = (
+                stdev(scan_durations, mean_scan_duration)
+                if len(scan_durations) > 2
+                else 0.0
+            )
+            by_duration = sorted(
+                list(self.folder_check_durations.items()),
+                key=lambda x: x[1],
+                reverse=True,
+            )
+            mbox_max_durations = ", ".join(
+                f"{x[0]}:{x[1]:.3f}s" for x in by_duration[:10]
+            )
+            logger.debug(
+                "Finished, Took %.3f seconds to check %d folders",
+                (time.time() - start_time),
+                kount,
+            )
+            logger.debug(
+                "Task Group Durations, mean: %.3fs, median: %.3fs, stddev: %.3fs, max durations: %s",
+                mean_tg_durations,
+                median_tg_durations,
+                stddev_tg_durations,
+                tg_max_durations,
+            )
+            logger.debug(
+                "Individual check_folder durations: mean: %.3fs, median: %.3fs, stddev: %.3fs, max durations: %s",
+                mean_scan_duration,
+                median_scan_duration,
+                stddev_scan_duration,
+                mbox_max_durations,
+            )
+        self.folder_check_durations = {}

@@ -811,7 +811,7 @@ class Mailbox:
         await self.commit_to_db()
         end_time = time.time()
         logger.debug(
-            "non-trivial resync finished. Duration: %f, num messages: %d, num recent: %d",
+            "non-trivial resync finished. Duration: %.3fs, num messages: %d, num recent: %d",
             (end_time - start_time),
             self.num_msgs,
             self.num_recent,
@@ -1235,6 +1235,7 @@ class Mailbox:
         # try to cache them in the message cache.
         #
         num_msgs = len(msg_keys)
+        check_start = time.time()
         for i, msg_key in enumerate(msg_keys):
             if i % 200 == 0:
                 logger.debug(
@@ -1299,6 +1300,15 @@ class Mailbox:
                 if msg_key not in seq["Recent"]:
                     seq_changed = True
                     seq["Recent"].append(msg_key)
+        check_duration = time.time() - check_start
+        if check_duration > 1.0:
+            logger.info(
+                "check/update finished, mailbox: %s, num msgs: %d, "
+                "duration: %f.3s",
+                self.name,
+                num_msgs,
+                check_duration,
+            )
         # If we had to redo the folder then we believe it is indeed now
         # interesting so set the \Marked attribute on it.
         #
@@ -2256,34 +2266,50 @@ class Mailbox:
                     if fetch_finished_time is not None
                     else 9999999.9
                 )
-                mean_yield_time = fmean(yield_times) if yield_times else 0.0
+                if len(yield_times) > 1:
+                    # Only bother to calculate more statistics if there was
+                    # more than one message fetched.
+                    #
+                    mean_yield_time = fmean(yield_times) if yield_times else 0.0
 
-                mean_fetch_yield_time = (
-                    fmean(fetch_yield_times) if fetch_yield_times else 0.0
-                )
-                median_yield_time = (
-                    median(fetch_yield_times) if fetch_yield_times else 0.0
-                )
-                stdev_yield_time = (
-                    stdev(fetch_yield_times, mean_fetch_yield_time)
-                    if len(fetch_yield_times) > 2
-                    else 0.0
-                )
+                    mean_fetch_yield_time = (
+                        fmean(fetch_yield_times) if fetch_yield_times else 0.0
+                    )
+                    median_yield_time = (
+                        median(fetch_yield_times) if fetch_yield_times else 0.0
+                    )
+                    stdev_yield_time = (
+                        stdev(fetch_yield_times, mean_fetch_yield_time)
+                        if len(fetch_yield_times) > 2
+                        else 0.0
+                    )
 
-                logger.debug(
-                    "FETCH finished, mailbox: '%s', msg_set: %r, num results: %d, total duration: %f, "
-                    "fetch duration: %f, mean time per network yield: %f, mean time per fetch: %f, median: "
-                    "%f, stdev: %f",
-                    self.name,
-                    msg_set,
-                    num_results,
-                    total_time,
-                    fetch_time,
-                    mean_yield_time,
-                    mean_fetch_yield_time,
-                    median_yield_time,
-                    stdev_yield_time,
-                )
+                    logger.debug(
+                        "FETCH finished, mailbox: '%s', msg_set: %r, num "
+                        "results: %d, total duration: %.3fs, fetch duration: "
+                        "%.3fs, mean time per network yield: %.3fs, mean time "
+                        "per fetch: %.3fs, median: %.3fs, stdev: %.3fs",
+                        self.name,
+                        msg_set,
+                        num_results,
+                        total_time,
+                        fetch_time,
+                        mean_yield_time,
+                        mean_fetch_yield_time,
+                        median_yield_time,
+                        stdev_yield_time,
+                    )
+                else:
+                    logger.debug(
+                        "FETCH finished, mailbox: '%s', msg_set: %r, num "
+                        "results: %d, total duration: %.3fs, fetch duration: "
+                        "%.3fs",
+                        self.name,
+                        msg_set,
+                        num_results,
+                        total_time,
+                        fetch_time,
+                    )
 
     ##################################################################
     #
@@ -2373,7 +2399,7 @@ class Mailbox:
                         case StoreAction.REPLACE_FLAGS:
                             _help_replace_flags(key, seqs, msg, flags)
                 await self.mailbox.aset_sequences(seqs)
-        logger.debug("Completed, took %f seconds", time.time() - store_start)
+        logger.debug("Completed, took %.3f seconds", time.time() - store_start)
 
     ##################################################################
     #
