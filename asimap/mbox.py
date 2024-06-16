@@ -2256,34 +2256,50 @@ class Mailbox:
                     if fetch_finished_time is not None
                     else 9999999.9
                 )
-                mean_yield_time = fmean(yield_times) if yield_times else 0.0
+                if len(yield_times) > 1:
+                    # Only bother to calculate more statistics if there was
+                    # more than one message fetched.
+                    #
+                    mean_yield_time = fmean(yield_times) if yield_times else 0.0
 
-                mean_fetch_yield_time = (
-                    fmean(fetch_yield_times) if fetch_yield_times else 0.0
-                )
-                median_yield_time = (
-                    median(fetch_yield_times) if fetch_yield_times else 0.0
-                )
-                stdev_yield_time = (
-                    stdev(fetch_yield_times, mean_fetch_yield_time)
-                    if len(fetch_yield_times) > 2
-                    else 0.0
-                )
+                    mean_fetch_yield_time = (
+                        fmean(fetch_yield_times) if fetch_yield_times else 0.0
+                    )
+                    median_yield_time = (
+                        median(fetch_yield_times) if fetch_yield_times else 0.0
+                    )
+                    stdev_yield_time = (
+                        stdev(fetch_yield_times, mean_fetch_yield_time)
+                        if len(fetch_yield_times) > 2
+                        else 0.0
+                    )
 
-                logger.debug(
-                    "FETCH finished, mailbox: '%s', msg_set: %r, num results: %d, total duration: %.3fs, "
-                    "fetch duration: %.3fs, mean time per network yield: %.3fs, mean time per fetch: %.3fs, median: "
-                    "%.3fs, stdev: %.3fs",
-                    self.name,
-                    msg_set,
-                    num_results,
-                    total_time,
-                    fetch_time,
-                    mean_yield_time,
-                    mean_fetch_yield_time,
-                    median_yield_time,
-                    stdev_yield_time,
-                )
+                    logger.debug(
+                        "FETCH finished, mailbox: '%s', msg_set: %r, num "
+                        "results: %d, total duration: %.3fs, fetch duration: "
+                        "%.3fs, mean time per network yield: %.3fs, mean time "
+                        "per fetch: %.3fs, median: %.3fs, stdev: %.3fs",
+                        self.name,
+                        msg_set,
+                        num_results,
+                        total_time,
+                        fetch_time,
+                        mean_yield_time,
+                        mean_fetch_yield_time,
+                        median_yield_time,
+                        stdev_yield_time,
+                    )
+                else:
+                    logger.debug(
+                        "FETCH finished, mailbox: '%s', msg_set: %r, num "
+                        "results: %d, total duration: %.3fs, fetch duration: "
+                        "%.3fs",
+                        self.name,
+                        msg_set,
+                        num_results,
+                        total_time,
+                        fetch_time,
+                    )
 
     ##################################################################
     #
