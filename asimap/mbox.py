@@ -1235,6 +1235,7 @@ class Mailbox:
         # try to cache them in the message cache.
         #
         num_msgs = len(msg_keys)
+        check_start = time.time()
         for i, msg_key in enumerate(msg_keys):
             if i % 200 == 0:
                 logger.debug(
@@ -1299,6 +1300,15 @@ class Mailbox:
                 if msg_key not in seq["Recent"]:
                     seq_changed = True
                     seq["Recent"].append(msg_key)
+        check_duration = time.time() - check_start
+        if check_duration > 1.0:
+            logger.info(
+                "check/update finished, mailbox: %s, num msgs: %d, "
+                "duration: %f.3s",
+                self.name,
+                num_msgs,
+                check_duration,
+            )
         # If we had to redo the folder then we believe it is indeed now
         # interesting so set the \Marked attribute on it.
         #
