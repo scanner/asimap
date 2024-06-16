@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from itertools import batched
 from pathlib import Path
 from statistics import fmean, median, stdev
-from typing import TYPE_CHECKING, Dict, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 # 3rd party imports
 #
@@ -34,13 +34,13 @@ from sentry_sdk.integrations.asyncio import AsyncioIntegration
 import asimap
 import asimap.mbox
 import asimap.message_cache
-import asimap.parse
 
 from .client import Authenticated
 from .db import Database
 from .exceptions import MailboxInconsistency
 from .mbox import Mailbox
 from .mh import MH
+from .parse import BadCommand, IMAPClientCommand
 from .trace import trace
 from .utils import UpgradeableReadWriteLock
 
@@ -207,10 +207,10 @@ class IMAPClientProxy:
                     return
 
                 try:
-                    imap_cmd = asimap.parse.IMAPClientCommand(imap_msg)
+                    imap_cmd = IMAPClientCommand(imap_msg)
                     imap_cmd.parse()
 
-                except asimap.parse.BadCommand as e:
+                except BadCommand as e:
                     # The command we got from the client was bad...  If we at
                     # least managed to parse the TAG out of the command the
                     # client sent us we use that when sending our response to
@@ -224,8 +224,24 @@ class IMAPClientProxy:
 
                 # Pass the command on to the command processor to handle.
                 #
-                await self.cmd_processor.command(imap_cmd)
-
+                try:
+                    self.server.commands_in_progress += 1
+                    self.server.active_commands.append(imap_cmd)
+                    await self.cmd_processor.command(imap_cmd)
+                finally:
+                    try:
+                        self.server.active_commands.remove(imap_cmd)
+                    except Exception:
+                        pass
+                    self.server.commands_in_progress -= 1
+                    if self.server.commands_in_progress > 0:
+                        logger.debug(
+                            "Commands in progress: %d, %s",
+                            self.server.commands_in_progress,
+                            ", ".join(
+                                x.qstr() for x in self.server.active_commands
+                            ),
+                        )
                 # If our state is "logged_out" after processing the command
                 # then the client has logged out of the authenticated state. We
                 # need to close our connection to the main server process.
@@ -412,6 +428,11 @@ class IMAPUserServer:
         # key is mbox name, value is a time duration in seconds.
         #
         self.folder_check_durations: Dict[str, float] = {}
+
+        # Updated by the IMAPClientProxy when it is processing commands.
+        #
+        self.commands_in_progress: int = 0
+        self.active_commands: List[IMAPClientCommand] = []
 
     ##################################################################
     #

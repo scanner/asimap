@@ -351,6 +351,16 @@ class IMAPClientCommand:
         """
         self._parse()
 
+    ####################################################################
+    #
+    def qstr(self):
+        """
+        For debugging output this gives a short string representing this
+        command. Just the tag and command string (upper cased)
+        """
+        tag = self.tag if self.tag else "*"
+        return f"{tag} {self.command.upper()}"
+
     #######################################################################
     #
     def __str__(self):
