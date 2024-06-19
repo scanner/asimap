@@ -87,7 +87,7 @@ types-setuptools==70.0.0.20240524
     #   types-cffi
 typing-extensions==4.12.2
     # via mypy
-urllib3==2.2.1
+urllib3==2.2.2
     # via types-requests
 virtualenv==20.26.2
     # via pre-commit
