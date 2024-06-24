@@ -34,6 +34,7 @@ requirements: requirements/development.txt	## Rebuild out of date requirements
 
 $(ROOT_DIR)/venv: requirements/development.txt
 	@if [ -d "$@" ] ; then \
+	  $(ACTIVATE) pip install -U pip ; \
 	  $(ACTIVATE) pip-sync $(ROOT_DIR)/requirements/development.txt ; \
         else \
 	  $(PYTHON) -m venv $@ ; \

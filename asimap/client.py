@@ -151,6 +151,16 @@ class BaseClientHandler:
             # we will not close the connection to our client.
             #
             async with timeout(360) as tcm:
+                # XXX Maybe the `timeout` context manager should be attached to
+                #     the imap_command. This way we do not hvae to pass it all
+                #     the way down the stack. Hm, `mbox::fetch` is where we
+                #     want it though, and that does not get an imap command
+                #     object. Maybe it should? Only operations that loop over
+                #     things that can control the extension of the cm are the
+                #     ones we care about. If it is like "status" there is no
+                #     point at which we want to extend the CM.. uwell, unless
+                #     it is doing a big resync.
+                #
                 result = await getattr(self, f"do_{imap_command.command}")(
                     imap_command, timeout_cm=tcm
                 )
@@ -475,14 +485,9 @@ class PreAuthenticated(BaseClientHandler):
         #
         if not check_allow(cmd.user_name, self.client.rem_addr):
             # Sleep for a bit before we return this failure. If they are
-            # failing too often then we provide a bit of a mud room slowing
+            # failing too often then we provide a bit of a quagmire slowing
             # down our responses to them.
             #
-            logger.error(
-                "%s, %s: Too many authentication failures",
-                self.name,
-                cmd.user_name,
-            )
             await asyncio.sleep(10)
             raise Bad("Too many authentication failures")
 

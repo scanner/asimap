@@ -705,7 +705,7 @@ class IMAPSubprocessInterface:
             except ConnectionError as e:
                 # Do not need a full stack trace for a connection error.
                 #
-                logger.error(
+                logger.warning(
                     "Exception sending 'BAD' for %s: %s"
                     % (self.log_string(), str(e))
                 )
@@ -719,7 +719,7 @@ class IMAPSubprocessInterface:
         except ConnectionError as e:
             # Do not need a full stack trace for a connection error.
             #
-            logger.error(
+            logger.warning(
                 "Exception handling IMAP command '%s' for %s: %s"
                 % (imap_cmd, self.log_string(), str(e))
             )
@@ -729,10 +729,7 @@ class IMAPSubprocessInterface:
                 f"Error handling IMAP command '{imap_cmd}' for "
                 f"{self.log_string()}: {e}"
             )
-            if isinstance(e, ConnectionError):
-                logger.error(m)
-            else:
-                logger.exception(m)
+            logger.exception(m)
             try:
                 m = (
                     "* BAD Internal error processing command "
