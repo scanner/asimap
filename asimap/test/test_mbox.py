@@ -15,7 +15,6 @@ from typing import Dict, List
 #
 import aiofiles
 import pytest
-from async_timeout import timeout
 from dirty_equals import IsNow
 
 # Project imports
@@ -392,7 +391,7 @@ async def test_mbox_resync_two_tasks_racing(
 
     await asyncio.sleep(1)
     start_event.set()
-    async with timeout(2):
+    async with asyncio.timeout(2):
         results = await asyncio.gather(task1, task2, return_exceptions=True)
     assert results
 

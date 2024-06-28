@@ -1,7 +1,6 @@
 aiofiles
 aioretry
 aiosqlite
-async-timeout
 charset_normalizer
 docopt
 python-dotenv

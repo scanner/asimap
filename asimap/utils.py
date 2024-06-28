@@ -40,7 +40,6 @@ from typing import (
 import aiofiles
 import aiofiles.os
 from aiofiles.ospath import wrap as aiofiles_wrap
-from async_timeout import timeout
 
 # Project imports
 #
@@ -596,7 +595,7 @@ def with_timeout(t: int):
 
     def wrapper(corofunc):
         async def run(*args, **kwargs):
-            async with timeout(t):
+            async with asyncio.timeout(t):
                 return await corofunc(*args, **kwargs)
 
         return run

@@ -17,7 +17,7 @@ import aiofiles.os
 # asimapd imports
 #
 from asimap.exceptions import BadAuthentication, NoSuchUser
-from asimap.hashers import check_password
+from asimap.hashers import acheck_password
 
 if TYPE_CHECKING:
     from _typeshed import StrPath
@@ -98,7 +98,7 @@ async def authenticate(username: str, password: str) -> PWUser:
         raise NoSuchUser(f"No such user '{username}'")
 
     user = USERS[username]
-    if not check_password(password, user.pw_hash):
+    if not await acheck_password(password, user.pw_hash):
         raise BadAuthentication
     return user
 

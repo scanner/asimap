@@ -26,7 +26,6 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Union
 # 3rd party imports
 #
 import sentry_sdk
-from async_timeout import timeout
 from sentry_sdk.integrations.asyncio import AsyncioIntegration
 
 # asimap imports
@@ -310,7 +309,7 @@ class IMAPClientProxy:
             # wrong. Exit out. This blocking can hold on to locks too long.
             #
             try:
-                async with timeout(2):
+                async with asyncio.timeout(2):
                     await self.writer.drain()
             except asyncio.TimeoutError as exc:
                 logger.warning(
