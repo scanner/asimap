@@ -15,3 +15,5 @@ venv*
 .package
 dist
 asimap_test_dir
+.env
+*.env

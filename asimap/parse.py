@@ -6,6 +6,7 @@ commands in other parts of the server.
 
 # system imports
 #
+import asyncio
 import logging
 import mailbox
 import os.path
@@ -341,6 +342,17 @@ class IMAPClientCommand:
         self.tag: Optional[str] = None
         self.command: Optional[str] = None
 
+        # If the IMAP Command is currently operating under an asyncio.Timeout
+        # context manager, that context manager is set here so that when a
+        # command is being processed, if it knows it is going to run longer it
+        # can reschedule the timeout..
+        #
+        # The timeout is primarily used to guard against deadlocks or some
+        # process taking far longer than expected. (we should not have any,
+        # this is to be safe.)
+        #
+        self.timeout_cm: Optional[asyncio.Timeout] = None
+
     ##################################################################
     #
     def parse(self):
@@ -359,7 +371,8 @@ class IMAPClientCommand:
         command. Just the tag and command string (upper cased)
         """
         tag = self.tag if self.tag else "*"
-        return f"{tag} {self.command.upper()}"
+        command = "none" if self.command is None else self.command
+        return f"{tag} {command.upper()}"
 
     #######################################################################
     #

@@ -4,7 +4,7 @@
 #
 #    pip-compile --output-file=development.txt --strip-extras development.in
 #
-aiofiles==23.2.1
+aiofiles==24.1.0
     # via -r production.txt
 aioretry==5.0.2
     # via -r production.txt
@@ -16,8 +16,6 @@ anyio==4.4.0
     #   httpx
 asttokens==2.4.1
     # via stack-data
-async-timeout==4.0.3
-    # via -r production.txt
 backports-tarfile==1.2.0
     # via
     #   -r build.txt
@@ -84,7 +82,7 @@ executing==2.0.1
     # via stack-data
 factory-boy==3.3.0
     # via pytest-factoryboy
-faker==25.9.1
+faker==26.0.0
     # via factory-boy
 filelock==3.15.4
     # via
@@ -127,7 +125,7 @@ idna==3.7
     #   trustme
 imapclient==3.0.1
     # via -r development.in
-importlib-metadata==7.2.1
+importlib-metadata==8.0.0
     # via
     #   -r build.txt
     #   -r lint.txt
@@ -174,7 +172,7 @@ more-itertools==10.3.0
     #   -r build.txt
     #   jaraco-classes
     #   jaraco-functools
-mypy==1.10.0
+mypy==1.10.1
     # via -r lint.txt
 mypy-extensions==1.0.0
     # via
@@ -292,9 +290,9 @@ rich==13.7.1
     #   -r build.txt
     #   -r development.in
     #   hatch
-ruff==0.4.10
+ruff==0.5.0
     # via -r lint.txt
-sentry-sdk==2.6.0
+sentry-sdk==2.7.1
     # via -r production.txt
 shellingham==1.5.4
     # via
@@ -335,7 +333,7 @@ trove-classifiers==2024.5.22
     #   hatchling
 trustme==1.1.0
     # via -r development.in
-types-aiofiles==23.2.0.20240623
+types-aiofiles==24.1.0.20240626
     # via -r lint.txt
 types-cachetools==5.3.0.7
     # via -r lint.txt
@@ -353,7 +351,7 @@ types-redis==4.6.0.20240425
     # via -r lint.txt
 types-requests==2.32.0.20240622
     # via -r lint.txt
-types-setuptools==70.0.0.20240524
+types-setuptools==70.1.0.20240627
     # via
     #   -r lint.txt
     #   types-cffi
@@ -376,7 +374,7 @@ userpath==1.9.2
     # via
     #   -r build.txt
     #   hatch
-uv==0.2.13
+uv==0.2.17
     # via
     #   -r build.txt
     #   hatch

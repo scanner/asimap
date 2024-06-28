@@ -4,13 +4,13 @@ Test our asyncio sqlite db
 
 # system imports
 #
+import asyncio
 from typing import Dict
 
 # 3rd party imports
 #
 import pytest
 import pytest_asyncio
-from async_timeout import timeout
 
 # Project imports
 #
@@ -26,7 +26,7 @@ async def db(tmp_path):
     """
     db = None
     try:
-        async with timeout(1):
+        async with asyncio.timeout(1):
             db = await Database.new(tmp_path)
         assert db
         yield db

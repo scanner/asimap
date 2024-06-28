@@ -12,7 +12,6 @@ from queue import SimpleQueue
 #
 import aiofiles.os
 import pytest
-from async_timeout import timeout
 
 # Project imports
 #
@@ -436,7 +435,7 @@ async def test_rwlock_nesting_read_locks_w_write_lock():
     async with urw_lock.read_lock():
         async with urw_lock.read_lock():
             with pytest.raises(asyncio.TimeoutError):
-                async with timeout(1):
+                async with asyncio.timeout(1):
                     async with urw_lock.write_lock():
                         pass
 

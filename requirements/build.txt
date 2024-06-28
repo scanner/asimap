@@ -39,7 +39,7 @@ idna==3.7
     #   anyio
     #   httpx
     #   hyperlink
-importlib-metadata==7.2.1
+importlib-metadata==8.0.0
     # via keyring
 jaraco-classes==3.4.0
     # via keyring
@@ -94,7 +94,7 @@ trove-classifiers==2024.5.22
     # via hatchling
 userpath==1.9.2
     # via hatch
-uv==0.2.13
+uv==0.2.17
     # via hatch
 virtualenv==20.26.3
     # via hatch
