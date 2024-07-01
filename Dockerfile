@@ -49,6 +49,11 @@ ENV PATH /venv/bin:/usr/bin/mh:$PATH
 
 WORKDIR ${APP_HOME}
 
+RUN addgroup --system --gid 900 app \
+    && adduser --system --uid 900 --ingroup app app
+
+USER app
+
 CMD ["python", "/app/asimap/asimapd.py"]
 
 #########################
