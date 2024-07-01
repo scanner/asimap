@@ -6,13 +6,14 @@ FROM python:3.12 as builder
 
 ARG APP_HOME=/app
 WORKDIR ${APP_HOME}
-COPY requirements/build.txt /app/requirements/build.txt
+COPY requirements/build.txt requirements/production.txt /app/requirements/
 COPY README.md LICENSE Makefile Make.rules pyproject.toml /app/
 RUN python -m venv --copies /venv
 RUN . /venv/bin/activate && \
     pip install --upgrade pip && \
     pip install --upgrade setuptools && \
-    pip install -r /app/requirements/build.txt
+    pip install -r /app/requirements/build.txt \
+    pip install -r /app/requirements/production.txt
 
 COPY asimap /app/asimap
 RUN . /venv/bin/activate && python -m build
@@ -74,8 +75,8 @@ ENV PYTHONDONTWRITEBYTECODE 1
 # We only want the installable dist we created in the builder.
 #
 COPY --from=builder /app/dist /app/dist
+COPY --from=builder /venv /venv
 
-RUN python -m venv --copies /venv
 ARG VERSION
 RUN . /venv/bin/activate && \
     pip install /app/dist/asimap-${VERSION}-py3-none-any.whl
@@ -96,4 +97,4 @@ USER app
 # NOTE: All the configuration for asimapd, like where the password file is and
 # where the SSL files are are passed via env vars.
 #
-CMD ["/app/venv/bin/asimapd"]
+CMD ["/venv/bin/asimapd"]

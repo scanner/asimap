@@ -135,7 +135,7 @@ inflection==0.5.1
     # via pytest-factoryboy
 iniconfig==2.0.0
     # via pytest
-ipython==8.25.0
+ipython==8.26.0
     # via -r development.in
 isort==5.13.2
     # via -r lint.txt
@@ -374,7 +374,7 @@ userpath==1.9.2
     # via
     #   -r build.txt
     #   hatch
-uv==0.2.17
+uv==0.2.18
     # via
     #   -r build.txt
     #   hatch
