@@ -110,6 +110,10 @@ class Database:
         # we have to supply it with a regexp function.
         #
         await db.conn.create_function("REGEXP", 2, regexp, deterministic=True)
+
+        # XXX swallows the error.. but I think something is wrong in that we
+        #     are.. creating a new user server when one should already exist?
+        #
         await db.execute("vacuum")
 
         # Set up the database if necessary. Apply any migrations that

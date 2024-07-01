@@ -82,9 +82,7 @@ logger = logging.getLogger("asimap.asimapd_user")
 #############################################################################
 #
 async def create_and_start_user_server(maildir: Path, debug: bool, trace: bool):
-    server = await IMAPUserServer.new(
-        Path.cwd(), debug=debug, trace_enabled=trace
-    )
+    server = await IMAPUserServer.new(maildir, debug=debug, trace_enabled=trace)
     await server.run()
 
 
@@ -108,6 +106,10 @@ def main():
     #
     setup_logging(log_config, debug, username=username, trace_dir=trace_dir)
     setup_asyncio_logging()
+    maildir = Path.cwd()
+    logger.info(
+        "Starting new user server for '%s', maildir: '%s'", username, maildir
+    )
 
     if trace:
         logger.debug("Tracing enabled")
@@ -115,9 +117,13 @@ def main():
         asimap.trace.trace({"trace_format": "1.0"})
 
     try:
-        asyncio.run(create_and_start_user_server(Path.cwd(), debug, trace))
+        asyncio.run(create_and_start_user_server(maildir, debug, trace))
     except KeyboardInterrupt:
-        logger.warning("Keyboard interrupt, exiting")
+        logger.warning("Keyboard interrupt, exiting, user: %s", username)
+    except Exception as e:
+        logger.exception(
+            "For user %s Failed with uncaught exception %s", username, str(e)
+        )
 
 
 ############################################################################
