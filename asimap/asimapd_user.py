@@ -62,6 +62,7 @@ XXX We communicate with the server via localhost TCP sockets. We REALLY should
 #
 import asyncio
 import logging
+import sys
 from pathlib import Path
 
 # 3rd party imports
@@ -124,6 +125,7 @@ def main():
         logger.exception(
             "For user %s Failed with uncaught exception %s", username, str(e)
         )
+        sys.exit(1)
 
 
 ############################################################################
