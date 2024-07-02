@@ -201,7 +201,8 @@ class BaseClientHandler:
                 # only bother logging commands that take more than 0.01 seconds
                 #
                 logger.debug(
-                    "IMAP Command '%s' took %.3f seconds",
+                    "Client: %s, IMAP Command '%s' took %.3f seconds",
+                    self.client.name,
                     imap_command.qstr(),
                     cmd_duration,
                 )
@@ -244,11 +245,19 @@ class BaseClientHandler:
         """
         if self.mbox:
             logger.debug(
-                "state: %s, mbox: %s, cmd: %s"
-                % (self.state.value, self.mbox.name, str(cmd))
+                "client: %s, state: %s, mbox: %s, cmd: %s",
+                self.client.name,
+                self.state.value,
+                self.mbox.name,
+                str(cmd),
             )
         else:
-            logger.debug("state: %s, cmd: %s" % (self.state.value, str(cmd)))
+            logger.debug(
+                "client: %s, state: %s, cmd: %s",
+                self.client.name,
+                self.state.value,
+                str(cmd),
+            )
 
     ####################################################################
     #
@@ -350,11 +359,6 @@ class BaseClientHandler:
         """
         await self.send_pending_notifications()
         self.client_id = cmd.id_dict
-        logger.info(
-            "Client at %s identified itself with: %s",
-            self.client.name,
-            ", ".join("%s: '%s'" % x for x in self.client_id.items()),
-        )
         res = " ".join([f'"{k}" "{v}"' for k, v in SERVER_ID.items()])
         await self.client.push(f"* ID ({res})\r\n")
         return None

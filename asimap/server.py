@@ -116,6 +116,11 @@ class IMAPSubprocess:
 
     ##################################################################
     #
+    def __str__(self):
+        return f"IMAPSubprocess, user: {self.user.username}, port: {self.port}"
+
+    ##################################################################
+    #
     async def start(self):
         """
         Start our subprocess. This assumes that we have no subprocess
@@ -157,9 +162,15 @@ class IMAPSubprocess:
         self.wait_task.add_done_callback(self.subprocess_wait_done)
 
         if self.subprocess.stdin is None:
-            raise RuntimeError("unable to connect to subprocess stdin")
+            raise RuntimeError(
+                "user: %s, unable to connect to subprocess stdin",
+                self.user.username,
+            )
         if self.subprocess.stdout is None:
-            raise RuntimeError("unable to connect to subprocess stdout")
+            raise RuntimeError(
+                "user: %s, unable to connect to subprocess stdout",
+                self.user.username,
+            )
 
         # We expect the subprocess to send back to us over its stdout a single
         # line which has the port it is listening on.
@@ -173,13 +184,26 @@ class IMAPSubprocess:
         await self.subprocess.stdin.drain()
         self.subprocess.stdin.close()
         await self.subprocess.stdin.wait_closed()
-        logger.debug("Reading port from subprocess.")
+        logger.debug(
+            "user: %s, Reading port from subprocess.", self.user.username
+        )
+        # If we can not read the connection port in 10 seconds, then something
+        # went wrong.
+        #
         try:
-            m = await self.subprocess.stdout.readline()
-            self.port = int(str(m, "latin-1").strip())
+            async with asyncio.timeout(10):
+                m = await self.subprocess.stdout.readline()
+                self.port = int(str(m, "latin-1").strip())
+        except TimeoutError:
+            logger.error(
+                "User: %s, Unable to read port definition from subprocess: Timeout",
+                self.user.username,
+            )
+            raise
         except ValueError as e:
             logger.error(
-                "Unable to read port definition from subprocess, got %s instead: %s",
+                "User: %s, Unable to read port definition from subprocess, got %s instead: %s",
+                self.user.username,
                 m,
                 e,
             )
@@ -187,7 +211,11 @@ class IMAPSubprocess:
             # failed and we need to tell our caller so they can deal with it.
             #
             raise
-        logger.debug("Subprocess is listening on port: %d" % self.port)
+        logger.debug(
+            "User: %s, Subprocess is listening on port: %d",
+            self.user.username,
+            self.port,
+        )
 
     ####################################################################
     #
@@ -838,10 +866,10 @@ class IMAPSubprocessInterface:
         # And initiate a connection to the subprocess.
         #
         logger.debug(
-            "IMAPClient: %s, user: %s, connecting to subprocess on %d",
+            "IMAPClient: %s, user: %s, connecting to subprocess %s",
             self.imap_client.name,
             user.username,
-            self.subprocess.port,
+            self.subprocess,
         )
         reader, writer = await asyncio.open_connection(
             "127.0.0.1",
