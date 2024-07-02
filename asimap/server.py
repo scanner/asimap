@@ -804,6 +804,15 @@ class IMAPSubprocessInterface:
             async with USER_IMAP_SUBPROCESSES_LOCK.write_lock():
                 if user.username in USER_IMAP_SUBPROCESSES:
                     self.subprocess = USER_IMAP_SUBPROCESSES[user.username]
+                    logger.debug(
+                        (
+                            "IMAPClient %s, username '%s' already has "
+                            "subprocess to connect to: %s"
+                        ),
+                        self.imap_client.name,
+                        user.username,
+                        self.subprocess,
+                    )
                 else:
                     self.subprocess = IMAPSubprocess(
                         user,
@@ -813,13 +822,27 @@ class IMAPSubprocessInterface:
                         trace_dir=self.imap_client.imap_server.trace_dir,
                     )
                     USER_IMAP_SUBPROCESSES[user.username] = self.subprocess
+                    logger.debug(
+                        (
+                            "IMAPClient %s, username '%s' creating new "
+                            "subprocess to connect to: %s"
+                        ),
+                        self.imap_client.name,
+                        user.username,
+                        self.subprocess,
+                    )
 
                 if not self.subprocess.is_alive:
                     await self.subprocess.start()
 
         # And initiate a connection to the subprocess.
         #
-        logger.debug("connecting to subprocess on %d", self.subprocess.port)
+        logger.debug(
+            "IMAPClient: %s, user: %s, connecting to subprocess on %d",
+            self.imap_client.name,
+            user.username,
+            self.subprocess.port,
+        )
         reader, writer = await asyncio.open_connection(
             "127.0.0.1",
             self.subprocess.port,
