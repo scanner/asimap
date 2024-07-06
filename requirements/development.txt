@@ -27,7 +27,7 @@ build==1.2.1
     #   -r build.txt
     #   -r lint.txt
     #   pip-tools
-certifi==2024.6.2
+certifi==2024.7.4
     # via
     #   -r build.txt
     #   -r production.txt
@@ -37,6 +37,7 @@ certifi==2024.6.2
     #   sentry-sdk
 cffi==1.16.0
     # via
+    #   -r build.txt
     #   -r lint.txt
     #   cryptography
 cfgv==3.4.0
@@ -63,7 +64,9 @@ coverage==7.5.4
     #   pytest-cov
 cryptography==42.0.8
     # via
+    #   -r build.txt
     #   -r lint.txt
+    #   secretstorage
     #   trustme
     #   types-pyopenssl
     #   types-redis
@@ -153,6 +156,11 @@ jaraco-functools==4.0.1
     #   keyring
 jedi==0.19.1
     # via ipython
+jeepney==0.8.0
+    # via
+    #   -r build.txt
+    #   keyring
+    #   secretstorage
 keyring==25.2.1
     # via
     #   -r build.txt
@@ -234,6 +242,7 @@ pure-eval==0.2.2
     # via stack-data
 pycparser==2.22
     # via
+    #   -r build.txt
     #   -r lint.txt
     #   cffi
 pygments==2.18.0
@@ -292,6 +301,10 @@ rich==13.7.1
     #   hatch
 ruff==0.5.0
     # via -r lint.txt
+secretstorage==3.3.3
+    # via
+    #   -r build.txt
+    #   keyring
 sentry-sdk==2.7.1
     # via -r production.txt
 shellingham==1.5.4
