@@ -64,7 +64,7 @@ class TextGenerator(Generator):
         not write them.
         """
         if self._headers:
-            super()._write_headers(msg)
+            super()._write_headers(msg)  # type: ignore
 
     ####################################################################
     #
