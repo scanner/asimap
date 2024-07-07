@@ -10,7 +10,7 @@ backports-tarfile==1.2.0
     # via jaraco-context
 build==1.2.1
     # via -r build.in
-certifi==2024.6.2
+certifi==2024.7.4
     # via
     #   httpcore
     #   httpx
@@ -90,11 +90,11 @@ tomli-w==1.0.0
     # via hatch
 tomlkit==0.12.5
     # via hatch
-trove-classifiers==2024.5.22
+trove-classifiers==2024.7.2
     # via hatchling
 userpath==1.9.2
     # via hatch
-uv==0.2.18
+uv==0.2.21
     # via hatch
 virtualenv==20.26.3
     # via hatch

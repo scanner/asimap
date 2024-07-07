@@ -2117,6 +2117,7 @@ class Mailbox:
                     return
 
                 uid_vv, uid_max = await self.get_uid_from_msg(msgs[-1])
+                # This actually happened.. hm.
                 assert uid_max  # XXX If this is None should we force a resync?
                 seq_max = len(msgs)
 

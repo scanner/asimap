@@ -113,11 +113,16 @@ class IMAPSubprocess:
         self.subprocess_key: bytes
         self.wait_task: Optional[asyncio.Task] = None
         self.rc: int
+        self.has_port = asyncio.Event()
 
     ##################################################################
     #
     def __str__(self):
-        return f"IMAPSubprocess, user: {self.user.username}, port: {self.port}"
+        if self.has_port.is_set():
+            return (
+                f"IMAPSubprocess, user: {self.user.username}, port: {self.port}"
+            )
+        return f"IMAPSubprocess, user: {self.user.username}, port: None"
 
     ##################################################################
     #
@@ -194,6 +199,7 @@ class IMAPSubprocess:
             async with asyncio.timeout(10):
                 m = await self.subprocess.stdout.readline()
                 self.port = int(str(m, "latin-1").strip())
+                self.has_port.set()
         except TimeoutError:
             logger.error(
                 "User: %s, Unable to read port definition from subprocess: Timeout",
@@ -783,8 +789,9 @@ class IMAPSubprocessInterface:
                         "Exception starting/connecting subprocess for "
                         f"{self.log_string()}: {e}"
                     )
-                    if isinstance(e, ConnectionError):
-                        # No need to log stack traces on connection errors.
+                    if isinstance(e, ConnectionError) or isinstance(
+                        e, asyncio.TimeoutError
+                    ):
                         logger.error(m)
                     else:
                         logger.exception(m)
@@ -862,6 +869,22 @@ class IMAPSubprocessInterface:
 
                 if not self.subprocess.is_alive:
                     await self.subprocess.start()
+
+        # Loop until the subprocess has a port we can attach to, but for no
+        # more than <n> seconds.
+        #
+        try:
+            async with asyncio.timeout(30):
+                await self.subprocess.has_port.wait()
+        except asyncio.TimeoutError:
+            logger.warning(
+                "IMAPClient %s, username '%s' - timed out waiting for "
+                "existing sub-process to have a port we can connect to: %s",
+                self.imap_client.name,
+                user.username,
+                self.subprocess,
+            )
+            raise
 
         # And initiate a connection to the subprocess.
         #
