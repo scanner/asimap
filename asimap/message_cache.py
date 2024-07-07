@@ -191,7 +191,7 @@ class MessageCache:
                 msg_size = get_msg_size_nc(msg)
             else:
                 msg_size = get_msg_size(msg)
-        except UnicodeEncodeError:
+        except Exception as e:
             # One of the first hints that we have a message that python's mail
             # module can not handle due to encoding errors happens when we try
             # to get the size of a message. When this happens we need enough
@@ -201,9 +201,10 @@ class MessageCache:
             # all the time)
             #
             logger.error(
-                "Unable to get message for msg key: %d, mbox: '%s'",
+                "Unable to get message for msg key: %d, mbox: '%s': %s",
                 msg_key,
                 mbox,
+                e,
             )
             raise
 
