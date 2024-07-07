@@ -884,6 +884,7 @@ class IMAPSubprocessInterface:
                 user.username,
                 self.subprocess,
             )
+            raise
 
         # And initiate a connection to the subprocess.
         #
