@@ -22,8 +22,6 @@ can tell us to clear all the entries for that mailbox.
 #
 import logging
 import time
-from collections import defaultdict
-from functools import reduce
 from mailbox import MHMessage
 from typing import Dict, List, Optional, Tuple, TypeAlias
 
@@ -82,16 +80,22 @@ class MessageCache:
         # at the end of the list.  Maybe this should be a heap, sorted by time.
         # still need to make sure deleting and inserting a node is cheap.
         #
-        self.msgs_by_age: List[CacheEntry] = []
+        # XXX Never setup or used. Should evaluate if we need this optimizaton
+        #
+        # self.msgs_by_age: List[CacheEntry] = []
 
         # Messages are indexed by the string "<mbox name>:<msg key>"
         #
-        self.msgs_by_mbox_msg_key: Dict[str, CacheEntry] = {}
+        # XXX Never setup or used. Should evaluate if we need this optimizaton
+        #
+        # self.msgs_by_mbox_msg_key: Dict[str, CacheEntry] = {}
 
         # A frequent operation getting all the msg keys for messages by
         # mbox. Called once every non-optional resync (when mbox mtimes change)
         #
-        self.msg_keys_by_mbox: Dict[str, List[int]] = defaultdict(list)
+        # XXX Never setup or used. Should evaluate if we need this optimizaton
+        #
+        # self.msg_keys_by_mbox: Dict[str, List[int]] = defaultdict(list)
 
         # The msgs_by_mailbox is our "LRU"
         # The key is for the mailbox.
@@ -115,19 +119,19 @@ class MessageCache:
         #     those the lookups are going to be intense (but do we cache that
         #     many?)
         #
-        self.msgs_by_mailbox_by_msg_key: Dict[str, Dict[int, CacheEntry]] = {}
+        # self.msgs_by_mailbox_by_msg_key: Dict[str, Dict[int, CacheEntry]] = {}
 
     ####################################################################
     #
-    def _log_stats(self):
+    def _log_stats(self, force: bool = False) -> None:
         """
         Dump to the log our stats every now and then.
+        If `force` is True the stats will be dumped regardless.
         """
         now = time.time()
-        if now < self.next_size_report:
-            return
-        logger.info("Size report: %s", str(self))
-        self.next_size_report = now + self.STAT_LOG_INTERVAL
+        if force or now >= self.next_size_report:
+            logger.info("Size report: %s", str(self))
+            self.next_size_report = now + self.STAT_LOG_INTERVAL
 
     ##################################################################
     #
@@ -135,19 +139,10 @@ class MessageCache:
         """
         For string return the object and some stats about it.
         """
-        num_msgs = reduce(
-            lambda x, y: x + y, [len(z) for z in self.msgs_by_mailbox.values()]
-        )
         return (
-            "<%s.%s: size: %d, number of mboxes: %d, number of "
-            "messages: %d"
-            % (
-                __name__,
-                self.__class__.__name__,
-                self.cur_size,
-                len(self.msgs_by_mailbox),
-                num_msgs,
-            )
+            f"<MessageCache: size: {self.cur_size}, "
+            f"number of mboxes: {len(self.msgs_by_mailbox)}, "
+            f"number of messages: {self.num_msgs}>"
         )
 
     ##################################################################
@@ -191,10 +186,26 @@ class MessageCache:
         if mbox not in self.msgs_by_mailbox:
             self.msgs_by_mailbox[mbox] = []
 
-        if UID_HDR not in msg:
-            msg_size = get_msg_size_nc(msg)
-        else:
-            msg_size = get_msg_size(msg)
+        try:
+            if UID_HDR not in msg:
+                msg_size = get_msg_size_nc(msg)
+            else:
+                msg_size = get_msg_size(msg)
+        except UnicodeEncodeError:
+            # One of the first hints that we have a message that python's mail
+            # module can not handle due to encoding errors happens when we try
+            # to get the size of a message. When this happens we need enough
+            # context to know which messsage in which mailbox caused the issue
+            # so we catch the error here and log the relevat
+            # information. (Maybe more reasons to treat all messages as bytes
+            # all the time)
+            #
+            logger.error(
+                "Unable to get message for msg key: %d, mbox: '%s'",
+                msg_key,
+                mbox,
+            )
+            raise
 
         self.cur_size += msg_size
         self.num_msgs += 1
@@ -203,6 +214,7 @@ class MessageCache:
         # If we have exceeded our max size remove the oldest messages
         # until we go under our max size.
         #
+        start = time.time()
         while self.cur_size > self.max_size:
             oldest = None
             for mbox_name in self.msgs_by_mailbox.keys():
@@ -219,10 +231,20 @@ class MessageCache:
                     self.max_size,
                 )
                 return
+
+            # Remove the message at the front of the list for the mailbox with
+            # the oldest message in it. If the cache for that mailbox has no
+            # messages, then remove the mailbox from dict of msgs by mailbox.
+            #
             self.msgs_by_mailbox[oldest[0]].pop(0)
             if len(self.msgs_by_mailbox[oldest[0]]) == 0:
                 del self.msgs_by_mailbox[oldest[0]]
             self.cur_size -= oldest[1][1]
+            self.num_msgs -= 1
+        duration = time.time() - start
+        if duration >= 0.05:
+            logger.debug("Message purge took %f.3s second", duration)
+        self._log_stats()
         return
 
     ####################################################################
@@ -317,6 +339,7 @@ class MessageCache:
             do_not_update=do_not_update,
             update_size=update_size,
         )
+        self._log_stats()
         if result:
             return result[2]
         else:
@@ -332,7 +355,7 @@ class MessageCache:
 
     ##################################################################
     #
-    def remove(self, mbox, msg_key):
+    def remove(self, mbox: str, msg_key: int) -> None:
         """
         Sometimes we need to remove a message from the cache. usually
         when we are doing things like changing which sequences it is
@@ -345,10 +368,11 @@ class MessageCache:
         - `msg_key`: the MH folder key for the message.
         """
         self.get(mbox, msg_key, remove=True)
+        self._log_stats()
 
     ##################################################################
     #
-    def clear_mbox(self, mbox):
+    def clear_mbox(self, mbox: str) -> None:
         """
         Clear all cached messages for the given mailbox.
 
@@ -357,9 +381,12 @@ class MessageCache:
         """
         if mbox not in self.msgs_by_mailbox:
             return
+        self._log_stats(force=True)
         for msg_item in self.msgs_by_mailbox[mbox]:
             self.cur_size -= msg_item[1]
+        self.num_msgs -= len(self.msgs_by_mailbox[mbox])
         del self.msgs_by_mailbox[mbox]
+        self._log_stats(force=True)
 
     ##################################################################
     #
@@ -367,5 +394,8 @@ class MessageCache:
         """
         Clear the entire cache.
         """
+        self._log_stats(force=True)
         self.msgs_by_mailbox = {}
         self.cur_size = 0
+        self.num_msgs = 0
+        self._log_stats(force=True)
