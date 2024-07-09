@@ -17,7 +17,7 @@ from email.policy import SMTP
 from email.utils import format_datetime
 from mailbox import MH, MHMessage
 from pathlib import Path
-from typing import Iterable, List, Optional, Union
+from typing import Iterable, List, Optional, Tuple, Union
 
 # 3rd party imports
 #
@@ -564,7 +564,7 @@ def static_email_factory():
 ####################################################################
 #
 @pytest.fixture
-def problematic_email_factory():
+def problematic_email_factory() -> Tuple[str]:
     """
     in our time on the internet we have seen lots of problematic email with
     various issues.We need to make sure that we handle these reasonably well
@@ -573,7 +573,9 @@ def problematic_email_factory():
     return (
         str(from_path(msg_file).best()) for msg_file in sorted(dir.iterdir())
     )
+
     # return (msg_file.read_bytes() for msg_file in sorted(dir.iterdir()))
+    # return (msg_file.read_text() for msg_file in sorted(dir.iterdir()))
 
 
 ####################################################################

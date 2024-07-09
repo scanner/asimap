@@ -1,7 +1,3 @@
-#!/usr/bin/env python
-#
-# File: $Id$
-#
 """
 While doing many operations in quick succession we will refer to the
 same message over and over again. These will usually be when a mailbox
@@ -18,6 +14,7 @@ be what forces the LRU algorithm to take place.
 At times when the Mailbox knows that the cache is probably invalid it
 can tell us to clear all the entries for that mailbox.
 """
+
 # system imports
 #
 import logging

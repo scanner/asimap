@@ -19,6 +19,8 @@ from typing import List, Optional, TextIO
 
 logger = logging.getLogger("asimap.generator")
 
+SMTP_LONG_LINES = SMTP.clone(max_line_length=None)
+
 
 ############################################################################
 #
@@ -60,8 +62,8 @@ class TextGenerator(Generator):
     #
     def _write_headers(self, msg):
         """
-        The method that writes the headers. if self._headers is False we do
-        not write them.
+        This method exists so we can determine whether or not to write the
+        headers based on the instance variable `_headers`.
         """
         if self._headers:
             super()._write_headers(msg)  # type: ignore
@@ -234,9 +236,28 @@ def _msg_as_string(msg: Message, headers: bool = True):
     and return the contents fo the StringIO we wrap all those in this
     convenience function.
     """
-    fp = StringIO()
-    g = TextGenerator(fp, mangle_from_=False, headers=headers)
-    g.flatten(msg)
+    # We try two different policies. Both the SMTP and SMTPUTF8 policies fail
+    # to generate text if a header, say the subject, is split across more than
+    # one line (folded) and is encoded as a UTF8 string.
+    #
+    # Not folding that line avoids the problem. Since these text
+    # representations are for presenting to an IMAP client and not sending over
+    # the wire this is okay.
+    #
+    try:
+        failed = False
+        fp = StringIO()
+        g = TextGenerator(fp, mangle_from_=False, headers=headers)
+        g.flatten(msg)
+    except UnicodeEncodeError:
+        failed = True
+
+    if failed:
+        fp = StringIO()
+        g = TextGenerator(
+            fp, mangle_from_=False, headers=headers, policy=SMTP_LONG_LINES
+        )
+        g.flatten(msg)
 
     msg_str = fp.getvalue()
     msg_str = msg_str if msg_str.endswith("\r\n") else msg_str + "\r\n"
@@ -298,7 +319,31 @@ def msg_headers_as_string(
     If `skip` is True (and `headers` must be provided) the headers returned
     are the ones that are NOT in the list of headers.
     """
-    fp = StringIO()
-    g = HeaderGenerator(fp, mangle_from_=False, headers=headers, skip=skip)
-    g.flatten(msg)
+    # We try two different policies. Both the SMTP and SMTPUTF8 policies fail
+    # to generate text if a header, say the subject, is split across more than
+    # one line (folded) and is encoded as a UTF8 string.
+    #
+    # Not folding that line avoids the problem. Since these text
+    # representations are for presenting to an IMAP client and not sending over
+    # the wire this is okay.
+    #
+    try:
+        failed = False
+        fp = StringIO()
+        g = HeaderGenerator(fp, mangle_from_=False, headers=headers, skip=skip)
+        g.flatten(msg)
+    except UnicodeEncodeError:
+        failed = True
+
+    if failed:
+        fp = StringIO()
+        g = HeaderGenerator(
+            fp,
+            mangle_from_=False,
+            headers=headers,
+            skip=skip,
+            policy=SMTP_LONG_LINES,
+        )
+        g.flatten(msg)
+
     return fp.getvalue()
