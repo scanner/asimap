@@ -18,7 +18,6 @@ import socket
 import sys
 import time
 from datetime import datetime, timezone
-from itertools import batched
 from pathlib import Path
 from statistics import fmean, median, stdev
 from typing import TYPE_CHECKING, Dict, List, Optional, Union
@@ -858,12 +857,28 @@ class IMAPUserServer:
         - `force` : If True this will force a full resync on all
                     mailbox regardless of their mtimes.
         """
+
+        async def check_folder_worker(name: str, queue: asyncio.Queue) -> None:
+            """
+            An asyncio task worker used to parallelize checking folders to
+            a certain extent.
+            """
+            while True:
+                mbox_name, mtime = await queue.get()
+                try:
+                    await self.check_folder(mbox_name, mtime, force=False)
+                except Exception as e:
+                    logger.exception(
+                        "Problem checking folder '%s': %s", mbox_name, e
+                    )
+                queue.task_done()
+
         start_time = time.time()
         # Go through all of the folders and mtimes we know about from the
         # sqlite db.
         #
         kount = 0
-        tasks = []
+        queue = asyncio.Queue()
         async for mbox_name, mtime in self.db.query(
             "SELECT name, mtime FROM mailboxes WHERE attributes "
             "NOT LIKE '%%ignored%%' ORDER BY name"
@@ -877,37 +892,31 @@ class IMAPUserServer:
                 )
             ):
                 continue
-
-            tasks.append((mbox_name, mtime))
+            kount += 1
+            queue.put_nowait((mbox_name, mtime))
 
         self.folder_check_durations = {}
-        tg_durations = []
-        for mboxes in batched(tasks, 10):
-            tg_start = time.time()
-            async with asyncio.TaskGroup() as tg:
-                for mbox_name, mtime in mboxes:
-                    kount += 1
-                    tg.create_task(
-                        self.check_folder(mbox_name, mtime, force=force)
-                    )
-            tg_durations.append(time.time() - tg_start)
+
+        # Create 10 asyncio workers to process the folders so that we have 10
+        # folders being processed at any one time.
+        #
+        workers = []
+        for i in range(10):
+            worker = asyncio.create_task(
+                check_folder_worker(f"check-folder-worker-{i}", queue)
+            )
+            workers.append(worker)
+
+        worker_start = time.monotonic()
+        await queue.join()
+        worker_duration = time.monotonic() - worker_start
+        for worker in workers:
+            worker.cancel()
 
         # Now point in doing all the math if we are not going to log it.
         # NOTE: In the future we might submit these as metrics.
         #
         if self.debug:
-            tg_durations.sort(reverse=True)
-            mean_tg_durations = fmean(tg_durations)
-            median_tg_durations = median(tg_durations)
-            stddev_tg_durations = (
-                stdev(tg_durations, mean_tg_durations)
-                if len(tg_durations) > 2
-                else 0.0
-            )
-            tg_max_durations = ", ".join(
-                f"{x:.3f}s" for x in sorted(tg_durations, reverse=True)[:10]
-            )
-
             scan_durations = list(self.folder_check_durations.values())
             mean_scan_duration = fmean(scan_durations)
             median_scan_duration = median(scan_durations)
@@ -929,13 +938,7 @@ class IMAPUserServer:
                 (time.time() - start_time),
                 kount,
             )
-            logger.debug(
-                "Task Group Durations, mean: %.3fs, median: %.3fs, stddev: %.3fs, max durations: %s",
-                mean_tg_durations,
-                median_tg_durations,
-                stddev_tg_durations,
-                tg_max_durations,
-            )
+            logger.debug("Total worker execution time: %.3f", worker_duration)
             logger.debug(
                 "Individual check_folder durations: mean: %.3fs, median: %.3fs, stddev: %.3fs, max durations: %s",
                 mean_scan_duration,
