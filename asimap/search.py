@@ -425,9 +425,17 @@ class IMAPSearch(object):
         We have a list of search keys. All of them must be True.
         """
         tasks = []
-        async with asyncio.TaskGroup() as tg:
-            for search_op in self.args["search_key"]:
-                tasks.append(tg.create_task(search_op.match(self.ctx)))
+        try:
+            async with asyncio.TaskGroup() as tg:
+                for search_op in self.args["search_key"]:
+                    tasks.append(tg.create_task(search_op.match(self.ctx)))
+        except* Exception as e:
+            for err in e.exceptions:
+                logger.error(
+                    "Unable to perform search operation: %s", err, exc_info=err
+                )
+            raise
+
         if all(x.result() for x in tasks):
             return True
         return False
