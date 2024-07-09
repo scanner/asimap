@@ -257,7 +257,7 @@ def test_generator_problematic_email(problematic_email_factory):
     pokery.  Such as messages that say they are 7-bit us-ascii but are actually
     8-bit latin-1.
     """
-    for msg_bytes in problematic_email_factory:
-        msg = MHMessage(msg_bytes)
+    for msg_str in problematic_email_factory:
+        msg = MHMessage(msg_str)
         msg_text = msg_as_string(msg)
         assert msg_text
