@@ -136,10 +136,6 @@ class SearchContext(object):
         """
         The message parsed in to a MHMessage object
         """
-        # XXX remove when confident
-        #
-        assert self.mailbox.lock.this_task_has_read_lock()
-
         if self._msg:
             return self._msg
 

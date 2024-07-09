@@ -144,8 +144,12 @@ class IMAPClientProxy:
         Entry point for the asyncio task for handling the network
         connection from an IMAP client.
 
-        We read complete messages from the IMAP Client and once we
-        have one we create a new asyncio task to handle it.
+        We read complete messages from the IMAP Client. Once we have a complete
+        message, we parse it into an IMAP command then process it.
+
+        NOTE: This client proxy will block until this command completes so
+              every connection an actual IMAP client can only process one
+              command at a time.
 
         XXX This needs to handle all exceptions since it is the root
             of an asyncio task.
@@ -197,7 +201,6 @@ class IMAPClientProxy:
                         await self.push("+ idling")
                     elif ls_imap_msg != "done":
                         await self.push(
-                            # f"* BAD Expected 'DONE' not: {imap_msg}\r\n"
                             f"* NO Expected 'DONE' not: {imap_msg}\r\n"
                         )
                     else:
@@ -225,6 +228,10 @@ class IMAPClientProxy:
                 try:
                     self.server.commands_in_progress += 1
                     self.server.active_commands.append(imap_cmd)
+                    # This is what actually executes the IMAP command from the
+                    # IMAP client. This will block until it finishes the
+                    # command (or fails).
+                    #
                     await self.cmd_processor.command(imap_cmd)
                 finally:
                     try:
