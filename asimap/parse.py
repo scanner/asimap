@@ -372,6 +372,9 @@ class IMAPClientCommand:
         """
         tag = self.tag if self.tag else "*"
         command = "none" if self.command is None else self.command
+        if self.uid_command:
+            return f"{tag} UID {command.upper()}"
+
         return f"{tag} {command.upper()}"
 
     #######################################################################

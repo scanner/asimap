@@ -119,7 +119,21 @@ class BaseClientHandler:
         Arguments:
         - `imap_command`: An instance parse.IMAPClientCommand
         """
-        self.debug_log_cmd(imap_command)
+        if self.mbox:
+            logger.debug(
+                "START: Client: %s, State: '%s', mbox: '%s', IMAP Command: %s",
+                self.client.name,
+                self.state.value,
+                self.mbox.name,
+                imap_command,
+            )
+        else:
+            logger.debug(
+                "START: Client: %s, State: '%s', IMAP Command: %s",
+                self.client.name,
+                self.state.value,
+                imap_command,
+            )
 
         # Since the imap command was properly parsed we know it is a valid
         # command. If it is one we support there will be a method
@@ -197,15 +211,12 @@ class BaseClientHandler:
         finally:
             imap_command.timeout_cm = None
             cmd_duration = time.time() - start_time
-            if cmd_duration >= 0.01:
-                # only bother logging commands that take more than 0.01 seconds
-                #
-                logger.debug(
-                    "Client: %s, IMAP Command '%s' took %.3f seconds",
-                    self.client.name,
-                    imap_command.qstr(),
-                    cmd_duration,
-                )
+            logger.debug(
+                "FINISH: Client: %s, IMAP Command '%s' took %.3f seconds",
+                self.client.name,
+                imap_command.qstr(),
+                cmd_duration,
+            )
 
         # If there was no result from running this command then everything went
         # okay and we send back a final 'OK' to the client for processing this
@@ -232,32 +243,6 @@ class BaseClientHandler:
                 f"{cmd.upper()} command completed\r\n"
             )
             await self.client.push(result)
-
-    ##################################################################
-    #
-    def debug_log_cmd(self, cmd: IMAPClientCommand):
-        """
-        More DRY.. we were basically calling this on every IMAP command
-        so instead going to put it into the base class.
-
-        Arguments:
-        - `cmd`: The IMAP command we are executing
-        """
-        if self.mbox:
-            logger.debug(
-                "client: %s, state: %s, mbox: %s, cmd: %s",
-                self.client.name,
-                self.state.value,
-                self.mbox.name,
-                str(cmd),
-            )
-        else:
-            logger.debug(
-                "client: %s, state: %s, cmd: %s",
-                self.client.name,
-                self.state.value,
-                str(cmd),
-            )
 
     ####################################################################
     #
