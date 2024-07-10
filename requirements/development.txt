@@ -111,7 +111,7 @@ hyperlink==21.0.0
     # via
     #   -r build.txt
     #   hatch
-identify==2.5.36
+identify==2.6.0
     # via
     #   -r lint.txt
     #   pre-commit
@@ -292,7 +292,7 @@ rich==13.7.1
     #   hatch
 ruff==0.5.1
     # via -r lint.txt
-sentry-sdk==2.7.1
+sentry-sdk==2.8.0
     # via -r production.txt
 shellingham==1.5.4
     # via
@@ -351,7 +351,7 @@ types-redis==4.6.0.20240425
     # via -r lint.txt
 types-requests==2.32.0.20240622
     # via -r lint.txt
-types-setuptools==70.2.0.20240704
+types-setuptools==70.3.0.20240710
     # via
     #   -r lint.txt
     #   types-cffi
@@ -374,7 +374,7 @@ userpath==1.9.2
     # via
     #   -r build.txt
     #   hatch
-uv==0.2.21
+uv==0.2.23
     # via
     #   -r build.txt
     #   hatch
