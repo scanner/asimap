@@ -139,7 +139,7 @@ class IMAPClientProxy:
 
     ####################################################################
     #
-    async def start(self):
+    async def run(self):
         """
         Entry point for the asyncio task for handling the network
         connection from an IMAP client.
@@ -244,7 +244,8 @@ class IMAPClientProxy:
                             "Commands in progress: %d, %s",
                             self.server.commands_in_progress,
                             ", ".join(
-                                x.qstr() for x in self.server.active_commands
+                                f"'{x.qstr()}'"
+                                for x in self.server.active_commands
                             ),
                         )
                 # If our state is "logged_out" after processing the command
@@ -583,7 +584,7 @@ class IMAPUserServer:
             writer,
             trace_enabled=self.trace_enabled,
         )
-        task = asyncio.create_task(client_handler.start(), name=name)
+        task = asyncio.create_task(client_handler.run(), name=name)
         task.add_done_callback(self.client_done)
         self.clients[task] = client_handler
         self.expiry = None

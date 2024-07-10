@@ -292,7 +292,7 @@ rich==13.7.1
     #   hatch
 ruff==0.5.1
     # via -r lint.txt
-sentry-sdk==2.8.0
+sentry-sdk==2.9.0
     # via -r production.txt
 shellingham==1.5.4
     # via
@@ -319,7 +319,7 @@ tomli-w==1.0.0
     # via
     #   -r build.txt
     #   hatch
-tomlkit==0.12.5
+tomlkit==0.13.0
     # via
     #   -r build.txt
     #   hatch
@@ -374,7 +374,7 @@ userpath==1.9.2
     # via
     #   -r build.txt
     #   hatch
-uv==0.2.23
+uv==0.2.24
     # via
     #   -r build.txt
     #   hatch
