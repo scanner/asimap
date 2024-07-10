@@ -260,7 +260,7 @@ class IMAPClientProxy:
 
         except (
             asyncio.exceptions.IncompleteReadError,
-            ConnectionResetError,
+            ConnectionError,
             socket.error,
         ):
             # Either we got an EOF while waiting for a line terminator. or the
@@ -309,7 +309,10 @@ class IMAPClientProxy:
                 # need to go with UTF-8.
                 #
                 d = bytes(d, "utf-8") if isinstance(d, str) else d
-            self.writer.write(d)
+            try:
+                self.writer.write(d)
+            except Exception as exc:
+                raise ConnectionError("unable to write message") from exc
         if not self.writer.is_closing():
             # If the drain takes more than 2 seconds something has likely gone
             # wrong. Exit out. This blocking can hold on to locks too long.
