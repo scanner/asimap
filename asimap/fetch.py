@@ -313,7 +313,7 @@ class FetchAtt:
                 )
             try:
                 return self._body(msg.get_payload(section[0] - 1), section[1:])
-            except TypeError:
+            except (TypeError, IndexError):
                 raise BadSection(
                     f"Message does not contain subsection {section[0]} "
                     f"(section list: {section})"
