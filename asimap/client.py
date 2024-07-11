@@ -1082,6 +1082,7 @@ class Authenticated(BaseClientHandler):
                 # and what the mbox thinks the internal state is does not
                 # actually match the state of the folder.
                 #
+                self.server.msg_cache.clear_mbox(self.mbox.name)
                 await self.mbox.resync(force=True)
                 raise No(f"Problem while fetching: {exc}")
 
@@ -1144,9 +1145,23 @@ class Authenticated(BaseClientHandler):
             #     updated flags via fetches instead of the 'dont_notify=self'
             #     stuff here.
             #
-            await self.mbox.store(
-                cmd.msg_set, cmd.store_action, cmd.flag_list, cmd.uid_command
-            )
+            try:
+                await self.mbox.store(
+                    cmd.msg_set,
+                    cmd.store_action,
+                    cmd.flag_list,
+                    cmd.uid_command,
+                )
+            except MailboxInconsistency as exc:
+                # Force a resync of this mailbox. Likely something was fiddling
+                # messages directly (an nmh command run from the command line)
+                # and what the mbox thinks the internal state is does not
+                # actually match the state of the folder.
+                #
+                self.server.msg_cache.clear_mbox(self.mbox.name)
+                await self.mbox.resync(force=True)
+                raise No(f"Problem while storing: {exc}")
+
             if cmd.silent:
                 await self.mbox.resync(
                     optional=False,
