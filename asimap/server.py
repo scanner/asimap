@@ -660,6 +660,9 @@ class IMAPSubprocessInterface:
         Close our connection to the subprocess.
         """
         try:
+            if self.wait_task:
+                self.wait_task.cancel(msg="Closing connection to subprocess")
+                self.wait_task = None
             if self.writer:
                 if not self.writer.is_closing():
                     self.writer.close()
