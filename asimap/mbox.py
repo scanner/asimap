@@ -169,9 +169,7 @@ class Mailbox:
                     future when we want this mailbox to be turfed out if it has
                     no active clients. Defaults to 15 minutes.
         """
-        self.log = logging.getLogger(
-            "{}.{}.{}".format(__name__, self.__class__.__name__, name)
-        )
+        self.logger = logging.getLogger(f"asimap.mbox.Mailbox:'{name}'")
         self.server = server
         self.name = name
         self.id = None
@@ -1033,7 +1031,7 @@ class Mailbox:
             uid_vv, uid = get_uidvv_uid(msg[UID_HDR])
             return (uid_vv, uid)
         except ValueError:
-            logger.warning(
+            logger.error(
                 "Mailbox %s: msg %d had malformed uid header: %s",
                 self.name,
                 msg_key,
@@ -1127,10 +1125,13 @@ class Mailbox:
                     return msg_key
             except OSError as e:
                 if e.errno == errno.ENOENT:
-                    self.log.error(
+                    self.logger.error(
                         "find_first_new_msg: Message %d no longer "
-                        "exists, errno: %s" % (msg_key, str(e))
+                        "exists, errno: %s",
+                        msg_key,
+                        e,
                     )
+
                 raise
         return None
 
@@ -1692,7 +1693,7 @@ class Mailbox:
         msg = self.server.msg_cache.get(self.name, msg_key)
         if msg is None:
             msg = await self.mailbox.aget_message(msg_key)
-            if cache:
+            if cache and UID_HDR in msg:
                 self.server.msg_cache.add(self.name, msg_key, msg)
         return msg
 
@@ -2116,9 +2117,15 @@ class Mailbox:
                         raise No("Mailbox empty.")
                     return
 
-                uid_vv, uid_max = await self.get_uid_from_msg(msgs[-1])
-                # This actually happened.. hm.
-                assert uid_max  # XXX If this is None should we force a resync?
+                msg_key = msgs[-1]
+                uid_vv, uid_max = await self.get_uid_from_msg(msg_key)
+
+                if uid_max is None:
+                    self.logger.error("Message key %d has no uid", msg_key)
+                    raise Bad(
+                        f"Mailbox {self.name}, msg key {msg_key} has no uid"
+                    )
+
                 seq_max = len(msgs)
 
                 # Generate the set of indices in to our folder for this
@@ -2348,8 +2355,15 @@ class Mailbox:
                 # If we are doing a 'UID FETCH' command we need to use the max
                 # uid for the sequence max.
                 #
-                uid_vv, uid_max = await self.get_uid_from_msg(all_msg_keys[-1])
-                assert uid_max
+                msg_key = all_msg_keys[-1]
+                uid_vv, uid_max = await self.get_uid_from_msg(msg_key)
+
+                if uid_max is None:
+                    self.logger.error("Message key %d has no uid", msg_key)
+                    raise Bad(
+                        f"Mailbox {self.name}, msg key {msg_key} has no uid"
+                    )
+
                 uid_list = sequence_set_to_list(msg_set, uid_max, uid_cmd)
 
                 # We want to convert this list of UID's in to message indices
