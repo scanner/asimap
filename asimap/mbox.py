@@ -2121,7 +2121,11 @@ class Mailbox:
                 uid_vv, uid_max = await self.get_uid_from_msg(msg_key)
 
                 if uid_max is None:
-                    self.logger.error("Message key %d has no uid", msg_key)
+                    self.logger.error(
+                        "mbox: '%s', message key %d has no uid",
+                        self.name,
+                        msg_key,
+                    )
                     raise Bad(
                         f"Mailbox {self.name}, msg key {msg_key} has no uid"
                     )
@@ -2359,7 +2363,11 @@ class Mailbox:
                 uid_vv, uid_max = await self.get_uid_from_msg(msg_key)
 
                 if uid_max is None:
-                    self.logger.error("Message key %d has no uid", msg_key)
+                    self.logger.error(
+                        "mbox: '%s', message key %d has no uid",
+                        self.name,
+                        msg_key,
+                    )
                     raise Bad(
                         f"Mailbox {self.name}, msg key {msg_key} has no uid"
                     )
