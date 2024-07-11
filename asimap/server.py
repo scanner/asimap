@@ -660,9 +660,6 @@ class IMAPSubprocessInterface:
         Close our connection to the subprocess.
         """
         try:
-            if self.wait_task:
-                self.wait_task.cancel(msg="Closing connection to subprocess")
-                self.wait_task = None
             if self.writer:
                 if not self.writer.is_closing():
                     self.writer.close()
@@ -806,12 +803,18 @@ class IMAPSubprocessInterface:
                         self.writer.close()
                         await self.writer.wait_closed()
                         self.writer = None
+                    if self.wait_task:
+                        self.wait_task.cancel()
+                        self.wait_task = None
                     return False
 
             case "logged_out":
                 if self.writer:
                     await self.close()
                     self.writer = None
+                if self.wait_task:
+                    self.wait_task.cancel()
+                    self.wait_task = None
                 return False
         return True
 
