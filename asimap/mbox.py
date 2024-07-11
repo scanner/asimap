@@ -1305,7 +1305,7 @@ class Mailbox:
         if check_duration > 1.0:
             logger.info(
                 "check/update finished, mailbox: %s, num msgs: %d, "
-                "duration: %f.3s",
+                "duration: %.3fs",
                 self.name,
                 num_msgs,
                 check_duration,
@@ -2105,6 +2105,16 @@ class Mailbox:
             fetch_started = time.time()
             fetch_finished_time = None
 
+            # Before we do a fetch we do a resync to make sure that we have
+            # attached uid's to all of our messages and various counts are up
+            # to sync. But we do it with notify turned off because we can not
+            # send any conflicting messages to this client (other clients that
+            # are idling do get any updates though.)
+            #
+            # NOTE: This is after we do the folder lock.
+            #
+            await self.resync(notify=False)
+
             try:
                 fetch_yield_times = []
                 yield_times = []
@@ -2126,7 +2136,7 @@ class Mailbox:
                         self.name,
                         msg_key,
                     )
-                    raise Bad(
+                    raise MailboxInconsistency(
                         f"Mailbox {self.name}, msg key {msg_key} has no uid"
                     )
 
@@ -2355,6 +2365,16 @@ class Mailbox:
             all_msg_keys = await self.mailbox.akeys()
             seq_max = len(all_msg_keys)
 
+            # Before we do a store we do a resync to make sure that we have
+            # attached uid's to all of our messages and various counts are up
+            # to sync. But we do it with notify turned off because we can not
+            # send any conflicting messages to this client (other clients that
+            # are idling do get any updates though.)
+            #
+            # NOTE: This is after we do the folder lock.
+            #
+            await self.resync(notify=False)
+
             if uid_cmd:
                 # If we are doing a 'UID FETCH' command we need to use the max
                 # uid for the sequence max.
@@ -2368,7 +2388,7 @@ class Mailbox:
                         self.name,
                         msg_key,
                     )
-                    raise Bad(
+                    raise MailboxInconsistency(
                         f"Mailbox {self.name}, msg key {msg_key} has no uid"
                     )
 
