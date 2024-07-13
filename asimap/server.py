@@ -905,6 +905,12 @@ class IMAPSubprocessInterface:
             self.subprocess.port,
             limit=131_072,
         )
+        logger.debug(
+            "IMAPClient: %s, user: %s, CONNECTED to subprocess %s",
+            self.imap_client.name,
+            user.username,
+            self.subprocess,
+        )
 
         self.reader = reader
         self.writer = writer

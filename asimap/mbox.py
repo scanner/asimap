@@ -190,6 +190,7 @@ class Mailbox:
         self.uids: List[int] = []
         self.subscribed = False
         self.lock = UpgradeableReadWriteLock()
+        self.task_queue: asyncio.Queue = asyncio.Queue()
 
         # Time in seconds since the unix epoch when a resync was last tried.
         #
@@ -250,6 +251,14 @@ class Mailbox:
         # (maybe it should be the client's name?)
         #
         self.clients: Dict[str, "Authenticated"] = {}
+
+        # Every active mailbox has a management task. This task looks at the
+        # task queue and tells invdividual imap commands that they can continue
+        # (by signaling their event). It lets multiple read-only tasks run in
+        # parallel. Before every imap command is allowed to run whether or not
+        # to do a resync is evaluated (and then done)
+        #
+        self.mgmt_task: asyncio.Task
 
     ####################################################################
     #
@@ -2130,6 +2139,11 @@ class Mailbox:
                 msg_key = msgs[-1]
                 uid_vv, uid_max = await self.get_uid_from_msg(msg_key)
 
+                # XXX If we encounter a message that has no uuid maybe we can
+                #     start marking the mailbox as "needs resync" and punt?
+                #     From now on, we never should see messages in the middle
+                #     without uid's. Only messages at the end of the mailbox.
+                #
                 if uid_max is None:
                     self.logger.error(
                         "mbox: '%s', message key %d has no uid",
@@ -2466,10 +2480,14 @@ class Mailbox:
 
         We also only need to hold one read lock at a time (one for each folder)
         """
-        # copy_msgs: List[Tuple[MHMessage, float]] = []
         copy_msgs: List[Tuple[str, List[str], float]] = []
-        with TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
+        start_time = time.monotonic()
 
+        with TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
+            self.logger.debug(
+                "TemporaryDirectory create: %.3f",
+                (time.monotonic() - start_time),
+            )
             async with self.lock.read_lock():
                 # We get the full list of keys instead of using an iterator
                 # because we need the max id and max uuid.

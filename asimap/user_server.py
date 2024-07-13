@@ -754,6 +754,7 @@ class IMAPUserServer:
                 for mbox_name in expired:
                     if mbox_name in self.active_mailboxes:
                         await self.active_mailboxes[mbox_name].commit_to_db()
+                        # self.active_mailboxes.mgmt_task.cancel()
                         del self.active_mailboxes[mbox_name]
                         self.msg_cache.clear_mbox(mbox_name)
 
