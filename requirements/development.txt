@@ -57,7 +57,7 @@ click==8.1.7
     #   userpath
 codetiming==1.4.0
     # via -r development.in
-coverage==7.5.4
+coverage==7.6.0
     # via
     #   -r lint.txt
     #   pytest-cov
@@ -349,7 +349,7 @@ types-pytz==2024.1.0.20240417
     # via -r lint.txt
 types-redis==4.6.0.20240425
     # via -r lint.txt
-types-requests==2.32.0.20240622
+types-requests==2.32.0.20240712
     # via -r lint.txt
 types-setuptools==70.3.0.20240710
     # via

@@ -181,7 +181,7 @@ class BaseClientHandler:
             logger.debug(result.strip())
             return
         except asyncio.TimeoutError:
-            result = f"{imap_command.tag} BAD Command timed out"
+            result = f"{imap_command.tag} BAD Command timed out: '{imap_command.qstr()}'"
             try:
                 await self.client.push(result)
             except Exception:
@@ -1214,7 +1214,7 @@ class Authenticated(BaseClientHandler):
             # MUST supply the TRYCREATE flag so we catch the generic
             # exception and return the appropriate NO result.
             #
-            raise No("[TRYCREATE] No such mailbox: '%s'" % cmd.mailbox_name)
+            raise No(f"[TRYCREATE] No such mailbox: '{cmd.mailbox_name}'")
 
         # NOTE: I tip my hat to: http://stackoverflow.com/questions/3429510/
         # pythonic-way-to-convert-a-list-of-integers-into-a-string-of-
