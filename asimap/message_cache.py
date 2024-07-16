@@ -28,7 +28,7 @@ from .generator import get_msg_size, get_msg_size_nc
 from .utils import UID_HDR
 
 logger = logging.getLogger("asimap.message_cache")
-CACHE_SIZE = 41_943_040  # Max cache size (in bytes) -- 40MiB
+CACHE_SIZE = 20_971_520  # Max cache size (in bytes) -- 20MiB
 
 # CacheEntry members are:
 #

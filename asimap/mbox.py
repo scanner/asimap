@@ -49,7 +49,7 @@ from .mh import (
     awrite_message,
     update_message_sequences,
 )
-from .parse import StoreAction
+from .parse import IMAPClientCommand, IMAPCommand, StoreAction
 from .search import IMAPSearch, SearchContext
 from .utils import (
     UID_HDR,
@@ -148,6 +148,21 @@ class Mailbox:
     #
     FOLDER_RATIO_PACK_LIMIT = 0.8
 
+    # The conflicting commands. These commands are known to change the mailbox
+    # in a significant way.
+    #
+    # We know that a fetch with peek = False can change the mailbox (the flags)
+    # but we are going to let that happen for now.
+    #
+    CONFLICTING_COMMANDS = (
+        IMAPCommand.APPEND,
+        IMAPCommand.CLOSE,  # A close may cause an expunge
+        IMAPCommand.DELETE,
+        IMAPCommand.EXPUNGE,
+        IMAPCommand.RENAME,
+        IMAPCommand.STORE,
+    )
+
     ##################################################################
     #
     def __init__(self, name, server, expiry=900):
@@ -190,7 +205,6 @@ class Mailbox:
         self.uids: List[int] = []
         self.subscribed = False
         self.lock = UpgradeableReadWriteLock()
-        self.task_queue: asyncio.Queue = asyncio.Queue()
 
         # Time in seconds since the unix epoch when a resync was last tried.
         #
@@ -258,7 +272,14 @@ class Mailbox:
         # parallel. Before every imap command is allowed to run whether or not
         # to do a resync is evaluated (and then done)
         #
+        self.task_queue: asyncio.Queue[IMAPClientCommand] = asyncio.Queue()
         self.mgmt_task: asyncio.Task
+
+        # If an imap command, when it finishes, wants a non-optional resync for
+        # "reasons" before the next imap command gets processed it sets this
+        # False. The management task will pass this to the resync method.
+        #
+        self.optional_resync = True
 
     ####################################################################
     #
@@ -291,7 +312,120 @@ class Mailbox:
             # our db if we need to.
             #
             await mbox.resync(force=force_resync)
+        mbox.mgmt_task = asyncio.create_task(mbox.management_task())
         return mbox
+
+    ####################################################################
+    #
+    async def management_task(self):
+        """
+        This task will loop until it is canceled. It will pull tasks as
+        many tasks from the task queue that do not conflict with each other
+        (basically read only, or read mostly tasks, vs tasks that will change
+        the state of the mailbox.)
+
+        It will then perform an optional resync.
+
+        Then it will signal all of those tasks it pulled that they may continue.
+
+        Once they have finished the loop repeat.
+        """
+        tasks: IMAPClientCommand = []
+        while True:
+            # Block until we have an IMAP Command that wants to run on this
+            # mailbox
+            #
+            imap_cmd = await self.task_queue.get()
+
+            # Remove any tasks from the tasks queue that have completed.
+            #
+            tasks = [x for x in tasks if not x.completed]
+
+            # If there are no tasks, do a resync
+            #
+            if not tasks:
+                await self.resync()
+
+            # If this is a conflicting task wait until all currently running
+            # imap commands have completed.
+            #
+            # Then start the conflicting task and wait for it to finish.
+            # Once it finishes restart this loop
+            #
+            if imap_cmd.command in self.CONFLICTING_COMMANDS:
+                while tasks:
+                    await asyncio.sleep(0.1)
+                    tasks = [x for x in tasks if not x.completed]
+                await self.resync()
+                tasks.append(imap_cmd)
+                imap_cmd.ready.set()
+                while tasks:
+                    await asyncio.sleep(0.1)
+                    tasks = [x for x in tasks if not x.completed]
+                continue
+
+            # Otherwise, let the non-conflicting task start immediately.
+            #
+            tasks.append(imap_cmd)
+            imap_cmd.ready.set()
+
+        # Remove resync, add new method: update_mbox .. when we find new
+        # messages at the end of the mbox.  Since we no longer have access to
+        # the folders, we should no longer have to worry about messages
+        # vanishing in the middle of a mailbox, or a mailbox being
+        # re-ordered. So we only need to look at the end of teh mailbox for new
+        # messages.
+        #
+        # We re-purpose the readwrite lock for just accessing the .mh_sequences
+        # file. read only for reading it. write for writing it.  always read it
+        # before writing it to catch all changes to it.  .mh_sequences remains
+        # the source of truth. The mbox sequences dict is only for checking for
+        # differences from the file since it was last read.
+        #
+        # Use an imap command for moving messages to  yearly archives
+        #
+        # while True:
+        #     imap_cmds = []
+        #     conflicting_cmd = None
+
+        #     # Pull tasks until we get a conflicting IMAP command, or the queue
+        #     # is empty.
+        #     #
+        #     while True:
+        #         imap_cmd = await self.task_queue.get()
+        #         if imap_cmd.command in self.CONFLICTING_COMMANDS:
+        #             conflicting_cmd = imap_cmd
+        #             break
+        #         imap_cmds.append(imap_cmd)
+
+        #     # Before executing any imap commands, we do a resync. If the last
+        #     # command to run asked for a non-optional reset it would have set
+        #     # the `optional_resync` flag. We always set this flag to the
+        #     # default after the resync has happened.
+        #     #
+        #     await self.resync(optional=self.optional_resync)
+        #     self.optional_resync = True
+
+        #     # Signal all the non-conflicting imap commands that they can start
+        #     # to execute.
+        #     #
+        #     self.logger.debug("Signaling %d IMAP Commands to start: %s",
+        #                       len(imap_cmds), ",".join()
+        #     for imap_cmd in imap_cmds:
+        #         imap_cmd.ready.set()
+        #     asyncio.timeout.sleep(0)
+
+        #     # Wait for all the non-conflicting imap commands to finish.
+        #     for imap_cmd in imap_cmds:
+        #         await imap_cmd.wait()
+
+        #     # If there was a conflicting command, run it after we do another
+        #     # optional resync.
+        #     #
+        #     if conflicting_cmd:
+        #         await self.resync()
+        #         conflicting_cmd.ready.set()
+        #         await conflicting_cmd.wait()
 
     ####################################################################
     #
@@ -1987,7 +2121,7 @@ class Mailbox:
         # that would reduce the number of messages in the mailbox; only the
         # EXPUNGE response can do this.
         #
-        # Unless a client is sitting in IDLE, then it is okay send them
+        # If a client is sitting in IDLE then it is okay send them
         # exists/recents.
         #
         await self.resync(optional=False)
