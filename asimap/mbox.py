@@ -1585,7 +1585,11 @@ class Mailbox:
                 (self.id,),
             ):
                 name, sequence = row
-                self.sequences[name] = [int(x) for x in sequence.split(",")]
+                sequence = sequence.strip()
+                if sequence:
+                    self.sequences[name] = [int(x) for x in sequence.split(",")]
+                else:
+                    self.sequences[name] = []
         return False
 
     ##################################################################
