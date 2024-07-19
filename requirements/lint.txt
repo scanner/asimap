@@ -32,7 +32,7 @@ importlib-metadata==8.0.0
     # via yapf
 isort==5.13.2
     # via -r lint.in
-mypy==1.10.1
+mypy==1.11.0
     # via -r lint.in
 mypy-extensions==1.0.0
     # via
@@ -63,13 +63,13 @@ pyproject-hooks==1.1.0
     #   pip-tools
 pyyaml==6.0.1
     # via pre-commit
-ruff==0.5.1
+ruff==0.5.3
     # via -r lint.in
 tomli==2.0.1
     # via yapf
 types-aiofiles==24.1.0.20240626
     # via -r lint.in
-types-cachetools==5.3.0.7
+types-cachetools==5.4.0.20240717
     # via -r lint.in
 types-cffi==1.16.0.20240331
     # via types-pyopenssl
