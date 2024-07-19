@@ -189,12 +189,19 @@ class Mailbox:
         self.name = name
         self.id = None
         self.uid_vv = 0
-        self.mtime = 0
+        self.mtime: float = 0.0
         self.next_uid = 1
         self.num_msgs = 0
         self.num_recent = 0
         self.folder_size_pack_limit = self.FOLDER_SIZE_PACK_LIMIT
         self.folder_ratio_pack_limit = self.FOLDER_RATIO_PACK_LIMIT
+
+        # When an IMAP Command begins executing on the mailbox the management
+        # task makes sure that the list of msg_keys and sequences are up to
+        # date. So a command can assume at the start of its run that this is
+        # the list of valid message keys for a folder.
+        #
+        self.msg_keys: List[int] = []
 
         # List of the UID's of the messages in this mailbox. They are in IMAP
         # message sequence order (ie: first message in the mailbox, its uid is
@@ -206,9 +213,14 @@ class Mailbox:
         self.subscribed = False
         self.lock = UpgradeableReadWriteLock()
 
+        # This lock must be acquired when attempting to read and write the
+        # .mh_sequences file.
+        #
+        self.mh_sequence_lock = asyncio.Lock()
+
         # Time in seconds since the unix epoch when a resync was last tried.
         #
-        self.last_resync = 0
+        self.last_resync = 0.0
 
         # XXX I think I need to do away with this distinction. We can still
         #     store sequences in the db, but the mbox code will not rely on
@@ -281,6 +293,14 @@ class Mailbox:
         #
         self.optional_resync = True
 
+        # It is possible for a mailbox to be deleted while there are commands
+        # in the task_queue waiting their chance to be processed. We need a way
+        # to tell these commands when they get to run that the mailbox they are
+        # working on has been deleted and will know to give up and exit. If
+        # this boolean is True then the mailbox has been deleted.
+        #
+        self.deleted = False
+
     ####################################################################
     #
     @classmethod
@@ -330,102 +350,62 @@ class Mailbox:
 
         Once they have finished the loop repeat.
         """
-        tasks: IMAPClientCommand = []
+        tasks: List[IMAPClientCommand] = []
+
         while True:
-            # Block until we have an IMAP Command that wants to run on this
-            # mailbox
-            #
-            imap_cmd = await self.task_queue.get()
+            try:
+                # Block until we have an IMAP Command that wants to run on this
+                # mailbox
+                #
+                imap_cmd = await self.task_queue.get()
 
-            # Remove any tasks from the tasks queue that have completed.
-            #
-            tasks = [x for x in tasks if not x.completed]
+                # Remove any tasks from the tasks queue that have completed.
+                #
+                tasks = [x for x in tasks if not x.completed]
 
-            # If there are no tasks, do a resync
-            #
-            if not tasks:
-                await self.resync()
+                # If there are no tasks, do a resync
+                #
+                if not tasks:
+                    await self.check_new_msgs_and_flags()
 
-            # If this is a conflicting task wait until all currently running
-            # imap commands have completed.
-            #
-            # Then start the conflicting task and wait for it to finish.
-            # Once it finishes restart this loop
-            #
-            if imap_cmd.command in self.CONFLICTING_COMMANDS:
-                while tasks:
-                    await asyncio.sleep(0.1)
-                    tasks = [x for x in tasks if not x.completed]
-                await self.resync()
+                # If this is a conflicting task wait until all currently running
+                # imap commands have completed.
+                #
+                # Then start the conflicting task and wait for it to finish.
+                # Once it finishes restart this loop
+                #
+                # XXX Make this a function that checks for CONFLICTING_COMMANDS
+                #     or FETCH BODY without PEEK.
+                #
+                if imap_cmd.command in self.CONFLICTING_COMMANDS:
+                    if tasks:
+                        while tasks:
+                            await asyncio.sleep(0)
+                            tasks = [x for x in tasks if not x.completed]
+                        await self.check_new_msgs_and_flags()
+                    tasks.append(imap_cmd)
+                    imap_cmd.ready.set()
+                    while tasks:
+                        await asyncio.sleep(0)
+                        tasks = [x for x in tasks if not x.completed]
+                    continue
+
+                # Otherwise, let the non-conflicting task start immediately.
+                #
                 tasks.append(imap_cmd)
                 imap_cmd.ready.set()
-                while tasks:
-                    await asyncio.sleep(0.1)
-                    tasks = [x for x in tasks if not x.completed]
-                continue
 
-            # Otherwise, let the non-conflicting task start immediately.
-            #
-            tasks.append(imap_cmd)
-            imap_cmd.ready.set()
-
-        # Remove resync, add new method: update_mbox .. when we find new
-        # messages at the end of the mbox.  Since we no longer have access to
-        # the folders, we should no longer have to worry about messages
-        # vanishing in the middle of a mailbox, or a mailbox being
-        # re-ordered. So we only need to look at the end of teh mailbox for new
-        # messages.
-        #
-        # We re-purpose the readwrite lock for just accessing the .mh_sequences
-        # file. read only for reading it. write for writing it.  always read it
-        # before writing it to catch all changes to it.  .mh_sequences remains
-        # the source of truth. The mbox sequences dict is only for checking for
-        # differences from the file since it was last read.
-        #
-        # Use an imap command for moving messages to  yearly archives
-        #
-        # while True:
-        #     imap_cmds = []
-        #     conflicting_cmd = None
-
-        #     # Pull tasks until we get a conflicting IMAP command, or the queue
-        #     # is empty.
-        #     #
-        #     while True:
-        #         imap_cmd = await self.task_queue.get()
-        #         if imap_cmd.command in self.CONFLICTING_COMMANDS:
-        #             conflicting_cmd = imap_cmd
-        #             break
-        #         imap_cmds.append(imap_cmd)
-
-        #     # Before executing any imap commands, we do a resync. If the last
-        #     # command to run asked for a non-optional reset it would have set
-        #     # the `optional_resync` flag. We always set this flag to the
-        #     # default after the resync has happened.
-        #     #
-        #     await self.resync(optional=self.optional_resync)
-        #     self.optional_resync = True
-
-        #     # Signal all the non-conflicting imap commands that they can start
-        #     # to execute.
-        #     #
-        #     self.logger.debug("Signaling %d IMAP Commands to start: %s",
-        #                       len(imap_cmds), ",".join()
-        #     for imap_cmd in imap_cmds:
-        #         imap_cmd.ready.set()
-        #     asyncio.timeout.sleep(0)
-
-        #     # Wait for all the non-conflicting imap commands to finish.
-        #     for imap_cmd in imap_cmds:
-        #         await imap_cmd.wait()
-
-        #     # If there was a conflicting command, run it after we do another
-        #     # optional resync.
-        #     #
-        #     if conflicting_cmd:
-        #         await self.resync()
-        #         conflicting_cmd.ready.set()
-        #         await conflicting_cmd.wait()
+            except asyncio.CancelledError:
+                self.logger.info("Management task cancelled. Exiting")
+                return
+            except Exception as e:
+                # We ignore all other exceptions because otherwise the
+                # management task would exit and no mbox commands would be
+                # processed.
+                #
+                self.logger.exception(
+                    f"Management task got exception: {e}," " Ignoring!"
+                )
 
     ####################################################################
     #
@@ -457,7 +437,7 @@ class Mailbox:
     ####################################################################
     #
     async def _get_sequences_update_seen(
-        self, msg_keys: List[int]
+        self, msg_keys: List[int], recent_msg_keys: Optional[List[int]] = None
     ) -> Sequences:
         """
         Get the sequences from the MH folder.
@@ -468,64 +448,72 @@ class Mailbox:
         `Seen` and `unseen` sequences so that they remain in sync. ie: all
         mesages NOT marked `unseen` are `Seen`.
 
+        If the `recent_msg_keys` parameter is not empty then update the
+        `recent` sequence with these message keys.
+
         Returns the sequences for this folder.
 
-        Presumes that the the folder lock has been acquired.
+        This is the one place where the mbox read lock is acquired. If we have
+        to write the sequences back out we also acquire the write lock.
+
+        Uses the self.mh_sequence_lock and dot locking to make sure access to
+        the sequences file is serialized.
 
         Raises a MailboxInconsistency exception if we are unable to read the
         .mh_sequences file.
-
-        XXX we may be updating the sequences.. but any messages in the message
-            cache will not have their sequence information updated. B-/ we
-            could empty the cache but that would be annoying. Maybe we should
-            loop through all the messages in the cache and update their
-            sequence information.
         """
-        assert self.lock.this_task_has_write_lock()  # XXX Mostly for debugging.
-        try:
-            seq = await self.mailbox.aget_sequences()
-        except FormatError as exc:
-            logger.exception(
-                "Bad `.mh_sequences` for mailbox %s: %s",
-                self.mailbox._path,
-                exc,
-            )
-            raise MailboxInconsistency(str(exc))
+        async with self.mh_sequence_lock:
+            try:
+                seq = await self.mailbox.aget_sequences()
+            except FormatError as exc:
+                logger.exception(
+                    "Bad `.mh_sequences` for mailbox %s: %s",
+                    self.mailbox._path,
+                    exc,
+                )
+                raise MailboxInconsistency(str(exc))
 
-        modified = False
-        if seq["unseen"]:
-            # Create the 'Seen' sequence by the difference between all
-            # the messages in the mailbox and the unseen ones.
-            #
-            new_seen = list(set(msg_keys) - set(seq["unseen"]))
-            if new_seen != seq["Seen"]:
-                seq["Seen"] = new_seen
+            modified = False
+            if seq["unseen"]:
+                # Create the 'Seen' sequence by the difference between all
+                # the messages in the mailbox and the unseen ones.
+                #
+                new_seen = list(set(msg_keys) - set(seq["unseen"]))
+                if new_seen != seq["Seen"]:
+                    seq["Seen"] = new_seen
+                    modified = True
+            else:
+                # There are no unseen messages in the mailbox thus the Seen
+                # sequence mirrors the set of all messages.
+                #
+                if seq["Seen"] != msg_keys:
+                    modified = True
+                    seq["Seen"] = msg_keys
+
+            if recent_msg_keys:
                 modified = True
-        else:
-            # There are no unseen messages in the mailbox thus the Seen
-            # sequence mirrors the set of all messages.
-            #
-            if seq["Seen"] != msg_keys:
-                modified = True
-                seq["Seen"] = msg_keys
+                if "Recent" in seq:
+                    seq["Recent"].extend(recent_msg_keys)
+                else:
+                    seq["Recent"] = recent_msg_keys
 
-        # A mailbox gets '\Marked' if it has any unseen messages or
-        # '\Recent' messages.
-        #
-        if "unseen" in seq or "Recent" in seq:
-            self.marked(True)
-        else:
-            self.marked(False)
-
-        if modified:
-            await self.mailbox.aset_sequences(seq)
-            # Make sure any sequence information on messages in the message
-            # cache is updated.
+            # A mailbox gets '\Marked' if it has any unseen messages or
+            # '\Recent' messages.
             #
-            _help_update_msg_sequences_in_cache(
-                self.server.msg_cache, self.name, msg_keys, seq
-            )
-        return seq
+            if "unseen" in seq or "Recent" in seq:
+                self.marked(True)
+            else:
+                self.marked(False)
+
+            if modified:
+                await self.mailbox.aset_sequences(seq)
+                # Make sure any sequence information on messages in the message
+                # cache is updated.
+                #
+                _help_update_msg_sequences_in_cache(
+                    self.server.msg_cache, self.name, msg_keys, seq
+                )
+            return seq
 
     ####################################################################
     #
@@ -579,6 +567,97 @@ class Mailbox:
                 await c.client.push(*notifications)
             else:
                 c.pending_notifications.extend(notifications)
+
+    ##################################################################
+    #
+    async def check_new_msgs_and_flags(self, force=False):
+        """
+        This method checks the folder for new messages and updated
+        sequences.  It is only called between by the mailbox management task
+        before a set of commands are allowed to run against the mailbox.
+
+        NOTE: We only allow non-conflicting commands to run at the same time
+              against the mailbox. Non-conflicting commands are supposed to not
+              modify the sequences (thus FETCH BODY's are considered
+              conflicting. FETCH BODY.PEEK are not)
+
+        All of the non-conflicting commands will be using the in-memory message
+        keys and in-memory sequence information. Since they are non-conflicting
+        they will not modify it, so it will be unchanged.
+
+        This way if some other process appends messages to this mailbox those
+        commands running will not see these messages and proceed as if they did
+        exist.
+        """
+        start_time = time.time()
+        self.last_resync = start_time
+
+        # We do NOT resync mailboxes marked '\Noselect'. These mailboxes
+        # essentially do not exist as far as any IMAP client can really tell.
+        #
+        if r"\Noselect" in self.attributes:
+            self.mtime = await self.get_actual_mtime(
+                self.server.mailbox, self.name
+            )
+            await self.commit_to_db()
+            return
+
+        # Get the mtime of the folder at the start so when we need to check to
+        #
+        start_mtime = await self.get_actual_mtime(
+            self.server.mailbox, self.name
+        )
+
+        # If the mtime we got from the folder/.mh_sequences is <= the stored
+        # mtime for the mailbox then we can assume nothing has touched it and
+        # return immediately.
+        #
+        # However if force is true, then we will do our scan regardless of the
+        # mtime.
+        #
+        if start_mtime <= self.mtime and not force:
+            return
+
+        # Whenever we resync the mailbox we update the sequence for
+        # 'seen' based on 'seen' are all the messages that are NOT in
+        # the 'unseen' sequence.
+        #
+        # NOTE: This returns the current sequence info from .mh_sequces
+        #       (in addition to updating seen from unseen)
+        #
+        async with self.mailbox.lock_folder():
+            self.msg_keys = await self.mailbox.akeys()
+            seq = await self._get_sequences_update_seen(self.msg_keys)
+
+        # Scan backwards from the end of the mailbox to find the first message
+        # with a valid uid_vv. When this loop exits idx will be the first
+        # message that does not have the proper uid_vv.
+        #
+        idx = len(self.msg_keys) - 1
+        while idx:
+            uid_vv, uid = await self.get_uid_from_msg(
+                self.msg_keys[idx], cache=False
+            )
+            if uid_vv == self.uid_vv:
+                idx += 1
+                break
+
+        # If the idx is less than or equal to the length of the msg_keys list
+        # then that means there are messages that need to have a uid_vv,uid
+        # added or updated.
+        #
+        if idx <= len(self.msg_keys):
+            added_uids = await self.add_uids_to_msgs(msg_keys[idx:])
+            self.uids.append(added_uids)
+
+            async with self.mailbox.lock_folder():
+                seq = await self._get_sequences_update_seen(
+                    self.msg_keys, recent_msg_keys=msg_keys[idx:]
+                )
+
+        # Update mbox sequences from seq.
+        # Set up notifies?
+        # and done.
 
     ##################################################################
     #
@@ -1317,6 +1396,40 @@ class Mailbox:
                 found = msg_key
         return found
 
+    ####################################################################
+    #
+    async def add_uids_to_msgs(self, msg_keys: List[int]) -> List[int]:
+        """
+        Goes through the set of msg_keys and updates the uid_vv/uid for
+        those messages.
+
+        It returns the list of uid's for the new messages, in the same order as
+        the list of msg_keys.
+        """
+        start_time = time.time()
+        uids = []
+        for msg_key in msg_keys:
+            msg_path = self.mailbox.get_message_path(msg_key)
+            uid_hdr = f"{UID_HDR}: {self.uid_vv:010d}.{self.next_uid:010d}"
+            await update_replace_header_in_binary_file(msg_path, uid_hdr)
+            uids_found.append(self.next_uid)
+            self.next_uid += 1
+
+            # Keep track of how lnog we have been running. Every second publish
+            # progress stats.
+            #
+            check_duration = time.time() - check_start
+            if check_duration > 1.0:
+                logger.info(
+                    "check/update finished, mailbox: %s, num msgs: %d, "
+                    "duration: %.3fs",
+                    self.name,
+                    num_msgs,
+                    check_duration,
+                )
+
+        return uids
+
     ##################################################################
     #
     async def _update_msg_uids(self, msg_keys: List[int], seq: Sequences):
@@ -1840,6 +1953,9 @@ class Mailbox:
         msg = self.server.msg_cache.get(self.name, msg_key)
         if msg is None:
             msg = await self.mailbox.aget_message(msg_key)
+            # XXX We shoudl also only cache the message if the uid_vv matches
+            #     the one for this mailbox.
+            #
             if cache and UID_HDR in msg:
                 self.server.msg_cache.add(self.name, msg_key, msg)
         return msg
@@ -2744,7 +2860,7 @@ class Mailbox:
     ##################################################################
     #
     @classmethod
-    async def get_actual_mtime(cls, mh: MH, name: str) -> int:
+    async def get_actual_mtime(cls, mh: MH, name: str) -> float:
         """
         Get the max of the mtimes of the actual folder directory and its
         .mh_sequences file.
@@ -2770,7 +2886,7 @@ class Mailbox:
 
         path_mtime = await aiofiles.os.path.getmtime(str(path))
         seq_mtime = await aiofiles.os.path.getmtime(str(seq_path))
-        return int(max(path_mtime, seq_mtime))
+        return max(path_mtime, seq_mtime)
 
     #########################################################################
     #
@@ -2872,86 +2988,97 @@ class Mailbox:
         mbox = await server.get_mailbox(name)
         do_delete = False
         server.msg_cache.clear_mbox(name)
-        async with mbox.mailbox.lock_folder(), mbox.lock.read_lock():
-            inferior_mailboxes = await mbox.mailbox.alist_folders()
 
-            # You can not delete a mailbox that has the '\Noselect' attribute
-            # and has inferior mailboxes.
+        inferior_mailboxes = await mbox.mailbox.alist_folders()
+
+        # You can not delete a mailbox that has the '\Noselect' attribute
+        # and has inferior mailboxes.
+        #
+        if r"\Noselect" in mbox.attributes and inferior_mailboxes:
+            raise InvalidMailbox(f"The mailbox '{name}' is already deleted")
+
+        # You can not delete a mailbox that has the '\Noselect' attribute
+        # and is subscribed. (BTW: This means that this mailbox was already
+        # deleted, but not removed because it still has subscribers.)
+        #
+        if r"\Noselect" in mbox.attributes and mbox.subscribed:
+            raise InvalidMailbox(f"The mailbox '{name}' is still subscribed")
+
+        # When deleting a mailbox every message in that mailbox will be
+        # deleted.
+        #
+        await mbox.mailbox.aclear()
+        mbox.num_msgs = 0
+        mbox.num_recent = 0
+        mbox.uids = []
+        mbox.sequences = defaultdict(list)
+
+        # Set the mbox deleted flag to true. Cnancel the management
+        # task. Go through the task queue and signal all waiting
+        # commands to proceed. They will check the mbox.deleted flag
+        # and exit immediately.
+        #
+        mbox.deleted = True
+        mbox.mgmt_task.cancel()
+        try:
+            while True:
+                imap_cmd = mbox.task_queue.get_nowait()
+                imap_cmd.ready.set()
+        except asyncio.QueueEmpty:
+            pass
+        finally:
+            mbox.task_queue = None
+
+        # If the mailbox has any active clients we set their selected
+        # mailbox to None. client.py will know if they try to do any
+        # operations that require they have a mailbox selected that
+        # this mailbox no longer exists and it will disconnect those
+        # clients.
+        #
+        # A bit rude, but it is the simplest accepted action in this
+        # case.
+        #
+        for client in mbox.clients.values():
+            client.mbox = None
+        mbox.clients = {}
+
+        # If the mailbox has inferior mailboxes then we do not actually
+        # delete it. It gets the '\Noselect' flag though. It also gets
+        # a new uid_vv so that if it is recreated before being fully
+        # removed from the db no imap client will confuse it with the
+        # existing mailbox.
+        #
+        if inferior_mailboxes or mbox.subscribed:
+            mbox.attributes.add(r"\Noselect")
+            mbox.uid_vv = await server.get_next_uid_vv()
+            await mbox.commit_to_db()
+        else:
+            # We have no inferior mailboxes. This mailbox is gone. If
+            # it is active we remove it from the list of active
+            # mailboxes and if it has any clients that have it selected
+            # they are moved back to the unauthenticated state.
             #
-            if r"\Noselect" in mbox.attributes and inferior_mailboxes:
-                raise InvalidMailbox(f"The mailbox '{name}' is already deleted")
+            async with server.active_mailboxes_lock.read_lock():
+                if name in server.active_mailboxes:
+                    async with server.active_mailboxes_lock.write_lock():
+                        del server.active_mailboxes[name]
 
-            # You can not delete a mailbox that has the '\Noselect' attribute
-            # and is subscribed. (BTW: This means that this mailbox was already
-            # deleted, but not removed because it still has subscribers.)
+            # Delete all traces of the mailbox from our db.
             #
-            if r"\Noselect" in mbox.attributes and mbox.subscribed:
-                raise InvalidMailbox(
-                    f"The mailbox '{name}' is still subscribed"
-                )
+            await server.db.execute(
+                "DELETE FROM mailboxes WHERE id = ?", (mbox.id,)
+            )
+            await server.db.execute(
+                "DELETE FROM sequences WHERE mailbox_id = ?", (mbox.id,)
+            )
+            await server.db.commit()
 
-            async with mbox.lock.write_lock():
-                # When deleting a mailbox every message in that mailbox will be
-                # deleted.
-                #
-                await mbox.mailbox.aclear()
-                mbox.num_msgs = 0
-                mbox.num_recent = 0
-                mbox.uids = []
-                mbox.sequences = defaultdict(list)
-
-                # If the mailbox has any active clients we set their selected
-                # mailbox to None. client.py will know if they try to do any
-                # operations that require they have a mailbox selected that
-                # this mailbox no longer exists and it will disconnect those
-                # clients.
-                #
-                # A bit rude, but it is the simplest accepted action in this
-                # case.
-                #
-                for client in mbox.clients.values():
-                    client.mbox = None
-                mbox.clients = {}
-
-                # If the mailbox has inferior mailboxes then we do not actually
-                # delete it. It gets the '\Noselect' flag though. It also gets
-                # a new uid_vv so that if it is recreated before being fully
-                # removed from the db no imap client will confuse it with the
-                # existing mailbox.
-                #
-                if inferior_mailboxes or mbox.subscribed:
-                    mbox.attributes.add(r"\Noselect")
-                    mbox.uid_vv = await server.get_next_uid_vv()
-                    await mbox.commit_to_db()
-                else:
-                    # We have no inferior mailboxes. This mailbox is gone. If
-                    # it is active we remove it from the list of active
-                    # mailboxes and if it has any clients that have it selected
-                    # they are moved back to the unauthenticated state.
-                    #
-                    async with server.active_mailboxes_lock.read_lock():
-                        if name in server.active_mailboxes:
-                            async with (
-                                server.active_mailboxes_lock.write_lock()
-                            ):
-                                del server.active_mailboxes[name]
-
-                    # Delete all traces of the mailbox from our db.
-                    #
-                    await server.db.execute(
-                        "DELETE FROM mailboxes WHERE id = ?", (mbox.id,)
-                    )
-                    await server.db.execute(
-                        "DELETE FROM sequences WHERE mailbox_id = ?", (mbox.id,)
-                    )
-                    await server.db.commit()
-
-                    # We need to delay the 'delete' of the actual mailbox until
-                    # after we release the lock but we only delete the actual
-                    # mailbox outside of the lock context manager if we are
-                    # actually deleting it.
-                    #
-                    do_delete = True
+            # We need to delay the 'delete' of the actual mailbox until
+            # after we release the lock but we only delete the actual
+            # mailbox outside of the lock context manager if we are
+            # actually deleting it.
+            #
+            do_delete = True
 
         # if this mailbox was the child of another mailbox than we may need to
         # update that mailbox's 'has children' attributes.

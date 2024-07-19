@@ -353,6 +353,19 @@ class IMAPClientCommand:
         #
         self.timeout_cm: Optional[asyncio.Timeout] = None
 
+        # When the task executing this IMAPClientCommand wants to begin it must
+        # wait for the 'ready' event to be set. This is the management task for
+        # the mailbox this command is operating on telling this task it has
+        # permission to go ahead.
+        #
+        self.ready = asyncio.Event()
+
+        # when the task executing this IMAPClientCommand finished it sets
+        # `completed` to True so that the mbox management task knows that this
+        # command has finished.
+        #
+        self.completed = False
+
     ##################################################################
     #
     def parse(self):

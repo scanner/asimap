@@ -134,6 +134,9 @@ class IMAPClientProxy:
             self.trace("CLOSE", {})
         except socket.error:
             pass
+        except asyncio.CancelledError:
+            self.log.info("Cancelled: %s", self)
+            raise
         except Exception as exc:
             self.log.error("Exception when closing %s: %s", self, exc)
 
@@ -229,13 +232,17 @@ class IMAPClientProxy:
                     self.server.commands_in_progress += 1
                     self.server.active_commands.append(imap_cmd)
                     # This is what actually executes the IMAP command from the
-                    # IMAP client. This will block until it finishes the
+                    # IMAP client.
                     # command (or fails).
                     #
+
                     await self.cmd_processor.command(imap_cmd)
                 finally:
                     try:
                         self.server.active_commands.remove(imap_cmd)
+                    except asyncio.CancelledError:
+                        logger.info("Cancelled: %s, %s", self, imap_cmd.qstr())
+                        raise
                     except Exception:
                         pass
                     self.server.commands_in_progress -= 1
@@ -268,6 +275,8 @@ class IMAPClientProxy:
             # client disconnected and we do not really care.
             #
             pass
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
             self.log.exception("Exception in %s: %s", self, exc)
         finally:
@@ -312,6 +321,8 @@ class IMAPClientProxy:
                 d = bytes(d, "utf-8") if isinstance(d, str) else d
             try:
                 self.writer.write(d)
+            except asyncio.CancelledError:
+                raise
             except Exception as exc:
                 raise ConnectionError("unable to write message") from exc
         if not self.writer.is_closing():
@@ -900,6 +911,9 @@ class IMAPUserServer:
 
                 try:
                     await self.check_folder(mbox_name, mtime, force=False)
+                except asyncio.CancelledError:
+                    logger.info("Cancelled")
+                    raise
                 except Exception as e:
                     logger.exception(
                         "Problem checking folder '%s': %s", mbox_name, e

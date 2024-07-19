@@ -200,6 +200,8 @@ class BaseClientHandler:
             raise
         except KeyboardInterrupt:
             sys.exit(0)
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             result = f"{imap_command.tag} BAD Unhandled exception: {e}"
             try:
@@ -619,7 +621,18 @@ class Authenticated(BaseClientHandler):
         # until 'selected()' returns without a failure.
         #
         mbox = await self.server.get_mailbox(cmd.mailbox_name)
-        async with mbox.lock.read_lock():
+
+        # Wait until the mailbox gives us the go-ahead to run the command.
+        #
+        mbox.task_queue.put_nowait(cmd)
+        try:
+            # XXX Should combine the ready wait & mbox.deleted check in to
+            #     function on the command?
+            #
+            await cmd.ready.wait()
+            if mbox.deleted:
+                raise No(f"Mailbox '{mbox.name}' has been deleted.")
+
             await mbox.selected(self)
             self.mbox = mbox
             self.state = ClientState.SELECTED
@@ -627,6 +640,8 @@ class Authenticated(BaseClientHandler):
             if self.examine:
                 return "[READ-ONLY]"
             return "[READ-WRITE]"
+        finally:
+            cmd.completed = True
 
     ##################################################################
     #
@@ -671,6 +686,7 @@ class Authenticated(BaseClientHandler):
         """
         await self.notifies()
         await Mailbox.create(cmd.mailbox_name, self.server)
+        cmd.completed = True
 
     ##################################################################
     #
@@ -682,7 +698,14 @@ class Authenticated(BaseClientHandler):
         - `cmd`: The IMAP command we are executing
         """
         await self.notifies()
-        await Mailbox.delete(cmd.mailbox_name, self.server)
+        try:
+            mbox = await self.server.get_mailbox(cmd.mailbox_name)
+            await cmd.ready.wait()
+            if mbox.deleted:
+                raise No(f"Mailbox '{mbox.name}' has been deleted.")
+            await Mailbox.delete(cmd.mailbox_name, self.server)
+        finally:
+            cmd.completed = True
 
     ##################################################################
     #
