@@ -12,7 +12,7 @@ RUN python -m venv --copies /venv
 RUN . /venv/bin/activate && \
     pip install --upgrade pip && \
     pip install --upgrade setuptools && \
-    pip install -r /app/requirements/build.txt \
+    pip install -r /app/requirements/build.txt && \
     pip install -r /app/requirements/production.txt
 
 COPY asimap /app/asimap
