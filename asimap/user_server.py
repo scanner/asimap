@@ -539,11 +539,13 @@ class IMAPUserServer:
 
         try:
             # Before we tell the main server process what port we are listening
-            # on we will do a find and check of all the folders.
+            # on we will do a find all the folders.
             #
             await self.find_all_folders()
-            await self.check_all_folders()
-            self.last_full_check = time.time()
+
+            # Start the task that checks all folders
+            #
+            self.last_full_check = 0.0
             self.folder_scan_task = asyncio.create_task(self.folder_scan())
 
             # Print the port we are listening on to stdout so that the parent
@@ -552,6 +554,10 @@ class IMAPUserServer:
             sys.stdout.write(f"{self.port}\n")
             sys.stdout.flush()
 
+            # Delay accepting connections for a short bit so that the initial
+            # folder check will have started.
+            #
+            await asyncio.sleep(5)
             async with self.asyncio_server:
                 await self.asyncio_server.serve_forever()
 
@@ -598,7 +604,6 @@ class IMAPUserServer:
         """
         try:
             while True:
-                await asyncio.sleep(30)
                 await self.check_all_active_folders()
                 await self.expire_inactive_folders()
 
@@ -619,6 +624,10 @@ class IMAPUserServer:
                     self.asyncio_server.close()
                     await self.asyncio_server.wait_closed()
                     return
+
+                # And sleep before we do another folder scan
+                #
+                await asyncio.sleep(30)
         except asyncio.exceptions.CancelledError:
             pass
         finally:
@@ -877,6 +886,19 @@ class IMAPUserServer:
             """
             while True:
                 mbox_name, mtime = await queue.get()
+                # can skip doing a check since it is already active.
+                #
+                if mbox_name in self.active_mailboxes and (
+                    any(
+                        x.idling
+                        for x in self.active_mailboxes[
+                            mbox_name
+                        ].clients.values()
+                    )
+                ):
+                    queue.task_done()
+                    return
+
                 try:
                     await self.check_folder(mbox_name, mtime, force=False)
                 except Exception as e:

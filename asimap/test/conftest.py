@@ -316,9 +316,9 @@ def imap_server(
     server_thread = threading.Thread(target=start_server, daemon=True)
     server_thread.start()
 
-    # Sleep for a teeny bit to let our server actually start up
+    # Sleep for a bit to let our server actually start up
     #
-    time.sleep(1)
+    time.sleep(2)
     client_ssl_context = ssl.create_default_context()
     ca.configure_trust(client_ssl_context)
     imap = imaplib.IMAP4_SSL(
