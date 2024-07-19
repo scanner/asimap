@@ -1221,19 +1221,21 @@ class Authenticated(BaseClientHandler):
         # comma-separated-range/3430231#3430231
         #
         try:
-            src_uids = (
+            new_src_uids = [
                 list(x)
                 for _, x in groupby(src_uids, lambda x, c=count(): next(c) - x)
+            ]
+            str_src_uids = ",".join(
+                ":".join(map(str, (g[0], g[-1])[: len(g)]))
+                for g in new_src_uids
             )
-            src_uids = ",".join(
-                ":".join(map(str, (g[0], g[-1])[: len(g)])) for g in src_uids
-            )
-            dst_uids = (
+            new_dst_uids = [
                 list(x)
                 for _, x in groupby(dst_uids, lambda x, c=count(): next(c) - x)
-            )
-            dst_uids = ",".join(
-                ":".join(map(str, (g[0], g[-1])[: len(g)])) for g in dst_uids
+            ]
+            str_dst_uids = ",".join(
+                ":".join(map(str, (g[0], g[-1])[: len(g)]))
+                for g in new_dst_uids
             )
         except Exception as e:
             logger.error(
@@ -1246,6 +1248,6 @@ class Authenticated(BaseClientHandler):
                 str(src_uids),
                 str(dst_uids),
             )
-            raise e
+            raise
 
-        return "[COPYUID %d %s %s]" % (dest_mbox.uid_vv, src_uids, dst_uids)
+        return f"[COPYUID {dest_mbox.uid_vv} {str_src_uids} {str_dst_uids}]"

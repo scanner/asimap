@@ -561,8 +561,6 @@ class IMAPUserServer:
             async with self.asyncio_server:
                 await self.asyncio_server.serve_forever()
 
-        except asyncio.exceptions.CancelledError:
-            pass
         finally:
             await self.shutdown()
 
