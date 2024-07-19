@@ -172,7 +172,7 @@ more-itertools==10.3.0
     #   -r build.txt
     #   jaraco-classes
     #   jaraco-functools
-mypy==1.10.1
+mypy==1.11.0
     # via -r lint.txt
 mypy-extensions==1.0.0
     # via
@@ -255,7 +255,7 @@ pytest==8.2.2
     #   pytest-factoryboy
     #   pytest-mock
     #   pytest-sugar
-pytest-asyncio==0.23.7
+pytest-asyncio==0.23.8
     # via -r development.in
 pytest-cov==5.0.0
     # via pytest-cover
@@ -290,9 +290,9 @@ rich==13.7.1
     #   -r build.txt
     #   -r development.in
     #   hatch
-ruff==0.5.1
+ruff==0.5.3
     # via -r lint.txt
-sentry-sdk==2.9.0
+sentry-sdk==2.10.0
     # via -r production.txt
 shellingham==1.5.4
     # via
@@ -335,7 +335,7 @@ trustme==1.1.0
     # via -r development.in
 types-aiofiles==24.1.0.20240626
     # via -r lint.txt
-types-cachetools==5.3.0.7
+types-cachetools==5.4.0.20240717
     # via -r lint.txt
 types-cffi==1.16.0.20240331
     # via
@@ -374,7 +374,7 @@ userpath==1.9.2
     # via
     #   -r build.txt
     #   hatch
-uv==0.2.24
+uv==0.2.26
     # via
     #   -r build.txt
     #   hatch
@@ -397,7 +397,7 @@ zipp==3.19.2
     #   -r build.txt
     #   -r lint.txt
     #   importlib-metadata
-zstandard==0.22.0
+zstandard==0.23.0
     # via
     #   -r build.txt
     #   hatch
