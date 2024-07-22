@@ -61,7 +61,7 @@ coverage==7.6.0
     # via
     #   -r lint.txt
     #   pytest-cov
-cryptography==42.0.8
+cryptography==43.0.0
     # via
     #   -r lint.txt
     #   trustme
@@ -247,7 +247,7 @@ pyproject-hooks==1.1.0
     #   -r lint.txt
     #   build
     #   pip-tools
-pytest==8.2.2
+pytest==8.3.1
     # via
     #   -r development.in
     #   pytest-asyncio
@@ -290,7 +290,7 @@ rich==13.7.1
     #   -r build.txt
     #   -r development.in
     #   hatch
-ruff==0.5.3
+ruff==0.5.4
     # via -r lint.txt
 sentry-sdk==2.10.0
     # via -r production.txt
@@ -374,7 +374,7 @@ userpath==1.9.2
     # via
     #   -r build.txt
     #   hatch
-uv==0.2.26
+uv==0.2.27
     # via
     #   -r build.txt
     #   hatch

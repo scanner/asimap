@@ -19,5 +19,6 @@ development.txt: production.txt lint.txt build.txt
 
 clean:
 	@rm -rf venv_req
+	@rm -rf *.txt
 
 .PHONY: all clean
