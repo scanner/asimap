@@ -266,7 +266,7 @@ def _msg_as_string(msg: Message, headers: bool = True):
 
 ####################################################################
 #
-@lru_cache
+@lru_cache(maxsize=32)
 def msg_as_string(msg: Message, headers: bool = True) -> str:
     return _msg_as_string(msg, headers=headers)
 
@@ -303,6 +303,7 @@ def get_msg_size_nc(msg: Message, headers: bool = True) -> int:
 
 ####################################################################
 #
+@lru_cache(maxsize=32)
 def msg_headers_as_string(
     msg: Message,
     headers: Optional[List[str]] = None,
