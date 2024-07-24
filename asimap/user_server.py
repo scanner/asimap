@@ -36,7 +36,7 @@ import asimap.message_cache
 from .client import Authenticated
 from .db import Database
 from .exceptions import MailboxInconsistency
-from .mbox import Mailbox
+from .mbox import Mailbox, NoSuchMailbox
 from .mh import MH
 from .parse import BadCommand, IMAPClientCommand
 from .trace import trace
@@ -716,6 +716,8 @@ class IMAPUserServer:
 
         async with self.active_mailboxes_lock.read_lock():
             if name in self.active_mailboxes:
+                if self.active_mailboxes[name].deleted:
+                    raise NoSuchMailbox(f"'{name}' has been deleted.")
                 return self.active_mailboxes[name]
             async with self.active_mailboxes_lock.write_lock():
                 # otherwise.. make an instance of this mailbox.

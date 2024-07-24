@@ -626,12 +626,9 @@ class Authenticated(BaseClientHandler):
         #
         mbox.task_queue.put_nowait(cmd)
         try:
-            # XXX Should combine the ready wait & mbox.deleted check in to
-            #     function on the command?
+            # Wait for the mailbox task manager to give us the go ahead
             #
-            await cmd.ready.wait()
-            if mbox.deleted:
-                raise No(f"Mailbox '{mbox.name}' has been deleted.")
+            await cmd.ready_and_okay(mbox)
 
             await mbox.selected(self)
             self.mbox = mbox
@@ -1225,12 +1222,17 @@ class Authenticated(BaseClientHandler):
 
         await self.notifies()
 
+        # Wait until the mailbox gives us the go-ahead to run the command.
+        #
+        self.mbox.task_queue.put_nowait(cmd)
         try:
-            dest_mbox = await self.server.get_mailbox(
-                cmd.mailbox_name, expiry=10
-            )
+            # Wait for the mailbox task manager to give us the go ahead
+            #
+            await cmd.ready_and_okay(self.mbox)
+
+            dest_mbox = await self.server.get_mailbox(cmd.mailbox_name)
             src_uids, dst_uids = await self.mbox.copy(
-                cmd.msg_set, dest_mbox, cmd.uid_command
+                cmd.msg_set, dest_mbox, cmd.uid_command, imap_cmd=cmd
             )
         except NoSuchMailbox:
             # For APPEND and COPY if the mailbox does not exist we

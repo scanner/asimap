@@ -13,7 +13,7 @@ import os.path
 import re
 from datetime import date
 from enum import Enum, StrEnum
-from typing import Callable, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Callable, List, Optional, Tuple, Union
 
 # asimapd imports
 #
@@ -21,6 +21,10 @@ import asimap.utils
 
 from .fetch import STR_TO_FETCH_OP, FetchAtt, FetchOp
 from .search import IMAPSearch
+
+if TYPE_CHECKING:
+    from .mbox import Mailbox
+
 
 logger = logging.getLogger("asimap.parse")
 
@@ -365,6 +369,18 @@ class IMAPClientCommand:
         # command has finished.
         #
         self.completed = False
+
+    ##################################################################
+    #
+    async def ready_and_okay(self, mbox: "Mailbox"):
+        """
+        Awaits the `ready` event,
+        """
+        await self.ready.wait()
+        if mbox.deleted:
+            from .mbox import NoSuchMailbox
+
+            raise NoSuchMailbox(f"Mailbox '{mbox.name}' has been deleted")
 
     ##################################################################
     #
