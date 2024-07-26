@@ -152,24 +152,42 @@ class StatusAtt(StrEnum):
     UNSEEN = "unseen"
 
 
+#######################################################################
+#
 # Attributes of a fetch command. Note that the order is important. We need to
 # match the longest strings with the common prefix first to insure that we
 # fully match the proper keyword (ie: if we look for 'rfc822' first we will
 # incorrectly not identify a 'rfc822.text')
 #
-fetch_atts = (
-    "envelope",
-    "flags",
-    "internaldate",
-    "rfc822.header",
-    "rfc822.size",
-    "rfc822.text",
-    "rfc822",
-    "uid",
-    "bodystructure",
-    "body.peek",
-    "body",
+class ParseFetchAtt(StrEnum):
+    ENVELOPE = "envelope"
+    FLAGS = "flags"
+    INTERNALDATE = "internaldate"
+    RFC822_HEADER = "rfc822.header"
+    RFC822_SIZE = "rfc822.size"
+    RFC822_TEXT = "rfc822.text"
+    RFC822 = "rfc822"
+    UID = "uid"
+    BODYSTRUCTURE = "bodystructure"
+    BODY_PEEK = "body.peek"
+    BODY = "body"
+
+
+# The conflicting commands. These commands are known to change the mailbox
+# in a significant way.
+#
+# We know that a fetch with peek = False can change the mailbox (the flags)
+# but we are going to let that happen for now.
+#
+CONFLICTING_COMMANDS = (
+    IMAPCommand.APPEND,
+    IMAPCommand.CLOSE,  # A close may cause an expunge
+    IMAPCommand.DELETE,
+    IMAPCommand.EXPUNGE,
+    IMAPCommand.RENAME,
+    IMAPCommand.STORE,
 )
+
 
 # This is the list of flags we know specifically about.
 system_flags = [
@@ -995,7 +1013,7 @@ class IMAPClientCommand:
         """
 
         fetch_att_tok = self._p_re(_fetch_att_atom_re)
-        if fetch_att_tok is None or fetch_att_tok.lower() not in fetch_atts:
+        if fetch_att_tok is None or fetch_att_tok.lower() not in ParseFetchAtt:
             raise BadSyntax(
                 "'%s' is not a valid FETCH argument" % fetch_att_tok
             )
@@ -1017,20 +1035,20 @@ class IMAPClientCommand:
             # a rfc822.text is turned in to a body[text] fetch.
             #
             match fetch_att_tok:
-                case "rfc822":
+                case ParseFetchAtt.RFC822:
                     return FetchAtt(
                         FetchOp.BODY, section=[], actual_command="RFC822"
                     )
-                case "rfc822.size":
+                case ParseFetchAtt.RFC822_SIZE:
                     return FetchAtt(FetchOp.RFC822_SIZE)
-                case "rfc822.header":
+                case ParseFetchAtt.RFC822_HEADER:
                     return FetchAtt(
                         FetchOp.BODY,
                         section=["header"],
                         peek=True,
                         actual_command="RFC822.HEADER",
                     )
-                case "rfc822.text":
+                case ParseFetchAtt.RFC822_TEXT:
                     return FetchAtt(
                         FetchOp.BODY,
                         section=["text"],
@@ -1043,7 +1061,7 @@ class IMAPClientCommand:
         # `BODYSTRUCTURE`
         #
         if (
-            fetch_att_tok == "body"
+            fetch_att_tok == ParseFetchAtt.BODY
             and self._p_simple_string("[", silent=True, swallow=False) is None
         ):
             return FetchAtt(
@@ -1053,9 +1071,9 @@ class IMAPClientCommand:
         # We treat `BODY.PEEK` the same as `BODY` with the `peek` attribute set
         # to `True` or `False`.
         #
-        if fetch_att_tok == "body.peek":
+        if fetch_att_tok == ParseFetchAtt.BODY_PEEK:
             peek = True
-            fetch_att_tok = "body"
+            fetch_att_tok = ParseFetchAtt.BODY
         else:
             peek = False
 
@@ -1850,6 +1868,35 @@ class IMAPClientCommand:
     #
     #######################################################################
     #######################################################################
+
+
+####################################################################
+#
+def sole_access_cmd(imap_cmd: IMAPClientCommand) -> bool:
+    """
+    Indicates whether the IMAP Command is one that needs sole access to
+    the mailbox while executing.
+
+    This condition is because these commands will modify the mailbox in
+    some way and possibly generate notifications.
+
+    If the command is one of CONFLICTING_COMMANDS or if the command is
+    a FETCH and one of the fetch attributes is "BODY" (note that
+    "BODY.PEEK" is okay because unlike "BODY" it does not set the `\Seen`
+    flag on the message.)
+
+    Good IMAP Clients tend to use BODY.PEEK and reserve clearing the
+    `\Seen` flag for when the user of the IMAP Client actuall reads the
+    message.
+    """
+    if imap_cmd.command in CONFLICTING_COMMANDS:
+        return True
+
+    if imap_cmd.command == IMAPCommand.FETCH:
+        for fetch_att in imap_cmd.fetch_atts:
+            if fetch_att.attribute == FetchOp.BODY and not fetch_att.peek:
+                return True
+    return False
 
 
 ####################################################################

@@ -48,7 +48,7 @@ from .mh import (
     awrite_message,
     update_message_sequences,
 )
-from .parse import IMAPClientCommand, IMAPCommand, StoreAction
+from .parse import IMAPClientCommand, IMAPCommand, StoreAction, sole_access_cmd
 from .search import IMAPSearch, SearchContext
 from .utils import (
     UID_HDR,
@@ -147,19 +147,17 @@ class Mailbox:
     #
     FOLDER_RATIO_PACK_LIMIT = 0.8
 
-    # The conflicting commands. These commands are known to change the mailbox
-    # in a significant way.
+    # While running some commands we can not send untagged, unrequested FETCH
+    # messages.
     #
-    # We know that a fetch with peek = False can change the mailbox (the flags)
-    # but we are going to let that happen for now.
+    # XXX This variable is somewhat generically named and it would be nice if
+    #     it had a better name, like maybe "DONT_SEND_FETCHES" .. but those
+    #     commands send fetches, we just do not want unsolicited fetches.
     #
-    CONFLICTING_COMMANDS = (
-        IMAPCommand.APPEND,
-        IMAPCommand.CLOSE,  # A close may cause an expunge
-        IMAPCommand.DELETE,
-        IMAPCommand.EXPUNGE,
-        IMAPCommand.RENAME,
+    DONT_NOTIFY = (
+        IMAPCommand.FETCH,
         IMAPCommand.STORE,
+        IMAPCommand.SEARCH,
     )
 
     ##################################################################
@@ -285,7 +283,9 @@ class Mailbox:
         # parallel. Before every imap command is allowed to run whether or not
         # to do a resync is evaluated (and then done)
         #
-        self.task_queue: asyncio.Queue[IMAPClientCommand] = asyncio.Queue()
+        self.task_queue: asyncio.Queue[
+            Tuple["Authenticated", IMAPClientCommand]
+        ] = asyncio.Queue()
         self.mgmt_task: asyncio.Task
 
         # If an imap command, when it finishes, wants a non-optional resync for
@@ -370,39 +370,44 @@ class Mailbox:
                 # Block until we have an IMAP Command that wants to run on this
                 # mailbox
                 #
-                imap_cmd = await self.task_queue.get()
+                # imap_cmd = await self.task_queue.get()
+                client, imap_cmd = await self.task_queue.get()
 
                 # Remove any tasks that have completed
                 #
                 tasks = [x for x in tasks if not x.completed]
 
+                # If the command is a FETCH, STORE, or SEARCH command then
+                # we have to make sure that our check_new_msgs_and_flags()
+                # function does not send untagged FETCH's to this client.
+                #
+                dont_notify = (
+                    client if imap_cmd.command in self.DONT_NOTIFY else None
+                )
+
                 # If there are no tasks, do a resync
                 #
                 if not tasks:
-                    await self.check_new_msgs_and_flags()
+                    await self.check_new_msgs_and_flags(dont_notify=dont_notify)
 
-                # If this is a conflicting task wait until all currently running
-                # imap commands have completed.
+                # If this command requires sole access to the mbox because it
+                # will alter something about the mbox's state then we make sure
+                # it is the only command running.
                 #
-                # Then start the conflicting task and wait for it to finish.
-                # Once it finishes restart this loop
-                #
-                # XXX Make this a function that checks for CONFLICTING_COMMANDS
-                #     or FETCH BODY without PEEK.
-                #
-                if imap_cmd.command in self.CONFLICTING_COMMANDS:
-                    # A conflicting command must be the only command running on
-                    # this mailbox. After all executing commands finish resync
-                    # the mailbox so all of our notifies and internal state is
-                    # up to date.
+                if sole_access_cmd(imap_cmd):
+                    # Wait for any existing tasks to finish and then check for
+                    # new messages and flags.
                     #
                     if tasks:
                         while tasks:
                             await asyncio.sleep(0)
                             tasks = [x for x in tasks if not x.completed]
-                        await self.check_new_msgs_and_flags()
+                        await self.check_new_msgs_and_flags(
+                            dont_notify=dont_notify
+                        )
                     tasks.append(imap_cmd)
                     imap_cmd.ready.set()
+
                     # Block until this executing task is marked completed.
                     #
                     while tasks:
@@ -647,11 +652,18 @@ class Mailbox:
 
     ##################################################################
     #
-    async def check_new_msgs_and_flags(self, force=False):
+    async def check_new_msgs_and_flags(
+        self, dont_notify: Optional["Authenticated"] = None, force: bool = False
+    ):
         """
         This method checks the folder for new messages and updated
         sequences.  It is only called between by the mailbox management task
         before a set of commands are allowed to run against the mailbox.
+
+        - dont_notify: Optional["Authentitcated"]: If we have FETCH, EXISTS,
+                       and RECENT notifications for clients, this client is
+                       *not* notified. This is typically because we are
+                       executing a FETCH, STORE, or SEARCH command.
 
         NOTE: We only allow non-conflicting commands to run at the same time
               against the mailbox. Non-conflicting commands are supposed to not
@@ -733,6 +745,7 @@ class Mailbox:
         # If the msg_key we get back is _not None_ then that means there are
         # messages that need to have a uid_vv,uid added or updated.
         #
+        new_msg_keys = []
         if msg_key:
             idx = self.msg_keys.index(msg_key)
             new_msg_keys = self.msg_keys[idx:]
@@ -757,19 +770,39 @@ class Mailbox:
                 recent_msg_keys=new_msg_keys
             )
 
-        # Determine what notifcations to send
-        # Update mbox sequences from seq.
+        num_recent = len(seq["Recent"])
+        num_msgs = len(self.msg_keys)
+
+        # NOTE: Only send EXISTS messages if notify is True and the client
+        # is not idling and the client is not the one passed in via
+        # 'only_notify'
         #
-        # Update mbox uids if ... ? (the copy operation will add new uid's to
-        # this mbox .. maybe make an array for incoming uid's that we will
-        # append to the list of uids). Since uid's only increase maybe we can
-        # just append the pending list to the list of uids and sort it.
+        if num_msgs != self.num_msgs or num_recent != self.num_recent:
+            notifications = []
+            if num_msgs != self.num_msgs:
+                notifications.append(f"* {num_msgs} EXISTS\r\n")
+            if num_recent != self.num_recent:
+                notifications.append(f"* {num_recent} RECENT\r\n")
+            await self._dispatch_or_pend_notifications(notifications)
+
+        self.num_msgs = num_msgs
+        self.num_recent = num_recent
+
+        # Now if any messages have changed which sequences they are from
+        # the last time we did this we need to issue untagged FETCH %d
+        # (FLAG (..)) to all of our active clients.
         #
-        # Either that or if the list of msg keys does not match the length of
-        # teh list of uid's we travel backwards to find all the new
-        # uid's. Slower because it requires reading the messages.but it is only
-        # reading.. mabye also when we add the uid's we add those messages to
-        # the cache.
+        # We do not send notifies when we are executing a command that itself
+        # generates untagged FETCH messages.
+        #
+        await self._compute_and_publish_fetches(seq, dont_notify=dont_notify)
+        self.sequences = seq
+        self.uids = new_uids_list
+
+        # And see if the folder is getting kinda 'gappy' with spaces
+        # between message keys. If it is, pack it.
+        #
+        await self._pack_if_necessary()
 
         # Update counts and commit state of the mailbox to the db.
         #
@@ -777,13 +810,13 @@ class Mailbox:
             self.server.mailbox, self.name
         )
         await self.check_set_haschildren_attr()
-        self.num_msgs = len(self.msg_keys)
-        self.num_recents = len(new_msg_keys)
-
         await self.commit_to_db()
+
         end_time = time.monotonic()
         logger.debug(
-            "Finished. Duration: %.3fs, num messages: %d, num recent: %d",
+            "Finished. Mailbox '%s', duration: %.3fs, num messages: %d, "
+            "num recent: %d",
+            self.name,
             (end_time - start_time),
             self.num_msgs,
             self.num_recent,
@@ -1170,7 +1203,10 @@ class Mailbox:
     ##################################################################
     #
     async def _compute_and_publish_fetches(
-        self, msg_keys, seqs, dont_notify=None, publish_uids=False
+        self,
+        seqs: dict[str, list],
+        dont_notify: Optional["Authenticated"],
+        publish_uids: bool = False,
     ):
         """
         A helper function for resync()
@@ -1187,7 +1223,6 @@ class Mailbox:
         We _skip_ the client that is indicated by 'dont_notify'
 
         Arguments:
-        - `msg_keys`: A list of all of the message keys in this folder
         - `seqs`: The latest representation of what the on disk sequences are
         - `dont_notify`: The client to NOT send "FETCH" notices to
         - `publish_uids`: If this is true then ALSO include the messages UID in
@@ -1221,16 +1256,7 @@ class Mailbox:
         # msg_keys. We can not send FETCH's for messages that are no longer in
         # the folder.
         #
-        # NOTE: XXX a 'pack' of a folder is going to cause us to send out many
-        #       many FETCH's and most of these will be meaningless and
-        #       basically noops. My plan is that pack's will rarely be done
-        #       outside of asimapd, and asimapd will have a strategy for doing
-        #       occasional packs at the end of a resync and when it does it
-        #       will immediately update the in-memory copy of the list of
-        #       sequences so that the next time a resync() is done it will not
-        #       think all these messages have had their flags changed.
-        #
-        changed_msg_keys = changed_msg_keys & set(msg_keys)
+        changed_msg_keys = changed_msg_keys & set(self.msg_keys)
 
         # And go through each message and publish a FETCH to every client with
         # all the flags that this message has.
@@ -1245,7 +1271,7 @@ class Mailbox:
             # to ignore.
             #
             flags_str = " ".join(flags)
-            msg_idx = msg_keys.index(msg_key) + 1
+            msg_idx = self.msg_keys.index(msg_key) + 1
 
             uidstr = ""
             if publish_uids:
@@ -1267,7 +1293,7 @@ class Mailbox:
 
     ##################################################################
     #
-    async def _pack_if_necessary(self, msg_keys):
+    async def _pack_if_necessary(self):
         """
         We use the array of message keys from the folder to determine if it is
         time to pack the folder.
@@ -1284,21 +1310,23 @@ class Mailbox:
         Arguments:
         - `msgs`: The list of all message keys in the folder.
         """
-        num_msgs = len(msg_keys)
+        num_msgs = len(self.msg_keys)
         if num_msgs < self.folder_size_pack_limit:
             return
 
-        if num_msgs / msg_keys[-1] > self.folder_ratio_pack_limit:
+        if num_msgs / self.msg_keys[-1] > self.folder_ratio_pack_limit:
             return
         logger.debug(
-            "Packing mailbox %s, num msgs: %d, max msg key: %d",
+            "Packing mailbox '%s', num msgs: %d, max msg key: %d",
             self.name,
             num_msgs,
-            msg_keys[-1],
+            self.msg_keys[-1],
         )
-        await self.mailbox.apack()
+        async with self.mailbox.lock_folder():
+            await self.mailbox.apack()
+            self.msg_keys = await self.mailbox.akeys()
+            self.sequences = await self.mailbox.aget_sequences()
         self.server.msg_cache.clear_mbox(self.name)
-        self.sequences = await self.mailbox.aget_sequences()
 
     ##################################################################
     #
