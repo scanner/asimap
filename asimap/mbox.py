@@ -284,7 +284,7 @@ class Mailbox:
         # to do a resync is evaluated (and then done)
         #
         self.task_queue: asyncio.Queue[
-            Tuple["Authenticated", IMAPClientCommand]
+            Tuple[Optional["Authenticated"], IMAPClientCommand]
         ] = asyncio.Queue()
         self.mgmt_task: asyncio.Task
 
@@ -370,7 +370,6 @@ class Mailbox:
                 # Block until we have an IMAP Command that wants to run on this
                 # mailbox
                 #
-                # imap_cmd = await self.task_queue.get()
                 client, imap_cmd = await self.task_queue.get()
 
                 # Remove any tasks that have completed
@@ -2879,7 +2878,7 @@ class Mailbox:
 
             if dst_mbox.deleted:
                 raise Bad(f"'{dst_mbox.name}' has been deleted")
-            dst_mbox.task_queue.put_nowait(append_imap_cmd)
+            dst_mbox.task_queue.put_nowait((None, append_imap_cmd))
 
             try:
                 await append_imap_cmd.ready_and_okay(dst_mbox)

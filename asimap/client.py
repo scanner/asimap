@@ -624,7 +624,7 @@ class Authenticated(BaseClientHandler):
 
         # Wait until the mailbox gives us the go-ahead to run the command.
         #
-        mbox.task_queue.put_nowait(cmd)
+        mbox.task_queue.put_nowait((self, cmd))
         try:
             # Wait for the mailbox task manager to give us the go ahead
             #
@@ -1224,7 +1224,7 @@ class Authenticated(BaseClientHandler):
 
         # Wait until the mailbox gives us the go-ahead to run the command.
         #
-        self.mbox.task_queue.put_nowait(cmd)
+        self.mbox.task_queue.put_nowait((self, cmd))
         try:
             # Wait for the mailbox task manager to give us the go ahead
             #
