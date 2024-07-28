@@ -11,18 +11,20 @@ import logging
 import mailbox
 import os.path
 import re
+from contextlib import asynccontextmanager
 from datetime import date
 from enum import Enum, StrEnum
-from typing import TYPE_CHECKING, Callable, List, Optional, Tuple, Union
-
-# asimapd imports
-#
-import asimap.utils
+from typing import TYPE_CHECKING, Callable, List, Optional, Set, Tuple, Union
 
 from .fetch import STR_TO_FETCH_OP, FetchAtt, FetchOp
 from .search import IMAPSearch
 
+# asimapd imports
+#
+from .utils import MsgSet, parsedate
+
 if TYPE_CHECKING:
+    from .client import Authenticated
     from .mbox import Mailbox
 
 
@@ -179,13 +181,25 @@ class ParseFetchAtt(StrEnum):
 # We know that a fetch with peek = False can change the mailbox (the flags)
 # but we are going to let that happen for now.
 #
+# NOTE: APPEND must conflict because a COPY from another mbox does an APPEND on
+#       the dest mailbox, and a resync, to get the new message uid's. Which is
+#       outside of the mbox.management_task() so to make sure state is
+#       consistent for all executing tasks, we require that APPEND operate by
+#       itself.
+#
+# CHECK - forces a resync and commit to db
+# CLOSE - may cause an expunge
+# DELETE - mailbox going away, so obviously must be by itslf.
+# EXPUNGE - may change sequences and message lists
+# RENAME - like mailbox going away, but worse.
+#
 CONFLICTING_COMMANDS = (
     IMAPCommand.APPEND,
-    IMAPCommand.CLOSE,  # A close may cause an expunge
+    IMAPCommand.CHECK,
+    IMAPCommand.CLOSE,
     IMAPCommand.DELETE,
     IMAPCommand.EXPUNGE,
     IMAPCommand.RENAME,
-    IMAPCommand.STORE,
 )
 
 
@@ -328,10 +342,13 @@ _zone_re = re.compile(_zone)
 
 ####################################################################
 #
-def msg_set_to_str(msg_set: list[int | tuple]) -> str:
+def msg_set_to_str(msg_set: Optional[MsgSet]) -> str:
     """
     Turn a message set into the equivalent IMAP protocol string representation
     """
+    if msg_set is None:
+        return ""
+
     return ",".join(
         [
             (f"{x[0]}:{x[1]}" if isinstance(x, tuple) else str(x))
@@ -363,6 +380,22 @@ class IMAPClientCommand:
         self.uid_command: bool = False
         self.tag: Optional[str] = None
         self.command: Optional[str] = None
+        self.msg_set: MsgSet = []
+        self.fetch_atts: List[FetchAtt] = []
+
+        # `fetch_peek` is set to False if this is a FETCH command and any of
+        # the fetch atts are BODY (not BODY.PEEK). This helpful information
+        # when trying to determine if IMAP Commands would conflict when
+        # running.
+        #
+        self.fetch_peek = True
+
+        # NOTE: This attribute is set by the mbox's management task before the
+        #       task is allowed to run (since it needs the context of a mbox to
+        #       know the max seq and how to map uid's to IMAP message sequence
+        #       numbers)
+        #
+        self.msg_set_as_set: Optional[Set[int]] = None
 
         # If the IMAP Command is currently operating under an asyncio.Timeout
         # context manager, that context manager is set here so that when a
@@ -390,15 +423,22 @@ class IMAPClientCommand:
 
     ##################################################################
     #
-    async def ready_and_okay(self, mbox: "Mailbox"):
+    @asynccontextmanager
+    async def ready_and_okay(self, client: "Authenticated", mbox: "Mailbox"):
         """
-        Awaits the `ready` event,
+        Awaits the `ready` event. No matter what happens, we set the
+        command to be completed before exiting.
         """
-        await self.ready.wait()
-        if mbox.deleted:
-            from .mbox import NoSuchMailbox
+        try:
+            mbox.task_queue.put_nowait((client, self))
+            await self.ready.wait()
+            if mbox.deleted:
+                from .mbox import NoSuchMailbox
 
-            raise NoSuchMailbox(f"Mailbox '{mbox.name}' has been deleted")
+                raise NoSuchMailbox(f"Mailbox '{mbox.name}' has been deleted")
+            yield
+        finally:
+            self.completed = True
 
     ##################################################################
     #
@@ -623,6 +663,14 @@ class IMAPClientCommand:
                 self.msg_set = self._p_msg_set()
                 self._p_simple_string(" ")
                 self.fetch_atts = self._p_fetch_atts()
+                # If any of the fetch_atts are BODY (no peek) then set
+                # self.fetch_peek = False.
+                #
+                self.fetch_peek = all(
+                    x.attribute == FetchOp.BODY and not x.peek
+                    for x in self.fetch_atts
+                )
+
             case IMAPCommand.STORE:
                 self._p_store()
             case IMAPCommand.COPY:
@@ -865,7 +913,7 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def _p_paren_list_of(self, func: Callable):
+    def _p_paren_list_of(self, func: Callable) -> List[str]:
         """This function does not parse a specific type of singleton
         element. It is specifically for parsing lists of elements that follow a
         specific convention.
@@ -882,7 +930,7 @@ class IMAPClientCommand:
         We return a list of whatever the passed in function returns to us.
         """
 
-        result = []
+        result: List[str] = []
         self._p_simple_string(
             "(",
             syntax_error="expected a '(' beginning " "a parenthesized list",
@@ -916,7 +964,7 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def _p_fetch_atts(self):
+    def _p_fetch_atts(self) -> List[FetchAtt]:
         """We have either a single fetch attribute or a list of fetch
         attributes. We know which it will be, because it will be a
         parenthesized list so if the next character on our input stream is a
@@ -1549,6 +1597,7 @@ class IMAPClientCommand:
             _msg_set_re,
             syntax_error="missing or " "invalid message sequence set",
         )
+        assert msg_set
 
         # Now just because we got something does not mean it is a message
         # set. However, we know that it will be comma separated. Between the
@@ -1599,6 +1648,7 @@ class IMAPClientCommand:
         date_exp = self._p_re(_date_re)
         assert date_exp
         match = _date_re.match(date_exp)
+        assert match
         return date(
             year=int(match.group("year")),
             month=_month[match.group("month").lower()],
@@ -1621,22 +1671,11 @@ class IMAPClientCommand:
             _date_time_re,
             syntax_error="expected a " "rfc822 formated date-time",
         )
+        assert date_time
 
         # We need to strip off the "" surrounding the date-time string.
         #
-        return asimap.utils.parsedate(date_time[1:-1])
-
-    ##         match = _date_time_re.match(date_time)
-
-    # return datetime.datetime(int(match.group('year')),
-    # _month[match.group('month').lower()],
-    # int(match.group('day')),
-    # int(match.group('hour')),
-    # int(match.group('min')),
-    ##                                  int(match.group('sec')), 0,
-    # FixedOffsetTZ(
-    ##                                     hours = int(match.group('tz_hr')),
-    # minutes = int(match.group('tz_min'))))
+        return parsedate(date_time[1:-1])
 
     #######################################################################
     #
@@ -1872,9 +1911,18 @@ class IMAPClientCommand:
 
 ####################################################################
 #
-def sole_access_cmd(imap_cmd: IMAPClientCommand) -> bool:
+def conflicting_cmd(
+    imap_cmd: IMAPClientCommand, tasks: List[IMAPClientCommand]
+) -> bool:
     """
-    Indicates whether the IMAP Command is one that needs sole access to
+    Indicates whether the IMAP Command is one that would conflict with any
+    of the other IMAP Commands currently executing on a mailbox.
+
+    Certain commands listed in `CONFLICTING_COMMANDS` will conflict with all
+    other commands.
+
+    FETCH BODY (ie: not BODY.PEEK) commands will conflict with
+
     the mailbox while executing.
 
     This condition is because these commands will modify the mailbox in
@@ -1889,6 +1937,12 @@ def sole_access_cmd(imap_cmd: IMAPClientCommand) -> bool:
     `\Seen` flag for when the user of the IMAP Client actuall reads the
     message.
     """
+    # If there are no other IMAP commands running, then this command is
+    # non-conflciting (nothing to conflict with!)
+    #
+    if not tasks:
+        return False
+
     if imap_cmd.command in CONFLICTING_COMMANDS:
         return True
 

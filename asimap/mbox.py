@@ -22,7 +22,7 @@ from mailbox import FormatError, MHMessage, NoSuchMailboxError, NotEmptyError
 from pathlib import Path
 from statistics import fmean, median, stdev
 from tempfile import TemporaryDirectory
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
 
 # 3rd party imports
 #
@@ -48,7 +48,12 @@ from .mh import (
     awrite_message,
     update_message_sequences,
 )
-from .parse import IMAPClientCommand, IMAPCommand, StoreAction, sole_access_cmd
+from .parse import (
+    CONFLICTING_COMMANDS,
+    IMAPClientCommand,
+    IMAPCommand,
+    StoreAction,
+)
 from .search import IMAPSearch, SearchContext
 from .utils import (
     UID_HDR,
@@ -90,6 +95,19 @@ def mbox_msg_path(mbox: MH, x: Optional[Union[int, str]] = None) -> Path:
     """
     msg_key = "" if x is None else str(x)
     return Path(mbox._path) / msg_key
+
+
+####################################################################
+#
+def intersect(a: IMAPClientCommand, b: IMAPClientCommand) -> bool:
+    """
+    A helper function that determines if the msg_set_as_set for two
+    IMAPClientCommands intersect or not.  If either set is None then it is
+    considered the empty set.
+    """
+    set_a = a.msg_set_as_set if a.msg_set_as_set else set()
+    set_b = b.msg_set_as_set if b.msg_set_as_set else set()
+    return bool(set_a.intersection(set_b))
 
 
 ##################################################################
@@ -208,12 +226,6 @@ class Mailbox:
         #
         self.uids: List[int] = []
 
-        # The pending uid's are the uid's of messages that have been added to
-        # this mbox via the COPY command from another mailbox. The
-        # `check_new_msgs_and_flags()` method adds these uid's to the self.uids
-        # when it runs.
-        #
-        self.pending_uids: List[int] = []
         self.subscribed = False
         self.lock = UpgradeableReadWriteLock()
 
@@ -287,12 +299,19 @@ class Mailbox:
             Tuple[Optional["Authenticated"], IMAPClientCommand]
         ] = asyncio.Queue()
         self.mgmt_task: asyncio.Task
+        self.executing_tasks: List[IMAPClientCommand] = []
 
         # If an imap command, when it finishes, wants a non-optional resync for
         # "reasons" before the next imap command gets processed it sets this
         # False. The management task will pass this to the resync method.
         #
         self.optional_resync = True
+
+        # If a command got a mailbox inconsistency error it can signal on the
+        # next resync to do a full scan from the beginning of the folder for
+        # alien messages in the mbox
+        #
+        self.full_search = False
 
         # It is possible for a mailbox to be deleted while there are commands
         # in the task_queue waiting their chance to be processed. We need a way
@@ -301,6 +320,13 @@ class Mailbox:
         # this boolean is True then the mailbox has been deleted.
         #
         self.deleted = False
+
+        # With commands like APPEND and COPY we need to trigger a resync and
+        # fetch the UID's for newly added messages. We have the msg_key, and if
+        # the resync does a `pack` that msg key is likely to be invalidated. In
+        # that case set `allow_pack=False` and pack will not be allowed to run.
+        #
+        self.allow_pack = True
 
     ####################################################################
     #
@@ -338,12 +364,271 @@ class Mailbox:
         # database (and if there are none, then create an entry in the
         # db for this mailbox.)
         #
-        force_resync = await mbox._restore_from_db()
+        mbox.optional_resync = await mbox._restore_from_db()
         async with mbox.mailbox.lock_folder():
             mbox.msg_keys = await mbox.mailbox.akeys()
-        await mbox.check_new_msgs_and_flags(force=force_resync)
+        await mbox.check_new_msgs_and_flags()
         mbox.mgmt_task = asyncio.create_task(mbox.management_task())
         return mbox
+
+    ####################################################################
+    #
+    def would_conflict(self, imap_cmd: IMAPClientCommand) -> bool:
+        """
+        Returns True if the given imap_cmd would conflict with any other
+        currently running command.
+
+        For example:
+
+        - CLOSE and EXPUNGE conflict with all commands IF THE `\Deleted`
+          sequence is not empty. Otherwise they conflict with no other
+          commands.
+
+        - CLOSE [EXAMINE] does not conflict with any command
+
+        - FETCH BODY.PEEK conflicts with STORE if they operate on the
+          same messages.
+        """
+        # IF there are no other executing IMAP commands, nothing to conflict
+        # with.
+        #
+        if not self.executing_tasks:
+            return False
+
+        # Certain commands block any other commands from being allowed to
+        # execute. If any of these tasks are currently executing then
+        # everything else would conflict.
+        #
+        if any(x.command in CONFLICTING_COMMANDS for x in self.executing_tasks):
+            return True
+
+        # NOTE: We get here if there are other executing tasks, so we do not
+        #       need to check if there are any other executing tasks. We know
+        #       there are.
+        #
+        match imap_cmd.command:
+            case (
+                IMAPCommand.APPEND,
+                IMAPCommand.CHECK,
+                IMAPCommand.DELETE,
+                IMAPCommand.RENAME,
+            ):
+                # Can only run when there are no other commands running
+                #
+                return True
+
+            case (IMAPCommand.CLOSE, IMAPCommand.EXPUNGE):
+                # Non-conflicting if there are no messages to delete.
+                #
+                # NOTE: Once this command begins executing it will block any
+                #       new task from executing until they finish.
+                #
+                if self.sequences.get("Deleted", []):
+                    # If there are messages to be expunged, can only run when
+                    # there are no other commands running
+                    #
+                    return True
+                return False
+
+            case IMAPCommand.COPY:
+                # NOTE: We do not need to check for EXPUNGE. If an EXPUNGE is
+                #       already operating we would have returned True in the
+                #       CONFLICTING_COMMANDS check at the top of this method.
+                #
+                # Conflicts with STORE, and FETCH.BODY (no peek) that operate
+                # on the same messages.
+                #
+                for cmd in self.executing_tasks:
+                    match cmd.command:
+                        case IMAPCommand.STORE:
+                            # We conflict with a STORE command that is already
+                            # running if the COPY is operating on the same
+                            # messages.
+                            #
+                            if intersect(imap_cmd, cmd):
+                                return True
+                        case IMAPCommand.FETCH:
+                            # If the FETCH command is NOT `peek` (ie: it can
+                            # modify flags), and the msg set overlaps, it
+                            # conflicts.
+                            if not cmd.fetch_peek and intersect(imap_cmd, cmd):
+                                return True
+                return False
+
+            case IMAPCommand.FETCH:
+                # If the FETCH command is no_peek == False it will conflict
+                # with any command that depends on overall message state of the
+                # folder (since it might modify sequences)
+                #
+                for cmd in self.executing_tasks:
+                    if not imap_cmd.fetch_peek:
+                        match cmd.command:
+                            case (
+                                IMAPCommand.EXAMINE,
+                                IMAPCommand.NOOP,
+                                IMAPCommand.SEARCH,
+                                IMAPCommand.SELECT,
+                                IMAPCommand.STATUS,
+                            ):
+                                # no peek fetch's will conflict with any
+                                # command that depends on overall message
+                                # state.
+                                #
+                                return True
+                            case (
+                                IMAPCommand.COPY,
+                                IMAPCommand.FETCH,
+                                IMAPCommand.STORE,
+                            ):
+                                # For COPY, FETCH, and STORE it will only
+                                # conflict with those commands if they are
+                                # operating on the same messages.
+                                if intersect(imap_cmd, cmd):
+                                    return True
+                            case _:
+                                raise RuntimeError(
+                                    f"Unhandled case FETCH vs {cmd.command}"
+                                )
+                return False
+
+            case IMAPCommand.NOOP:
+                # No-op conflicts with nothing except for the conflicting
+                # commands.
+                #
+                return False
+
+            case (IMAPCommand.SEARCH, IMAPCommand.SELECT, IMAPCommand.STATUS):
+                # SEARCH, SELECT, STATUS can not run if the other currently
+                # executing commands do alter message state. This means:
+                # - STORE
+                # - FETCH, fetch_peek=False
+                #
+                for cmd in self.executing_tasks:
+                    # NOTE: Commands like APPEND, EXPUNGE were handled above.
+                    #
+                    match cmd.command:
+                        case IMAPCommand.FETCH:
+                            if not cmd.fetch_peek:
+                                return True
+                        case IMAPCommand.STORE:
+                            return True
+                return False
+
+            case IMAPCommand.STORE:
+                # STORE can not run if other commands that depend on overall
+                # mailbox state are running.
+                #
+                # It can run if the other command is STORE or FETCH and they
+                # are not operating on the same messages.
+                #
+                for cmd in self.executing_tasks:
+                    match cmd.command:
+                        case (
+                            IMAPCommand.EXAMINE,
+                            IMAPCommand.NOOP,
+                            IMAPCommand.SEARCH,
+                            IMAPCommand.SELECT,
+                            IMAPCommand.STATUS,
+                        ):
+                            return True
+                        case (IMAPCommand.STORE, IMAPCommand.FETCH):
+                            # Store can operate the same time as other FETCH
+                            # and STORE's as long as they operate on different
+                            # messages.
+                            #
+                            if intersect(imap_cmd, cmd):
+                                return True
+                return False
+            case _:
+                # We get any other IMAP command we have not specifically
+                # accounted, we mark it as conflicting.
+                #
+                raise RuntimeError(
+                    f"Uhandled conflict supprot for command {imap_cmd.qstr()}"
+                )
+
+    ####################################################################
+    #
+    async def command_can_proceed(self, imap_cmd: IMAPClientCommand) -> None:
+        """
+        This command will block until the specified command can run without
+        conflicting with any of the currently running IMAP command tasks.
+
+        It will update the set of running IMAP commands as it blocks.
+
+        It uses the parse module's helper function to test for conflicting
+        commands.
+
+        Keyword Arguments:
+        imap_cmd: IMAPClientCommand --
+        """
+        start_time = time.monotonic()
+        # Remove IMAP commands that have finished executing from the list of
+        # executing tasks.
+        #
+        self.executing_tasks = [
+            x for x in self.executing_tasks if not x.completed
+        ]
+        # And loop until the IMAP command that wants to exeucte does not
+        # conflict with any of the currently executing IMAP commands.  (asyncio
+        # sleeping between checks)
+        #
+        while self.would_conflict(imap_cmd):
+            await asyncio.sleep(0)
+            self.executing_tasks = [
+                x for x in self.executing_tasks if not x.completed
+            ]
+
+        # Also if it has been more than 10 seconds since the last resync then
+        # block until all executing tasks have finished. We need to make sure
+        # that even if we are getting a non-stop stream of non-conflicting
+        # commands we check the mailbox for updates.
+        #
+        duration = time.monotonic() - self.last_resync
+        if duration >= 10:
+            self.logger.debug(
+                "IMAP Command %s: more than 10s since last resync, blocking",
+                imap_cmd.qstr(),
+            )
+            while self.executing_tasks:
+                await asyncio.sleep(0.1)
+                self.executing_tasks = [
+                    x for x in self.executing_tasks if not x.completed
+                ]
+
+        duration = time.monotonic() - start_time
+        if duration >= 0.1:
+            self.logger.debug(
+                "IMAP Command %s waited %.3fs before allowed to run",
+                imap_cmd.qstr(),
+                duration,
+            )
+
+    ####################################################################
+    #
+    def msg_set_to_msg_seq_set(
+        self, msg_set: Optional[MsgSet], from_uids: bool = False
+    ) -> Optional[Set[int]]:
+        """
+        Converts a MsgSet that may be a set of message sequence numbers or
+        a set of message uid's in to a `set()` of message sequence numbers.
+        """
+        if msg_set is None:
+            return None
+        msgs = sequence_set_to_list(msg_set, self.num_msgs, uid_cmd=from_uids)
+
+        # The msg_set is in UID's and we need to convert that to msg sequence
+        # numbers. The list `self.uids` is this mapping. If a UID is NOT in
+        # self.uids, we drop it from our sequence set.
+        #
+        if from_uids:
+            # NOTE: IMAP Message Sequence numbers start at 1. Our array starts
+            # at 0.
+            #
+            msgs = [
+                self.uids.index(uid) + 1 for uid in msgs if uid in self.uids
+            ]
+        return set(msgs)
 
     ####################################################################
     #
@@ -363,7 +648,7 @@ class Mailbox:
         # List of tasks currently acting on this mailbox.
         # (will only be one for conflicting commands)
         #
-        tasks: List[IMAPClientCommand] = []
+        self.executing_tasks = []
 
         while True:
             try:
@@ -372,13 +657,30 @@ class Mailbox:
                 #
                 client, imap_cmd = await self.task_queue.get()
 
-                # Remove any tasks that have completed
+                # Compute the set() of imap message sequence numbers this
+                # command is being applied to. This lets us check for conflicts
+                # between different IMAP Commands that are allowed to run at
+                # the same time if they do not operate on the same messages.
                 #
-                tasks = [x for x in tasks if not x.completed]
+                imap_cmd.msg_set_as_set = self.msg_set_to_msg_seq_set(
+                    imap_cmd.msg_set, imap_cmd.uid_command
+                )
+
+                # Block until the new IMAP command would not conflict with any
+                # of the currently executing IMAP commands.
+                #
+                await self.command_can_proceed(imap_cmd)
 
                 # If the command is a FETCH, STORE, or SEARCH command then
                 # we have to make sure that our check_new_msgs_and_flags()
                 # function does not send untagged FETCH's to this client.
+                #
+                # XXX DONT_NOTIFY should be on the _client_ object, set by the
+                #     do_* method in client.py as that part of the code knows
+                #     best when the client should not get notifications.
+                #
+                #     and then checked in _compute_and_publish_fetches()
+                #     when it wants to push a message to a client.
                 #
                 dont_notify = (
                     client if imap_cmd.command in self.DONT_NOTIFY else None
@@ -386,37 +688,21 @@ class Mailbox:
 
                 # If there are no tasks, do a resync
                 #
-                if not tasks:
-                    await self.check_new_msgs_and_flags(dont_notify=dont_notify)
+                if not self.executing_tasks:
+                    changed = await self.check_new_msgs_and_flags(
+                        dont_notify=dont_notify
+                    )
 
-                # If this command requires sole access to the mbox because it
-                # will alter something about the mbox's state then we make sure
-                # it is the only command running.
-                #
-                if sole_access_cmd(imap_cmd):
-                    # Wait for any existing tasks to finish and then check for
-                    # new messages and flags.
+                    # Need to update this commands msg_set_as_set before we add
+                    # it to the list of executing commands (the list is empty
+                    # so we only need to update this one command)
                     #
-                    if tasks:
-                        while tasks:
-                            await asyncio.sleep(0)
-                            tasks = [x for x in tasks if not x.completed]
-                        await self.check_new_msgs_and_flags(
-                            dont_notify=dont_notify
+                    if changed:
+                        imap_cmd.msg_set_as_set = self.msg_set_to_msg_seq_set(
+                            imap_cmd.msg_set, imap_cmd.uid_command
                         )
-                    tasks.append(imap_cmd)
-                    imap_cmd.ready.set()
 
-                    # Block until this executing task is marked completed.
-                    #
-                    while tasks:
-                        await asyncio.sleep(0)
-                        tasks = [x for x in tasks if not x.completed]
-                    continue
-
-                # Otherwise, let the non-conflicting task start immediately.
-                #
-                tasks.append(imap_cmd)
+                self.executing_tasks.append(imap_cmd)
                 imap_cmd.ready.set()
 
             except asyncio.CancelledError:
@@ -607,6 +893,9 @@ class Mailbox:
         If `full_search` is True we search from both ends until we have either
         found a foreign message or we have searched all messages.
 
+        Also if `self.full_search` is True it will also do a full search (and
+        set self.full_search to False)
+
         We return the MH msg key for the first foreign message we find,
         otherwise return None.
 
@@ -617,7 +906,7 @@ class Mailbox:
         # for the first foreign key. The most common occurrence is at the end
         # of the mailbox so that is the default search.
         #
-        if full_search:
+        if full_search or self.full_search:
             for msg_key in self.msg_keys:
                 uid_vv, uid = await self.get_uid_from_msg(msg_key, cache=False)
 
@@ -627,6 +916,7 @@ class Mailbox:
                 if uid_vv != self.uid_vv:
                     return msg_key
 
+            self.full_search = False
             return None
 
         # Go through the list of msg_keys in reverse order. Preserve the
@@ -652,8 +942,10 @@ class Mailbox:
     ##################################################################
     #
     async def check_new_msgs_and_flags(
-        self, dont_notify: Optional["Authenticated"] = None, force: bool = False
-    ):
+        self,
+        dont_notify: Optional["Authenticated"] = None,
+        optional: bool = True,
+    ) -> bool:
         """
         This method checks the folder for new messages and updated
         sequences.  It is only called between by the mailbox management task
@@ -708,7 +1000,7 @@ class Mailbox:
                 self.server.mailbox, self.name
             )
             await self.commit_to_db()
-            return
+            return False
 
         # Get the mtime of the folder at the start so when we need to check to
         #
@@ -720,11 +1012,15 @@ class Mailbox:
         # mtime for the mailbox then we can assume nothing has touched it and
         # return immediately.
         #
-        # However if force is true, then we will do our scan regardless of the
-        # mtime.
+        # However if optional is False, then we will do our scan regardless of
+        # the mtime.
         #
-        if start_mtime <= self.mtime and not force:
-            return
+        if start_mtime <= self.mtime and self.optional_resync and optional:
+            return False
+
+        # We always reset `optional_resync` once we begin a non-optional resync
+        #
+        self.optional_resync = True
 
         # When we begin a resync where we know something has changed we always
         # update the in-memory list of the msg keys.
@@ -801,7 +1097,8 @@ class Mailbox:
         # And see if the folder is getting kinda 'gappy' with spaces
         # between message keys. If it is, pack it.
         #
-        await self._pack_if_necessary()
+        if self.allow_pack:
+            await self._pack_if_necessary()
 
         # Update counts and commit state of the mailbox to the db.
         #
@@ -820,6 +1117,7 @@ class Mailbox:
             self.num_msgs,
             self.num_recent,
         )
+        return True
 
     ##################################################################
     #
@@ -1315,6 +1613,7 @@ class Mailbox:
 
         if num_msgs / self.msg_keys[-1] > self.folder_ratio_pack_limit:
             return
+
         logger.debug(
             "Packing mailbox '%s', num msgs: %d, max msg key: %d",
             self.name,
@@ -2080,15 +2379,10 @@ class Mailbox:
         # NOTE: '\' is not a permitted character in an MH sequence name so
         #       we translate "Recent" to '\Recent'
         #
-        # XXX We just did a resync.. we should be able to use `self.sequences`
-        #     right? we are in a read lock, nothing else should have changed
-        #     these..
-        #
-        seq = await self.mailbox.aget_sequences()
         push_data = []
         push_data.append(f"* {len(self.msg_keys)} EXISTS\r\n")
-        push_data.append(f"* {len(seq['Recent'])} RECENT\r\n")
-        if self.sequences["unseen"]:
+        push_data.append(f"* {len(self.sequences.get('Recent',[]))} RECENT\r\n")
+        if self.sequences.get("unseen", []):
             # IMAP message sequence # of the first message that is unseen.
             # Convert from MH msg key to IMAP message sequence number
             first_unseen = self.sequences["unseen"][0]
@@ -2158,8 +2452,6 @@ class Mailbox:
         - `flags`: A list of flags to set on this message
         - `date_time`: The internal date on this message
         """
-        assert self.lock.this_task_has_read_lock()  # XXX remove when confident
-
         flags = [] if flags is None else flags
         for flag in flags:
             # We need to translate some flags in to the equivalent MH mailbox
@@ -2172,7 +2464,7 @@ class Mailbox:
         # flag
         #
         msg.add_sequence("Recent")
-        async with self.mailbox.lock_folder(), self.lock.write_lock():
+        async with self.mailbox.lock_folder():
             # NOTE: This updates the .mh_sequences folder
             #
             key = await self.mailbox.aadd(msg)
@@ -2184,10 +2476,13 @@ class Mailbox:
                 mtime = date_time.timestamp()
                 await utime(mbox_msg_path(self.mailbox, key), (mtime, mtime))
 
-        # We need to resync this mailbox so that we can get the UID of the
-        # newly added message. This should be quick.
-        #
-        await self.resync(optional=False)
+        self.optional_resync = False
+        self.allow_pack = False
+        try:
+            await self.check_new_msgs_and_flags()
+        finally:
+            self.allow_pack = True
+
         uid_vv, uid = await self.get_uid_from_msg(key)
         if uid is None:
             raise Bad(
@@ -2881,33 +3176,66 @@ class Mailbox:
             dst_mbox.task_queue.put_nowait((None, append_imap_cmd))
 
             try:
-                await append_imap_cmd.ready_and_okay(dst_mbox)
-                dst_uids = []
-                dst_msg_keys = []
-                for msg_path, sequences, mtime in copy_msgs:
-                    msg = await aread_message(msg_path)
-                    msg.set_sequences(sequences)
-                    msg_key = await dst_mbox.mailbox.aadd(msg)
-                    dst_msg_keys.append(msg_key)
-                    await utime(
-                        mbox_msg_path(dst_mbox.mailbox, msg_key),
-                        (mtime, mtime),
-                    )
+                async with append_imap_cmd.ready_and_okay(dst_mbox):
+                    dst_uids = []
+                    dst_msg_keys = []
+                    for msg_path, sequences, mtime in copy_msgs:
+                        msg = await aread_message(msg_path)
+                        msg.set_sequences(sequences)
+                        msg_key = await dst_mbox.mailbox.aadd(msg)
+                        dst_msg_keys.append(msg_key)
+                        await utime(
+                            mbox_msg_path(dst_mbox.mailbox, msg_key),
+                            (mtime, mtime),
+                        )
 
-                # Done copying messages to dest folder.. Resync to give
-                # all the messages proper uids for their new mailbox,
-                # update mailbox sequences, etc.
-                #
-                await dst_mbox.check_new_msgs_and_flags(force=True)
+                    # We are going to do a resync so we need to now wait for no
+                    # other tasks to be executing on this folder.
+                    #
+                    # NOTE: This dictates that APPEND is a conflicting command
+                    #       and no other command can run while it is running.
+                    #       This is because it needs to do the resync to get
+                    #       the UID's of the new messages.
+                    #
+                    wait_start = time.monotonic()
+                    while len(dst_mbox.executing_tasks) > 1:
+                        await asyncio.sleep(0)
+                        self.executing_tasks = [
+                            x
+                            for x in dst_mbox.executing_tasks
+                            if not x.completed
+                        ]
+                    duration = time.monotonic() - wait_start
+                    if duration > 0.1:
+                        imap_cmd_str = imap_cmd.qstr() if imap_cmd else "none"
+                        self.logger.debug(
+                            "IMAP Command '%s': On mailbox '%s', waited for "
+                            "%.3ds before we could begin resync",
+                            imap_cmd_str,
+                            dst_mbox.name,
+                            duration,
+                        )
 
-                # Now get the uid's for all the newly copied messages.
-                # NOTE: Since we added the messages in the same order
-                # they were copied we know that our src_uids and
-                # dst_uids refer to the correct messages.
-                #
-                for k in dst_msg_keys:
-                    uid_vv, uid = await dst_mbox.get_uid_from_msg(k)
-                    dst_uids.append(uid)
+                    # Done copying messages to dest folder.. Resync to give all
+                    # the messages proper uids for their new mailbox, update
+                    # mailbox sequences, etc. Do not allow packing during
+                    # resync so that our msg keys remain valid.
+                    #
+                    try:
+                        dst_mbox.allow_pack = False
+                        dst_mbox.optional_resync = False
+                        await dst_mbox.check_new_msgs_and_flags()
+                    finally:
+                        dst_mbox.allow_pack = True
+
+                    # Now get the uid's for all the newly copied messages.
+                    # NOTE: Since we added the messages in the same order
+                    # they were copied we know that our src_uids and
+                    # dst_uids refer to the correct messages.
+                    #
+                    for k in dst_msg_keys:
+                        uid_vv, uid = await dst_mbox.get_uid_from_msg(k)
+                        dst_uids.append(uid)
             finally:
                 append_imap_cmd.completed = True
         return src_uids, dst_uids
@@ -3077,7 +3405,7 @@ class Mailbox:
         mbox.mgmt_task.cancel()
         try:
             while True:
-                imap_cmd = mbox.task_queue.get_nowait()
+                client, imap_cmd = mbox.task_queue.get_nowait()
                 imap_cmd.ready.set()
         except asyncio.QueueEmpty:
             pass
@@ -3339,40 +3667,34 @@ async def _helper_rename_folder(mbox: Mailbox, new_name: str):
     old_dir = mbox_msg_path(srvr.mailbox, old_name)
     new_dir = mbox_msg_path(srvr.mailbox, new_name)
 
-    async with mbox.lock.read_lock():
-        await aiofiles.os.symlink(old_dir, new_dir)
+    await aiofiles.os.symlink(old_dir, new_dir)
 
-        # Get all the mailboxes we have to rename (this mbox may have children)
+    # Get all the mailboxes we have to rename (this mbox may have children)
+    #
+    to_change = {}
+    async for mbox_old_name, mbox_id in srvr.db.query(
+        "SELECT name,id FROM mailboxes WHERE name=? OR name LIKE ?",
+        (old_name, f"{old_name}/%"),
+    ):
+        mbox_new_name = new_name + mbox_old_name[len(old_name) :]
+        to_change[mbox_old_name] = (mbox_new_name, mbox_id)
+
+    for old, (new_mbox_name, old_id) in to_change.items():
+        # If this is the mbox we were passed in, we already have a read
+        # lock so we do not need to acquire it.
         #
-        to_change = {}
-        async for mbox_old_name, mbox_id in srvr.db.query(
-            "SELECT name,id FROM mailboxes WHERE name=? OR name LIKE ?",
-            (old_name, f"{old_name}/%"),
-        ):
-            mbox_new_name = new_name + mbox_old_name[len(old_name) :]
-            to_change[mbox_old_name] = (mbox_new_name, mbox_id)
+        old_mbox = await srvr.get_mailbox(old, expiry=10)
+        if old_mbox.name == mbox.name:
+            await _do_rename_folder(old_mbox, old_id, new_mbox_name)
+        else:
+            await _do_rename_folder(old_mbox, old_id, new_mbox_name)
 
-        for old, (new_mbox_name, old_id) in to_change.items():
-            # If this is the mbox we were passed in, we already have a read
-            # lock so we do not need to acquire it.
-            #
-            old_mbox = await srvr.get_mailbox(old, expiry=10)
-            if old_mbox.name == mbox.name:
-                async with old_mbox.lock.write_lock():
-                    await _do_rename_folder(old_mbox, old_id, new_mbox_name)
-            else:
-                async with (
-                    old_mbox.lock.read_lock(),
-                    old_mbox.lock.write_lock(),
-                ):
-                    await _do_rename_folder(old_mbox, old_id, new_mbox_name)
+    await srvr.db.commit()
 
-        await srvr.db.commit()
-
-        # and now we remove the symlink and rename the old dir to the new dir
-        #
-        await aiofiles.os.remove(new_dir)
-        await aiofiles.os.rename(old_dir, new_dir)
+    # and now we remove the symlink and rename the old dir to the new dir
+    #
+    await aiofiles.os.remove(new_dir)
+    await aiofiles.os.rename(old_dir, new_dir)
 
     # If this mailbox we just renamed had a parent, that parent mailbox might
     # no longer have any children after this rename, so we have to update its
@@ -3381,9 +3703,8 @@ async def _helper_rename_folder(mbox: Mailbox, new_name: str):
     old_p_name = os.path.dirname(old_name)
     if old_p_name != "":
         m = await srvr.get_mailbox(old_p_name, expiry=10)
-        async with m.lock.read_lock(), m.lock.write_lock():
-            await m.check_set_haschildren_attr()
-            await m.commit_to_db()
+        await m.check_set_haschildren_attr()
+        await m.commit_to_db()
 
     # See if the mailbox under its new name has a parent and if it does update
     # that parent's children flags.
@@ -3391,9 +3712,8 @@ async def _helper_rename_folder(mbox: Mailbox, new_name: str):
     new_p_name = os.path.dirname(new_name)
     if new_p_name != "":
         m = srvr.get_mailbox(new_p_name, expiry=0)
-        async with m.lock.read_lock(), m.lock.write_lock():
-            await m.check_set_haschildren_attr()
-            await m.commit_to_db()
+        await m.check_set_haschildren_attr()
+        await m.commit_to_db()
 
 
 ####################################################################
@@ -3420,38 +3740,46 @@ async def _helper_rename_inbox(mbox: Mailbox, new_name: str):
     # NOTE: Message flags are preserved.
     #
     new_mbox = await server.get_mailbox(new_name)
+    uids = []
 
-    # NOTE: We are nesting locks of different mailboxes. Normally this would be
-    #       a bad thing to do but it should be okay here because the dest
-    #       mailbox is newly created and likely has nothing else poking it.
+    for key in await mbox.mailbox.akeys():
+        try:
+            msg = await mbox.mailbox.aget_message(key)
+        except KeyError:
+            continue
+
+        # Replace the asimap uid since this is a new folder.
+        #
+        uids.append(new_mbox.next_uid)
+        uid = f"{new_mbox.uid_vv:010d}.{new_mbox.next_uid:010d}"
+        new_mbox.next_uid += 1
+        del msg["X-asimapd-uid"]
+        msg["X-asimapd-uid"] = uid
+        await new_mbox.mailbox.aadd(msg)
+        try:
+            await mbox.mailbox.aremove(key)
+        except KeyError:
+            pass
+
+    new_mbox.uids = uids
+    new_mbox.sequences = await new_mbox.mailbox.aget_sequences()
+    new_mbox.msg_keys = await new_mbox.mailbox.akeys()
+    new_mbox.optional_resync = False
+    new_mbox.full_search = False
+    await new_mbox.commit_to_db()
+
+    mbox.optional_resync = False
+    mbox.sequences = await mbox.mailbox.aget_sequences()
+
+    # We need to send EXPUNGES to all the other clients
     #
-    async with mbox.mailbox.lock_folder():
-        async with mbox.lock.read_lock(), mbox.lock.write_lock():
-            async with new_mbox.lock.read_lock(), new_mbox.lock.write_lock():
-                for key in await mbox.mailbox.akeys():
-                    try:
-                        msg = await mbox.mailbox.aget_message(key)
-                    except KeyError:
-                        continue
-
-                    # Replace the asimap uid since this is a new folder.
-                    #
-                    uid = f"{new_mbox.uid_vv:010d}.{new_mbox.next_uid:010d}"
-                    new_mbox.next_uid += 1
-                    del msg["X-asimapd-uid"]
-                    msg["X-asimapd-uid"] = uid
-                    await new_mbox.mailbox.aadd(msg)
-                    try:
-                        await mbox.mailbox.aremove(key)
-                    except KeyError:
-                        pass
-            new_mbox.sequences = await new_mbox.mailbox.aget_sequences()
-            await new_mbox.commit_to_db()
-
-    async with mbox.lock.read_lock():
-        await mbox.resync(force=True)
-    async with new_mbox.lock.read_lock():
-        await new_mbox.resync(force=True)
+    notifications = []
+    for msg_seq_num in range(len(mbox.msg_keys), 0, -1):
+        notifications.append(f"* {msg_seq_num} EXPUNGE\r\n")
+    await mbox._dispatch_or_pend_notifications(notifications)
+    mbox.msg_keys = []
+    mbox.uids = []
+    await mbox.commit_to_db()
 
 
 ####################################################################

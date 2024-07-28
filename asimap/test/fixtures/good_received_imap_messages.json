@@ -180,6 +180,14 @@
     "A654 FETCH 2:4 (BODY[TEXT])"
   ],
   [
+    "A654 FETCH 2:4 BODY.PEEK[HEADER]\r\n",
+    "A654 FETCH 2:4 (BODY.PEEK[HEADER])"
+  ],
+  [
+    "A654 FETCH 2:4 BODY.PEEK[TEXT]\r\n",
+    "A654 FETCH 2:4 (BODY.PEEK[TEXT])"
+  ],
+  [
     "A654 FETCH 2:4 BODY[1]\r\n",
     "A654 FETCH 2:4 (BODY[1])"
   ],
