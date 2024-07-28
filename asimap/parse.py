@@ -181,11 +181,9 @@ class ParseFetchAtt(StrEnum):
 # We know that a fetch with peek = False can change the mailbox (the flags)
 # but we are going to let that happen for now.
 #
-# NOTE: APPEND must conflict because a COPY from another mbox does an APPEND on
-#       the dest mailbox, and a resync, to get the new message uid's. Which is
-#       outside of the mbox.management_task() so to make sure state is
-#       consistent for all executing tasks, we require that APPEND operate by
-#       itself.
+# NOTE: Conflicting commands may also do mailbox resync's,which they can only
+#       do since they are the sole task executing against a mailbox.
+#       APPEND, and RENAME take advantage of this.
 #
 # CHECK - forces a resync and commit to db
 # CLOSE - may cause an expunge
@@ -666,7 +664,7 @@ class IMAPClientCommand:
                 # If any of the fetch_atts are BODY (no peek) then set
                 # self.fetch_peek = False.
                 #
-                self.fetch_peek = all(
+                self.fetch_peek = not any(
                     x.attribute == FetchOp.BODY and not x.peek
                     for x in self.fetch_atts
                 )
@@ -1914,7 +1912,7 @@ class IMAPClientCommand:
 def conflicting_cmd(
     imap_cmd: IMAPClientCommand, tasks: List[IMAPClientCommand]
 ) -> bool:
-    """
+    r"""
     Indicates whether the IMAP Command is one that would conflict with any
     of the other IMAP Commands currently executing on a mailbox.
 

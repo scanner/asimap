@@ -7,7 +7,8 @@
 """
 Test the asimap IMAP message parser.
 """
-from ..parse import CONFLICTING_COMMANDS, IMAPClientCommand, sole_access_cmd
+from ..fetch import FetchOp
+from ..parse import IMAPClientCommand
 
 
 ####################################################################
@@ -25,26 +26,41 @@ def test_parse_good_messages(good_received_imap_messages):
 
 ####################################################################
 #
-def test_sole_access_cmd(good_received_imap_messages):
-    for msg, _ in good_received_imap_messages:
-        result = False
-        if "PEEK" in msg:
-            result = True
-        for cmd in CONFLICTING_COMMANDS:
-            if cmd in msg:
-                result = True
-                break
-
-        p = IMAPClientCommand(msg)
-        p.parse()
-
-        assert result == sole_access_cmd(p)
-
-
-####################################################################
-#
-def test_fetch_peek():
+def test_fetch_peek(good_received_imap_messages):
     """
     Make sure that `fetch_peek` is set properly on FETCH commans
     """
-    assert False
+    for msg, result in good_received_imap_messages:
+        # Skip messages that are not FETCH
+        #
+        if "FETCH" not in msg:
+            continue
+        p = IMAPClientCommand(msg)
+        p.parse()
+
+        # If the message has the string BODY in it but not the string PEEK
+        # `fetch_peek` will be False. Otherwise it should be True.
+        #
+        # One exception that complicates this simple rule: a naked `BODY` fetch
+        # att as this is not `BODY` but `BODYSTRUCTURE` (and thus peek == True)
+        #
+        expected = True
+        if "BODY" in msg and "PEEK" not in msg:
+            expected = False
+            bs_found = False
+            b_found = False
+            for fetch_att in p.fetch_atts:
+                match fetch_att.attribute:
+                    case FetchOp.BODYSTRUCTURE:
+                        bs_found = True
+                    case FetchOp.BODY:
+                        if not fetch_att.peek:
+                            b_found = True
+
+            # If we found a bodystructure but no body without peek then we
+            # expect peek to be True.
+            #
+            if bs_found and not b_found:
+                expected = True
+
+        assert p.fetch_peek == expected
