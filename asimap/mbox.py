@@ -16,6 +16,7 @@ import shutil
 import stat
 import time
 from collections import defaultdict
+from copy import deepcopy
 from datetime import datetime
 from mailbox import FormatError, MHMessage, NoSuchMailboxError, NotEmptyError
 from pathlib import Path
@@ -2534,18 +2535,21 @@ class Mailbox:
         to_delete = sorted(msg_keys_to_delete, reverse=True)
 
         for msg_key in to_delete:
-            # Remove the message from the folder.. and also remove it from
-            # our uids to message index mapping. (NOTE: 'which' is in IMAP
-            # message sequence order, so its actual position in the array
-            # is one less.
+            # Remove the message from the folder.. and also remove it from our
+            # uids to message index mapping. NOTE: To convert which to the IMAP
+            # message sequence order we must increment it by one (because they
+            # are 1-based)
             #
-            # Convert msg_key to IMAP seq num
+            # NOTE: num_recent and num_msgs will be updated on the next
+            #       resync. Since the expunge must operate alone that means a
+            #       resync will happen before the next IMAP command begins
+            #       executing.
             #
-            which = self.msg_keys.index(msg_key) + 1
+            which = self.msg_keys.index(msg_key)
             self.msg_keys.remove(msg_key)
-            self.uids.remove(self.uids[which - 1])
+            self.uids.remove(self.uids[which])
             await self.mailbox.aremove(msg_key)
-            expunge_msg = f"* {which} EXPUNGE\r\n"
+            expunge_msg = f"* {which+1} EXPUNGE\r\n"
             await self._dispatch_or_pend_notifications([expunge_msg])
 
         async with self.mailbox.lock_folder():
@@ -2590,7 +2594,7 @@ class Mailbox:
             return []
 
         results: List[int] = []
-        seq_max = len(self.num_msgs)
+        seq_max = self.num_msgs
         uid_max = self.uids[-1]
 
         # Go through the messages one by one and pass them to the search
@@ -2768,15 +2772,19 @@ class Mailbox:
             # A FETCH BODY with no peek means we have to send FETCH messages to
             # all other clients (that do not have dont_notify set)
             #
+            # NOTE: The mailbox management task should have made sure no other
+            #       imap command was executing on the message at least for the
+            #       unseen sequence.
+            #
             if no_longer_unseen_msgs or no_longer_recent_msgs:
+                seqs = deepcopy(self.sequences)
+                for msg_key in no_longer_recent_msgs:
+                    seqs["Recent"].remove(msg_key)
+                for msg_key in no_longer_unseen_msgs:
+                    seqs["unseen"].remove(msg_key)
+                    if msg_key not in self.sequences["Seen"]:
+                        seqs["Seen"].append(msg_key)
                 async with self.mh_sequences_lock, self.mailbox.lock_folder():
-                    seqs = await self.mailbox.aget_sequences()
-                    for msg_key in no_longer_recent_msgs:
-                        seqs["Recent"].remove(msg_key)
-                    for msg_key in no_longer_unseen_msgs:
-                        seqs["unseen"].remove(msg_key)
-                        if msg_key not in self.sequences["Seen"]:
-                            seqs["Seen"].append(msg_key)
                     await self.mailbox.aset_sequences(seqs)
                 await self._compute_and_publish_fetches(seqs)
                 self.sequences = seqs
@@ -2835,7 +2843,7 @@ class Mailbox:
     #
     async def store(
         self,
-        msg_set: MsgSet,
+        msg_set: List[int],
         action: StoreAction,
         flags: List[str],
         uid_cmd: bool = False,
@@ -2844,12 +2852,12 @@ class Mailbox:
         Update the flags (sequences) of the messages in msg_set.
 
         Arguments:
-        - `msg_set`: The set of messages to modify the flags on
+        - `msg_set`: The set of messages to modify the flags on as
+                     IMAP message sequence numbers
         - `action`: one of REMOVE_FLAGS, ADD_FLAGS, or REPLACE_FLAGS
         - `flags`: The flags to add/remove/replace
         - `uid_cmd`: Used to determine if this is a uid command or not
         """
-        assert self.lock.this_task_has_read_lock()  # XXX remove when confident
 
         if r"\Recent" in flags:
             raise No(r"You can not add or remove the '\Recent' flag")
@@ -2857,90 +2865,46 @@ class Mailbox:
         if action not in StoreAction:
             raise Bad(f"'{action}' is an invalid STORE action")
 
+        # Build a set of msg keys that are just the messages we want to
+        # operate on.
+        #
+        msg_keys = [self.msg_keys[x - 1] for x in msg_set]
+
+        # Convert the flags to MH sequence names..
+        #
+        flags = [flag_to_seq(x) for x in flags]
+        store_start = time.time()
+
+        seqs = deepcopy(self.sequences)
+        for key in msg_keys:
+            msg = await self.get_and_cache_msg(key)
+            # XXX We should make sure that the message's sequences
+            #     match what we loaded above just in case it was a
+            #     cached message and its sequence info was not updated.
+            match action:
+                case StoreAction.ADD_FLAGS | StoreAction.REMOVE_FLAGS:
+                    for flag in flags:
+                        # Make sure a sequence exists for every flag
+                        # (even if removing flags)
+                        # XXX seqs is defaultdict, do not need this
+                        if flag not in seqs:
+                            seqs[flag] = []
+                        match action:
+                            case StoreAction.ADD_FLAGS:
+                                _help_add_flag(key, seqs, msg, flag)
+                            case StoreAction.REMOVE_FLAGS:
+                                _help_remove_flag(key, seqs, msg, flag)
+                case StoreAction.REPLACE_FLAGS:
+                    _help_replace_flags(key, seqs, msg, flags)
+        await self._compute_and_publish_fetches(
+            seqs, None, publish_uids=uid_cmd
+        )
         async with self.mailbox.lock_folder():
-            # Get the list of message keys that msg_set indicates.
-            #
-            all_msg_keys = await self.mailbox.akeys()
-            seq_max = len(all_msg_keys)
-
-            # Before we do a store we do a resync to make sure that we have
-            # attached uid's to all of our messages and various counts are up
-            # to sync. But we do it with notify turned off because we can not
-            # send any conflicting messages to this client (other clients that
-            # are idling do get any updates though.)
-            #
-            # NOTE: This is after we do the folder lock.
-            #
-            await self.resync(notify=False)
-
-            if uid_cmd:
-                # If we are doing a 'UID FETCH' command we need to use the max
-                # uid for the sequence max.
-                #
-                msg_key = all_msg_keys[-1]
-                uid_vv, uid_max = await self.get_uid_from_msg(msg_key)
-
-                if uid_max is None:
-                    self.logger.error(
-                        "mbox: '%s', message key %d has no uid",
-                        self.name,
-                        msg_key,
-                    )
-                    raise MailboxInconsistency(
-                        f"Mailbox {self.name}, msg key {msg_key} has no uid"
-                    )
-
-                uid_list = sequence_set_to_list(msg_set, uid_max, uid_cmd)
-
-                # We want to convert this list of UID's in to message indices
-                # So for every uid we we got out of the msg_set we look up its
-                # index in self.uids and from that construct the msg_idxs
-                # list. Missing UID's are fine. They just do not get added to
-                # the list.
-                #
-                msg_idxs = []
-                for uid in uid_list:
-                    if uid in self.uids:
-                        mi = self.uids.index(uid) + 1  # msg keys are 1-based
-                        msg_idxs.append(mi)
-
-            else:
-                msg_idxs = sequence_set_to_list(msg_set, seq_max)
-
-            # Build a set of msg keys that are just the messages we want to
-            # operate on.
-            #
-            msg_keys = [all_msg_keys[x - 1] for x in msg_idxs]
-
-            # Convert the flags to MH sequence names..
-            #
-            flags = [flag_to_seq(x) for x in flags]
-            store_start = time.time()
-
-            async with self.lock.write_lock():
-                seqs = await self.mailbox.aget_sequences()
-                for key in msg_keys:
-                    msg = await self.get_and_cache_msg(key)
-                    # XXX We should make sure that the message's sequences
-                    #     match what we loaded above just in case it was a
-                    #     cached message and its sequence info was not updated.
-                    match action:
-                        case StoreAction.ADD_FLAGS | StoreAction.REMOVE_FLAGS:
-                            for flag in flags:
-                                # Make sure a sequence exists for every flag
-                                # (even if removing flags)
-                                # XXX seqs is defaultdict, do not need this
-                                if flag not in seqs:
-                                    seqs[flag] = []
-                                match action:
-                                    case StoreAction.ADD_FLAGS:
-                                        _help_add_flag(key, seqs, msg, flag)
-                                    case StoreAction.REMOVE_FLAGS:
-                                        _help_remove_flag(key, seqs, msg, flag)
-                        case StoreAction.REPLACE_FLAGS:
-                            _help_replace_flags(key, seqs, msg, flags)
-                await self.mailbox.aset_sequences(seqs)
-        logger.debug("Completed, took %.3f seconds", time.time() - store_start)
+            self.sequences = seqs
+            await self.mailbox.aset_sequences(seqs)
+        self.logger.debug(
+            "Completed, took %.3f seconds", time.time() - store_start
+        )
 
     ##################################################################
     #

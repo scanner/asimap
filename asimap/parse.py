@@ -381,6 +381,10 @@ class IMAPClientCommand:
         self.msg_set: MsgSet = []
         self.fetch_atts: List[FetchAtt] = []
 
+        # If we are doing a `STORE.SILENT` command then `silent` is True
+        #
+        self.silent = False
+
         # `fetch_peek` is set to False if this is a FETCH command and any of
         # the fetch atts are BODY (not BODY.PEEK). This helpful information
         # when trying to determine if IMAP Commands would conflict when

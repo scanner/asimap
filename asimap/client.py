@@ -1019,12 +1019,6 @@ class Authenticated(BaseClientHandler):
         if self.state != ClientState.SELECTED:
             raise No("Client must be in the selected state")
 
-        # If there are commands pending in the queue this gets put on the queue
-        # waiting for those to be finished before processing.
-        #
-        # if not self.process_or_queue(cmd):
-        #     return False
-
         # If self.mbox is None then this mailbox was likely deleted while this
         # user had it selected. In that case we disconnect the user and let
         # them reconnect and relearn mailbox state.
@@ -1038,12 +1032,13 @@ class Authenticated(BaseClientHandler):
         # and receive the pending expunges. Unless this is a UID command. It is
         # okay to send pending expunges during the operations of a UID SEARCH.
         #
+        if self.pending_expunges():
+            if cmd.uid_command:
+                self.send_pending_notifications()
+            else:
+                raise No("There are pending untagged responses")
+
         async with cmd.ready_and_okay(self, self.mbox):
-            if self.pending_expunges():
-                if cmd.uid_command:
-                    self.send_pending_notifications()
-                else:
-                    raise No("There are pending untagged responses")
             try:
                 self.dont_notify = True
                 results = await self.mbox.search(
@@ -1053,9 +1048,10 @@ class Authenticated(BaseClientHandler):
                     f"* SEARCH {' '.join(str(x) for x in results)}\r\n"
                 )
             except MailboxInconsistency as e:
+                self.optional_resync = False
+                self.full_search = True
                 self.server.msg_cache.clear_mbox(self.mbox.name)
                 logger.warning("Mailbox %s: %s", self.mbox.name, str(e))
-                await self.mbox.resync(optional=False)
             finally:
                 self.dont_notify = False
 
@@ -1151,73 +1147,72 @@ class Authenticated(BaseClientHandler):
             self.unceremonious_bye("Your selected mailbox no longer exists")
             return
 
-        async with (
-            self.mbox.lock.read_lock(),
-            self.mbox.mailbox.lock_folder(),
-        ):
-            # If this client has pending EXPUNGE messages then we return a
-            # tagged No response.. the client should see this and do a NOOP or
-            # such and receive the pending expunges.  Unless this is a UID
-            # command. It is okay to send pending expunges during the
-            # operations of a UID FETCH.
-            #
-            await self.mbox.resync()
-            if self.pending_expunges():
-                if cmd.uid_command:
-                    self.send_pending_notifications()
-                else:
-                    raise No("There are pending EXPUNGEs.")
+        # If this client has pending EXPUNGE messages then we return a
+        # tagged No response.. the client should see this and do a NOOP or
+        # such and receive the pending expunges.  Unless this is a UID
+        # command. It is okay to send pending expunges during the
+        # operations of a UID FETCH.
+        #
+        if self.pending_expunges():
+            if cmd.uid_command:
+                self.send_pending_notifications()
             else:
-                await self.send_pending_notifications()
+                raise No("There are pending EXPUNGEs.")
+        else:
+            await self.send_pending_notifications()
 
-            # We do not issue any messages to the client here. This is done
-            # automatically when 'resync' is called because resync will examine
-            # the in-memory copy of the sequences with what is on disk and if
-            # there are differences issue FETCH messages for each message with
-            # different flags.
+        # We do not issue any messages to the client here. This is done
+        # automatically when 'resync' is called because resync will examine
+        # the in-memory copy of the sequences with what is on disk and if
+        # there are differences issue FETCH messages for each message with
+        # different flags.
+        #
+        # Unless 'SILENT' was set in which case we still notify all other
+        # clients listening to this mailbox, but not this client.
+        #
+        # XXX We can use the 'client is idling' trick here for sending the
+        #     updated flags via fetches instead of the 'dont_notify=self'
+        #     stuff here.
+        #
+        try:
+            # If `silent` this this client is not notified of changes.
             #
-            # Unless 'SILENT' was set in which case we still notify all other
-            # clients listening to this mailbox, but not this client.
+            self.dont_notify = cmd.silent
+            msg_set = sorted(cmd.msg_set_as_set) if cmd.msg_set_as_set else []
+            await self.mbox.store(
+                msg_set,
+                cmd.store_action,
+                cmd.flag_list,
+                cmd.uid_command,
+            )
+        except MailboxInconsistency as exc:
+            # Force a resync of this mailbox. Likely something was fiddling
+            # messages directly (an nmh command run from the command line)
+            # and what the mbox thinks the internal state is does not
+            # actually match the state of the folder.
             #
-            # XXX We can use the 'client is idling' trick here for sending the
-            #     updated flags via fetches instead of the 'dont_notify=self'
-            #     stuff here.
-            #
+            self.optional_resync = False
+            self.full_search = True
+            self.server.msg_cache.clear_mbox(self.mbox.name)
+            raise Bad(f"Problem while storing: {exc}")
+        finally:
+            self.dont_notify = False
+
+        if cmd.silent:
+            await self.mbox.resync(
+                optional=False,
+                dont_notify=self,
+                publish_uids=cmd.uid_command,
+            )
+        else:
             try:
-                self.dont_notify = True
-                await self.mbox.store(
-                    cmd.msg_set,
-                    cmd.store_action,
-                    cmd.flag_list,
-                    cmd.uid_command,
-                )
-            except MailboxInconsistency as exc:
-                # Force a resync of this mailbox. Likely something was fiddling
-                # messages directly (an nmh command run from the command line)
-                # and what the mbox thinks the internal state is does not
-                # actually match the state of the folder.
-                #
-                self.server.msg_cache.clear_mbox(self.mbox.name)
-                await self.mbox.resync(force=True)
-                raise No(f"Problem while storing: {exc}")
-            finally:
-                self.dont_notify = False
-
-            if cmd.silent:
+                idling = self.idling
+                self.idling = True
                 await self.mbox.resync(
-                    optional=False,
-                    dont_notify=self,
-                    publish_uids=cmd.uid_command,
+                    optional=False, publish_uids=cmd.uid_command
                 )
-            else:
-                try:
-                    idling = self.idling
-                    self.idling = True
-                    await self.mbox.resync(
-                        optional=False, publish_uids=cmd.uid_command
-                    )
-                finally:
-                    self.idling = idling
+            finally:
+                self.idling = idling
 
     ##################################################################
     #
