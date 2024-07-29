@@ -1107,9 +1107,11 @@ class Authenticated(BaseClientHandler):
 
         self.fetch_while_pending_count = 0
         try:
+            msg_set = sorted(cmd.msg_set_as_set) if cmd.msg_set_as_set else []
+            self.dont_notify = True
             async with cmd.ready_and_okay(self, self.mbox):
                 async for idx, results in self.mbox.fetch(
-                    cmd.msg_set, cmd.fetch_atts, cmd.uid_command
+                    msg_set, cmd.fetch_atts, cmd.uid_command
                 ):
                     await self.client.push(
                         f"* {idx} FETCH ({' '.join(results)})\r\n"
@@ -1119,6 +1121,8 @@ class Authenticated(BaseClientHandler):
             self.mbox.full_search = True
             self.mbox.optional_resync = False
             raise Bad(f"Problem while fetching: {exc}")
+        finally:
+            self.dont_notify = False
 
     ##################################################################
     #
@@ -1180,6 +1184,7 @@ class Authenticated(BaseClientHandler):
             #     stuff here.
             #
             try:
+                self.dont_notify = True
                 await self.mbox.store(
                     cmd.msg_set,
                     cmd.store_action,
@@ -1195,6 +1200,8 @@ class Authenticated(BaseClientHandler):
                 self.server.msg_cache.clear_mbox(self.mbox.name)
                 await self.mbox.resync(force=True)
                 raise No(f"Problem while storing: {exc}")
+            finally:
+                self.dont_notify = False
 
             if cmd.silent:
                 await self.mbox.resync(

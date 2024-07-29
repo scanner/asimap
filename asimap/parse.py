@@ -437,6 +437,7 @@ class IMAPClientCommand:
             yield
         finally:
             self.completed = True
+            mbox.task_queue.task_done()
 
     ##################################################################
     #

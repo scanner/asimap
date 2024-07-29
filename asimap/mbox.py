@@ -15,7 +15,6 @@ import re
 import shutil
 import stat
 import time
-import traceback
 from collections import defaultdict
 from datetime import datetime
 from mailbox import FormatError, MHMessage, NoSuchMailboxError, NotEmptyError
@@ -39,7 +38,7 @@ from .constants import (
     seq_to_flag,
 )
 from .exceptions import Bad, MailboxInconsistency, No
-from .fetch import FetchAtt, FetchOp
+from .fetch import FetchAtt
 from .message_cache import MessageCache
 from .mh import (
     MH,
@@ -58,7 +57,6 @@ from .search import IMAPSearch, SearchContext
 from .utils import (
     UID_HDR,
     MsgSet,
-    UpgradeableReadWriteLock,
     find_header_in_binary_file,
     get_uidvv_uid,
     sequence_set_to_list,
@@ -227,28 +225,21 @@ class Mailbox:
         self.uids: List[int] = []
 
         self.subscribed = False
-        self.lock = UpgradeableReadWriteLock()
 
         # Time in seconds since the unix epoch when a resync was last tried.
         #
         self.last_resync = 0.0
 
-        # XXX I think I need to do away with this distinction. We can still
-        #     store sequences in the db, but the mbox code will not rely on
-        #     that. Every time we load the mbox we load the sequences from the
-        #     .mh_sequences file. every time we get get the file lock we
-        #     re-read the sequences. If we write it, we must write inside a
-        #     file lock.
+        # An in-memory copy of the .mh_sequences file.  Whenever it is changed
+        # in memory the file on disk is updated at the same time while a lock
+        # on the MH folder is held.
         #
-        # NOTE: It is important to note that self.sequences is the value of the
-        # sequences we stored in the db from the end of the last resync. As
-        # such they are useful for measuring what has changed in various
-        # sequences between resync() runs. NOT as a definitive set of what the
-        # current sequences in the mailbox are.
-        #
-        # These are basically updated at the end of each resync() cycle.
+        # The only time the .mh_sequences folder on disk is changed outside of
+        # our control is when new messages are added to a folder and the unseen
+        # sequence is updated.
         #
         self.sequences: Sequences = defaultdict(list)
+        self.mh_sequences_lock = asyncio.Lock()
 
         # You can not instantiate a mailbox that does not exist in the
         # underlying file system.
@@ -615,7 +606,13 @@ class Mailbox:
         """
         if msg_set is None:
             return None
-        msgs = sequence_set_to_list(msg_set, self.num_msgs, uid_cmd=from_uids)
+
+        if from_uids:
+            seq_max = self.uids[-1]
+        else:
+            seq_max = self.num_msgs
+
+        msgs = sequence_set_to_list(msg_set, seq_max, uid_cmd=from_uids)
 
         # The msg_set is in UID's and we need to convert that to msg sequence
         # numbers. The list `self.uids` is this mapping. If a UID is NOT in
@@ -624,6 +621,12 @@ class Mailbox:
         if from_uids:
             # NOTE: IMAP Message Sequence numbers start at 1. Our array starts
             # at 0.
+            #
+            # XXX self.uids.index(uid) is a nasty search. Maybe we should keep
+            #     a dict of uid's that may to imap message sequence numbers?
+            #     Granted that is one more thing to keep track of.
+            #     I guess we should consider timing this function.
+            #     Luckily we will be doing this only once per imap commmand
             #
             msgs = [
                 self.uids.index(uid) + 1 for uid in msgs if uid in self.uids
@@ -870,7 +873,7 @@ class Mailbox:
         for c in self.clients.values():
             # Skip over the client we are not going to send notifications to.
             #
-            if c == dont_notify:
+            if c == dont_notify or c.dont_notify:
                 continue
             if c.idling:
                 await c.client.push(*notifications)
@@ -1119,390 +1122,389 @@ class Mailbox:
         )
         return True
 
-    ##################################################################
-    #
-    async def resync(
-        self,
-        force: bool = False,
-        notify: bool = True,
-        only_notify: Optional["Authenticated"] = None,
-        dont_notify: Optional["Authenticated"] = None,
-        publish_uids: bool = False,
-        optional: bool = True,
-    ):
-        r"""
-        This will go through the mailbox on disk and make sure all of the
-        messages have proper uuid's, make sure we have a .mh_sequences file
-        and that it is up to date with what messages are in the 'seen'
-        sequence.
+    # ##################################################################
+    # #
+    # async def resync(
+    #     self,
+    #     force: bool = False,
+    #     notify: bool = True,
+    #     only_notify: Optional["Authenticated"] = None,
+    #     dont_notify: Optional["Authenticated"] = None,
+    #     publish_uids: bool = False,
+    #     optional: bool = True,
+    # ):
+    #     r"""
+    #     This will go through the mailbox on disk and make sure all of the
+    #     messages have proper uuid's, make sure we have a .mh_sequences file
+    #     and that it is up to date with what messages are in the 'seen'
+    #     sequence.
 
-        This is also what controls setting the '\Marked' and '\Unmarked' flags
-        on the mailbox as well as marking individual messages as '\Recent'
+    #     This is also what controls setting the '\Marked' and '\Unmarked' flags
+    #     on the mailbox as well as marking individual messages as '\Recent'
 
-        We have a '\Seen' flag and we derive this by seeing what messages are
-        in the unseen sequence.
+    #     We have a '\Seen' flag and we derive this by seeing what messages are
+    #     in the unseen sequence.
 
-        Since the definition of '\Recent' in rfc3501 is a bit vague on when the
-        \Recent flag is reset (when you select the folder they all get reset?
-        But then how do you find them? It makes little sense) I am going to
-        define a \Recent message as any message whose mtime is at least one
-        hour before the mtime of the folder.
+    #     Since the definition of '\Recent' in rfc3501 is a bit vague on when the
+    #     \Recent flag is reset (when you select the folder they all get reset?
+    #     But then how do you find them? It makes little sense) I am going to
+    #     define a \Recent message as any message whose mtime is at least one
+    #     hour before the mtime of the folder.
 
-        This way all new messages are marked '\Recent' and eventually as the
-        folder's mtime moves forward with new messages messages will lose their
-        '\Recent' flag.
+    #     This way all new messages are marked '\Recent' and eventually as the
+    #     folder's mtime moves forward with new messages messages will lose their
+    #     '\Recent' flag.
 
-        Any folder with unseen messages will be tagged with '\Marked.' That is
-        how we are going to treat that flag.
+    #     Any folder with unseen messages will be tagged with '\Marked.' That is
+    #     how we are going to treat that flag.
 
-        Calling this method will cause 'EXISTS' and 'RECENT' messages to be
-        sent to any clients attached to this mailbox if the mailbox has had
-        changes in the number of messages or the messages that were added to
-        it.
+    #     Calling this method will cause 'EXISTS' and 'RECENT' messages to be
+    #     sent to any clients attached to this mailbox if the mailbox has had
+    #     changes in the number of messages or the messages that were added to
+    #     it.
 
-        Arguments:
+    #     Arguments:
 
-        - `force`: If true we will do a complete resync even if the mtime of
-                   the folder is not greater than the mtime recorded in the
-                   mailbox object. Otherwise we will skip the 'check all
-                   messages for valid uids' step of the process. The theory is
-                   that if the mtime has not changed no new messages have been
-                   added or removed so there is no need to do a complete uid
-                   update.
+    #     - `force`: If true we will do a complete resync even if the mtime of
+    #                the folder is not greater than the mtime recorded in the
+    #                mailbox object. Otherwise we will skip the 'check all
+    #                messages for valid uids' step of the process. The theory is
+    #                that if the mtime has not changed no new messages have been
+    #                added or removed so there is no need to do a complete uid
+    #                update.
 
-        - `notify`: If this is False we will NOT send an EXISTS message when
-          we resync the mailbox. This is likely because the size of the mailbox
-          has shrunk in size due to an expunge and we are not allowed to send
-          EXISTS that reduce the number of messages in the mailbox. Those
-          clients that have not gotten the expungues should get them the next
-          time they do a command.
+    #     - `notify`: If this is False we will NOT send an EXISTS message when
+    #       we resync the mailbox. This is likely because the size of the mailbox
+    #       has shrunk in size due to an expunge and we are not allowed to send
+    #       EXISTS that reduce the number of messages in the mailbox. Those
+    #       clients that have not gotten the expungues should get them the next
+    #       time they do a command.
 
-        - `only_notify`: A client. If this is set then when we do our exists
-          updates we will ONLY sent exists/recent messages to the client passed
-          in via `only_notify` (and those clients in IDLE)
+    #     - `only_notify`: A client. If this is set then when we do our exists
+    #       updates we will ONLY sent exists/recent messages to the client passed
+    #       in via `only_notify` (and those clients in IDLE)
 
-        - `dont_notify`: A client. If this is set then if we issue
-          FETCH messages we will NOT include this client.
+    #     - `dont_notify`: A client. If this is set then if we issue
+    #       FETCH messages we will NOT include this client.
 
-        - `publish_uids`: If True when we issue FETCH messages for messages
-          with changed flags then we also include the message's UID. This is
-          likely triggered by a UID STORE command in which we must include the
-          UID. It is okay to send this to all clients because even if they did
-          not ask for the UID's they should be okay with getting that info.
+    #     - `publish_uids`: If True when we issue FETCH messages for messages
+    #       with changed flags then we also include the message's UID. This is
+    #       likely triggered by a UID STORE command in which we must include the
+    #       UID. It is okay to send this to all clients because even if they did
+    #       not ask for the UID's they should be okay with getting that info.
 
-        - `optional`: If this is True then this entire resync will be skipped
-          as a no-op if the mtime on the folder is NOT different than the mtime
-          in self.mtime. Watching the server do its thing almost all of the
-          resyncs could be skipped because the state on the folder had not
-          changed. This is made to be a flag because there are times when we
-          want a resync to happen even if the mtime has not changed. The result
-          of a STORE command that changes flags on a message and us needing to
-          send FETCH's to clients listening to this mailbox is an example of
-          this.
-        """
-        assert self.lock.this_task_has_read_lock()  # XXX remove when confident
-        # see if we need to do a full scan we have this value before anything
-        # we have done in this routine has a chance to modify it.
-        #
-        start_time = time.time()
-        self.last_resync = int(start_time)
+    #     - `optional`: If this is True then this entire resync will be skipped
+    #       as a no-op if the mtime on the folder is NOT different than the mtime
+    #       in self.mtime. Watching the server do its thing almost all of the
+    #       resyncs could be skipped because the state on the folder had not
+    #       changed. This is made to be a flag because there are times when we
+    #       want a resync to happen even if the mtime has not changed. The result
+    #       of a STORE command that changes flags on a message and us needing to
+    #       send FETCH's to clients listening to this mailbox is an example of
+    #       this.
+    #     """
+    #     # see if we need to do a full scan we have this value before anything
+    #     # we have done in this routine has a chance to modify it.
+    #     #
+    #     start_time = time.time()
+    #     self.last_resync = int(start_time)
 
-        # We do NOT resync mailboxes marked '\Noselect'. These mailboxes
-        # essentially do not exist as far as any IMAP client can really tell.
-        #
-        if r"\Noselect" in self.attributes:
-            # We get the write lock because we are updating the db.
-            async with self.lock.write_lock():
-                self.mtime = await self.get_actual_mtime(
-                    self.server.mailbox, self.name
-                )
-                await self.commit_to_db()
-            return
+    #     # We do NOT resync mailboxes marked '\Noselect'. These mailboxes
+    #     # essentially do not exist as far as any IMAP client can really tell.
+    #     #
+    #     if r"\Noselect" in self.attributes:
+    #         # We get the write lock because we are updating the db.
+    #         async with self.lock.write_lock():
+    #             self.mtime = await self.get_actual_mtime(
+    #                 self.server.mailbox, self.name
+    #             )
+    #             await self.commit_to_db()
+    #         return
 
-        # Get the mtime of the folder at the start so when we need to check to
-        #
-        start_mtime = await self.get_actual_mtime(
-            self.server.mailbox, self.name
-        )
+    #     # Get the mtime of the folder at the start so when we need to check to
+    #     #
+    #     start_mtime = await self.get_actual_mtime(
+    #         self.server.mailbox, self.name
+    #     )
 
-        # If `optional` is set (the default) and the mtime is the same as what
-        # is on disk then we can totally skip this resync run.
-        #
-        if force is False and optional is True and start_mtime <= self.mtime:
-            return
-        logger.debug(
-            "mailbox: %s, force: %s, optional: %s, start mtime: %d, self.mtime: %d",
-            self.name,
-            force,
-            optional,
-            start_mtime,
-            self.mtime,
-        )
-        if optional is False:
-            lines = list(traceback.format_stack(limit=2))
-            stack = lines[0].strip().replace("\n", ";")
-            logger.debug("mailbox: %s, stack: %s", self.name, stack)
+    #     # If `optional` is set (the default) and the mtime is the same as what
+    #     # is on disk then we can totally skip this resync run.
+    #     #
+    #     if force is False and optional is True and start_mtime <= self.mtime:
+    #         return
+    #     logger.debug(
+    #         "mailbox: %s, force: %s, optional: %s, start mtime: %d, self.mtime: %d",
+    #         self.name,
+    #         force,
+    #         optional,
+    #         start_mtime,
+    #         self.mtime,
+    #     )
+    #     if optional is False:
+    #         lines = list(traceback.format_stack(limit=2))
+    #         stack = lines[0].strip().replace("\n", ";")
+    #         logger.debug("mailbox: %s, stack: %s", self.name, stack)
 
-        async with self.mailbox.lock_folder(), self.lock.write_lock():
-            # Whenever we resync the mailbox we update the sequence for
-            # 'seen' based on 'seen' are all the messages that are NOT in
-            # the 'unseen' sequence.
-            #
-            msg_keys = await self.mailbox.akeys()
+    #     async with self.mailbox.lock_folder(), self.lock.write_lock():
+    #         # Whenever we resync the mailbox we update the sequence for
+    #         # 'seen' based on 'seen' are all the messages that are NOT in
+    #         # the 'unseen' sequence.
+    #         #
+    #         msg_keys = await self.mailbox.akeys()
 
-            # NOTE: This returns the current sequence info from .mh_sequces
-            #       (in addition to updating seen from unseen)
-            #
-            seq = await self._get_sequences_update_seen(msg_keys)
+    #         # NOTE: This returns the current sequence info from .mh_sequces
+    #         #       (in addition to updating seen from unseen)
+    #         #
+    #         seq = await self._get_sequences_update_seen(msg_keys)
 
-            # If the list of uids is empty but the list of messages is not then
-            # force a full resync of the mailbox.. likely this is just an
-            # initial data problem for when a `Mailbox` instance is first
-            # instantiated and does not require rewriting every message (but
-            # requires reading every message)
-            #
-            if not self.uids and msg_keys:
-                logger.debug(
-                    "mailbox: %s, len uids: %d, len msgs: %d, forcing resync",
-                    self.name,
-                    len(self.uids),
-                    len(msg_keys),
-                )
-                force = True
+    #         # If the list of uids is empty but the list of messages is not then
+    #         # force a full resync of the mailbox.. likely this is just an
+    #         # initial data problem for when a `Mailbox` instance is first
+    #         # instantiated and does not require rewriting every message (but
+    #         # requires reading every message)
+    #         #
+    #         if not self.uids and msg_keys:
+    #             logger.debug(
+    #                 "mailbox: %s, len uids: %d, len msgs: %d, forcing resync",
+    #                 self.name,
+    #                 len(self.uids),
+    #                 len(msg_keys),
+    #             )
+    #             force = True
 
-            # If the folder is NOT empty scan for messages that have been added
-            # to it by a third party and do not have UID's or the case where
-            # the folder's contents have been re-bobbled (eg: `sortm`) and the
-            # UID's are no longer in strictly ascending order.
-            #
-            found_uids = self.uids
-            start_idx = 0
-            if msg_keys:
-                # NOTE: We handle a special case where the db was reset.. if
-                #       the last message in the folder has a uid greater than
-                #       what is stored in the folder then set that uid +1 to be
-                #       the next_uid, and force a resync of the folder.
-                #
-                uid_vv, uid = await self.get_uid_from_msg(
-                    msg_keys[-1], cache=False
-                )
-                if (
-                    uid is not None
-                    and uid_vv is not None
-                    and uid_vv == self.uid_vv
-                    and uid >= self.next_uid
-                ):
-                    logger.warning(
-                        "Mailbox %s: last message uid: %d, next_uid: %d - "
-                        "mismatch forcing full resync",
-                        self.name,
-                        uid,
-                        self.next_uid,
-                    )
-                    self.next_uid = uid + 1
-                    force = True
+    #         # If the folder is NOT empty scan for messages that have been added
+    #         # to it by a third party and do not have UID's or the case where
+    #         # the folder's contents have been re-bobbled (eg: `sortm`) and the
+    #         # UID's are no longer in strictly ascending order.
+    #         #
+    #         found_uids = self.uids
+    #         start_idx = 0
+    #         if msg_keys:
+    #             # NOTE: We handle a special case where the db was reset.. if
+    #             #       the last message in the folder has a uid greater than
+    #             #       what is stored in the folder then set that uid +1 to be
+    #             #       the next_uid, and force a resync of the folder.
+    #             #
+    #             uid_vv, uid = await self.get_uid_from_msg(
+    #                 msg_keys[-1], cache=False
+    #             )
+    #             if (
+    #                 uid is not None
+    #                 and uid_vv is not None
+    #                 and uid_vv == self.uid_vv
+    #                 and uid >= self.next_uid
+    #             ):
+    #                 logger.warning(
+    #                     "Mailbox %s: last message uid: %d, next_uid: %d - "
+    #                     "mismatch forcing full resync",
+    #                     self.name,
+    #                     uid,
+    #                     self.next_uid,
+    #                 )
+    #                 self.next_uid = uid + 1
+    #                 force = True
 
-                # If the list of cached UID's is longer than the list of
-                # messages in the folder then something else besides us has
-                # removed messages from this folder (expunge properly keeps
-                # msgs and self.uid's in sync). In this case we do not know
-                # what messages have been removed so we force a full resync of
-                # the folder. This will get us the list of UIDs that are still
-                # in the folder and we can then diff this against the list of
-                # UIDs that _were_ in the folder and generate the appropriate
-                # EXPUNGE messages.
-                #
-                if len(msg_keys) < len(self.uids):
-                    logger.warning(
-                        "Mailbox %s: number of messages in folder (%d) "
-                        "is less than list of cached uids: %d. "
-                        "Forcing resync.",
-                        self.name,
-                        len(msg_keys),
-                        len(self.uids),
-                    )
-                    force = True
+    #             # If the list of cached UID's is longer than the list of
+    #             # messages in the folder then something else besides us has
+    #             # removed messages from this folder (expunge properly keeps
+    #             # msgs and self.uid's in sync). In this case we do not know
+    #             # what messages have been removed so we force a full resync of
+    #             # the folder. This will get us the list of UIDs that are still
+    #             # in the folder and we can then diff this against the list of
+    #             # UIDs that _were_ in the folder and generate the appropriate
+    #             # EXPUNGE messages.
+    #             #
+    #             if len(msg_keys) < len(self.uids):
+    #                 logger.warning(
+    #                     "Mailbox %s: number of messages in folder (%d) "
+    #                     "is less than list of cached uids: %d. "
+    #                     "Forcing resync.",
+    #                     self.name,
+    #                     len(msg_keys),
+    #                     len(self.uids),
+    #                 )
+    #                 force = True
 
-                if force:
-                    # If force is True then we scan every message in
-                    # the folder.  This also clears the cached
-                    # messages for this folder and insures that the
-                    # self.uid's array is properly filled.
-                    #
-                    logger.debug(
-                        "Mailbox %s: forced rescanning all %d messages",
-                        self.name,
-                        len(msg_keys),
-                    )
-                    self.server.msg_cache.clear_mbox(self.name)
-                    found_uids = await self._update_msg_uids(msg_keys, seq)
+    #             if force:
+    #                 # If force is True then we scan every message in
+    #                 # the folder.  This also clears the cached
+    #                 # messages for this folder and insures that the
+    #                 # self.uid's array is properly filled.
+    #                 #
+    #                 logger.debug(
+    #                     "Mailbox %s: forced rescanning all %d messages",
+    #                     self.name,
+    #                     len(msg_keys),
+    #                 )
+    #                 self.server.msg_cache.clear_mbox(self.name)
+    #                 found_uids = await self._update_msg_uids(msg_keys, seq)
 
-                    # Calculate what UID's were deleted and what order they
-                    # were deleted in and send expunges as necessary to all
-                    # connected clients.
-                    #
-                    await self.send_expunges(found_uids)
-                else:
-                    # Usually we ONLY need to rescan the new messages that have
-                    # been added to the folder.
-                    #
-                    # Scan forward through the mailbox to find the first
-                    # message with an mtime > the folder's mtime - 30sec. This
-                    # makes sure we check all messages that would have been
-                    # added to this folder since our last automatic resync
-                    # check.
-                    #
-                    # Scan back from the end of the mailbox until we find the
-                    # first message that has a uid_vv that matches the uid_vv
-                    # of our folder.
-                    #
-                    # Given these two references to a message choose the lower
-                    # of the two and scan from that point forward.
-                    #
-                    # async with asyncio.TaskGroup() as tg:
-                    #     first_new_task = tg.create_task(
-                    #         self._find_first_new_message(msg_keys, horizon=30)
-                    #     )
-                    #     first_wo_uid_task = tg.create_task(
-                    #         self._find_msg_without_uidvv(msg_keys)
-                    #     )
-                    # first_new_msg = first_new_task.result()
-                    # first_msg_wo_uid = first_wo_uid_task.result()
-                    first_new_msg = await self._find_first_new_message(
-                        msg_keys, horizon=30
-                    )
-                    first_msg_wo_uid = await self._find_msg_without_uidvv(
-                        msg_keys
-                    )
+    #                 # Calculate what UID's were deleted and what order they
+    #                 # were deleted in and send expunges as necessary to all
+    #                 # connected clients.
+    #                 #
+    #                 await self.send_expunges(found_uids)
+    #             else:
+    #                 # Usually we ONLY need to rescan the new messages that have
+    #                 # been added to the folder.
+    #                 #
+    #                 # Scan forward through the mailbox to find the first
+    #                 # message with an mtime > the folder's mtime - 30sec. This
+    #                 # makes sure we check all messages that would have been
+    #                 # added to this folder since our last automatic resync
+    #                 # check.
+    #                 #
+    #                 # Scan back from the end of the mailbox until we find the
+    #                 # first message that has a uid_vv that matches the uid_vv
+    #                 # of our folder.
+    #                 #
+    #                 # Given these two references to a message choose the lower
+    #                 # of the two and scan from that point forward.
+    #                 #
+    #                 # async with asyncio.TaskGroup() as tg:
+    #                 #     first_new_task = tg.create_task(
+    #                 #         self._find_first_new_message(msg_keys, horizon=30)
+    #                 #     )
+    #                 #     first_wo_uid_task = tg.create_task(
+    #                 #         self._find_msg_without_uidvv(msg_keys)
+    #                 #     )
+    #                 # first_new_msg = first_new_task.result()
+    #                 # first_msg_wo_uid = first_wo_uid_task.result()
+    #                 first_new_msg = await self._find_first_new_message(
+    #                     msg_keys, horizon=30
+    #                 )
+    #                 first_msg_wo_uid = await self._find_msg_without_uidvv(
+    #                     msg_keys
+    #                 )
 
-                    # If either of these is NOT None then we have some subset
-                    # of messages we need to scan. If both of these ARE None
-                    # then we have determined that there are no new messages to
-                    # deal with in the mailbox.
-                    #
-                    if first_new_msg or first_msg_wo_uid:
-                        logger.debug(
-                            "first new message: %s, first msg wo uid: %s",
-                            first_new_msg,
-                            first_msg_wo_uid,
-                        )
+    #                 # If either of these is NOT None then we have some subset
+    #                 # of messages we need to scan. If both of these ARE None
+    #                 # then we have determined that there are no new messages to
+    #                 # deal with in the mailbox.
+    #                 #
+    #                 if first_new_msg or first_msg_wo_uid:
+    #                     logger.debug(
+    #                         "first new message: %s, first msg wo uid: %s",
+    #                         first_new_msg,
+    #                         first_msg_wo_uid,
+    #                     )
 
-                        # Start at the lower of these two message keys.
-                        # 'start' is they MH message key. 'start_idx' index in
-                        # to the list of message keys for 'start'
-                        #
-                        start = min(
-                            x
-                            for x in [first_new_msg, first_msg_wo_uid]
-                            if x is not None
-                        )
-                        start_idx = msg_keys.index(start)
-                        logger.debug(
-                            "Mailbox %s: rescanning from %d to %d",
-                            self.name,
-                            start,
-                            msg_keys[-1],
-                        )
+    #                     # Start at the lower of these two message keys.
+    #                     # 'start' is they MH message key. 'start_idx' index in
+    #                     # to the list of message keys for 'start'
+    #                     #
+    #                     start = min(
+    #                         x
+    #                         for x in [first_new_msg, first_msg_wo_uid]
+    #                         if x is not None
+    #                     )
+    #                     start_idx = msg_keys.index(start)
+    #                     logger.debug(
+    #                         "Mailbox %s: rescanning from %d to %d",
+    #                         self.name,
+    #                         start,
+    #                         msg_keys[-1],
+    #                     )
 
-                        # Now make 'found_uids' be all the assumed known uid's
-                        # _before_ start_index, and all the now newly
-                        # discovered uid's at start_index to the end of the
-                        # list of messages.
-                        #
-                        found_uids = await self._update_msg_uids(
-                            msg_keys[start_idx:], seq
-                        )
-                        found_uids = self.uids[:start_idx] + found_uids
+    #                     # Now make 'found_uids' be all the assumed known uid's
+    #                     # _before_ start_index, and all the now newly
+    #                     # discovered uid's at start_index to the end of the
+    #                     # list of messages.
+    #                     #
+    #                     found_uids = await self._update_msg_uids(
+    #                         msg_keys[start_idx:], seq
+    #                     )
+    #                     found_uids = self.uids[:start_idx] + found_uids
 
-                        # Calculate what UID's were deleted and what order they
-                        # were deleted in and send expunges as necessary to all
-                        # connected clients.
-                        #
-                        await self.send_expunges(found_uids)
-            else:
-                # number of messages in the mailbox is zero.. make sure our
-                # list of uid's for this mailbox is also empty.
-                #
-                self.server.msg_cache.clear_mbox(self.name)
-                if self.uids:
-                    logger.info(
-                        "Mailbox %s: List of msgs is empty, but "
-                        "list of uid's was not. Emptying.",
-                        self.name,
-                    )
+    #                     # Calculate what UID's were deleted and what order they
+    #                     # were deleted in and send expunges as necessary to all
+    #                     # connected clients.
+    #                     #
+    #                     await self.send_expunges(found_uids)
+    #         else:
+    #             # number of messages in the mailbox is zero.. make sure our
+    #             # list of uid's for this mailbox is also empty.
+    #             #
+    #             self.server.msg_cache.clear_mbox(self.name)
+    #             if self.uids:
+    #                 logger.info(
+    #                     "Mailbox %s: List of msgs is empty, but "
+    #                     "list of uid's was not. Emptying.",
+    #                     self.name,
+    #                 )
 
-                    # Calculate what UID's were deleted and what order they
-                    # were deleted in and send expunges as necessary to all
-                    # connected clients.
-                    #
-                    await self.send_expunges([])
+    #                 # Calculate what UID's were deleted and what order they
+    #                 # were deleted in and send expunges as necessary to all
+    #                 # connected clients.
+    #                 #
+    #                 await self.send_expunges([])
 
-            # Before we finish if the number of messages in the folder or the
-            # number of messages in the Recent sequence is different than the
-            # last time we did a resync then this folder is interesting
-            # (\Marked) and we need to tell all clients listening to this
-            # folder about its new sizes.
-            #
-            num_recent = len(seq["Recent"])
-            num_msgs = len(msg_keys)
+    #         # Before we finish if the number of messages in the folder or the
+    #         # number of messages in the Recent sequence is different than the
+    #         # last time we did a resync then this folder is interesting
+    #         # (\Marked) and we need to tell all clients listening to this
+    #         # folder about its new sizes.
+    #         #
+    #         num_recent = len(seq["Recent"])
+    #         num_msgs = len(msg_keys)
 
-            # NOTE: Only send EXISTS messages if notify is True and the client
-            # is not idling and the client is not the one passed in via
-            # 'only_notify'
-            #
-            if num_msgs != self.num_msgs or num_recent != self.num_recent:
-                notifications = []
-                if num_msgs != self.num_msgs:
-                    notifications.append(f"* {num_msgs} EXISTS\r\n")
-                if num_recent != self.num_recent:
-                    notifications.append(f"* {num_recent} RECENT\r\n")
-                await self._dispatch_or_pend_notifications(
-                    notifications, dont_notify=dont_notify
-                )
+    #         # NOTE: Only send EXISTS messages if notify is True and the client
+    #         # is not idling and the client is not the one passed in via
+    #         # 'only_notify'
+    #         #
+    #         if num_msgs != self.num_msgs or num_recent != self.num_recent:
+    #             notifications = []
+    #             if num_msgs != self.num_msgs:
+    #                 notifications.append(f"* {num_msgs} EXISTS\r\n")
+    #             if num_recent != self.num_recent:
+    #                 notifications.append(f"* {num_recent} RECENT\r\n")
+    #             await self._dispatch_or_pend_notifications(
+    #                 notifications, dont_notify=dont_notify
+    #             )
 
-            # Make sure to update our mailbox object with the new counts.
-            #
-            self.num_msgs = num_msgs
-            self.num_recent = num_recent
+    #         # Make sure to update our mailbox object with the new counts.
+    #         #
+    #         self.num_msgs = num_msgs
+    #         self.num_recent = num_recent
 
-            # Now if any messages have changed which sequences they are from
-            # the last time we did this we need to issue untagged FETCH %d
-            # (FLAG (..)) to all of our active clients. This does not suffer
-            # the same restriction as EXISTS, RECENT, and EXPUNGE.
-            #
-            await self._compute_and_publish_fetches(
-                msg_keys, seq, dont_notify, publish_uids=publish_uids
-            )
-            self.sequences = seq
+    #         # Now if any messages have changed which sequences they are from
+    #         # the last time we did this we need to issue untagged FETCH %d
+    #         # (FLAG (..)) to all of our active clients. This does not suffer
+    #         # the same restriction as EXISTS, RECENT, and EXPUNGE.
+    #         #
+    #         await self._compute_and_publish_fetches(
+    #             msg_keys, seq, dont_notify, publish_uids=publish_uids
+    #         )
+    #         self.sequences = seq
 
-            # And see if the folder is getting kinda 'gappy' with spaces
-            # between message keys. If it is, pack it.
-            #
-            await self._pack_if_necessary(msg_keys)
+    #         # And see if the folder is getting kinda 'gappy' with spaces
+    #         # between message keys. If it is, pack it.
+    #         #
+    #         await self._pack_if_necessary(msg_keys)
 
-        # And update the mtime before we leave..
-        #
-        self.mtime = await Mailbox.get_actual_mtime(
-            self.server.mailbox, self.name
-        )
-        # Update the attributes seeing if this folder has children or not.
-        #
-        await self.check_set_haschildren_attr()
-        await self.commit_to_db()
-        end_time = time.time()
-        logger.debug(
-            "non-trivial resync finished. Duration: %.3fs, num messages: %d, num recent: %d",
-            (end_time - start_time),
-            self.num_msgs,
-            self.num_recent,
-        )
+    #     # And update the mtime before we leave..
+    #     #
+    #     self.mtime = await Mailbox.get_actual_mtime(
+    #         self.server.mailbox, self.name
+    #     )
+    #     # Update the attributes seeing if this folder has children or not.
+    #     #
+    #     await self.check_set_haschildren_attr()
+    #     await self.commit_to_db()
+    #     end_time = time.time()
+    #     logger.debug(
+    #         "non-trivial resync finished. Duration: %.3fs, num messages: %d, num recent: %d",
+    #         (end_time - start_time),
+    #         self.num_msgs,
+    #         self.num_recent,
+    #     )
 
     ##################################################################
     #
     async def _compute_and_publish_fetches(
         self,
         seqs: dict[str, list],
-        dont_notify: Optional["Authenticated"],
+        dont_notify: Optional["Authenticated"] = None,
         publish_uids: bool = False,
     ):
         """
@@ -2510,68 +2512,53 @@ class Mailbox:
         put the EXPUNGE messages on the notifications list for delivery to
         those clients when possible.
         """
-        assert self.lock.this_task_has_read_lock()  # XXX remove when confident
-
         # If there are no messages in the 'Deleted' sequence then we have
         # nothing to do.
         #
-        seqs = await self.mailbox.aget_sequences()
-        if len(seqs["Deleted"]) == 0:
+        if not self.sequences["Deleted"]:
             return
 
-        async with self.mailbox.lock_folder(), self.lock.write_lock():
-            # Remove the msg keys being deleted from the message cache.
-            #
-            del_keys = set(self.server.msg_cache.msg_keys_for_mbox(self.name))
-            purge_keys = set(seqs["Deleted"]) - del_keys
-            for msg_key in purge_keys:
-                self.server.msg_cache.remove(self.name, msg_key)
+        msg_keys_to_delete = self.sequences["Deleted"]
 
-            msg_keys = await self.mailbox.akeys()
-
-            # We go through the to be deleted messages in reverse order so that
-            # the expunges are "EXPUNGE <n>" "EXPUNGE <n-1>" etc. This is
-            # mostly a nicety making the expunge messages a bit easier to read.
-            #
-            to_delete = sorted(seqs["Deleted"], reverse=True)
-
-            for msg_key in to_delete:
-                # Remove the message from the folder.. and also remove it from
-                # our uids to message index mapping. (NOTE: 'which' is in IMAP
-                # message sequence order, so its actual position in the array
-                # is one less.
-                #
-                # Convert msg_key to IMAP seq num
-                #
-                which = msg_keys.index(msg_key) + 1
-                msg_keys.remove(msg_key)
-
-                # Remove UID from list of UID's in this folder. IMAP
-                # sequence numbers start at 1.
-                #
-                self.uids.remove(self.uids[which - 1])
-                await self.mailbox.aremove(msg_key)
-
-                # Remove from all sequences.
-                #
-                for seq in seqs.keys():
-                    if msg_key in seqs[seq]:
-                        seqs[seq].remove(msg_key)
-
-                expunge_msg = f"* {which} EXPUNGE\r\n"
-                await self._dispatch_or_pend_notifications([expunge_msg])
-
-            await self.mailbox.aset_sequences(seqs)
-
-        # Resync the mailbox, but send NO exists messages because the mailbox
-        # has shrunk: 5.2.: "it is NOT permitted to send an EXISTS response
-        # that would reduce the number of messages in the mailbox; only the
-        # EXPUNGE response can do this.
+        # Remove the msg keys being deleted from the message cache.
         #
-        # If a client is sitting in IDLE then it is okay send them
-        # exists/recents.
+        cached_keys = set(self.server.msg_cache.msg_keys_for_mbox(self.name))
+        purge_keys = set(msg_keys_to_delete).intersection(cached_keys)
+        for msg_key in purge_keys:
+            self.server.msg_cache.remove(self.name, msg_key)
+
+        # We go through the to be deleted messages in reverse order so that
+        # the expunges are "EXPUNGE <n>" "EXPUNGE <n-1>" etc. This is
+        # mostly a nicety making the expunge messages a bit easier to read.
         #
-        await self.resync(optional=False)
+        to_delete = sorted(msg_keys_to_delete, reverse=True)
+
+        for msg_key in to_delete:
+            # Remove the message from the folder.. and also remove it from
+            # our uids to message index mapping. (NOTE: 'which' is in IMAP
+            # message sequence order, so its actual position in the array
+            # is one less.
+            #
+            # Convert msg_key to IMAP seq num
+            #
+            which = self.msg_keys.index(msg_key) + 1
+            self.msg_keys.remove(msg_key)
+            self.uids.remove(self.uids[which - 1])
+            await self.mailbox.aremove(msg_key)
+            expunge_msg = f"* {which} EXPUNGE\r\n"
+            await self._dispatch_or_pend_notifications([expunge_msg])
+
+        async with self.mailbox.lock_folder():
+            self.sequences = await self.mailbox.aget_sequences()
+            # Remove all deleted msg keys from all sequences
+            #
+            for seq in self.sequences.keys():
+                for msg_key in msg_keys_to_delete:
+                    if msg_key in self.sequences[seq]:
+                        self.sequences[seq].remove(msg_key)
+            await self.mailbox.aset_sequences(self.sequences)
+
+        self.optional_resync = False
 
     ##################################################################
     #
@@ -2585,77 +2572,62 @@ class Mailbox:
         Form a list (by message index) of the messages that match and return
         that list to our caller.
 
+        NOTE: We are using the in-memory self.msg_keys for what is in the
+              mailbox. Since the only thing an exteranl system will do is add
+              messages to the end of the mailbox if any messages have been
+              added since the last resync and while this command is running
+              they simply will not be seen by this search. They do not yet
+              "exist" in the mailbox as far as we are concerned.
+
         Arguments:
         - `search`: An IMAPSearch object instance
         - `uid_cmd`: whether or not this is a UID command.
         """
-        assert self.lock.this_task_has_read_lock()  # XXX remove when confident
+        if uid_cmd:
+            logger.debug("Mailbox: '%s', doing a UID SEARCH", self.name)
 
-        # We get the folder lock to make sure any external systems that obey
-        # the folder lock do not muck with this folder while we are doing a
-        # search.
+        if not self.num_msgs:
+            return []
+
+        results: List[int] = []
+        seq_max = len(self.num_msgs)
+        uid_max = self.uids[-1]
+
+        # Go through the messages one by one and pass them to the search
+        # object to see if they are or are not in the result set..
         #
-        async with self.mailbox.lock_folder():
-            if uid_cmd:
-                logger.debug("Mailbox: %s, doing a UID SEARCH", self.name)
+        logger.debug(
+            "Mailbox: '%s', applying search to messages: %s",
+            self.name,
+            str(search),
+        )
 
-            # We get the full list of keys instead of using an iterator because
-            # we need the max id and max uuid.
+        for idx, msg_key in enumerate(self.msg_keys):
+            # IMAP messages are numbered starting from 1.
             #
-            msg_keys = await self.mailbox.akeys()
-            if not msg_keys:
-                return []
-
-            results: List[int] = []
-
-            seq_max = len(msg_keys)
-            # Before we do a search we do a resync to make sure that we have
-            # attached uid's to all of our messages and various counts are up
-            # to sync. But we do it with notify turned off because we can not
-            # send any conflicting messages to this client (other clients that
-            # are idling do get any updates though.)
-            #
-            await self.resync(notify=False)
-
-            uid_vv, uid_max = await self.get_uid_from_msg(msg_keys[-1])
-            if uid_vv is None or uid_max is None:
-                # Nothing should be able to modify the folder. If something has
-                # then let the upper level give the client the bad news.
-                #
-                raise Bad(f"Mailbox {self.name}: During SEARCH folder modified")
-
-            # Go through the messages one by one and pass them to the search
-            # object to see if they are or are not in the result set..
-            #
-            logger.debug(
-                "Mailbox: %s, applying search to messages: %s",
-                self.name,
-                str(search),
+            i = idx + 1
+            ctx = SearchContext(
+                self, msg_key, i, seq_max, uid_max, self.sequences
             )
-
-            for idx, msg_key in enumerate(msg_keys):
-                # IMAP messages are numbered starting from 1.
+            if await search.match(ctx):
+                # The UID SEARCH command returns uid's of messages
                 #
-                i = idx + 1
-                ctx = SearchContext(
-                    self, msg_key, i, seq_max, uid_max, self.sequences
-                )
-                if await search.match(ctx):
-                    # The UID SEARCH command returns uid's of messages
-                    #
-                    if uid_cmd:
-                        uid = await ctx.uid()
-                        assert uid
-                        results.append(uid)
-                    else:
-                        results.append(i)
-                await asyncio.sleep(0)
+                if uid_cmd:
+                    uid = await ctx.uid()
+                    assert uid
+                    results.append(uid)
+                else:
+                    results.append(i)
+            await asyncio.sleep(0)
         return results
 
     #########################################################################
     #
     async def fetch(
-        self, msg_set: MsgSet, fetch_ops: List[FetchAtt], uid_cmd: bool = False
+        self,
+        msg_set: List[int],
+        fetch_ops: List[FetchAtt],
+        uid_cmd: bool = False,
     ):
         """
         Go through the messages in the mailbox. For the messages that are
@@ -2682,255 +2654,182 @@ class Mailbox:
               send back a NO to the IMAP client.)
 
         Arguments:
-        - `msg_set`: The set of messages we want to
+        - `msg_set`: The list of IMAP message sequence numbers to apply fetch ops on
         - `fetch_ops`: The things to fetch for the messags indiated in
           msg_set
-        - `cmd`: The IMAP command. We need this to know whether or not this
-                 is a UID command.
+        - `uid_cmd`: whether or not this is a UID command.
         """
-        assert self.lock.this_task_has_read_lock()  # XXX remove when confident
+
+        if not self.msg_keys:
+            # If there are no messages but they asked for some messages
+            # (that are not there), return NO.. can not fetch that data.
+            if msg_set and not uid_cmd:
+                raise No("Mailbox empty.")
+            return
 
         start_time = time.time()
-        seq_changed = False
         num_results = 0
-        async with self.mailbox.lock_folder():
-            msgs = await self.mailbox.akeys()
-            seqs = await self.mailbox.aget_sequences()
+        # As we do our fetch's some operations will mark a message as
+        # seen. Also getting the flags for a message will also remove the
+        # `\Recent` flag. We apply all these changes at the end of the fetch
+        # run and just record which messages this change applied to while the
+        # fetch is running.
+        #
+        no_longer_unseen_msgs: List[int] = []
+        no_longer_recent_msgs: List[int] = []
+
+        # msgs = await self.mailbox.akeys()
+        # seqs = await self.mailbox.aget_sequences()
+        fetch_started = time.time()
+        fetch_finished_time = None
+        fetch_yield_times = []
+        yield_times = []
+
+        try:
+            seq_max = self.num_msgs
+            uid_max = self.uids[-1]
+
+            # Go through each message and apply the fetch_ops.fetch() to it
+            # building up a set of data to respond to the client with. Remember
+            # IMAP message sequence number `1` refers to the first message in
+            # the folder, ie: msgs[0].
+            #
             fetch_started = time.time()
-            fetch_finished_time = None
-
-            # Before we do a fetch we do a resync to make sure that we have
-            # attached uid's to all of our messages and various counts are up
-            # to sync. But we do it with notify turned off because we can not
-            # send any conflicting messages to this client (other clients that
-            # are idling do get any updates though.)
-            #
-            # NOTE: This is after we do the folder lock.
-            #
-            await self.resync(notify=False)
-
-            try:
-                fetch_yield_times = []
-                yield_times = []
-                # If there are no messages in the mailbox there are no results.
-                #
-                if not msgs:
-                    # If there are no messages but they asked for some messages
-                    # (that are not there), return NO.. can not fetch that data.
-                    if msg_set and not uid_cmd:
-                        raise No("Mailbox empty.")
-                    return
-
-                msg_key = msgs[-1]
-                uid_vv, uid_max = await self.get_uid_from_msg(msg_key)
-
-                # XXX If we encounter a message that has no uuid maybe we can
-                #     start marking the mailbox as "needs resync" and punt?
-                #     From now on, we never should see messages in the middle
-                #     without uid's. Only messages at the end of the mailbox.
-                #
-                if uid_max is None:
-                    self.logger.error(
-                        "mbox: '%s', message key %d has no uid",
-                        self.name,
-                        msg_key,
+            for idx in msg_set:
+                single_fetch_started = time.time()
+                try:
+                    msg_key = self.msg_keys[idx - 1]
+                except IndexError:
+                    # Every key in msg_idx should be in the folder. If it is
+                    # not then something is off between our state and the
+                    # folder's state.
+                    #
+                    log_msg = (
+                        f"fetch: Attempted to look up message index "
+                        f"{idx - 1}, but msgs is only of length {self.num_msgs}"
                     )
-                    raise MailboxInconsistency(
-                        f"Mailbox {self.name}, msg key {msg_key} has no uid"
-                    )
+                    logger.warning(log_msg)
+                    self.optional_resync = False
+                    self.full_search = True
+                    raise MailboxInconsistency(log_msg)
 
-                seq_max = len(msgs)
-
-                # Generate the set of indices in to our folder for this
-                # command.
-                #
-                # NOTE: `msg_idxs` is a list of integers. The integer represent
-                #       an IMAP message sequence number, ie: It is the message
-                #       at position <n> in the mailbox, starting from position
-                #       1 (it is NOT 0-based). So message sequence number `1`
-                #       referes to the first message in a box. That is msgs[0]
-                #       from the list of message keys.
-                #
-                # NOTE: We map from message sequence number to index in to the
-                #       msgs list when we are getting the value from the
-                #       message list.
-                #
-                if uid_cmd:
-                    # If we are doing a UID command we need to translate the
-                    # values in `msg_set` to IMAP message sequence numbers.
-                    #
-                    # We to use the max uid for the sequence max.
-                    #
-                    uid_list = sequence_set_to_list(msg_set, uid_max, uid_cmd)
-
-                    # We want to convert this list of UID's in to message
-                    # indices So for every uid we we got out of the msg_set we
-                    # look up its index in self.uids and from that construct
-                    # the msg_idxs list. Missing UID's are fine. They just do
-                    # not get added to the list. From rfc3501:
-                    #
-                    #    "A non-existent unique identifier is ignored without
-                    #     any error message generated.  Thus, it is possible
-                    #     for a UID FETCH command to return an OK without any
-                    #     data ..."
-                    #
-                    msg_idxs = []
-                    for uid in uid_list:
-                        if uid in self.uids:
-                            mi = self.uids.index(uid) + 1
-                            msg_idxs.append(mi)
-
-                    # Also, if this is a UID FETCH then we MUST make sure UID is
-                    # one of the fields being fetched, and if it is not add it.
-                    #
-                    if not any([x.attribute == "uid" for x in fetch_ops]):
-                        fetch_ops.insert(0, FetchAtt(FetchOp.UID))
-
-                else:
-                    msg_idxs = sequence_set_to_list(msg_set, seq_max)
-
-                # msg_idx is a list of IMAP message sequence numbers.  Go
-                # through each message and apply the fetch_ops.fetch() to it
-                # building up a set of data to respond to the client
-                # with. Remember IMAP message sequence number `1` refers to the
-                # first message in the folder, ie: msgs[0].
-                #
-                fetch_started = time.time()
-                for idx in msg_idxs:
-                    single_fetch_started = time.time()
-                    try:
-                        msg_key = msgs[idx - 1]
-                    except IndexError:
-                        # Every key in msg_idx should be in the folder. If it is
-                        # not then something is off between our state and the
-                        # folder's state.
-                        #
-                        log_msg = (
-                            f"fetch: Attempted to look up message index "
-                            f"{idx - 1}, but msgs is only of length {len(msgs)}"
-                        )
-                        logger.warning(log_msg)
-                        raise MailboxInconsistency(log_msg)
-
-                    ctx = SearchContext(
-                        self, msg_key, idx, seq_max, uid_max, seqs
-                    )
-                    fetched_flags = False
-                    fetched_body = False
-                    iter_results = []
-
-                    for elt in fetch_ops:
-                        iter_results.append(await elt.fetch(ctx))
-                        # If one of the FETCH ops gets the FLAGS we want to
-                        # know and likewise if one of the FETCH ops gets the
-                        # BODY (but NOT BODY.PEEK) we want to know. Both of
-                        # these operations can potentially change the flags of
-                        # the message.
-                        #
-                        if elt.attribute == "body" and elt.peek is False:
-                            fetched_body = True
-                        if elt.attribute == "flags":
-                            fetched_flags = True
-
-                    # If we did a FETCH FLAGS and the message was in the
-                    # 'Recent' sequence then remove it from the 'Recent'
-                    # sequence. Only one client gets to actually see that a
-                    # message is 'Recent.'
-                    #
-                    cached_msg = self.server.msg_cache.get(self.name, msg_key)
-                    if fetched_flags:
-                        if cached_msg:
-                            cached_msg.remove_sequence("Recent")
-                        if msg_key in seqs["Recent"]:
-                            seqs["Recent"].remove(msg_key)
-                            seq_changed = True
-
-                    # If we dif a FETCH BODY (but NOT a BODY.PEEK) then the
-                    # message is removed from the 'unseen' sequence (if it was
-                    # in it) and added to the 'Seen' sequence (if it was not in
-                    # it.)
-                    #
-                    if fetched_body:
-                        if cached_msg:
-                            cached_msg.remove_sequence("unseen")
-                            cached_msg.add_sequence("Seen")
-                        if msg_key in seqs["unseen"]:
-                            seqs["unseen"].remove(msg_key)
-                            seq_changed = True
-                        if msg_key not in seqs["Seen"]:
-                            seqs["Seen"].append(msg_key)
-                            seq_changed = True
-
-                    # Done applying FETCH to all of the indicated messages.  If
-                    # the sequences changed we need to write them back out to
-                    # disk.
-                    #
-                    if seq_changed:
-                        async with self.lock.write_lock():
-                            await self.mailbox.aset_sequences(seqs)
-
-                    fetch_yield_times.append(time.time() - single_fetch_started)
-                    num_results += 1
-                    yield_start = time.time()
-                    yield (idx, iter_results)
-                    yield_times.append(time.time() - yield_start)
-
-                fetch_finished_time = time.time()
-                if seq_changed:
-                    await self.resync(optional=False)
-
-            finally:
-                now = time.time()
-                total_time = now - start_time
-                fetch_time = (
-                    fetch_finished_time - fetch_started
-                    if fetch_finished_time is not None
-                    else 9999999.9
+                ctx = SearchContext(
+                    self, msg_key, idx, seq_max, uid_max, self.sequences
                 )
-                if len(yield_times) > 1:
-                    # Only bother to calculate more statistics if there was
-                    # more than one message fetched.
+                fetched_flags = False
+                fetched_body = False
+                iter_results = []
+
+                for elt in fetch_ops:
+                    iter_results.append(await elt.fetch(ctx))
+                    # If one of the FETCH ops gets the FLAGS we want to
+                    # know and likewise if one of the FETCH ops gets the
+                    # BODY (but NOT BODY.PEEK) we want to know. Both of
+                    # these operations can potentially change the flags of
+                    # the message.
                     #
-                    mean_yield_time = fmean(yield_times) if yield_times else 0.0
+                    if elt.attribute == "body" and elt.peek is False:
+                        fetched_body = True
+                    if elt.attribute == "flags":
+                        fetched_flags = True
 
-                    mean_fetch_yield_time = (
-                        fmean(fetch_yield_times) if fetch_yield_times else 0.0
-                    )
-                    median_yield_time = (
-                        median(fetch_yield_times) if fetch_yield_times else 0.0
-                    )
-                    stdev_yield_time = (
-                        stdev(fetch_yield_times, mean_fetch_yield_time)
-                        if len(fetch_yield_times) > 2
-                        else 0.0
-                    )
+                # If we did a FETCH FLAGS and the message was in the
+                # 'Recent' sequence then remove it from the 'Recent'
+                # sequence. Only one client gets to actually see that a
+                # message is 'Recent.'
+                #
+                cached_msg = self.server.msg_cache.get(self.name, msg_key)
+                if fetched_flags:
+                    if msg_key in self.sequences["Recent"]:
+                        no_longer_recent_msgs.append(msg_key)
+                    if cached_msg:
+                        cached_msg.remove_sequence("Recent")
 
-                    logger.debug(
-                        "FETCH finished, mailbox: '%s', msg_set: %r, num "
-                        "results: %d, total duration: %.3fs, fetch duration: "
-                        "%.3fs, mean time per network yield: %.3fs, mean time "
-                        "per fetch: %.3fs, median: %.3fs, stdev: %.3fs",
-                        self.name,
-                        msg_set,
-                        num_results,
-                        total_time,
-                        fetch_time,
-                        mean_yield_time,
-                        mean_fetch_yield_time,
-                        median_yield_time,
-                        stdev_yield_time,
-                    )
-                else:
-                    logger.debug(
-                        "FETCH finished, mailbox: '%s', msg_set: %r, num "
-                        "results: %d, total duration: %.3fs, fetch duration: "
-                        "%.3fs",
-                        self.name,
-                        msg_set,
-                        num_results,
-                        total_time,
-                        fetch_time,
-                    )
+                # If we dif a FETCH BODY (but NOT a BODY.PEEK) then the
+                # message is removed from the 'unseen' sequence (if it was
+                # in it) and added to the 'Seen' sequence (if it was not in
+                # it.)
+                #
+                if fetched_body:
+                    if cached_msg:
+                        cached_msg.remove_sequence("unseen")
+                        cached_msg.add_sequence("Seen")
+                    if msg_key in self.sequences["unseen"]:
+                        no_longer_unseen_msgs.append(msg_key)
+
+                fetch_yield_times.append(time.time() - single_fetch_started)
+                num_results += 1
+                yield_start = time.time()
+                yield (idx, iter_results)
+                yield_times.append(time.time() - yield_start)
+
+            fetch_finished_time = time.time()
+
+            # A FETCH BODY with no peek means we have to send FETCH messages to
+            # all other clients (that do not have dont_notify set)
+            #
+            if no_longer_unseen_msgs or no_longer_recent_msgs:
+                async with self.mh_sequences_lock, self.mailbox.lock_folder():
+                    seqs = await self.mailbox.aget_sequences()
+                    for msg_key in no_longer_recent_msgs:
+                        seqs["Recent"].remove(msg_key)
+                    for msg_key in no_longer_unseen_msgs:
+                        seqs["unseen"].remove(msg_key)
+                        if msg_key not in self.sequences["Seen"]:
+                            seqs["Seen"].append(msg_key)
+                    await self.mailbox.aset_sequences(seqs)
+                await self._compute_and_publish_fetches(seqs)
+                self.sequences = seqs
+
+        finally:
+            now = time.time()
+            total_time = now - start_time
+            fetch_time = (
+                fetch_finished_time - fetch_started
+                if fetch_finished_time is not None
+                else 9999999.9
+            )
+            if len(yield_times) > 1:
+                # Only bother to calculate more statistics if there was
+                # more than one message fetched.
+                #
+                mean_fetch_yield_time = (
+                    fmean(fetch_yield_times) if fetch_yield_times else 0.0
+                )
+                median_yield_time = (
+                    median(fetch_yield_times) if fetch_yield_times else 0.0
+                )
+                stdev_yield_time = (
+                    stdev(fetch_yield_times, mean_fetch_yield_time)
+                    if len(fetch_yield_times) > 2
+                    else 0.0
+                )
+
+                logger.debug(
+                    "FETCH finished, mailbox: '%s', msg_set: %r, num "
+                    "results: %d, total duration: %.3fs, fetch duration: "
+                    "%.3fs, mean time per fetch: %.3fs, median: %.3fs, "
+                    "stdev: %.3fs",
+                    self.name,
+                    msg_set,
+                    num_results,
+                    total_time,
+                    fetch_time,
+                    mean_fetch_yield_time,
+                    median_yield_time,
+                    stdev_yield_time,
+                )
+            else:
+                logger.debug(
+                    "FETCH finished, mailbox: '%s', msg_set: %r, num "
+                    "results: %d, total duration: %.3fs, fetch duration: "
+                    "%.3fs",
+                    self.name,
+                    msg_set,
+                    num_results,
+                    total_time,
+                    fetch_time,
+                )
 
     ##################################################################
     #

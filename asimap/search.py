@@ -75,8 +75,7 @@ class SearchContext(object):
         - `seq_max`: The largest message sequence number in this mailbox
         - `uid_max`: The largest assigned uid, or next_uid if there
           are no messages in this mailbox
-        - `sequences`: The sequences for the mailbox. Passed in to save us from
-          having to load and parse it separately for every message.
+        - `sequences`: The sequences for the mailbox.
         """
         self.mailbox = mailbox
         self.msg_key = msg_key
