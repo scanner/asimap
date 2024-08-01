@@ -608,12 +608,13 @@ class IMAPUserServer:
     #
     async def folder_scan(self):
         """
-        at regular intervals we need to scan the folders to see if any new
-        mail has arrived.
+        at regular intervals we need to scan all the inactive folders to
+        see if any new mail has arrived.
         """
         try:
             while True:
-                await self.check_all_active_folders()
+                # XXX Handled by active folder's management task.
+                # await self.check_all_active_folders()
                 await self.expire_inactive_folders()
 
                 # If it has been more than 5 minutes since a full scan, then do
@@ -638,7 +639,7 @@ class IMAPUserServer:
                 #
                 await asyncio.sleep(30)
         except asyncio.exceptions.CancelledError:
-            pass
+            raise
         finally:
             if self.asyncio_server.is_serving():
                 self.asyncio_server.close()
@@ -726,30 +727,34 @@ class IMAPUserServer:
                 self.active_mailboxes[name] = mbox
                 return mbox
 
-    ##################################################################
+    # XXX As long as a folder is active it will have an active management
+    #     task. That task will insure that the folder is checked at least every
+    #     10 seconds while it is getting messages from the client.
     #
-    async def check_all_active_folders(self):
-        """
-        Like 'check_all_folders' except this only checks folders that are
-        active and have clients in IDLE listening to them.
-        """
+    # ##################################################################
+    # #
+    # async def check_all_active_folders(self):
+    #     """
+    #     Like 'check_all_folders' except this only checks folders that are
+    #     active and have clients in IDLE listening to them.
+    #     """
 
-        async def read_lock_resync(mbox: Mailbox):
-            try:
-                async with mbox.lock.read_lock():
-                    await mbox.resync()
-            except MailboxInconsistency as e:
-                # If hit one of these exceptions they are usually
-                # transient.  we will skip it. The command processor in
-                # client.py knows how to handle these better.
-                #
-                logger.warning("Skipping mailbox '%s' due to: %s", name, str(e))
+    #     async def read_lock_resync(mbox: Mailbox):
+    #         try:
+    #             async with mbox.lock.read_lock():
+    #                 await mbox.resync()
+    #         except MailboxInconsistency as e:
+    #             # If hit one of these exceptions they are usually
+    #             # transient.  we will skip it. The command processor in
+    #             # client.py knows how to handle these better.
+    #             #
+    #             logger.warning("Skipping mailbox '%s' due to: %s", name, str(e))
 
-        async with asyncio.TaskGroup() as tg:
-            async with self.active_mailboxes_lock.read_lock():
-                for name, mbox in self.active_mailboxes.items():
-                    if any(x.idling for x in mbox.clients.values()):
-                        tg.create_task(read_lock_resync(mbox))
+    #     async with asyncio.TaskGroup() as tg:
+    #         async with self.active_mailboxes_lock.read_lock():
+    #             for name, mbox in self.active_mailboxes.items():
+    #                 if any(x.idling for x in mbox.clients.values()):
+    #                     tg.create_task(read_lock_resync(mbox))
 
     ##################################################################
     #
@@ -774,10 +779,11 @@ class IMAPUserServer:
                 for mbox_name in expired:
                     if mbox_name in self.active_mailboxes:
                         mbox = self.active_mailboxes[mbox_name]
-                        await mbox.commit_to_db()
                         mbox.mgmt_task.cancel()
+                        await mbox.mgmt_task
                         del self.active_mailboxes[mbox_name]
                         self.msg_cache.clear_mbox(mbox_name)
+                        await mbox.commit_to_db()
 
     ##################################################################
     #

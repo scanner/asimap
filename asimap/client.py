@@ -638,7 +638,8 @@ class Authenticated(BaseClientHandler):
         mbox = await self.server.get_mailbox(cmd.mailbox_name)
 
         async with cmd.ready_and_okay(self, mbox):
-            await mbox.selected(self)
+            msgs = await mbox.selected(self)
+            await self.client.push(*msgs)
             self.mbox = mbox
             self.state = ClientState.SELECTED
             self.examine = examine
@@ -1103,9 +1104,11 @@ class Authenticated(BaseClientHandler):
 
         self.fetch_while_pending_count = 0
         try:
-            msg_set = sorted(cmd.msg_set_as_set) if cmd.msg_set_as_set else []
             self.dont_notify = True
             async with cmd.ready_and_okay(self, self.mbox):
+                msg_set = (
+                    sorted(cmd.msg_set_as_set) if cmd.msg_set_as_set else []
+                )
                 async for idx, results in self.mbox.fetch(
                     msg_set, cmd.fetch_atts, cmd.uid_command
                 ):
@@ -1175,16 +1178,17 @@ class Authenticated(BaseClientHandler):
         #     stuff here.
         #
         try:
-            # If `silent` this this client is not notified of changes.
-            #
-            self.dont_notify = cmd.silent
-            msg_set = sorted(cmd.msg_set_as_set) if cmd.msg_set_as_set else []
-            await self.mbox.store(
-                msg_set,
-                cmd.store_action,
-                cmd.flag_list,
-                cmd.uid_command,
-            )
+            self.dont_notify = True
+            async with cmd.ready_and_okay(self, self.mbox):
+                msg_set = (
+                    sorted(cmd.msg_set_as_set) if cmd.msg_set_as_set else []
+                )
+                fetch_notifications = await self.mbox.store(
+                    msg_set,
+                    cmd.store_action,
+                    cmd.flag_list,
+                    cmd.uid_command,
+                )
         except MailboxInconsistency as exc:
             # Force a resync of this mailbox. Likely something was fiddling
             # messages directly (an nmh command run from the command line)
@@ -1198,21 +1202,13 @@ class Authenticated(BaseClientHandler):
         finally:
             self.dont_notify = False
 
-        if cmd.silent:
-            await self.mbox.resync(
-                optional=False,
-                dont_notify=self,
-                publish_uids=cmd.uid_command,
-            )
-        else:
-            try:
-                idling = self.idling
-                self.idling = True
-                await self.mbox.resync(
-                    optional=False, publish_uids=cmd.uid_command
-                )
-            finally:
-                self.idling = idling
+        # IF this is not a "SILENT" store, we will send the FETCH messages that
+        # were generated due to the actions of this STORE command. (All the
+        # other clients will have gotten untagged FETCH messages when the
+        # resync was completed by the management task.)
+        #
+        if not cmd.silent:
+            self.client.push(*fetch_notifications)
 
     ##################################################################
     #

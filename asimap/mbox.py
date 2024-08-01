@@ -327,11 +327,14 @@ class Mailbox:
         Make sure that the management task is cancelled on the way out.
         Make sure the message cache for this mbox is cleared.
         """
-        if self.mgmt_task:
+        if not self.mgmt_task.done():
             self.mgmt_task.cancel()
 
         if self.server and self.name:
             self.server.msg_cache.clear_mbox(self.name)
+
+        if self.name in self.server.active_mailboxes:
+            del self.server.active_mailboxes[self.name]
 
     ####################################################################
     #
@@ -659,7 +662,18 @@ class Mailbox:
                 # Block until we have an IMAP Command that wants to run on this
                 # mailbox
                 #
-                client, imap_cmd = await self.task_queue.get()
+                try:
+                    async with asyncio.timeout(10):
+                        client, imap_cmd = await self.task_queue.get()
+                except asyncio.TimeoutError:
+                    self.logger.debug("Timed out waiting for IMAP Commands.")
+                    self.executing_tasks = [
+                        x for x in self.executing_tasks if not x.completed
+                    ]
+                    if not self.executing_tasks:
+                        self.logger.debug("Checking folder for new messages.")
+                        await self.check_new_msgs_and_flags()
+                    continue
 
                 # Compute the set() of imap message sequence numbers this
                 # command is being applied to. This lets us check for conflicts
@@ -711,6 +725,7 @@ class Mailbox:
 
             except asyncio.CancelledError:
                 self.logger.info("Management task cancelled. Exiting")
+                await self.commit_to_db()
                 return
             except Exception as e:
                 # We ignore all other exceptions because otherwise the
@@ -769,9 +784,6 @@ class Mailbox:
         `recent` sequence with these message keys.
 
         Returns the sequences for this folder.
-
-        This is the one place where the mbox read lock is acquired. If we have
-        to write the sequences back out we also acquire the write lock.
 
         Raises a MailboxInconsistency exception if we are unable to read the
         .mh_sequences file.
@@ -1022,6 +1034,16 @@ class Mailbox:
         if start_mtime <= self.mtime and self.optional_resync and optional:
             return False
 
+        logger.debug(
+            "mailbox: '%s', arg optional: %s, optional_resync: %s, "
+            "start mtime: %d, self.mtime: %d",
+            self.name,
+            optional,
+            self.optional_resync,
+            start_mtime,
+            self.mtime,
+        )
+
         # We always reset `optional_resync` once we begin a non-optional resync
         #
         self.optional_resync = True
@@ -1040,6 +1062,14 @@ class Mailbox:
         # uid_vv by scanning backwards from the end of the folder.
         #
         msg_key = await self._find_first_foreign_message()
+
+        # XXX Once we find the first foreign message what is important
+        #     .mh_sequences-wise is what sequences those messages are. We do
+        #     not need to know all the sequence diffs. We have decided that we
+        #     do not care and we are going to treat our internal sequneces as
+        #     the master information. So we need to get the sequence info of
+        #     the "new" messages, and add it to our internal sequence data (and
+        #     then we save the sequence data to .mh_sequences for completeness)
 
         # If the msg_key we get back is _not None_ then that means there are
         # messages that need to have a uid_vv,uid added or updated.
@@ -1072,18 +1102,37 @@ class Mailbox:
         num_recent = len(seq["Recent"])
         num_msgs = len(self.msg_keys)
 
-        # NOTE: Only send EXISTS messages if notify is True and the client
-        # is not idling and the client is not the one passed in via
-        # 'only_notify'
+        if num_msgs > 0:
+            logger.debug(
+                "mailbox: '%s', num msgs: %d, first foreign msg key: %d, "
+                "last msg key:",
+                self.name,
+                num_msgs,
+                msg_key,
+                self.msg_keys[-1],
+            )
+        else:
+            logger.debug("mailbox: '%s', num msgs: %d", self.name, num_msgs)
+
+        # RECENT and EXISTS are sent as the rest of a SELECT or EXAMINE request
+        # _AND_ if the size of the mailbox changes. These can be sent to any
+        # client, idling, executing a command, or otherwise.
         #
-        if num_msgs != self.num_msgs or num_recent != self.num_recent:
+        if num_msgs > self.num_msgs or num_recent != self.num_recent:
             notifications = []
             if num_msgs != self.num_msgs:
                 notifications.append(f"* {num_msgs} EXISTS\r\n")
             if num_recent != self.num_recent:
                 notifications.append(f"* {num_recent} RECENT\r\n")
-            await self._dispatch_or_pend_notifications(notifications)
+            for c in self.clients.values():
+                await c.client.push(*notifications)
 
+        if num_msgs < self.num_msgs:
+            self.logger.warning(
+                "Number of messages decreased from %d to %d",
+                self.num_msgs,
+                num_msgs,
+            )
         self.num_msgs = num_msgs
         self.num_recent = num_recent
 
@@ -2139,7 +2188,7 @@ class Mailbox:
             # do smart diffs of sequence changes between mailbox resyncs.
             #
             async with self.mailbox.lock_folder():
-                self.sequences = await self.mailbox.aget_sequences()
+                self.sequences = await self._get_sequences_update_seen()
 
             for name, values in self.sequences.items():
                 await self.server.db.execute(
@@ -2307,7 +2356,7 @@ class Mailbox:
 
     ##################################################################
     #
-    async def selected(self, client: "Authenticated"):
+    async def selected(self, client: "Authenticated") -> List[str]:
         r"""
         This mailbox is being selected by a client.
 
@@ -2406,7 +2455,7 @@ class Mailbox:
         push_data.append(
             f"* OK [PERMANENTFLAGS ({' '.join(PERMANENT_FLAGS)})]\r\n"
         )
-        await client.client.push(*push_data)
+        return push_data
 
     ##################################################################
     #
@@ -2847,7 +2896,7 @@ class Mailbox:
         action: StoreAction,
         flags: List[str],
         uid_cmd: bool = False,
-    ):
+    ) -> List[str]:
         r"""
         Update the flags (sequences) of the messages in msg_set.
 
@@ -2857,6 +2906,8 @@ class Mailbox:
         - `action`: one of REMOVE_FLAGS, ADD_FLAGS, or REPLACE_FLAGS
         - `flags`: The flags to add/remove/replace
         - `uid_cmd`: Used to determine if this is a uid command or not
+
+        Returns the list of `FETCH *` mssages generated by this store.
         """
 
         if r"\Recent" in flags:
@@ -2876,6 +2927,7 @@ class Mailbox:
         store_start = time.time()
 
         seqs = deepcopy(self.sequences)
+        notifications = []
         for key in msg_keys:
             msg = await self.get_and_cache_msg(key)
             # XXX We should make sure that the message's sequences
@@ -2905,6 +2957,7 @@ class Mailbox:
         self.logger.debug(
             "Completed, took %.3f seconds", time.time() - store_start
         )
+        return notifications
 
     ##################################################################
     #
