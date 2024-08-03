@@ -96,11 +96,6 @@ class BaseClientHandler:
         #
         self.idling: bool = False
 
-        # If the client is executing a command that does not allow untagged
-        # FETCH messages while processing that command.
-        #
-        self.dont_notify: bool = False
-
         # This is used to keep track of the tag.. useful for when finishing an
         # DONE command when idling.
         #
@@ -295,8 +290,6 @@ class BaseClientHandler:
         await self.client.close()
 
         self.idling = False
-        self.dont_notify = False
-
         self.state = ClientState.LOGGED_OUT
 
     # The following commands are supported in any state.
@@ -381,7 +374,6 @@ class BaseClientHandler:
         await self.client.push("+ idling\r\n")
         await self.send_pending_notifications()
         self.idling = True
-        self.dont_notify = False
         return False
 
     #########################################################################
@@ -589,7 +581,6 @@ class Authenticated(BaseClientHandler):
         - `cmd`: The full IMAP command object.
         """
         if self.mbox:
-            self.dont_notify = False
             async with cmd.ready_and_okay(self, self.mbox):
                 await self.send_pending_notifications()
         return None
@@ -625,7 +616,6 @@ class Authenticated(BaseClientHandler):
         #
         self.pending_notifications = []
         self.idling = False
-        self.dont_notify = False
         if self.state == ClientState.SELECTED:
             self.state = ClientState.AUTHENTICATED
             if self.mbox:
@@ -671,7 +661,6 @@ class Authenticated(BaseClientHandler):
             self.mbox = None
         self.pending_notifications = []
         self.idling = False
-        self.dont_notify = False
         self.state = ClientState.AUTHENTICATED
 
     #########################################################################
@@ -1041,7 +1030,6 @@ class Authenticated(BaseClientHandler):
 
         async with cmd.ready_and_okay(self, self.mbox):
             try:
-                self.dont_notify = True
                 results = await self.mbox.search(
                     cmd.search_key, cmd.uid_command
                 )
@@ -1053,8 +1041,6 @@ class Authenticated(BaseClientHandler):
                 self.full_search = True
                 self.server.msg_cache.clear_mbox(self.mbox.name)
                 logger.warning("Mailbox %s: %s", self.mbox.name, str(e))
-            finally:
-                self.dont_notify = False
 
     ##################################################################
     #
@@ -1119,8 +1105,13 @@ class Authenticated(BaseClientHandler):
             self.mbox.full_search = True
             self.mbox.optional_resync = False
             raise Bad(f"Problem while fetching: {exc}")
-        finally:
-            self.dont_notify = False
+
+        # The FETCH may have caused some message flags to change, and they may
+        # not have been in the FETCH responses we already sent (and other
+        # FETCH's may have done the same) so make sure we send out all pending
+        # notifications.
+        #
+        await self.send_pending_notifications()
 
     ##################################################################
     #
@@ -1177,7 +1168,6 @@ class Authenticated(BaseClientHandler):
         #     stuff here.
         #
         try:
-            self.dont_notify = True
             async with cmd.ready_and_okay(self, self.mbox):
                 msg_set = (
                     sorted(cmd.msg_set_as_set) if cmd.msg_set_as_set else []
@@ -1187,6 +1177,7 @@ class Authenticated(BaseClientHandler):
                     cmd.store_action,
                     cmd.flag_list,
                     cmd.uid_command,
+                    dont_notify=self,
                 )
         except MailboxInconsistency as exc:
             # Force a resync of this mailbox. Likely something was fiddling
@@ -1198,8 +1189,6 @@ class Authenticated(BaseClientHandler):
             self.full_search = True
             self.server.msg_cache.clear_mbox(self.mbox.name)
             raise Bad(f"Problem while storing: {exc}")
-        finally:
-            self.dont_notify = False
 
         # IF this is not a "SILENT" store, we will send the FETCH messages that
         # were generated due to the actions of this STORE command. (All the

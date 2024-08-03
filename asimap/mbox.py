@@ -2899,7 +2899,6 @@ class Mailbox:
                     for sequence in self.sequences.keys():
                         if msg_key in self.sequences[sequence]:
                             flags.append(seq_to_flag(sequence))
-
                     flags_str = " ".join(flags)
                     msg_seq_number = self.msg_keys.index(msg_key) + 1
                     notifies.append(
@@ -2966,20 +2965,17 @@ class Mailbox:
         both the sequences associated with the MHMessage and the sequences dict.
         """
         msg.add_sequence(flag)
-        if key not in self.sequences[flag]:
-            self.sequences[flag].append(key)
+        self.sequences[flag].add(key)
 
         # Make sure that the Seen and unseen sequences are updated properly.
         #
         match flag:
             case "Seen":
                 msg.remove_sequence("unseen")
-                if key in self.sequences["unseen"]:
-                    self.sequences["unseen"].remove(key)
+                self.sequences["unseen"].discard(key)
             case "unseen":
                 msg.remove_sequence("Seen")
-                if key in self.sequences["Seen"]:
-                    self.sequences["Seen"].remove(key)
+                self.sequences["Seen"].discard(key)
 
     ####################################################################
     #
@@ -2990,20 +2986,17 @@ class Mailbox:
         the sequences dict.
         """
         msg.remove_sequence(flag)
-        if key in self.sequences[flag]:
-            self.sequences[flag].remove(key)
+        self.sequences[flag].discard(key)
 
         # Make sure that the Seen and unseen sequences are updated properly.
         #
         match flag:
             case "Seen":
                 msg.add_sequence("unseen")
-                if key not in self.sequences["unseen"]:
-                    self.sequences["unseen"].append(key)
+                self.sequences["unseen"].add(key)
             case "unseen":
                 msg.add_sequence("Seen")
-                if key not in self.sequences["Seen"]:
-                    self.sequences["Seen"].append(key)
+                self.sequences["Seen"].add(key)
 
     ####################################################################
     #
@@ -3030,11 +3023,9 @@ class Mailbox:
         to_remove = msg_seqs - new_msg_seqs
 
         for flag in flags:
-            if key not in self.sequences[flag]:
-                self.sequences[flag].append(key)
+            self.sequences[flag].add(key)
         for flag in to_remove:
-            if key in self.sequences[flag]:
-                self.sequences[flag].remove(key)
+            self.sequences[flag].discard(key)
 
     ##################################################################
     #
@@ -3044,6 +3035,7 @@ class Mailbox:
         action: StoreAction,
         flags: List[str],
         uid_cmd: bool = False,
+        dont_notify: Optional["Authenticated"] = None,
     ) -> List[str]:
         r"""
         Update the flags (sequences) of the messages in msg_set.
@@ -3078,18 +3070,18 @@ class Mailbox:
         response: List[str] = []
         for key in msg_keys:
             msg = await self.get_and_cache_msg(key)
-            # XXX We should make sure that the message's sequences
-            #     match self.sequences
-            match action:
-                case StoreAction.ADD_FLAGS | StoreAction.REMOVE_FLAGS:
-                    for flag in flags:
-                        match action:
-                            case StoreAction.ADD_FLAGS:
-                                self._help_add_flag(key, msg, flag)
-                            case StoreAction.REMOVE_FLAGS:
-                                self._help_remove_flag(key, msg, flag)
-                case StoreAction.REPLACE_FLAGS:
-                    self._help_replace_flags(key, msg, flags)
+            async with self.mh_sequences_lock:
+                match action:
+                    case StoreAction.ADD_FLAGS | StoreAction.REMOVE_FLAGS:
+                        for flag in flags:
+                            match action:
+                                case StoreAction.ADD_FLAGS:
+                                    self._help_add_flag(key, msg, flag)
+                                case StoreAction.REMOVE_FLAGS:
+                                    self._help_remove_flag(key, msg, flag)
+                    case StoreAction.REPLACE_FLAGS:
+                        self._help_replace_flags(key, msg, flags)
+
             fetch, fetch_uid = self._generate_fetch_msg_for(
                 key, msg, publish_uid=uid_cmd
             )
@@ -3102,7 +3094,9 @@ class Mailbox:
         async with self.mailbox.lock_folder():
             await self.mailbox.aset_sequences(self.sequences)
 
-        await self._dispatch_or_pend_notifications(notifications)
+        await self._dispatch_or_pend_notifications(
+            notifications, dont_notify=dont_notify
+        )
         self.logger.debug(
             "Completed, took %.3f seconds", time.monotonic() - store_start
         )
