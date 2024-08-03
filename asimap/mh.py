@@ -15,7 +15,7 @@ from collections import defaultdict
 from contextlib import asynccontextmanager
 from mailbox import FormatError, MHMessage, NotEmptyError, _lock_file
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, TypeAlias, Union
+from typing import TYPE_CHECKING, Dict, List, Set, TypeAlias, Union
 
 # 3rd party imports
 #
@@ -30,7 +30,8 @@ from .utils import utime
 if TYPE_CHECKING:
     from _typeshed import StrPath
 
-Sequences: TypeAlias = Dict[str, List[int]]
+# Sequences: TypeAlias = Dict[str, List[int]]
+Sequences: TypeAlias = Dict[str, Set[int]]
 
 LINESEP = str(mailbox.linesep, "ascii")
 
@@ -339,19 +340,19 @@ class MH(mailbox.MH):
         all_sequences = await self.aget_sequences()
         for name, key_list in all_sequences.items():
             if name in pending_sequences:
-                key_list.append(key)
+                key_list.add(key)
             elif key in key_list:
                 key_list.remove(key)
         for sequence in pending_sequences:
             if sequence not in all_sequences:
-                all_sequences[sequence] = [key]
+                all_sequences[sequence].add(key)
         await self.aset_sequences(all_sequences)
 
     ####################################################################
     #
     async def aget_sequences(self) -> Sequences:
         """Return a name-to-key-list dictionary to define each sequence."""
-        results = defaultdict(list)
+        results: Sequences = defaultdict(set)
         seq_path = os.path.join(self._path, ".mh_sequences")
         async with self.lock_folder():
             all_keys = set(await self.akeys())
@@ -366,9 +367,10 @@ class MH(mailbox.MH):
                             else:
                                 start, stop = (int(x) for x in spec.split("-"))
                                 keys.update(range(start, stop + 1))
-                        results[name] = [
-                            key for key in sorted(keys) if key in all_keys
-                        ]
+                        # results[name] = [
+                        #     key for key in sorted(keys) if key in all_keys
+                        # ]
+                        results[name] = keys & all_keys
                         if len(results[name]) == 0:
                             del results[name]
                     except ValueError:
@@ -391,7 +393,7 @@ class MH(mailbox.MH):
                     await f.write(name + ":")
                     prev = None
                     completing = False
-                    for key in sorted(set(keys)):
+                    for key in sorted(keys):
                         if key - 1 == prev:
                             if not completing:
                                 completing = True
@@ -454,5 +456,6 @@ class MH(mailbox.MH):
             for name, key_list in sequences.items():
                 for old, new in changes:
                     if old in key_list:
-                        key_list[key_list.index(old)] = new
+                        key_list.remove(old)
+                        key_list.add(new)
             await self.aset_sequences(sequences)

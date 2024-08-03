@@ -1136,3 +1136,15 @@ async def test_mailbox_list(
         list_results.append(mbox_name)
 
     assert sorted(folders) == sorted(list_results)
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_append_when_other_msgs_also_added():
+    """
+    If we do an append, and other new messages have been added to the
+    mailbox (by the mail delivery system) make sure everything works
+    appropripately.
+    """
+    assert False

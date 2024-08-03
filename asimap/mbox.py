@@ -16,7 +16,6 @@ import shutil
 import stat
 import time
 from collections import defaultdict
-from copy import deepcopy
 from datetime import datetime
 from mailbox import FormatError, MHMessage, NoSuchMailboxError, NotEmptyError
 from pathlib import Path
@@ -173,7 +172,6 @@ class Mailbox:
     #
     DONT_NOTIFY = (
         IMAPCommand.FETCH,
-        IMAPCommand.STORE,
         IMAPCommand.SEARCH,
     )
 
@@ -239,7 +237,7 @@ class Mailbox:
         # our control is when new messages are added to a folder and the unseen
         # sequence is updated.
         #
-        self.sequences: Sequences = defaultdict(list)
+        self.sequences: Sequences = defaultdict(set)
         self.mh_sequences_lock = asyncio.Lock()
 
         # You can not instantiate a mailbox that does not exist in the
@@ -359,9 +357,9 @@ class Mailbox:
         # database (and if there are none, then create an entry in the
         # db for this mailbox.)
         #
-        mbox.optional_resync = await mbox._restore_from_db()
         async with mbox.mailbox.lock_folder():
             mbox.msg_keys = await mbox.mailbox.akeys()
+        mbox.optional_resync = await mbox._restore_from_db()
         await mbox.check_new_msgs_and_flags()
         mbox.mgmt_task = asyncio.create_task(mbox.management_task())
         return mbox
@@ -803,7 +801,7 @@ class Mailbox:
             # Create the 'Seen' sequence by the difference between all
             # the messages in the mailbox and the unseen ones.
             #
-            new_seen = list(set(self.msg_keys) - set(seq["unseen"]))
+            new_seen = set(self.msg_keys) - seq["unseen"]
             if new_seen != seq["Seen"]:
                 seq["Seen"] = new_seen
                 modified = True
@@ -811,14 +809,14 @@ class Mailbox:
             # There are no unseen messages in the mailbox thus the Seen
             # sequence mirrors the set of all messages.
             #
-            if seq["Seen"] != self.msg_keys:
+            if seq["Seen"] != set(self.msg_keys):
                 modified = True
-                seq["Seen"] = self.msg_keys
+                seq["Seen"] = set(self.msg_keys)
 
         if recent_msg_keys:
             modified = True
             if "Recent" in seq:
-                seq["Recent"].extend(recent_msg_keys)
+                seq["Recent"].update(recent_msg_keys)
             else:
                 seq["Recent"] = recent_msg_keys
 
@@ -1118,7 +1116,7 @@ class Mailbox:
         # _AND_ if the size of the mailbox changes. These can be sent to any
         # client, idling, executing a command, or otherwise.
         #
-        if num_msgs > self.num_msgs or num_recent != self.num_recent:
+        if num_msgs != self.num_msgs or num_recent != self.num_recent:
             notifications = []
             if num_msgs != self.num_msgs:
                 notifications.append(f"* {num_msgs} EXISTS\r\n")
@@ -1127,12 +1125,12 @@ class Mailbox:
             for c in self.clients.values():
                 await c.client.push(*notifications)
 
-        if num_msgs < self.num_msgs:
-            self.logger.warning(
-                "Number of messages decreased from %d to %d",
-                self.num_msgs,
-                num_msgs,
-            )
+            if num_msgs < self.num_msgs:
+                self.logger.warning(
+                    "Number of messages decreased from %d to %d",
+                    self.num_msgs,
+                    num_msgs,
+                )
         self.num_msgs = num_msgs
         self.num_recent = num_recent
 
@@ -1143,6 +1141,8 @@ class Mailbox:
         # We do not send notifies when we are executing a command that itself
         # generates untagged FETCH messages.
         #
+        # XXX Maybe compute and publish fetches should only do this for the
+        #     _new_ messages that we specify.
         await self._compute_and_publish_fetches(seq, dont_notify=dont_notify)
         self.sequences = seq
         self.uids = new_uids_list
@@ -1549,6 +1549,48 @@ class Mailbox:
     #         self.num_recent,
     #     )
 
+    ####################################################################
+    #
+    def _generate_fetch_msg_for(
+        self, msg_key: int, msg: MHMessage, publish_uid: bool = False
+    ) -> Tuple[str, str]:
+        """
+        Generate a `FETCH` message for sending to a client for the flags of
+        the specified msg key.
+
+        NOTE: We need to generate both UID and non-UID fetch messages because
+        or caller may need both and I would rather not call this function
+        twice.
+
+        Keyword Arguments:
+        msg_key: int  --
+        uid_cmd: bool -- (default False)
+        """
+        flags = []
+
+        for sequence in msg.get_sequences():
+            flags.append(seq_to_flag(sequence))
+        flags_str = " ".join(flags)
+        msg_seq_number = self.msg_keys.index(msg_key) + 1
+
+        uidstr = ""
+        if publish_uid:
+            try:
+                uidstr = f" UID {self.uids[msg_key]}"
+            except IndexError:
+                logger.error(
+                    "Mailbox %s: UID command but message key: %d is not inside"
+                    " list of UIDs, whose length is: %d",
+                    self.name,
+                    msg_key,
+                    len(self.uids),
+                )
+        fetch = f"* {msg_seq_number} FETCH (FLAGS ({flags_str}))\r\n"
+        fetch_uid = (
+            f"* {msg_seq_number} FETCH (FLAGS ({flags_str}){uidstr})\r\n"
+        )
+        return fetch, fetch_uid
+
     ##################################################################
     #
     async def _compute_and_publish_fetches(
@@ -1556,7 +1598,7 @@ class Mailbox:
         seqs: dict[str, list],
         dont_notify: Optional["Authenticated"] = None,
         publish_uids: bool = False,
-    ):
+    ) -> None:
         """
         A helper function for resync()
 
@@ -1616,8 +1658,8 @@ class Mailbox:
                 if msg_key in seqs[seq]:
                     flags.append(seq_to_flag(seq))
 
-            # Publish to every listening client except the one we are supposed
-            # to ignore.
+            # Publish to every listening client except the ones who do not want
+            # notifications.
             #
             flags_str = " ".join(flags)
             msg_idx = self.msg_keys.index(msg_key) + 1
@@ -2194,44 +2236,43 @@ class Mailbox:
                 await self.server.db.execute(
                     "INSERT INTO sequences (id,name,mailbox_id,sequence)"
                     " VALUES (NULL,?,?,?)",
-                    (name, self.id, ",".join([str(x) for x in values])),
+                    (name, self.id, ",".join([str(x) for x in sorted(values)])),
                 )
             await self.server.db.commit()
             return True
-        else:
-            # We got back an actual result. Fill in the values in the mailbox.
-            #
-            (
-                self.id,
-                self.uid_vv,
-                attributes,
-                self.mtime,
-                self.next_uid,
-                self.num_msgs,
-                self.num_recent,
-                uids,
-                self.last_resync,
-                self.subscribed,
-            ) = results
-            self.subscribed = bool(self.subscribed)
-            self.attributes = set(attributes.split(","))
-            if len(uids) == 0:
-                self.uids = []
-            else:
-                self.uids = [int(x) for x in uids.split(",")]
 
-            # And fill in the sequences we find for this mailbox.
-            #
-            async for row in self.server.db.query(
-                "SELECT name, sequence FROM sequences WHERE mailbox_id=?",
-                (self.id,),
-            ):
-                name, sequence = row
-                sequence = sequence.strip()
-                if sequence:
-                    self.sequences[name] = [int(x) for x in sequence.split(",")]
-                else:
-                    self.sequences[name] = []
+        # We got back an actual result. Fill in the values in the mailbox.
+        #
+        (
+            self.id,
+            self.uid_vv,
+            attributes,
+            self.mtime,
+            self.next_uid,
+            self.num_msgs,
+            self.num_recent,
+            uids,
+            self.last_resync,
+            self.subscribed,
+        ) = results
+        self.subscribed = bool(self.subscribed)
+        self.attributes = set(attributes.split(","))
+        if len(uids) == 0:
+            self.uids = []
+        else:
+            self.uids = [int(x) for x in uids.split(",")]
+
+        # And fill in the sequences we find for this mailbox.
+        #
+        async for row in self.server.db.query(
+            "SELECT name, sequence FROM sequences WHERE mailbox_id=?",
+            (self.id,),
+        ):
+            name, sequence = row
+            sequence = sequence.strip()
+            if sequence:
+                self.sequences[name] = set(int(x) for x in sequence.split(","))
+
         return False
 
     ##################################################################
@@ -2292,14 +2333,14 @@ class Mailbox:
                 (
                     name,
                     self.id,
-                    ",".join([str(x) for x in self.sequences[name]]),
+                    ",".join([str(x) for x in sorted(self.sequences[name])]),
                 ),
             )
         for name in names_to_update:
             await self.server.db.execute(
                 "UPDATE sequences SET sequence=? WHERE mailbox_id=? AND name=?",
                 (
-                    ",".join([str(x) for x in self.sequences[name]]),
+                    ",".join([str(x) for x in sorted(self.sequences[name])]),
                     self.id,
                     name,
                 ),
@@ -2437,7 +2478,7 @@ class Mailbox:
         if self.sequences.get("unseen", []):
             # IMAP message sequence # of the first message that is unseen.
             # Convert from MH msg key to IMAP message sequence number
-            first_unseen = self.sequences["unseen"][0]
+            first_unseen = sorted(self.sequences["unseen"])[0]
             first_unseen = self.msg_keys.index(first_unseen) + 1
             push_data.append(f"* OK [UNSEEN {first_unseen}]\r\n")
         push_data.append(f"* OK [UIDVALIDITY {self.uid_vv}]\r\n")
@@ -2497,13 +2538,13 @@ class Mailbox:
         If date_time is not given set it to 'now'.
         The internal date on the message is set to date_time.
 
-        NOTE: Must be called with the mailbox read lock acquired.
-
         Arguments:
         - `message`: The email.message being appended to this mailbox
         - `flags`: A list of flags to set on this message
         - `date_time`: The internal date on this message
         """
+        msg.set_sequences([])
+        msg_key = await self.mailbox.aadd(msg)
         flags = [] if flags is None else flags
         for flag in flags:
             # We need to translate some flags in to the equivalent MH mailbox
@@ -2512,38 +2553,50 @@ class Mailbox:
             if flag in REVERSE_SYSTEM_FLAG_MAP:
                 flag = REVERSE_SYSTEM_FLAG_MAP[flag]
             msg.add_sequence(flag)
+            self.sequences[flag].add(msg_key)
+
         # And messages that are appended to the mailbox always get the \Recent
         # flag
         #
         msg.add_sequence("Recent")
-        async with self.mailbox.lock_folder():
-            # NOTE: This updates the .mh_sequences folder
-            #
-            key = await self.mailbox.aadd(msg)
+        self.sequences["Recent"].add(msg_key)
 
-            # if a date_time was supplied then set the mtime on the file to
-            # that. We use mtime as our 'internal date' on messages.
-            #
-            if date_time:
-                mtime = date_time.timestamp()
-                await utime(mbox_msg_path(self.mailbox, key), (mtime, mtime))
+        # We do not use it, but we keep the .mh_sequences up to date.
+        #
+        async with self.mailbox.lock_folder():
+            self.mailbox.aset_sequences(self.sequences)
+
+        # if a date_time was supplied then set the mtime on the file to
+        # that. We use mtime as our 'internal date' on messages.
+        #
+        if date_time:
+            mtime = date_time.timestamp()
+            await utime(mbox_msg_path(self.mailbox, msg_key), (mtime, mtime))
 
         self.optional_resync = False
         self.allow_pack = False
         try:
-            await self.check_new_msgs_and_flags()
+            # We expect it to issue EXISTS and RECENT since there is a new
+            # message. We also want it to send a 'FETCH FLAGS' for every new
+            # message. In the above code we modified the '.mh_sequences' on
+            # disk, but not in memory so we rely upon
+            # `_compute_and_publish_fetches` to find the new messages and all
+            # other messages that have changed sequences.
+            #
+            await self.check_new_msgs_and_flags(optional=False)
         finally:
             self.allow_pack = True
 
-        uid_vv, uid = await self.get_uid_from_msg(key)
+        uid_vv, uid = await self.get_uid_from_msg(msg_key)
         if uid is None:
             raise Bad(
-                f"Mailbox: {self.name}, unable to fetch UID for message {key}"
+                f"Mailbox: '{self.name}', unable to fetch UID for "
+                f"message {msg_key}"
             )
         logger.debug(
-            "Mailbox: %s, append message: %d, uid: %d, " "sequences: %s",
+            "Mailbox: '%s', append message: %d, uid: %d, sequences: %s",
             self.name,
-            key,
+            msg_key,
             uid,
             ", ".join(msg.get_sequences()),
         )
@@ -2555,8 +2608,8 @@ class Mailbox:
         """
         Perform an expunge. All messages in the 'Deleted' sequence are removed.
 
-        We will sending untagged EXPUNGE messages to all clients on this mbox
-        that are idling.
+        We will send untagged EXPUNGE messages to all clients on this mbox that
+        are idling.
 
         For clients that have this mailbox selected but are NOT idling, we will
         put the EXPUNGE messages on the notifications list for delivery to
@@ -2573,7 +2626,7 @@ class Mailbox:
         # Remove the msg keys being deleted from the message cache.
         #
         cached_keys = set(self.server.msg_cache.msg_keys_for_mbox(self.name))
-        purge_keys = set(msg_keys_to_delete).intersection(cached_keys)
+        purge_keys = msg_keys_to_delete.intersection(cached_keys)
         for msg_key in purge_keys:
             self.server.msg_cache.remove(self.name, msg_key)
 
@@ -2599,16 +2652,14 @@ class Mailbox:
             self.uids.remove(self.uids[which])
             await self.mailbox.aremove(msg_key)
             expunge_msg = f"* {which+1} EXPUNGE\r\n"
-            await self._dispatch_or_pend_notifications([expunge_msg])
+            await self._dispatch_or_pend_notifications(expunge_msg)
 
-        async with self.mailbox.lock_folder():
-            self.sequences = await self.mailbox.aget_sequences()
-            # Remove all deleted msg keys from all sequences
-            #
+        # Remove all deleted msg keys from all sequences
+        #
+        async with self.mailbox.lock_folder(), self.mh_sequences_lock:
             for seq in self.sequences.keys():
                 for msg_key in msg_keys_to_delete:
-                    if msg_key in self.sequences[seq]:
-                        self.sequences[seq].remove(msg_key)
+                    self.sequences[seq].discard(msg_key)
             await self.mailbox.aset_sequences(self.sequences)
 
         self.optional_resync = False
@@ -2658,9 +2709,9 @@ class Mailbox:
         for idx, msg_key in enumerate(self.msg_keys):
             # IMAP messages are numbered starting from 1.
             #
-            i = idx + 1
+            msg_seq_num = idx + 1
             ctx = SearchContext(
-                self, msg_key, i, seq_max, uid_max, self.sequences
+                self, msg_key, msg_seq_num, seq_max, uid_max, self.sequences
             )
             if await search.match(ctx):
                 # The UID SEARCH command returns uid's of messages
@@ -2670,7 +2721,7 @@ class Mailbox:
                     assert uid
                     results.append(uid)
                 else:
-                    results.append(i)
+                    results.append(msg_seq_num)
             await asyncio.sleep(0)
         return results
 
@@ -2728,8 +2779,8 @@ class Mailbox:
         # run and just record which messages this change applied to while the
         # fetch is running.
         #
-        no_longer_unseen_msgs: List[int] = []
-        no_longer_recent_msgs: List[int] = []
+        no_longer_unseen_msgs: Set[int] = set()
+        no_longer_recent_msgs: Set[int] = set()
 
         # msgs = await self.mailbox.akeys()
         # seqs = await self.mailbox.aget_sequences()
@@ -2794,7 +2845,7 @@ class Mailbox:
                 cached_msg = self.server.msg_cache.get(self.name, msg_key)
                 if fetched_flags:
                     if msg_key in self.sequences["Recent"]:
-                        no_longer_recent_msgs.append(msg_key)
+                        no_longer_recent_msgs.add(msg_key)
                     if cached_msg:
                         cached_msg.remove_sequence("Recent")
 
@@ -2808,7 +2859,7 @@ class Mailbox:
                         cached_msg.remove_sequence("unseen")
                         cached_msg.add_sequence("Seen")
                     if msg_key in self.sequences["unseen"]:
-                        no_longer_unseen_msgs.append(msg_key)
+                        no_longer_unseen_msgs.add(msg_key)
 
                 fetch_yield_times.append(time.time() - single_fetch_started)
                 num_results += 1
@@ -2826,17 +2877,36 @@ class Mailbox:
             #       unseen sequence.
             #
             if no_longer_unseen_msgs or no_longer_recent_msgs:
-                seqs = deepcopy(self.sequences)
-                for msg_key in no_longer_recent_msgs:
-                    seqs["Recent"].remove(msg_key)
-                for msg_key in no_longer_unseen_msgs:
-                    seqs["unseen"].remove(msg_key)
-                    if msg_key not in self.sequences["Seen"]:
-                        seqs["Seen"].append(msg_key)
+                notifies_for = no_longer_unseen_msgs | no_longer_recent_msgs
                 async with self.mh_sequences_lock, self.mailbox.lock_folder():
-                    await self.mailbox.aset_sequences(seqs)
-                await self._compute_and_publish_fetches(seqs)
-                self.sequences = seqs
+                    for msg_key in no_longer_recent_msgs:
+                        self.sequences["Recent"].discard(msg_key)
+                    for msg_key in no_longer_unseen_msgs:
+                        self.sequences["unseen"].discard(msg_key)
+                        if msg_key not in self.sequences["Seen"]:
+                            self.sequences["Seen"].add(msg_key)
+
+                    await self.mailbox.aset_sequences(self.sequences)
+
+                # XXX Move this into a helper function?
+                #
+                # Send a FETCH to all other clients for the flags of the
+                # messages that have had their flags changed.
+                #
+                notifies: List[str] = []
+                for msg_key in notifies_for:
+                    flags = []
+                    for sequence in self.sequences.keys():
+                        if msg_key in self.sequences[sequence]:
+                            flags.append(seq_to_flag(sequence))
+
+                    flags_str = " ".join(flags)
+                    msg_seq_number = self.msg_keys.index(msg_key) + 1
+                    notifies.append(
+                        f"* {msg_seq_number} FETCH "
+                        f"(FLAGS ({flags_str}))\r\n"
+                    )
+                await self._dispatch_or_pend_notifications(notifies)
 
         finally:
             now = time.time()
@@ -2888,6 +2958,84 @@ class Mailbox:
                     fetch_time,
                 )
 
+    ####################################################################
+    #
+    def _help_add_flag(self, key: int, msg: MHMessage, flag: str):
+        """
+        Helper function for the logic to add a message to a sequence. Updating
+        both the sequences associated with the MHMessage and the sequences dict.
+        """
+        msg.add_sequence(flag)
+        if key not in self.sequences[flag]:
+            self.sequences[flag].append(key)
+
+        # Make sure that the Seen and unseen sequences are updated properly.
+        #
+        match flag:
+            case "Seen":
+                msg.remove_sequence("unseen")
+                if key in self.sequences["unseen"]:
+                    self.sequences["unseen"].remove(key)
+            case "unseen":
+                msg.remove_sequence("Seen")
+                if key in self.sequences["Seen"]:
+                    self.sequences["Seen"].remove(key)
+
+    ####################################################################
+    #
+    def _help_remove_flag(self, key: int, msg: MHMessage, flag: str):
+        """
+        Helper function for the logic to remove a message to a
+        sequence. Updating both the sequences associated with the MHMessage and
+        the sequences dict.
+        """
+        msg.remove_sequence(flag)
+        if key in self.sequences[flag]:
+            self.sequences[flag].remove(key)
+
+        # Make sure that the Seen and unseen sequences are updated properly.
+        #
+        match flag:
+            case "Seen":
+                msg.add_sequence("unseen")
+                if key not in self.sequences["unseen"]:
+                    self.sequences["unseen"].append(key)
+            case "unseen":
+                msg.add_sequence("Seen")
+                if key not in self.sequences["Seen"]:
+                    self.sequences["Seen"].append(key)
+
+    ####################################################################
+    #
+    def _help_replace_flags(self, key: int, msg: MHMessage, flags: List[str]):
+        r"""
+        Replace the flags on the message.
+        The flag `\Recent` if present is not affected.
+        The flag `unseen` if present is not affected unless `\Seen` is in flags.
+        """
+        msg_seqs = set(msg.get_sequences())
+        msg.set_sequences(flags)
+
+        # If `\Recent` was present, then it is added back.
+        #
+        if "Recent" in msg_seqs:
+            msg.add_sequence("Recent")
+
+        # If `\Seen` is not set in flags, then `unseen` is added.
+        #
+        if "Seen" not in flags:
+            msg.add_sequence("unseen")
+
+        new_msg_seqs = set(msg.get_sequences())
+        to_remove = msg_seqs - new_msg_seqs
+
+        for flag in flags:
+            if key not in self.sequences[flag]:
+                self.sequences[flag].append(key)
+        for flag in to_remove:
+            if key in self.sequences[flag]:
+                self.sequences[flag].remove(key)
+
     ##################################################################
     #
     async def store(
@@ -2924,40 +3072,41 @@ class Mailbox:
         # Convert the flags to MH sequence names..
         #
         flags = [flag_to_seq(x) for x in flags]
-        store_start = time.time()
+        store_start = time.monotonic()
 
-        seqs = deepcopy(self.sequences)
-        notifications = []
+        notifications: List[str] = []
+        response: List[str] = []
         for key in msg_keys:
             msg = await self.get_and_cache_msg(key)
             # XXX We should make sure that the message's sequences
-            #     match what we loaded above just in case it was a
-            #     cached message and its sequence info was not updated.
+            #     match self.sequences
             match action:
                 case StoreAction.ADD_FLAGS | StoreAction.REMOVE_FLAGS:
                     for flag in flags:
-                        # Make sure a sequence exists for every flag
-                        # (even if removing flags)
-                        # XXX seqs is defaultdict, do not need this
-                        if flag not in seqs:
-                            seqs[flag] = []
                         match action:
                             case StoreAction.ADD_FLAGS:
-                                _help_add_flag(key, seqs, msg, flag)
+                                self._help_add_flag(key, msg, flag)
                             case StoreAction.REMOVE_FLAGS:
-                                _help_remove_flag(key, seqs, msg, flag)
+                                self._help_remove_flag(key, msg, flag)
                 case StoreAction.REPLACE_FLAGS:
-                    _help_replace_flags(key, seqs, msg, flags)
-        await self._compute_and_publish_fetches(
-            seqs, None, publish_uids=uid_cmd
-        )
+                    self._help_replace_flags(key, msg, flags)
+            fetch, fetch_uid = self._generate_fetch_msg_for(
+                key, msg, publish_uid=uid_cmd
+            )
+            notifications.append(fetch)
+            if uid_cmd:
+                response.append(fetch_uid)
+            else:
+                response.append(fetch)
+
         async with self.mailbox.lock_folder():
-            self.sequences = seqs
-            await self.mailbox.aset_sequences(seqs)
+            await self.mailbox.aset_sequences(self.sequences)
+
+        await self._dispatch_or_pend_notifications(notifications)
         self.logger.debug(
-            "Completed, took %.3f seconds", time.time() - store_start
+            "Completed, took %.3f seconds", time.monotonic() - store_start
         )
-        return notifications
+        return response
 
     ##################################################################
     #
@@ -3696,88 +3845,6 @@ async def _helper_rename_inbox(mbox: Mailbox, new_name: str):
     mbox.msg_keys = []
     mbox.uids = []
     await mbox.commit_to_db()
-
-
-####################################################################
-#
-def _help_add_flag(key: int, seqs: Sequences, msg: MHMessage, flag: str):
-    """
-    Helper function for the logic to add a message to a sequence. Updating
-    both the sequences associated with the MHMessage and the sequences dict.
-    """
-    msg.add_sequence(flag)
-    if key not in seqs[flag]:
-        seqs[flag].append(key)
-
-    # Make sure that the Seen and unseen sequences are updated properly.
-    #
-    match flag:
-        case "Seen":
-            msg.remove_sequence("unseen")
-            if key in seqs["unseen"]:
-                seqs["unseen"].remove(key)
-        case "unseen":
-            msg.remove_sequence("Seen")
-            if key in seqs["Seen"]:
-                seqs["Seen"].remove(key)
-
-
-####################################################################
-#
-def _help_remove_flag(key: int, seqs: Sequences, msg: MHMessage, flag: str):
-    """
-    Helper function for the logic to remove a message to a sequence. Updating
-    both the sequences associated with the MHMessage and the sequences dict.
-    """
-    msg.remove_sequence(flag)
-    if key in seqs[flag]:
-        seqs[flag].remove(key)
-
-    # Make sure that the Seen and unseen sequences are updated properly.
-    #
-    match flag:
-        case "Seen":
-            msg.add_sequence("unseen")
-            if key not in seqs["unseen"]:
-                seqs["unseen"].append(key)
-        case "unseen":
-            msg.add_sequence("Seen")
-            if key not in seqs["Seen"]:
-                seqs["Seen"].append(key)
-
-
-####################################################################
-#
-def _help_replace_flags(
-    key: int, seqs: Sequences, msg: MHMessage, flags: List[str]
-):
-    r"""
-    Replace the flags on the message.
-    The flag `\Recent` if present is not affected.
-    The flag `unseen` if present is not affected unless `\Seen` is in flags.
-    """
-    msg_seqs = set(msg.get_sequences())
-    msg.set_sequences(flags)
-
-    # If `\Recent` was present, then it is added back.
-    #
-    if "Recent" in msg_seqs:
-        msg.add_sequence("Recent")
-
-    # If `\Seen` is not set in flags, then `unseen` is added.
-    #
-    if "Seen" not in flags:
-        msg.add_sequence("unseen")
-
-    new_msg_seqs = set(msg.get_sequences())
-    to_remove = msg_seqs - new_msg_seqs
-
-    for flag in flags:
-        if key not in seqs[flag]:
-            seqs[flag].append(key)
-    for flag in to_remove:
-        if key in seqs[flag]:
-            seqs[flag].remove(key)
 
 
 ####################################################################

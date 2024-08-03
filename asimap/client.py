@@ -589,6 +589,7 @@ class Authenticated(BaseClientHandler):
         - `cmd`: The full IMAP command object.
         """
         if self.mbox:
+            self.dont_notify = False
             async with cmd.ready_and_okay(self, self.mbox):
                 await self.send_pending_notifications()
         return None
@@ -859,7 +860,7 @@ class Authenticated(BaseClientHandler):
         await self.send_pending_notifications()
 
         try:
-            mbox = await self.server.get_mailbox(cmd.mailbox_name, expiry=10)
+            mbox = await self.server.get_mailbox(cmd.mailbox_name)
             async with cmd.ready_and_okay(self, mbox):
                 uid = await mbox.append(
                     cmd.message, cmd.flag_list, cmd.date_time
@@ -983,29 +984,28 @@ class Authenticated(BaseClientHandler):
             self.unceremonious_bye("Your selected mailbox no longer exists")
             return
 
-        async with self.mbox.lock.read_lock():
-            await self.notifies()
+        await self.send_pending_notifications()
 
-            # If we selected the mailbox via 'examine' then we can not make any
-            # changes anyways...
-            #
-            if self.examine:
-                return
+        # If we selected the mailbox via 'examine' then we can not make any
+        # changes anyways...
+        #
+        if self.examine:
+            return
 
-            # In order for the EXPUNGE operation to immediately send EXPUNGE
-            # messages to this client we will do a bit of a hack and indicate
-            # that this client is "idling" while the operation is running.
-            #
-            try:
-                idling = self.idling
-                self.idling = True
-                async with cmd.ready_and_okay(self.mbox):
-                    # Do an EXPUNGE if there are any messages marked 'Delete'
-                    #
-                    if self.mbox.sequences.get("Deleted", []):
-                        await self.mbox.expunge()
-            finally:
-                self.idling = idling
+        # In order for the EXPUNGE operation to immediately send EXPUNGE
+        # messages to this client we will do a bit of a hack and indicate
+        # that this client is "idling" while the operation is running.
+        #
+        try:
+            idling = self.idling
+            self.idling = True
+            async with cmd.ready_and_okay(self, self.mbox):
+                # Do an EXPUNGE if there are any messages marked 'Delete'
+                #
+                if self.mbox.sequences.get("Deleted", []):
+                    await self.mbox.expunge()
+        finally:
+            self.idling = idling
 
     ##################################################################
     #
@@ -1104,7 +1104,6 @@ class Authenticated(BaseClientHandler):
 
         self.fetch_while_pending_count = 0
         try:
-            self.dont_notify = True
             async with cmd.ready_and_okay(self, self.mbox):
                 msg_set = (
                     sorted(cmd.msg_set_as_set) if cmd.msg_set_as_set else []
@@ -1208,7 +1207,7 @@ class Authenticated(BaseClientHandler):
         # resync was completed by the management task.)
         #
         if not cmd.silent:
-            self.client.push(*fetch_notifications)
+            await self.client.push(*fetch_notifications)
 
     ##################################################################
     #
