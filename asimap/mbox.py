@@ -57,7 +57,6 @@ from .search import IMAPSearch, SearchContext
 from .utils import (
     UID_HDR,
     MsgSet,
-    find_header_in_binary_file,
     get_uidvv_uid,
     sequence_set_to_list,
     update_replace_header_in_binary_file,
@@ -567,7 +566,7 @@ class Mailbox:
         # sleeping between checks)
         #
         while self.would_conflict(imap_cmd):
-            await asyncio.sleep(0)
+            await asyncio.sleep(0.01)
             self.executing_tasks = [
                 x for x in self.executing_tasks if not x.completed
             ]
@@ -1061,14 +1060,6 @@ class Mailbox:
             #
             msg_key = await self._find_first_foreign_message()
 
-        # XXX Once we find the first foreign message what is important
-        #     .mh_sequences-wise is what sequences those messages are. We do
-        #     not need to know all the sequence diffs. We have decided that we
-        #     do not care and we are going to treat our internal sequneces as
-        #     the master information. So we need to get the sequence info of
-        #     the "new" messages, and add it to our internal sequence data (and
-        #     then we save the sequence data to .mh_sequences for completeness)
-
         # If the msg_key we get back is _not None_ then that means there are
         # messages that need to have a uid_vv,uid added or updated.
         #
@@ -1090,16 +1081,21 @@ class Mailbox:
                 )
 
             # Update the message's sequences and self.sequences based on the
-            # mesages sequences.
+            # message's sequences.
             #
+            self.marked(True)
             for key in new_msg_keys:
                 msg = await self.get_and_cache_msg(key)
                 msg.add_sequence("Recent")
-                self.marked(True)
                 msg_sequences = msg.get_sequences()
                 if "unseen" not in msg_sequences:
-                    msg.add_sequence("Seen")
-                    msg_sequences.append("Seen")
+                    if "Seen" not in msg_sequences:
+                        msg.add_sequence("Seen")
+                        msg_sequences.append("Seen")
+                else:
+                    if "Seen" in msg_sequences:
+                        msg.remove_sequence("Seen")
+                        msg_sequences.remove("Seen")
                 if "Seen" in msg_sequences and "unseen" in msg_sequences:
                     msg.remove_sequence("unseen")
                     msg_sequences.remove("unseen")
@@ -2012,7 +2008,7 @@ class Mailbox:
             self.next_uid += 1
             num_msgs += 1
 
-            # Keep track of how lnog we have been running. Every second publish
+            # Keep track of how long we have been running. Every second publish
             # progress stats.
             #
             duration = time.monotonic() - start_time
@@ -2036,159 +2032,159 @@ class Mailbox:
 
         return uids
 
-    ##################################################################
-    #
-    async def _update_msg_uids(self, msg_keys: List[int], seq: Sequences):
-        """
-        This will loop through all of the msg_keys whose keys were passed
-        in. We assume these keys are in order. We see if they have UID_VV.UID's
-        in them. If they do not or it is out of sequence (UID's must be
-        monotonically increasing at all times) then we have to generate new
-        UID's for every message after the out-of-sequence one we encountered.
+    # ##################################################################
+    # #
+    # async def _update_msg_uids(self, msg_keys: List[int], seq: Sequences):
+    #     """
+    #     This will loop through all of the msg_keys whose keys were passed
+    #     in. We assume these keys are in order. We see if they have UID_VV.UID's
+    #     in them. If they do not or it is out of sequence (UID's must be
+    #     monotonically increasing at all times) then we have to generate new
+    #     UID's for every message after the out-of-sequence one we encountered.
 
-        NOTE: The important thing to note is that we store the uid_vv / uid for
-              message _in the message_ itself. This way if the message is moved
-              around we will know if it is out of sequence, a totally new
-              message, or from a different mailbox.
+    #     NOTE: The important thing to note is that we store the uid_vv / uid for
+    #           message _in the message_ itself. This way if the message is moved
+    #           around we will know if it is out of sequence, a totally new
+    #           message, or from a different mailbox.
 
-              The downside is that we need to pick at every message in the
-              msg_keys list to find this header information.
+    #           The downside is that we need to pick at every message in the
+    #           msg_keys list to find this header information.
 
-        Arguments:
-        - `msg_keys`: A list of the message keys that we need to check.
-          NOTE: This will frequently be a subset of all messages in the folder.
-        - `seq`: The existing sequences for this folder (may not be in sync
-          with self.sequences for differencing purposes, and is passed in to
-          save us from having to load them from disk again.
-        """
-        # We may need to re-write the .mh_sequences file if we need to tag
-        # messages with 'Recent'. If we do that then we need a flag to let us
-        # know the write the sequences back out to disk.
-        #
-        seq_changed = False
+    #     Arguments:
+    #     - `msg_keys`: A list of the message keys that we need to check.
+    #       NOTE: This will frequently be a subset of all messages in the folder.
+    #     - `seq`: The existing sequences for this folder (may not be in sync
+    #       with self.sequences for differencing purposes, and is passed in to
+    #       save us from having to load them from disk again.
+    #     """
+    #     # We may need to re-write the .mh_sequences file if we need to tag
+    #     # messages with 'Recent'. If we do that then we need a flag to let us
+    #     # know the write the sequences back out to disk.
+    #     #
+    #     seq_changed = False
 
-        # As we go through messages we need to know if the current UID we are
-        # looking at is proper (ie: greater than the one of the previous
-        # message.)
-        #
-        # If we hit one that is not then from that message on we need to
-        # re-number all of their UID's.
-        #
-        redoing_rest_of_folder = False
-        prev_uid = 0
+    #     # As we go through messages we need to know if the current UID we are
+    #     # looking at is proper (ie: greater than the one of the previous
+    #     # message.)
+    #     #
+    #     # If we hit one that is not then from that message on we need to
+    #     # re-number all of their UID's.
+    #     #
+    #     redoing_rest_of_folder = False
+    #     prev_uid = 0
 
-        # We keep track of all of the UID's we find and any new ones we set.
-        # This will allow us to compare with the UID's that were already in
-        # our list of messages and lets us see if we need to issue any
-        # 'EXPUNGE's for messages that have been removed.
-        #
-        uids_found = []
+    #     # We keep track of all of the UID's we find and any new ones we set.
+    #     # This will allow us to compare with the UID's that were already in
+    #     # our list of messages and lets us see if we need to issue any
+    #     # 'EXPUNGE's for messages that have been removed.
+    #     #
+    #     uids_found = []
 
-        # Loop through all of the msg keys we were passed and read its headers.
-        #
-        # For each message see if it has the header that we use to define the
-        # uid_vv / uid for a message.
-        #
-        # If the message does not, or if it has a uid lower than the previous
-        # uid, or if its uid_vv does not match the uid_vv of this mailbox then
-        # 'redoing' goes to true and we now update this message and every
-        # successive message adding a proper uid_vv/uid header.
-        #
-        # If we are not looking at too many messages (1000?), then be sure to
-        # try to cache them in the message cache.
-        #
-        num_msgs = len(msg_keys)
-        check_start = time.time()
-        for i, msg_key in enumerate(msg_keys):
-            if i % 200 == 0:
-                logger.debug(
-                    "mailbox: %s, check/update uids, at count %d, "
-                    "msg: %d out of %d",
-                    self.name,
-                    i,
-                    msg_key,
-                    num_msgs,
-                )
-            if not redoing_rest_of_folder:
-                # If the uid_vv is different or the uid is NOT
-                # monotonically increasing from the previous uid then
-                # we have to redo the rest of the folder.
-                #
-                msg_path = self.mailbox.get_message_path(msg_key)
-                uid_hdr = await find_header_in_binary_file(msg_path, UID_HDR)
-                if uid_hdr is None:
-                    uid_vv = (None,)
-                    uid = None
-                else:
-                    uid_vv, uid = get_uidvv_uid(uid_hdr)
+    #     # Loop through all of the msg keys we were passed and read its headers.
+    #     #
+    #     # For each message see if it has the header that we use to define the
+    #     # uid_vv / uid for a message.
+    #     #
+    #     # If the message does not, or if it has a uid lower than the previous
+    #     # uid, or if its uid_vv does not match the uid_vv of this mailbox then
+    #     # 'redoing' goes to true and we now update this message and every
+    #     # successive message adding a proper uid_vv/uid header.
+    #     #
+    #     # If we are not looking at too many messages (1000?), then be sure to
+    #     # try to cache them in the message cache.
+    #     #
+    #     num_msgs = len(msg_keys)
+    #     check_start = time.time()
+    #     for i, msg_key in enumerate(msg_keys):
+    #         if i % 200 == 0:
+    #             logger.debug(
+    #                 "mailbox: %s, check/update uids, at count %d, "
+    #                 "msg: %d out of %d",
+    #                 self.name,
+    #                 i,
+    #                 msg_key,
+    #                 num_msgs,
+    #             )
+    #         if not redoing_rest_of_folder:
+    #             # If the uid_vv is different or the uid is NOT
+    #             # monotonically increasing from the previous uid then
+    #             # we have to redo the rest of the folder.
+    #             #
+    #             msg_path = self.mailbox.get_message_path(msg_key)
+    #             uid_hdr = await find_header_in_binary_file(msg_path, UID_HDR)
+    #             if uid_hdr is None:
+    #                 uid_vv = (None,)
+    #                 uid = None
+    #             else:
+    #                 uid_vv, uid = get_uidvv_uid(uid_hdr)
 
-                if (
-                    uid_vv is None
-                    or uid_vv != self.uid_vv
-                    or uid is None
-                    or uid <= prev_uid
-                ):
-                    redoing_rest_of_folder = True
-                    logger.debug(
-                        "mailbox: %s, Found msg %d uid_vv/uid "
-                        "%s.%s out of sequence. Redoing rest of folder.",
-                        self.name,
-                        msg_key,
-                        uid_vv,
-                        uid,
-                    )
-                else:
-                    uids_found.append(uid)
-                    prev_uid = uid
+    #             if (
+    #                 uid_vv is None
+    #                 or uid_vv != self.uid_vv
+    #                 or uid is None
+    #                 or uid <= prev_uid
+    #             ):
+    #                 redoing_rest_of_folder = True
+    #                 logger.debug(
+    #                     "mailbox: %s, Found msg %d uid_vv/uid "
+    #                     "%s.%s out of sequence. Redoing rest of folder.",
+    #                     self.name,
+    #                     msg_key,
+    #                     uid_vv,
+    #                     uid,
+    #                 )
+    #             else:
+    #                 uids_found.append(uid)
+    #                 prev_uid = uid
 
-            if redoing_rest_of_folder:
-                # We are either replacing or adding a new UID header to this
-                # message no matter what so do that.
-                #
-                # NOTE: Every message we set a uid on, whether it had one
-                #       before or not, is added to the `Recent` sequence.
-                #
-                msg_path = self.mailbox.get_message_path(msg_key)
-                uid_hdr = f"{UID_HDR}: {self.uid_vv:010d}.{self.next_uid:010d}"
-                await update_replace_header_in_binary_file(msg_path, uid_hdr)
-                uids_found.append(self.next_uid)
-                self.next_uid += 1
+    #         if redoing_rest_of_folder:
+    #             # We are either replacing or adding a new UID header to this
+    #             # message no matter what so do that.
+    #             #
+    #             # NOTE: Every message we set a uid on, whether it had one
+    #             #       before or not, is added to the `Recent` sequence.
+    #             #
+    #             msg_path = self.mailbox.get_message_path(msg_key)
+    #             uid_hdr = f"{UID_HDR}: {self.uid_vv:010d}.{self.next_uid:010d}"
+    #             await update_replace_header_in_binary_file(msg_path, uid_hdr)
+    #             uids_found.append(self.next_uid)
+    #             self.next_uid += 1
 
-                # If the message is in the cache remove it.
-                #
-                self.server.msg_cache.remove(self.name, msg_key)
+    #             # If the message is in the cache remove it.
+    #             #
+    #             self.server.msg_cache.remove(self.name, msg_key)
 
-                # If the msg is not already in the Recent sequence add it.
-                #
-                if msg_key not in seq["Recent"]:
-                    seq_changed = True
-                    seq["Recent"].append(msg_key)
-        check_duration = time.time() - check_start
-        if check_duration > 1.0:
-            logger.info(
-                "check/update finished, mailbox: %s, num msgs: %d, "
-                "duration: %.3fs",
-                self.name,
-                num_msgs,
-                check_duration,
-            )
-        # If we had to redo the folder then we believe it is indeed now
-        # interesting so set the \Marked attribute on it.
-        #
-        if redoing_rest_of_folder:
-            self.marked(True)
+    #             # If the msg is not already in the Recent sequence add it.
+    #             #
+    #             if msg_key not in seq["Recent"]:
+    #                 seq_changed = True
+    #                 seq["Recent"].append(msg_key)
+    #     check_duration = time.time() - check_start
+    #     if check_duration > 1.0:
+    #         logger.info(
+    #             "check/update finished, mailbox: %s, num msgs: %d, "
+    #             "duration: %.3fs",
+    #             self.name,
+    #             num_msgs,
+    #             check_duration,
+    #         )
+    #     # If we had to redo the folder then we believe it is indeed now
+    #     # interesting so set the \Marked attribute on it.
+    #     #
+    #     if redoing_rest_of_folder:
+    #         self.marked(True)
 
-            # If seq_changed is True then we modified the sequencees too
-            # so we need to re-write the sequences file.
-            #
-            if seq_changed is True:
-                await self.mailbox.aset_sequences(seq)
+    #         # If seq_changed is True then we modified the sequencees too
+    #         # so we need to re-write the sequences file.
+    #         #
+    #         if seq_changed is True:
+    #             await self.mailbox.aset_sequences(seq)
 
-        # And we are done.. we return the list of the uid's of all of the
-        # messages we looked at or re-wrote (in order in which we encountered
-        # them.)
-        #
-        return uids_found
+    #     # And we are done.. we return the list of the uid's of all of the
+    #     # messages we looked at or re-wrote (in order in which we encountered
+    #     # them.)
+    #     #
+    #     return uids_found
 
     ##################################################################
     #
