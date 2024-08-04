@@ -1056,10 +1056,10 @@ class Mailbox:
         async with self.mailbox.lock_folder():
             self.msg_keys = await self.mailbox.akeys()
 
-        # Find the first message in our folder that does not have the right
-        # uid_vv by scanning backwards from the end of the folder.
-        #
-        msg_key = await self._find_first_foreign_message()
+            # Find the first message in our folder that does not have the right
+            # uid_vv by scanning backwards from the end of the folder.
+            #
+            msg_key = await self._find_first_foreign_message()
 
         # XXX Once we find the first foreign message what is important
         #     .mh_sequences-wise is what sequences those messages are. We do
@@ -1077,27 +1077,43 @@ class Mailbox:
             idx = self.msg_keys.index(msg_key)
             new_msg_keys = self.msg_keys[idx:]
             added_uids = await self.add_uids_to_msgs(new_msg_keys)
-            new_uids_list = self.uids + added_uids
-            if len(new_uids_list) != len(self.msg_keys):
+            self.uids.extend(added_uids)
+            if len(self.uids) != len(self.msg_keys):
                 # This should never happen. In case it does we will likely need
                 # to add new debugging statements, and if it is something we
                 # need to handle we can add logic for it later.
                 #
                 raise MailboxInconsistency(
                     f"Mailbox: '{self.name}': length of new uids list "
-                    f"({len(new_uids_list)}) does not match length of "
+                    f"({len(self.uids)}) does not match length of "
                     f"msg keys ({len(self.msg_keys)})"
                 )
 
-        # Get the message sequences, updating `/Seen` if necessary, also adding
-        # `/Recent` for all the new messages if there were any.
-        #
-        async with self.mailbox.lock_folder():
-            seq = await self._get_sequences_update_seen(
-                recent_msg_keys=new_msg_keys
-            )
+            # Update the message's sequences and self.sequences based on the
+            # mesages sequences.
+            #
+            for key in new_msg_keys:
+                msg = await self.get_and_cache_msg(key)
+                msg.add_sequence("Recent")
+                self.marked(True)
+                msg_sequences = msg.get_sequences()
+                if "unseen" not in msg_sequences:
+                    msg.add_sequence("Seen")
+                    msg_sequences.append("Seen")
+                if "Seen" in msg_sequences and "unseen" in msg_sequences:
+                    msg.remove_sequence("unseen")
+                    msg_sequences.remove("unseen")
 
-        num_recent = len(seq["Recent"])
+                for sequence in self.sequences.keys():
+                    if sequence in msg_sequences:
+                        self.sequences[sequence].add(key)
+                    else:
+                        self.sequences[sequence].discard(key)
+
+                async with self.mailbox.lock_folder():
+                    await self.mailbox.aset_sequences(self.sequences)
+
+        num_recent = len(self.sequences["Recent"])
         num_msgs = len(self.msg_keys)
 
         if num_msgs > 0:
@@ -1138,14 +1154,16 @@ class Mailbox:
         # the last time we did this we need to issue untagged FETCH %d
         # (FLAG (..)) to all of our active clients.
         #
-        # We do not send notifies when we are executing a command that itself
-        # generates untagged FETCH messages.
-        #
-        # XXX Maybe compute and publish fetches should only do this for the
-        #     _new_ messages that we specify.
-        await self._compute_and_publish_fetches(seq, dont_notify=dont_notify)
-        self.sequences = seq
-        self.uids = new_uids_list
+        if new_msg_keys:
+            notifications = []
+            for key in new_msg_keys:
+                msg = await self.get_and_cache_msg(key)
+                fetch, _ = self._generate_fetch_msg_for(key, msg)
+                notifications.append(fetch)
+
+            await self._dispatch_or_pend_notifications(
+                notifications, dont_notify=dont_notify
+            )
 
         # And see if the folder is getting kinda 'gappy' with spaces
         # between message keys. If it is, pack it.
@@ -2650,6 +2668,7 @@ class Mailbox:
             which = self.msg_keys.index(msg_key)
             self.msg_keys.remove(msg_key)
             self.uids.remove(self.uids[which])
+            self.num_msgs -= 1
             await self.mailbox.aremove(msg_key)
             expunge_msg = f"* {which+1} EXPUNGE\r\n"
             await self._dispatch_or_pend_notifications(expunge_msg)
@@ -2661,6 +2680,7 @@ class Mailbox:
                 for msg_key in msg_keys_to_delete:
                     self.sequences[seq].discard(msg_key)
             await self.mailbox.aset_sequences(self.sequences)
+        self.num_recent = len(self.sequences["Recent"])
 
         self.optional_resync = False
 
