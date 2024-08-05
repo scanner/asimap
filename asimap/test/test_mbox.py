@@ -118,10 +118,10 @@ async def test_mailbox_init_with_messages(
     assert r"\Marked" in mbox.attributes
     assert r"\HasNoChildren" in mbox.attributes
 
-    msg_keys = await mbox.mailbox.akeys()
+    msg_keys = set(await mbox.mailbox.akeys())
     assert len(msg_keys) > 0
     mtimes = []
-    for msg_key in msg_keys:
+    for msg_key in sorted(msg_keys):
         path = os.path.join(mbox.mailbox._path, str(msg_key))
         mtimes.append(await aiofiles.os.path.getmtime(path))
 
@@ -136,12 +136,12 @@ async def test_mailbox_init_with_messages(
     assert mbox.sequences["unseen"] == msg_keys
     assert len(mbox.sequences["Seen"]) == 0
     assert mbox.sequences["Recent"] == msg_keys
-    await assert_uids_match_msgs(msg_keys, mbox)
+    await assert_uids_match_msgs(sorted(msg_keys), mbox)
 
     # The messages have been re-writen to have UID's. However the mtimes should
     # not have changed.
     #
-    for msg_key, orig_mtime in zip(msg_keys, mtimes):
+    for msg_key, orig_mtime in zip(sorted(msg_keys), mtimes):
         path = os.path.join(mbox.mailbox._path, str(msg_key))
         mtime = await aiofiles.os.path.getmtime(path)
         assert mtime == orig_mtime
@@ -172,296 +172,315 @@ async def test_mailbox_gets_new_message(
     bunch_of_email_in_folder(folder=NAME, num_emails=1)
     msg_keys = await mbox.mailbox.akeys()
 
-    async with mbox.lock.read_lock():
-        await mbox.resync()
+    await mbox.check_new_msgs_and_flags()
     assert r"\Marked" in mbox.attributes
     assert mbox.last_resync > last_resync
     assert mbox.num_msgs == len(msg_keys)
     assert len(mbox.sequences["unseen"]) == len(msg_keys)
-    assert mbox.sequences["unseen"] == msg_keys
-    assert mbox.sequences["Recent"] == msg_keys
+    assert mbox.sequences["unseen"] == set(msg_keys)
+    assert mbox.sequences["Recent"] == set(msg_keys)
     assert len(mbox.sequences["Seen"]) == 0
     await assert_uids_match_msgs(msg_keys, mbox)
 
 
 ####################################################################
 #
-@pytest.mark.asyncio
-async def test_mailbox_sequence_change(
-    bunch_of_email_in_folder, imap_user_server
-):
-    """
-    After initial init, add message to folder. Do resync.
-    """
-    NAME = "inbox"
-    bunch_of_email_in_folder(folder=NAME)
-    server = imap_user_server
-    mbox = await server.get_mailbox(NAME)
-    last_resync = mbox.last_resync
+#
+# XXX This test no longer works. The only way messages will get chanegd flags
+# is if `store()` is called on them. And the `store()` method will send the
+# FETCH notifications.
+#
+# @pytest.mark.asyncio
+# async def test_mailbox_sequence_change(
+#     bunch_of_email_in_folder, imap_user_server
+# ):
+#     """
+#     After initial init, add message to folder. Do resync.
+#     """
+#     NAME = "inbox"
+#     bunch_of_email_in_folder(folder=NAME)
+#     server = imap_user_server
+#     mbox = await server.get_mailbox(NAME)
+#     last_resync = mbox.last_resync
 
-    # We need to sleep at least one second for mbox.last_resync to change (we
-    # only consider seconds)
-    #
-    await asyncio.sleep(1)
+#     # We need to sleep at least one second for mbox.last_resync to change (we
+#     # only consider seconds)
+#     #
+#     await asyncio.sleep(1)
 
-    # Remove unseen on some messages. Mark some messages replied to.
-    msg_keys = await mbox.mailbox.akeys()
-    seqs = await mbox.mailbox.aget_sequences()
-    assert mbox.sequences["Recent"] == msg_keys
+#     # Remove unseen on some messages. Mark some messages replied to.
+#     msg_keys = await mbox.mailbox.akeys()
+#     seqs = await mbox.mailbox.aget_sequences()
+#     assert mbox.sequences["Recent"] == msg_keys
 
-    for i in range(10):
-        seqs["unseen"].remove(msg_keys[i])
-    seqs["Answered"] = [msg_keys[i] for i in range(5)]
-    await mbox.mailbox.aset_sequences(seqs)
+#     for i in range(10):
+#         seqs["unseen"].remove(msg_keys[i])
+#     seqs["Answered"] = [msg_keys[i] for i in range(5)]
+#     await mbox.mailbox.aset_sequences(seqs)
 
-    async with mbox.lock.read_lock():
-        await mbox.resync()
-    assert r"\Marked" in mbox.attributes
-    assert mbox.last_resync > last_resync
-    assert mbox.num_msgs == len(msg_keys)
-    assert mbox.sequences != seqs  # Addition of `Seen` sequence
-    assert len(mbox.sequences["unseen"]) == 10
-    assert mbox.sequences["unseen"] == msg_keys[10:]
-    assert len(mbox.sequences["Seen"]) == 10
-    assert mbox.sequences["Seen"] == msg_keys[:10]
+#     async with mbox.lock.read_lock():
+#         await mbox.resync()
+#     assert r"\Marked" in mbox.attributes
+#     assert mbox.last_resync > last_resync
+#     assert mbox.num_msgs == len(msg_keys)
+#     assert mbox.sequences != seqs  # Addition of `Seen` sequence
+#     assert len(mbox.sequences["unseen"]) == 10
+#     assert mbox.sequences["unseen"] == msg_keys[10:]
+#     assert len(mbox.sequences["Seen"]) == 10
+#     assert mbox.sequences["Seen"] == msg_keys[:10]
 
-    # Messages have gained and lost flags (sequences), but no new messages have
-    # appeared, thus `Recent` is the same as before (all message keys)
-    #
-    assert mbox.sequences["Recent"] == msg_keys
-    await assert_uids_match_msgs(msg_keys, mbox)
+#     # Messages have gained and lost flags (sequences), but no new messages have
+#     # appeared, thus `Recent` is the same as before (all message keys)
+#     #
+#     assert mbox.sequences["Recent"] == msg_keys
+#     await assert_uids_match_msgs(msg_keys, mbox)
 
 
 ####################################################################
 #
-@pytest.mark.asyncio
-async def test_mbox_resync_msg_with_wrong_uidvv(
-    faker, bunch_of_email_in_folder, imap_user_server
-):
-    """
-    Some operations copy messages to new folders, which means they have the
-    wrong uidvv for the folder that they have been moved to.
-    """
-    NAME = "inbox"
-    bunch_of_email_in_folder(folder=NAME)
-    server = imap_user_server
-    mbox = await server.get_mailbox(NAME)
-    last_resync = mbox.last_resync
+# This test as it is will also fail. The only way a message with an invalid
+# uid_vv will appear is if it is copied from a different folder. So we need to
+# be testing the 'copy()' method.
+#
+# @pytest.mark.asyncio
+# async def test_mbox_resync_msg_with_wrong_uidvv(
+#     faker, bunch_of_email_in_folder, imap_user_server
+# ):
+#     """
+#     Some operations copy messages to new folders, which means they have the
+#     wrong uidvv for the folder that they have been moved to.
+#     """
+#     NAME = "inbox"
+#     bunch_of_email_in_folder(folder=NAME)
+#     server = imap_user_server
+#     mbox = await server.get_mailbox(NAME)
+#     last_resync = mbox.last_resync
 
-    # We need to sleep at least one second for mbox.last_resync to change (we
-    # only consider seconds)
-    #
-    await asyncio.sleep(1)
+#     # We need to sleep at least one second for mbox.last_resync to change (we
+#     # only consider seconds)
+#     #
+#     await asyncio.sleep(1)
 
-    # Now add one message to the folder.
-    #
-    bunch_of_email_in_folder(folder=NAME, num_emails=1)
-    msg_keys = await mbox.mailbox.akeys()
+#     # Now add one message to the folder.
+#     #
+#     bunch_of_email_in_folder(folder=NAME, num_emails=1)
+#     msg_keys = await mbox.mailbox.akeys()
 
-    # and give this new message some random uid_vv/uid.
-    #
-    new_msg = msg_keys[-1]
-    msg = await mbox.mailbox.aget_message(new_msg)
-    uid_vv = faker.pyint()
-    uid = faker.pyint()
-    msg[UID_HDR] = f"{uid_vv:010d}.{uid:010d}"
-    await mbox.mailbox.asetitem(new_msg, msg)
+#     # and give this new message some random uid_vv/uid.
+#     #
+#     new_msg = msg_keys[-1]
+#     msg = await mbox.mailbox.aget_message(new_msg)
+#     uid_vv = faker.pyint()
+#     uid = faker.pyint()
+#     msg[UID_HDR] = f"{uid_vv:010d}.{uid:010d}"
+#     await mbox.mailbox.asetitem(new_msg, msg)
 
-    async with mbox.lock.read_lock():
-        await mbox.resync()
+#     async with mbox.lock.read_lock():
+#         await mbox.resync()
 
-    seqs = await mbox.mailbox.aget_sequences()
-    assert r"\Marked" in mbox.attributes
-    assert mbox.last_resync > last_resync
-    assert mbox.num_msgs == len(msg_keys)
-    assert mbox.sequences == seqs
-    assert len(mbox.sequences["unseen"]) == len(msg_keys)
-    assert mbox.sequences["unseen"] == msg_keys
-    assert mbox.sequences["Recent"] == msg_keys
-    assert len(mbox.sequences["Seen"]) == 0
-    await assert_uids_match_msgs(msg_keys, mbox)
+#     seqs = await mbox.mailbox.aget_sequences()
+#     assert r"\Marked" in mbox.attributes
+#     assert mbox.last_resync > last_resync
+#     assert mbox.num_msgs == len(msg_keys)
+#     assert mbox.sequences == seqs
+#     assert len(mbox.sequences["unseen"]) == len(msg_keys)
+#     assert mbox.sequences["unseen"] == msg_keys
+#     assert mbox.sequences["Recent"] == msg_keys
+#     assert len(mbox.sequences["Seen"]) == 0
+#     await assert_uids_match_msgs(msg_keys, mbox)
 
 
 ####################################################################
 #
-@pytest.mark.asyncio
-async def test_mbox_resync_earlier_msg_with_wrong_uidvv(
-    faker, bunch_of_email_in_folder, imap_user_server
-):
-    """
-    What happens if a message with a wrong uid gets added to the beginnign
-    of the mailbox.
-    """
-    NAME = "inbox"
-    start_at = 10
-    num_msgs = 20
-    bunch_of_email_in_folder(
-        folder=NAME,
-        num_emails=num_msgs,
-        sequence=range(start_at, start_at + num_msgs),
-    )
-    server = imap_user_server
-    mbox = await server.get_mailbox(NAME)
-    last_resync = mbox.last_resync
+# Messages are now ONLY appended to the end of a mailbox. So no point in
+# testing this. We do not support it.
+#
+# @pytest.mark.asyncio
+# async def test_mbox_resync_earlier_msg_with_wrong_uidvv(
+#     faker, bunch_of_email_in_folder, imap_user_server
+# ):
+#     """
+#     What happens if a message with a wrong uid gets added to the beginnign
+#     of the mailbox.
+#     """
+#     NAME = "inbox"
+#     start_at = 10
+#     num_msgs = 20
+#     bunch_of_email_in_folder(
+#         folder=NAME,
+#         num_emails=num_msgs,
+#         sequence=range(start_at, start_at + num_msgs),
+#     )
+#     server = imap_user_server
+#     mbox = await server.get_mailbox(NAME)
+#     last_resync = mbox.last_resync
 
-    # We need to sleep at least one second for mbox.last_resync to change (we
-    # only consider seconds)
-    #
-    await asyncio.sleep(1)
+#     # We need to sleep at least one second for mbox.last_resync to change (we
+#     # only consider seconds)
+#     #
+#     await asyncio.sleep(1)
 
-    async with mbox.lock.read_lock():
-        await mbox.resync(optional=False, force=True)
+#     async with mbox.lock.read_lock():
+#         await mbox.resync(optional=False, force=True)
 
-    # Now add one message to the folder.
-    #
-    bunch_of_email_in_folder(folder=NAME, num_emails=1, sequence=[1])
-    msg_keys = await mbox.mailbox.akeys()
+#     # Now add one message to the folder.
+#     #
+#     bunch_of_email_in_folder(folder=NAME, num_emails=1, sequence=[1])
+#     msg_keys = await mbox.mailbox.akeys()
 
-    # and give this new message some random uid_vv/uid.
-    #
-    new_msg = msg_keys[0]
-    msg = await mbox.mailbox.aget_message(new_msg)
-    uid_vv = faker.pyint()
-    uid = faker.pyint()
-    msg[UID_HDR] = f"{uid_vv:010d}.{uid:010d}"
-    await mbox.mailbox.asetitem(new_msg, msg)
+#     # and give this new message some random uid_vv/uid.
+#     #
+#     new_msg = msg_keys[0]
+#     msg = await mbox.mailbox.aget_message(new_msg)
+#     uid_vv = faker.pyint()
+#     uid = faker.pyint()
+#     msg[UID_HDR] = f"{uid_vv:010d}.{uid:010d}"
+#     await mbox.mailbox.asetitem(new_msg, msg)
 
-    async with mbox.lock.read_lock():
-        await mbox.resync(optional=False, force=True)
+#     async with mbox.lock.read_lock():
+#         await mbox.resync(optional=False, force=True)
 
-    seqs = await mbox.mailbox.aget_sequences()
-    assert r"\Marked" in mbox.attributes
-    assert mbox.last_resync > last_resync
-    assert mbox.num_msgs == len(msg_keys)
-    assert mbox.sequences == seqs
-    assert len(mbox.sequences["unseen"]) == len(msg_keys)
-    assert mbox.sequences["unseen"] == msg_keys
-    assert mbox.sequences["Recent"] == msg_keys
-    assert len(mbox.sequences["Seen"]) == 0
-    await assert_uids_match_msgs(msg_keys, mbox)
+#     seqs = await mbox.mailbox.aget_sequences()
+#     assert r"\Marked" in mbox.attributes
+#     assert mbox.last_resync > last_resync
+#     assert mbox.num_msgs == len(msg_keys)
+#     assert mbox.sequences == seqs
+#     assert len(mbox.sequences["unseen"]) == len(msg_keys)
+#     assert mbox.sequences["unseen"] == msg_keys
+#     assert mbox.sequences["Recent"] == msg_keys
+#     assert len(mbox.sequences["Seen"]) == 0
+#     await assert_uids_match_msgs(msg_keys, mbox)
 
 
 ####################################################################
 #
-@pytest.mark.asyncio
-async def test_mbox_resync_two_tasks_racing(
-    bunch_of_email_in_folder, imap_user_server
-):
-    """
-    Create a Mailbox. Create an asyncio.Event. Start two tasks that wait on the
-    event, make sure several resync's complete, including new messages
-    being added to the mailbox. (and there is no deadlock)
-    """
-    NAME = "inbox"
-    bunch_of_email_in_folder(folder=NAME)
-    server = imap_user_server
-    mbox = await Mailbox.new(NAME, server)
-    last_resync = mbox.last_resync
+# This will be written as a set of tests that test conflicting IMAP Commands
+# working on the same mailbox. Ie: a test of the management task and the
+# would_conflict check.
+#
+# @pytest.mark.asyncio
+# async def test_mbox_resync_two_tasks_racing(
+#     bunch_of_email_in_folder, imap_user_server
+# ):
+#     """
+#     Create a Mailbox. Create an asyncio.Event. Start two tasks that wait on the
+#     event, make sure several resync's complete, including new messages
+#     being added to the mailbox. (and there is no deadlock)
+#     """
+#     NAME = "inbox"
+#     bunch_of_email_in_folder(folder=NAME)
+#     server = imap_user_server
+#     mbox = await Mailbox.new(NAME, server)
+#     last_resync = mbox.last_resync
 
-    # We need to sleep at least one second for mbox.last_resync to change (we
-    # only consider seconds)
-    #
-    await asyncio.sleep(1)
+#     # We need to sleep at least one second for mbox.last_resync to change (we
+#     # only consider seconds)
+#     #
+#     await asyncio.sleep(1)
 
-    # We add some new messages to the mailbox
-    #
-    bunch_of_email_in_folder(folder=NAME, num_emails=10)
-    msg_keys = await mbox.mailbox.akeys()
+#     # We add some new messages to the mailbox
+#     #
+#     bunch_of_email_in_folder(folder=NAME, num_emails=10)
+#     msg_keys = await mbox.mailbox.akeys()
 
-    # We create an event our two tasks will wait on.
-    #
-    start_event = asyncio.Event()
+#     # We create an event our two tasks will wait on.
+#     #
+#     start_event = asyncio.Event()
 
-    # Our two tasks that are going to race to see who resyncs first.
-    async def resync_racer():
-        async with mbox.lock.read_lock():
-            await start_event.wait()
-            await mbox.resync()
-        assert r"\Marked" in mbox.attributes
-        assert mbox.last_resync > last_resync
-        assert mbox.num_msgs == len(msg_keys)
-        assert len(mbox.sequences["unseen"]) == len(msg_keys)
-        assert mbox.sequences["unseen"] == msg_keys
-        assert mbox.sequences["Recent"] == msg_keys
-        assert len(mbox.sequences["Seen"]) == 0
-        await assert_uids_match_msgs(msg_keys, mbox)
+#     # Our two tasks that are going to race to see who resyncs first.
+#     async def resync_racer():
+#         async with mbox.lock.read_lock():
+#             await start_event.wait()
+#             await mbox.resync()
+#         assert r"\Marked" in mbox.attributes
+#         assert mbox.last_resync > last_resync
+#         assert mbox.num_msgs == len(msg_keys)
+#         assert len(mbox.sequences["unseen"]) == len(msg_keys)
+#         assert mbox.sequences["unseen"] == msg_keys
+#         assert mbox.sequences["Recent"] == msg_keys
+#         assert len(mbox.sequences["Seen"]) == 0
+#         await assert_uids_match_msgs(msg_keys, mbox)
 
-    task1 = asyncio.create_task(resync_racer(), name="task1")
-    task2 = asyncio.create_task(resync_racer(), name="task2")
+#     task1 = asyncio.create_task(resync_racer(), name="task1")
+#     task2 = asyncio.create_task(resync_racer(), name="task2")
 
-    await asyncio.sleep(1)
-    start_event.set()
-    async with asyncio.timeout(2):
-        results = await asyncio.gather(task1, task2, return_exceptions=True)
-    assert results
+#     await asyncio.sleep(1)
+#     start_event.set()
+#     async with asyncio.timeout(2):
+#         results = await asyncio.gather(task1, task2, return_exceptions=True)
+#     assert results
 
 
 ####################################################################
 #
-@pytest.mark.asyncio
-async def test_mbox_resync_mysterious_msg_deletions(
-    bunch_of_email_in_folder, imap_user_server
-):
-    """
-    The resync code handles something removing messages from a mailbox
-    outside of our control.
-    """
-    NAME = "inbox"
-    bunch_of_email_in_folder(folder=NAME)
-    server = imap_user_server
-    mbox = await Mailbox.new(NAME, server)
-    last_resync = mbox.last_resync
-    await asyncio.sleep(1)
+# NO longer supported
+#
+# @pytest.mark.asyncio
+# async def test_mbox_resync_mysterious_msg_deletions(
+#     bunch_of_email_in_folder, imap_user_server
+# ):
+#     """
+#     The resync code handles something removing messages from a mailbox
+#     outside of our control.
+#     """
+#     NAME = "inbox"
+#     bunch_of_email_in_folder(folder=NAME)
+#     server = imap_user_server
+#     mbox = await Mailbox.new(NAME, server)
+#     last_resync = mbox.last_resync
+#     await asyncio.sleep(1)
 
-    # Remove the 5th message.
-    #
-    msg_keys = await mbox.mailbox.akeys()
-    await mbox.mailbox.aremove(msg_keys[5])
-    msg_keys = await mbox.mailbox.akeys()
-    assert len(msg_keys) == 19
+#     # Remove the 5th message.
+#     #
+#     msg_keys = await mbox.mailbox.akeys()
+#     await mbox.mailbox.aremove(msg_keys[5])
+#     msg_keys = await mbox.mailbox.akeys()
+#     assert len(msg_keys) == 19
 
-    async with mbox.lock.read_lock():
-        await mbox.resync()
-    assert r"\Marked" in mbox.attributes
-    assert mbox.last_resync > last_resync
-    assert mbox.num_msgs == len(msg_keys)
-    assert len(mbox.sequences["unseen"]) == len(msg_keys)
-    assert mbox.sequences["unseen"] == msg_keys
-    assert mbox.sequences["Recent"] == msg_keys
-    assert len(mbox.sequences["Seen"]) == 0
-    await assert_uids_match_msgs(msg_keys, mbox)
+#     async with mbox.lock.read_lock():
+#         await mbox.resync()
+#     assert r"\Marked" in mbox.attributes
+#     assert mbox.last_resync > last_resync
+#     assert mbox.num_msgs == len(msg_keys)
+#     assert len(mbox.sequences["unseen"]) == len(msg_keys)
+#     assert mbox.sequences["unseen"] == msg_keys
+#     assert mbox.sequences["Recent"] == msg_keys
+#     assert len(mbox.sequences["Seen"]) == 0
+#     await assert_uids_match_msgs(msg_keys, mbox)
 
 
 ####################################################################
 #
-@pytest.mark.asyncio
-async def test_mbox_resync_mysterious_folder_pack(
-    bunch_of_email_in_folder, imap_user_server
-):
-    """
-    Mailbox handles if folder gets `packed` by some outside force
-    """
-    NAME = "inbox"
-    bunch_of_email_in_folder()
-    server = imap_user_server
-    mbox = await Mailbox.new(NAME, server)
-    await asyncio.sleep(1)
+# No longer supported
+#
+# @pytest.mark.asyncio
+# async def test_mbox_resync_mysterious_folder_pack(
+#     bunch_of_email_in_folder, imap_user_server
+# ):
+#     """
+#     Mailbox handles if folder gets `packed` by some outside force
+#     """
+#     NAME = "inbox"
+#     bunch_of_email_in_folder()
+#     server = imap_user_server
+#     mbox = await Mailbox.new(NAME, server)
+#     await asyncio.sleep(1)
 
-    msg_keys = await mbox.mailbox.akeys()
-    for i in (1, 5, 10, 15, 16):
-        await mbox.mailbox.aremove(msg_keys[i])
-    await mbox.mailbox.apack()
-    msg_keys = await mbox.mailbox.akeys()
+#     msg_keys = await mbox.mailbox.akeys()
+#     for i in (1, 5, 10, 15, 16):
+#         await mbox.mailbox.aremove(msg_keys[i])
+#     await mbox.mailbox.apack()
+#     msg_keys = await mbox.mailbox.akeys()
 
-    async with mbox.lock.read_lock():
-        await mbox.resync()
-    assert r"\Marked" in mbox.attributes
-    assert mbox.num_msgs == len(msg_keys)
-    assert len(mbox.sequences["unseen"]) == len(msg_keys)
-    assert mbox.sequences["unseen"] == msg_keys
-    assert mbox.sequences["Recent"] == msg_keys
-    assert len(mbox.sequences["Seen"]) == 0
-    await assert_uids_match_msgs(msg_keys, mbox)
+#     async with mbox.lock.read_lock():
+#         await mbox.resync()
+#     assert r"\Marked" in mbox.attributes
+#     assert mbox.num_msgs == len(msg_keys)
+#     assert len(mbox.sequences["unseen"]) == len(msg_keys)
+#     assert mbox.sequences["unseen"] == msg_keys
+#     assert mbox.sequences["Recent"] == msg_keys
+#     assert len(mbox.sequences["Seen"]) == 0
+#     await assert_uids_match_msgs(msg_keys, mbox)
 
 
 ####################################################################
@@ -505,8 +524,7 @@ async def test_mbox_selected_unselected(
     msg_keys = await mbox.mailbox.akeys()
     num_msgs = len(msg_keys)
 
-    async with mbox.lock.read_lock():
-        await mbox.selected(imap_client_proxy.cmd_processor)
+    await mbox.selected(imap_client_proxy.cmd_processor)
 
     expected = [
         f"* {num_msgs} EXISTS",
@@ -522,13 +540,11 @@ async def test_mbox_selected_unselected(
     assert expected == results
 
     with pytest.raises(No):
-        async with mbox.lock.read_lock():
-            await mbox.selected(imap_client_proxy.cmd_processor)
+        await mbox.selected(imap_client_proxy.cmd_processor)
 
     mbox.unselected(imap_client_proxy.cmd_processor.name)
 
-    async with mbox.lock.read_lock():
-        await mbox.selected(imap_client_proxy.cmd_processor)
+    await mbox.selected(imap_client_proxy.cmd_processor)
 
     results = [x.strip() for x in imap_client_proxy.push.call_args.args]
     assert expected == results

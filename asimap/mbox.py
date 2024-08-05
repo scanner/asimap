@@ -162,18 +162,6 @@ class Mailbox:
     #
     FOLDER_RATIO_PACK_LIMIT = 0.8
 
-    # While running some commands we can not send untagged, unrequested FETCH
-    # messages.
-    #
-    # XXX This variable is somewhat generically named and it would be nice if
-    #     it had a better name, like maybe "DONT_SEND_FETCHES" .. but those
-    #     commands send fetches, we just do not want unsolicited fetches.
-    #
-    DONT_NOTIFY = (
-        IMAPCommand.FETCH,
-        IMAPCommand.SEARCH,
-    )
-
     ##################################################################
     #
     def __init__(self, name, server, expiry=900):
@@ -548,9 +536,6 @@ class Mailbox:
 
         It will update the set of running IMAP commands as it blocks.
 
-        It uses the parse module's helper function to test for conflicting
-        commands.
-
         Keyword Arguments:
         imap_cmd: IMAPClientCommand --
         """
@@ -686,27 +671,10 @@ class Mailbox:
                 #
                 await self.command_can_proceed(imap_cmd)
 
-                # If the command is a FETCH, STORE, or SEARCH command then
-                # we have to make sure that our check_new_msgs_and_flags()
-                # function does not send untagged FETCH's to this client.
-                #
-                # XXX DONT_NOTIFY should be on the _client_ object, set by the
-                #     do_* method in client.py as that part of the code knows
-                #     best when the client should not get notifications.
-                #
-                #     and then checked in _compute_and_publish_fetches()
-                #     when it wants to push a message to a client.
-                #
-                dont_notify = (
-                    client if imap_cmd.command in self.DONT_NOTIFY else None
-                )
-
                 # If there are no tasks, do a resync
                 #
                 if not self.executing_tasks:
-                    changed = await self.check_new_msgs_and_flags(
-                        dont_notify=dont_notify
-                    )
+                    changed = await self.check_new_msgs_and_flags()
 
                     # Need to update this commands msg_set_as_set before we add
                     # it to the list of executing commands (the list is empty
