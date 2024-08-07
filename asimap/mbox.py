@@ -272,9 +272,7 @@ class Mailbox:
         # parallel. Before every imap command is allowed to run whether or not
         # to do a resync is evaluated (and then done)
         #
-        self.task_queue: asyncio.Queue[
-            Tuple[Optional["Authenticated"], IMAPClientCommand]
-        ] = asyncio.Queue()
+        self.task_queue: asyncio.Queue[IMAPClientCommand] = asyncio.Queue()
         self.mgmt_task: asyncio.Task
         self.executing_tasks: List[IMAPClientCommand] = []
 
@@ -543,18 +541,15 @@ class Mailbox:
         # Remove IMAP commands that have finished executing from the list of
         # executing tasks.
         #
-        self.executing_tasks = [
-            x for x in self.executing_tasks if not x.completed
-        ]
-        # And loop until the IMAP command that wants to exeucte does not
+        self._cleanup_executing_tasks()
+
+        # And loop until the IMAP command that wants to execute does not
         # conflict with any of the currently executing IMAP commands.  (asyncio
         # sleeping between checks)
         #
         while self.would_conflict(imap_cmd):
             await asyncio.sleep(0.01)
-            self.executing_tasks = [
-                x for x in self.executing_tasks if not x.completed
-            ]
+            self._cleanup_executing_tasks()
 
         # Also if it has been more than 10 seconds since the last resync then
         # block until all executing tasks have finished. We need to make sure
@@ -569,9 +564,7 @@ class Mailbox:
             )
             while self.executing_tasks:
                 await asyncio.sleep(0.1)
-                self.executing_tasks = [
-                    x for x in self.executing_tasks if not x.completed
-                ]
+                self._cleanup_executing_tasks()
 
         duration = time.monotonic() - start_time
         if duration >= 0.1:
@@ -621,6 +614,22 @@ class Mailbox:
 
     ####################################################################
     #
+    def _cleanup_executing_tasks(self) -> None:
+        """
+        Go through the `self.excuting_tasks` list and remove from it all
+        IMAP commands that have `.completed` == True. Also mark a formerly
+        enqueued task is done on the task_queue.
+        """
+        num_exec_tasks = len(self.executing_tasks)
+        self.executing_tasks = [
+            x for x in self.executing_tasks if not x.completed
+        ]
+        num_completed = len(self.executing_tasks) - num_exec_tasks
+        for _ in range(num_completed):
+            self.task_queue.task_done()
+
+    ####################################################################
+    #
     async def management_task(self):
         """
         This task will loop until it is canceled. It will pull tasks as
@@ -646,12 +655,10 @@ class Mailbox:
                 #
                 try:
                     async with asyncio.timeout(10):
-                        client, imap_cmd = await self.task_queue.get()
+                        imap_cmd = await self.task_queue.get()
                 except asyncio.TimeoutError:
                     self.logger.debug("Timed out waiting for IMAP Commands.")
-                    self.executing_tasks = [
-                        x for x in self.executing_tasks if not x.completed
-                    ]
+                    self._cleanup_executing_tasks()
                     if not self.executing_tasks:
                         self.logger.debug("Checking folder for new messages.")
                         await self.check_new_msgs_and_flags()
@@ -851,7 +858,7 @@ class Mailbox:
         for c in self.clients.values():
             # Skip over the client we are not going to send notifications to.
             #
-            if c == dont_notify or c.dont_notify:
+            if c == dont_notify:
                 continue
             if c.idling:
                 await c.client.push(*notifications)
@@ -2543,7 +2550,7 @@ class Mailbox:
         msg.add_sequence("Recent")
         self.sequences["Recent"].add(msg_key)
 
-        # We do not use it, but we keep the .mh_sequences up to date.
+        # Keep the .mh_sequences up to date.
         #
         async with self.mailbox.lock_folder():
             self.mailbox.aset_sequences(self.sequences)
@@ -2560,10 +2567,7 @@ class Mailbox:
         try:
             # We expect it to issue EXISTS and RECENT since there is a new
             # message. We also want it to send a 'FETCH FLAGS' for every new
-            # message. In the above code we modified the '.mh_sequences' on
-            # disk, but not in memory so we rely upon
-            # `_compute_and_publish_fetches` to find the new messages and all
-            # other messages that have changed sequences.
+            # message.
             #
             await self.check_new_msgs_and_flags(optional=False)
         finally:
@@ -3197,7 +3201,7 @@ class Mailbox:
 
             if imap_cmd:
                 self.logger.debug(
-                    "IMAP Command '%s' copy messages took %.3fs",
+                    "IMAP Command '%s' read messages took %.3fs",
                     imap_cmd.qstr(),
                     time.monotonic() - msg_copy_start,
                 )
@@ -3216,12 +3220,22 @@ class Mailbox:
 
             if dst_mbox.deleted:
                 raise Bad(f"'{dst_mbox.name}' has been deleted")
-            dst_mbox.task_queue.put_nowait((None, append_imap_cmd))
 
             try:
+                wait_start = time.monotonic()
                 async with append_imap_cmd.ready_and_okay(dst_mbox):
+                    wait_duration = time.monotonic() - wait_start
+                    if imap_cmd:
+                        self.logger.debug(
+                            "%s: Took %.3fs before `write` part of the copy "
+                            "command got permission ot run on mailbox '%s'",
+                            imap_cmd.qstr(),
+                            wait_duration,
+                            dst_mbox.name,
+                        )
                     dst_uids = []
                     dst_msg_keys = []
+                    msg_copy_time_start = time.monotonic()
                     for msg_path, sequences, mtime in copy_msgs:
                         msg = await aread_message(msg_path)
                         msg.set_sequences(sequences)
@@ -3230,6 +3244,16 @@ class Mailbox:
                         await utime(
                             mbox_msg_path(dst_mbox.mailbox, msg_key),
                             (mtime, mtime),
+                        )
+
+                    msg_copy_duration = time.monotonic() - msg_copy_time_start
+                    if imap_cmd:
+                        self.logger.debug(
+                            "%s: Took %.3fs to write %d messages to mailbox '%s'",
+                            imap_cmd.qstr(),
+                            msg_copy_duration,
+                            len(copy_msgs),
+                            dst_mbox.name,
                         )
 
                     # We are going to do a resync so we need to now wait for no
@@ -3243,17 +3267,13 @@ class Mailbox:
                     wait_start = time.monotonic()
                     while len(dst_mbox.executing_tasks) > 1:
                         await asyncio.sleep(0)
-                        self.executing_tasks = [
-                            x
-                            for x in dst_mbox.executing_tasks
-                            if not x.completed
-                        ]
+                        self._cleanup_executing_tasks()
                     duration = time.monotonic() - wait_start
                     if duration > 0.1:
                         imap_cmd_str = imap_cmd.qstr() if imap_cmd else "none"
                         self.logger.debug(
                             "IMAP Command '%s': On mailbox '%s', waited for "
-                            "%.3ds before we could begin resync",
+                            "%.3fs before we could begin resync",
                             imap_cmd_str,
                             dst_mbox.name,
                             duration,
@@ -3448,8 +3468,9 @@ class Mailbox:
         mbox.mgmt_task.cancel()
         try:
             while True:
-                client, imap_cmd = mbox.task_queue.get_nowait()
+                imap_cmd = mbox.task_queue.get_nowait()
                 imap_cmd.ready.set()
+                mbox.task_queue.task_done()
         except asyncio.QueueEmpty:
             pass
         finally:

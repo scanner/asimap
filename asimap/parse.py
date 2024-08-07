@@ -24,7 +24,6 @@ from .search import IMAPSearch
 from .utils import MsgSet, parsedate
 
 if TYPE_CHECKING:
-    from .client import Authenticated
     from .mbox import Mailbox
 
 
@@ -426,13 +425,13 @@ class IMAPClientCommand:
     ##################################################################
     #
     @asynccontextmanager
-    async def ready_and_okay(self, client: "Authenticated", mbox: "Mailbox"):
+    async def ready_and_okay(self, mbox: "Mailbox"):
         """
         Awaits the `ready` event. No matter what happens, we set the
         command to be completed before exiting.
         """
         try:
-            mbox.task_queue.put_nowait((client, self))
+            mbox.task_queue.put_nowait(self)
             await self.ready.wait()
             if mbox.deleted:
                 from .mbox import NoSuchMailbox

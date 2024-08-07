@@ -581,7 +581,7 @@ class Authenticated(BaseClientHandler):
         - `cmd`: The full IMAP command object.
         """
         if self.mbox:
-            async with cmd.ready_and_okay(self, self.mbox):
+            async with cmd.ready_and_okay(self.mbox):
                 await self.send_pending_notifications()
         return None
 
@@ -628,7 +628,7 @@ class Authenticated(BaseClientHandler):
         #
         mbox = await self.server.get_mailbox(cmd.mailbox_name)
 
-        async with cmd.ready_and_okay(self, mbox):
+        async with cmd.ready_and_okay(mbox):
             msgs = await mbox.selected(self)
             await self.client.push(*msgs)
             self.mbox = mbox
@@ -695,7 +695,7 @@ class Authenticated(BaseClientHandler):
         """
         await self.send_pending_notifications()
         mbox = await self.server.get_mailbox(cmd.mailbox_name)
-        async with cmd.ready_and_okay(self, mbox):
+        async with cmd.ready_and_okay(mbox):
             await Mailbox.delete(cmd.mailbox_name, self.server)
 
     ##################################################################
@@ -709,7 +709,7 @@ class Authenticated(BaseClientHandler):
         """
         await self.send_pending_notifications()
         mbox = await self.server.get_mailbox(cmd.mailbox_name)
-        async with cmd.ready_and_okay(self, mbox):
+        async with cmd.ready_and_okay(mbox):
             await Mailbox.rename(
                 cmd.mailbox_src_name, cmd.mailbox_dst_name, self.server
             )
@@ -819,7 +819,7 @@ class Authenticated(BaseClientHandler):
 
         mbox = await self.server.get_mailbox(cmd.mailbox_name, expiry=45)
         result: List[str] = []
-        async with cmd.ready_and_okay(self, mbox):
+        async with cmd.ready_and_okay(mbox):
             for att in cmd.status_att_list:
                 match att:
                     case StatusAtt.MESSAGES:
@@ -850,7 +850,7 @@ class Authenticated(BaseClientHandler):
 
         try:
             mbox = await self.server.get_mailbox(cmd.mailbox_name)
-            async with cmd.ready_and_okay(self, mbox):
+            async with cmd.ready_and_okay(mbox):
                 uid = await mbox.append(
                     cmd.message, cmd.flag_list, cmd.date_time
                 )
@@ -899,7 +899,7 @@ class Authenticated(BaseClientHandler):
         # before control passes back to this function.
         #
         self.mbox.optional_resync = False
-        async with cmd.ready_and_okay(self, self.mbox):
+        async with cmd.ready_and_okay(self.mbox):
             pass
         await self.send_pending_notifications()
 
@@ -949,7 +949,7 @@ class Authenticated(BaseClientHandler):
             # Do an EXPUNGE if there are any messages marked 'Delete'
             #
             if mbox.sequences.get("Deleted", []):
-                async with cmd.ready_and_okay(self, mbox):
+                async with cmd.ready_and_okay(mbox):
                     await mbox.expunge()
 
     ##################################################################
@@ -988,7 +988,7 @@ class Authenticated(BaseClientHandler):
         try:
             idling = self.idling
             self.idling = True
-            async with cmd.ready_and_okay(self, self.mbox):
+            async with cmd.ready_and_okay(self.mbox):
                 # Do an EXPUNGE if there are any messages marked 'Delete'
                 #
                 if self.mbox.sequences.get("Deleted", []):
@@ -1028,7 +1028,7 @@ class Authenticated(BaseClientHandler):
             else:
                 raise No("There are pending untagged responses")
 
-        async with cmd.ready_and_okay(self, self.mbox):
+        async with cmd.ready_and_okay(self.mbox):
             try:
                 results = await self.mbox.search(
                     cmd.search_key, cmd.uid_command
@@ -1090,7 +1090,7 @@ class Authenticated(BaseClientHandler):
 
         self.fetch_while_pending_count = 0
         try:
-            async with cmd.ready_and_okay(self, self.mbox):
+            async with cmd.ready_and_okay(self.mbox):
                 msg_set = (
                     sorted(cmd.msg_set_as_set) if cmd.msg_set_as_set else []
                 )
@@ -1168,7 +1168,7 @@ class Authenticated(BaseClientHandler):
         #     stuff here.
         #
         try:
-            async with cmd.ready_and_okay(self, self.mbox):
+            async with cmd.ready_and_okay(self.mbox):
                 msg_set = (
                     sorted(cmd.msg_set_as_set) if cmd.msg_set_as_set else []
                 )
@@ -1220,11 +1220,11 @@ class Authenticated(BaseClientHandler):
             self.unceremonious_bye("Your selected mailbox no longer exists")
             return
 
-        await self.notifies()
+        await self.send_pending_notifications()
 
         # Wait until the mailbox gives us the go-ahead to run the command.
         #
-        async with cmd.ready_and_okay(self, self.mbox):
+        async with cmd.ready_and_okay(self.mbox):
             try:
                 dest_mbox = await self.server.get_mailbox(cmd.mailbox_name)
                 src_uids, dst_uids = await self.mbox.copy(
