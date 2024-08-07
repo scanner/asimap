@@ -41,9 +41,9 @@ jaraco-classes==3.4.0
     # via keyring
 jaraco-context==5.3.0
     # via keyring
-jaraco-functools==4.0.1
+jaraco-functools==4.0.2
     # via keyring
-keyring==25.2.1
+keyring==25.3.0
     # via hatch
 markdown-it-py==3.0.0
     # via rich
@@ -90,7 +90,7 @@ trove-classifiers==2024.7.2
     # via hatchling
 userpath==1.9.2
     # via hatch
-uv==0.2.30
+uv==0.2.33
     # via hatch
 virtualenv==20.26.3
     # via hatch
