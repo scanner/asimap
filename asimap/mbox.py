@@ -8,7 +8,6 @@ that holds all the folders.)
 # system imports
 #
 import asyncio
-import errno
 import logging
 import os.path
 import re
@@ -1777,7 +1776,7 @@ class Mailbox:
 
     ##################################################################
     #
-    def safety_check_uid_uidvv(
+    def _safety_check_uid_uidvv(
         self, msg_key: int, msg: MHMessage
     ) -> Tuple[int, int]:
         """
@@ -1841,140 +1840,140 @@ class Mailbox:
             )
             return (None, None)
 
-    ##################################################################
-    #
-    async def set_uid_in_msg(
-        self, msg_key: int, new_uid: int, cache=True
-    ) -> Tuple[int, int]:
-        """
-        Update the UID in the message with the new value.
-        IF `cache` is True then also cache this message in the message cache.
-        """
-        # Get the mtime of the old message. We need to preserve this
-        # because we use the mtime of the file as our IMAP 'internal-date'
-        # value.
-        #
-        path = os.path.join(self.mailbox._path, str(msg_key))
-        try:
-            mtime = await aiofiles.os.path.getmtime(path)
-        except OSError as e:
-            if e.errno == errno.ENOENT:
-                raise KeyError(f"No message with key: {msg_key}")
-            else:
-                raise
+    # ##################################################################
+    # #
+    # async def set_uid_in_msg(
+    #     self, msg_key: int, new_uid: int, cache=True
+    # ) -> Tuple[int, int]:
+    #     """
+    #     Update the UID in the message with the new value.
+    #     IF `cache` is True then also cache this message in the message cache.
+    #     """
+    #     # Get the mtime of the old message. We need to preserve this
+    #     # because we use the mtime of the file as our IMAP 'internal-date'
+    #     # value.
+    #     #
+    #     path = os.path.join(self.mailbox._path, str(msg_key))
+    #     try:
+    #         mtime = await aiofiles.os.path.getmtime(path)
+    #     except OSError as e:
+    #         if e.errno == errno.ENOENT:
+    #             raise KeyError(f"No message with key: {msg_key}")
+    #         else:
+    #             raise
 
-        msg = await self.get_and_cache_msg(msg_key, cache=cache)
-        del msg[UID_HDR]
-        msg[UID_HDR] = f"{self.uid_vv:010d}.{new_uid:010d}"
+    #     msg = await self.get_and_cache_msg(msg_key, cache=cache)
+    #     del msg[UID_HDR]
+    #     msg[UID_HDR] = f"{self.uid_vv:010d}.{new_uid:010d}"
 
-        # NOTE: The message size has changed! If the message is in the cache
-        #       update the cached message size.
-        #
-        _ = self.server.msg_cache.get(self.name, msg_key, update_size=True)
+    #     # NOTE: The message size has changed! If the message is in the cache
+    #     #       update the cached message size.
+    #     #
+    #     _ = self.server.msg_cache.get(self.name, msg_key, update_size=True)
 
-        # NOTE: The following call will write the .mh_sequences file for this
-        #       folder. We may want to check to make sure that the sequences we
-        #       have for this message and the folder are in agreement (they
-        #       should be, so the point is, if they are not, this is something
-        #       we need to know is happening.)
-        #
-        await self.mailbox.asetitem(msg_key, msg)
+    #     # NOTE: The following call will write the .mh_sequences file for this
+    #     #       folder. We may want to check to make sure that the sequences we
+    #     #       have for this message and the folder are in agreement (they
+    #     #       should be, so the point is, if they are not, this is something
+    #     #       we need to know is happening.)
+    #     #
+    #     await self.mailbox.asetitem(msg_key, msg)
 
-        # Set its mtime to the mtime of the old file.
-        #
-        await utime(path, (mtime, mtime))
-        return (self.uid_vv, new_uid)
+    #     # Set its mtime to the mtime of the old file.
+    #     #
+    #     await utime(path, (mtime, mtime))
+    #     return (self.uid_vv, new_uid)
 
-    ##################################################################
-    #
-    async def _find_first_new_message(
-        self, msg_keys: List[int], horizon: int = 0
-    ) -> Optional[int]:
-        """
-        This goes through the list of msgs given and finds the lowest numbered
-        one whose mtime is greater than the mtime of the folder minus <horizon>
-        seconds which defaults to 0 seconds.
+    # ##################################################################
+    # #
+    # async def _find_first_new_message(
+    #     self, msg_keys: List[int], horizon: int = 0
+    # ) -> Optional[int]:
+    #     """
+    #     This goes through the list of msgs given and finds the lowest numbered
+    #     one whose mtime is greater than the mtime of the folder minus <horizon>
+    #     seconds which defaults to 0 seconds.
 
-        The goal is to find messages that were 'recently' (ie: since the last
-        time we scanned this mailbox) added to the mailbox.
+    #     The goal is to find messages that were 'recently' (ie: since the last
+    #     time we scanned this mailbox) added to the mailbox.
 
-        This helps us find messages that are added not at the end of the
-        mailbox.
+    #     This helps us find messages that are added not at the end of the
+    #     mailbox.
 
-        Arguments:
-        - `msgs`: The list of messages we are going to check.
-        - `horizon`: The delta back in time from the mtime of the folder we use
-          as the mtime for messages considered 'new'
-        """
-        # We use self.mtime (instead of getting the mtime from the actual
-        # folder) because we want to find all messages that have been modified
-        # since the folder was last scanned.
-        #
-        # Since we are looking for the first modified message we can stop our
-        # scan the instant we find a msg with a mtime greater than self.mtime.
-        #
-        # Maybe we should scan from the end of the mailbox backwards and look
-        # for the first message with an mtime less than the folder/horizon.
-        #
-        if not msg_keys:
-            return None
-        horizon_mtime = self.mtime - horizon
-        for msg_key in sorted(msg_keys):
-            try:
-                msg_path = mbox_msg_path(self.mailbox, msg_key)
-                mtime = await aiofiles.os.path.getmtime(str(msg_path))
-                if int(mtime) > horizon_mtime:
-                    return msg_key
-            except OSError as e:
-                if e.errno == errno.ENOENT:
-                    self.logger.error(
-                        "find_first_new_msg: Message %d no longer "
-                        "exists, errno: %s",
-                        msg_key,
-                        e,
-                    )
+    #     Arguments:
+    #     - `msgs`: The list of messages we are going to check.
+    #     - `horizon`: The delta back in time from the mtime of the folder we use
+    #       as the mtime for messages considered 'new'
+    #     """
+    #     # We use self.mtime (instead of getting the mtime from the actual
+    #     # folder) because we want to find all messages that have been modified
+    #     # since the folder was last scanned.
+    #     #
+    #     # Since we are looking for the first modified message we can stop our
+    #     # scan the instant we find a msg with a mtime greater than self.mtime.
+    #     #
+    #     # Maybe we should scan from the end of the mailbox backwards and look
+    #     # for the first message with an mtime less than the folder/horizon.
+    #     #
+    #     if not msg_keys:
+    #         return None
+    #     horizon_mtime = self.mtime - horizon
+    #     for msg_key in sorted(msg_keys):
+    #         try:
+    #             msg_path = mbox_msg_path(self.mailbox, msg_key)
+    #             mtime = await aiofiles.os.path.getmtime(str(msg_path))
+    #             if int(mtime) > horizon_mtime:
+    #                 return msg_key
+    #         except OSError as e:
+    #             if e.errno == errno.ENOENT:
+    #                 self.logger.error(
+    #                     "find_first_new_msg: Message %d no longer "
+    #                     "exists, errno: %s",
+    #                     msg_key,
+    #                     e,
+    #                 )
 
-                raise
-        return None
+    #             raise
+    #     return None
 
-    ##################################################################
-    #
-    async def _find_msg_without_uidvv(
-        self, msg_keys: List[int]
-    ) -> Optional[int]:
-        """
-        This is a helper function for 'resync()'
+    # ##################################################################
+    # #
+    # async def _find_msg_without_uidvv(
+    #     self, msg_keys: List[int]
+    # ) -> Optional[int]:
+    #     """
+    #     This is a helper function for 'resync()'
 
-        It looks through the folder from the highest numbered message down to
-        find for the first message with a valid uid_vv.
+    #     It looks through the folder from the highest numbered message down to
+    #     find for the first message with a valid uid_vv.
 
-        In general messages are only added to the end of a folder and this is
-        usually just a fraction of the entire folder's contents. Even after a
-        repack you do not need to rescan the entire folder.
+    #     In general messages are only added to the end of a folder and this is
+    #     usually just a fraction of the entire folder's contents. Even after a
+    #     repack you do not need to rescan the entire folder.
 
-        This quickly lets us find the point at the end of the folder where
-        messages with a missing or invalid uid_vv are.
+    #     This quickly lets us find the point at the end of the folder where
+    #     messages with a missing or invalid uid_vv are.
 
-        This works even for the rare first-run case on a large folder which has
-        no messages we have added uid_vv/uid's to (it just takes longer..but it
-        was going to take longer anyways.)
+    #     This works even for the rare first-run case on a large folder which has
+    #     no messages we have added uid_vv/uid's to (it just takes longer..but it
+    #     was going to take longer anyways.)
 
-        We return the first message we find that has a valid uid_vv (or the
-        first message in the folder if none of them have valid a uid_vv.)
+    #     We return the first message we find that has a valid uid_vv (or the
+    #     first message in the folder if none of them have valid a uid_vv.)
 
-        Arguments:
-        - `msgs`: the list of messages we are going to look through
-                  (in reverse)
-        """
-        msg_keys = sorted(msg_keys, reverse=True)
-        found = None
-        for msg_key in msg_keys:
-            uid_vv, uid = await self.get_uid_from_msg(msg_key, cache=False)
-            if uid_vv == self.uid_vv:
-                return found
-            else:
-                found = msg_key
-        return found
+    #     Arguments:
+    #     - `msgs`: the list of messages we are going to look through
+    #               (in reverse)
+    #     """
+    #     msg_keys = sorted(msg_keys, reverse=True)
+    #     found = None
+    #     for msg_key in msg_keys:
+    #         uid_vv, uid = await self.get_uid_from_msg(msg_key, cache=False)
+    #         if uid_vv == self.uid_vv:
+    #             return found
+    #         else:
+    #             found = msg_key
+    #     return found
 
     ####################################################################
     #
@@ -2004,7 +2003,8 @@ class Mailbox:
             duration = time.monotonic() - start_time
             if duration > 1.0:
                 logger.debug(
-                    "In progress, mailbox: '%s', num msgs: %d/%d, duration: %.3fs",
+                    "In progress, mailbox: '%s', num msgs: %d/%d, "
+                    "duration: %.3fs",
                     self.name,
                     num_msgs,
                     total_msgs,
@@ -2386,6 +2386,12 @@ class Mailbox:
         Get the message associated with the given message key in our mailbox.
         We check the cache first to see if it is there.
         If it is not we retrieve it from the MH folder and add it to the cache.
+
+        NOTE: If it has no UID_HDR or the uid_vv does not match the uid_vv of
+              this mailbox it will *NOT* be cached even if `cache` is True.
+
+              This is done to make sure that we do not pollute the cache for
+              this mailbox with messages that do not have a proper uid_vv/uid.
 
         Arguments:
         - `msg_key`: message key to look up the message by
@@ -3200,7 +3206,7 @@ class Mailbox:
 
                     copy_msgs.append((msg_path, msg.get_sequences(), mtime))
                     await awrite_message(msg, msg_path)
-                    uid_vv, uid = self.safety_check_uid_uidvv(msg_key, msg)
+                    uid_vv, uid = self._safety_check_uid_uidvv(msg_key, msg)
                     src_uids.append(uid)
             finally:
                 # The part of the IMAP Command that has any relation to the src
@@ -3239,7 +3245,7 @@ class Mailbox:
                     if imap_cmd:
                         self.logger.debug(
                             "%s: Took %.3fs before `write` part of the copy "
-                            "command got permission ot run on mailbox '%s'",
+                            "command got permission to run on mailbox '%s'",
                             imap_cmd.qstr(),
                             wait_duration,
                             dst_mbox.name,
@@ -3274,6 +3280,10 @@ class Mailbox:
                     #       and no other command can run while it is running.
                     #       This is because it needs to do the resync to get
                     #       the UID's of the new messages.
+                    #
+                    #       Since APPEND is a conflicting command this loop
+                    #       should complete immediately. There should be only
+                    #       one running command: This APPEND.
                     #
                     wait_start = time.monotonic()
                     while len(dst_mbox.executing_tasks) > 1:
