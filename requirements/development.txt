@@ -78,7 +78,7 @@ executing==2.0.1
     # via stack-data
 factory-boy==3.3.0
     # via pytest-factoryboy
-faker==26.2.0
+faker==26.3.0
     # via factory-boy
 filelock==3.15.4
     # via
@@ -161,7 +161,7 @@ mdurl==0.1.2
     # via
     #   -r build.txt
     #   markdown-it-py
-more-itertools==10.3.0
+more-itertools==10.4.0
     # via
     #   -r build.txt
     #   jaraco-classes
@@ -284,7 +284,7 @@ rich==13.7.1
     #   -r build.txt
     #   -r development.in
     #   hatch
-ruff==0.5.6
+ruff==0.5.7
     # via -r lint.txt
 sentry-sdk==2.12.0
     # via -r production.txt
@@ -367,7 +367,7 @@ userpath==1.9.2
     # via
     #   -r build.txt
     #   hatch
-uv==0.2.33
+uv==0.2.34
     # via
     #   -r build.txt
     #   hatch

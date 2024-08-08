@@ -49,7 +49,7 @@ markdown-it-py==3.0.0
     # via rich
 mdurl==0.1.2
     # via markdown-it-py
-more-itertools==10.3.0
+more-itertools==10.4.0
     # via
     #   jaraco-classes
     #   jaraco-functools
@@ -90,7 +90,7 @@ trove-classifiers==2024.7.2
     # via hatchling
 userpath==1.9.2
     # via hatch
-uv==0.2.33
+uv==0.2.34
     # via hatch
 virtualenv==20.26.3
     # via hatch
