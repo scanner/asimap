@@ -351,6 +351,33 @@ class Mailbox:
 
     ####################################################################
     #
+    async def shutdown(self, commit_db: bool = True):
+        """
+        Cancel the management task, wait for it to exit.
+        Make sure any pending IMAP Tasks get told to go away.
+        Make sure mbox is commited to db if commit_db is True.
+        Clear the message cache entries for this mbox.
+        """
+        self.deleted = True  # Causes any waiting IMAP Commands to exit.
+        if not self.mgmt_task.done():
+            self.mgmt_task.cancel()
+
+        try:
+            while True:
+                imap_cmd = self.task_queue.get_nowait()
+                imap_cmd.ready.set()
+        except asyncio.QueueEmpty:
+            pass
+
+        await self.mgmt_task
+
+        if commit_db:
+            await self.commit_to_db()
+
+        self.server.msg_cache.clear_mbox(self.name)
+
+    ####################################################################
+    #
     def would_conflict(self, imap_cmd: IMAPClientCommand) -> bool:
         r"""
         Returns True if the given imap_cmd would conflict with any other
@@ -2730,17 +2757,7 @@ class Mailbox:
         # commands to proceed. They will check the mbox.deleted flag
         # and exit immediately.
         #
-        mbox.deleted = True
-        mbox.mgmt_task.cancel()
-        try:
-            while True:
-                imap_cmd = mbox.task_queue.get_nowait()
-                imap_cmd.ready.set()
-                mbox.task_queue.task_done()
-        except asyncio.QueueEmpty:
-            pass
-        finally:
-            mbox.task_queue = None
+        await mbox.shutdown(commit_db=False)
 
         # If the mailbox has any active clients we set their selected
         # mailbox to None. client.py will know if they try to do any

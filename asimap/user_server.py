@@ -499,11 +499,24 @@ class IMAPUserServer:
         """
         if self.folder_scan_task:
             self.folder_scan_task.cancel()
-            await self.folder_scan_task  # ?? do we need to do this?
+            await self.folder_scan_task
         clients = [c.close() for c in self.clients.values()]
         if clients:
             await asyncio.gather(*clients, return_exceptions=True)
 
+        # Shutdown all active mailboxes
+        #
+        mboxes = []
+        async with self.active_mailboxes_lock.read_lock():
+            for mbox_name, mbox in self.active_mailboxes.items():
+                mboxes.append(mbox)
+            async with self.active_mailboxes_lock.write_lock():
+                self.active_mailboxes = {}
+
+        for mbox in mboxes:
+            await mbox.shutdown()
+
+        self.msg_cache.clear()
         await self.db.commit()
         await self.db.close()
         self.mailbox.close()
@@ -767,6 +780,7 @@ class IMAPUserServer:
         # and are beyond their expiry time.
         #
         expired = []
+        active_mboxes = []
         async with self.active_mailboxes_lock.read_lock():
             for mbox_name, mbox in self.active_mailboxes.items():
                 if (
@@ -779,11 +793,24 @@ class IMAPUserServer:
                 for mbox_name in expired:
                     if mbox_name in self.active_mailboxes:
                         mbox = self.active_mailboxes[mbox_name]
-                        mbox.mgmt_task.cancel()
-                        await mbox.mgmt_task
+                        active_mboxes.append(mbox)
                         del self.active_mailboxes[mbox_name]
-                        self.msg_cache.clear_mbox(mbox_name)
-                        await mbox.commit_to_db()
+
+        # Go through the mbox's we deleted from `active_mailboxes` and shut
+        # them down.
+        #
+        for mbox in active_mboxes:
+            if not mbox.mgmt_task.done():
+                mbox.mgmt_task.cancel()
+                await mbox.mgmt_task
+            self.msg_cache.clear_mbox(mbox_name)
+            await mbox.commit_to_db()
+
+        if active_mboxes:
+            logger.debug(
+                "Expring active mailboxes: %s",
+                (mbox.name for mbox in active_mboxes),
+            )
 
     ##################################################################
     #

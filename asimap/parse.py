@@ -436,11 +436,14 @@ class IMAPClientCommand:
             if mbox.deleted:
                 from .mbox import NoSuchMailbox
 
-                raise NoSuchMailbox(f"Mailbox '{mbox.name}' has been deleted")
+                raise NoSuchMailbox(
+                    f"Mailbox '{mbox.name}' has been deleted or shutdown"
+                )
             yield
         finally:
             self.completed = True
-            mbox.task_queue.task_done()
+            if mbox.task_queue:
+                mbox.task_queue.task_done()
 
     ##################################################################
     #
