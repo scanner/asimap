@@ -491,6 +491,9 @@ async def test_mbox_resync_auto_pack(
 ):
     """
     resync autopacks if the folder is too gappy.
+
+    XXX we no longer pack as part of the resync. We pack as part of the
+        management task. This test should still work as is.
     """
     NAME = "inbox"
 

@@ -296,13 +296,6 @@ class Mailbox:
         #
         self.deleted = False
 
-        # With commands like APPEND and COPY we need to trigger a resync and
-        # fetch the UID's for newly added messages. We have the msg_key, and if
-        # the resync does a `pack` that msg key is likely to be invalidated. In
-        # that case set `allow_pack=False` and pack will not be allowed to run.
-        #
-        self.allow_pack = True
-
     ####################################################################
     #
     def __del__(self):
@@ -643,6 +636,10 @@ class Mailbox:
 
         Once they have finished the loop repeat.
         """
+        # Opportunistically pack before we start processing IMAP Commands.
+        #
+        await self._pack_if_necessary()
+
         # List of tasks currently acting on this mailbox.
         # (will only be one for conflicting commands)
         #
@@ -678,7 +675,9 @@ class Mailbox:
                 #
                 await self.command_can_proceed(imap_cmd)
 
-                # If there are no tasks, do a resync
+                # If there are no tasks, do a resync. Also potentially pack the
+                # folder (doing it while there are no commands running to
+                # prevent any sort of sync between client and server errors.)
                 #
                 if not self.executing_tasks:
                     changed = await self.check_new_msgs_and_flags()
@@ -691,6 +690,11 @@ class Mailbox:
                         imap_cmd.msg_set_as_set = self.msg_set_to_msg_seq_set(
                             imap_cmd.msg_set, imap_cmd.uid_command
                         )
+                    else:
+                        # We will take the mailbox not having changed as a good
+                        # opportunity to conditionally pack it.
+                        #
+                        await self._pack_if_necessary()
 
                 self.executing_tasks.append(imap_cmd)
                 imap_cmd.ready.set()
@@ -803,7 +807,8 @@ class Mailbox:
             self.marked(False)
 
         if modified:
-            await self.mailbox.aset_sequences(seq)
+            async with self.mailbox.lock_folder():
+                await self.mailbox.aset_sequences(seq)
             # Make sure any sequence information on messages in the message
             # cache is updated.
             #
@@ -841,12 +846,6 @@ class Mailbox:
               allowed to send untagged messages to the client, but they need to
               be UID messages.
 
-        NOTE: When this is called as part of a `resync()` being done as part of
-        a `SELECT` command, the code processing the `SELECT` comamnd will
-        generate and send the necessary notifications, so we should NOT include
-        that client, indicated by the `dont_notify` parameter, in the clients
-        we are sending notifcations to.
-
         in any case we were doing this logic in several places this collects it
         in one place.
         """
@@ -861,8 +860,15 @@ class Mailbox:
             if c == dont_notify:
                 continue
             if c.idling:
+                # IF they are in IDLE, then we can send the notifications
+                # immediately.
+                #
                 await c.client.push(*notifications)
             else:
+                # Otherwise stick the notifications on a pending list and the
+                # client module will handle sending these to the client when it
+                # is allowed to.
+                #
                 c.pending_notifications.extend(notifications)
 
     ##################################################################
@@ -878,8 +884,7 @@ class Mailbox:
         highest numbered message down based on the assumption that almost all
         new messages are appended to the mailbox.
 
-        If `full_search` is True we search from both ends until we have either
-        found a foreign message or we have searched all messages.
+        If `full_search` is True we search from the start of the mailbox.
 
         Also if `self.full_search` is True it will also do a full search (and
         set self.full_search to False)
@@ -953,14 +958,6 @@ class Mailbox:
               - self.msg_keys will be up to date
               - self.uids will be up to date
               - self.sequences will be up to date
-
-              All mbox methods are expected to use these for read only purposes
-              instead of getting the msg keys or sequence data from the
-              mailbox.
-
-        All of the non-conflicting commands will be using the in-memory message
-        keys and in-memory sequence information. Since they are non-conflicting
-        they will not modify it, so it will be unchanged.
 
         This way if some other process appends messages to this mailbox those
         commands running will not see these messages and proceed as if they did
@@ -1135,12 +1132,6 @@ class Mailbox:
             await self._dispatch_or_pend_notifications(
                 notifications, dont_notify=dont_notify
             )
-
-        # And see if the folder is getting kinda 'gappy' with spaces
-        # between message keys. If it is, pack it.
-        #
-        if self.allow_pack:
-            await self._pack_if_necessary()
 
         # Update counts and commit state of the mailbox to the db.
         #
@@ -1551,6 +1542,11 @@ class Mailbox:
         or caller may need both and I would rather not call this function
         twice.
 
+        XXX It is a bit annoying that we are generating two responses even if
+            publish_uid is not set. Should clean this up. Either return a
+            better response or always return the uid version and not even
+            bother with needing a `publish_uid` parameter.
+
         Keyword Arguments:
         msg_key: int  --
         uid_cmd: bool -- (default False)
@@ -1580,100 +1576,100 @@ class Mailbox:
         )
         return fetch, fetch_uid
 
+    # ##################################################################
+    # #
+    # async def _compute_and_publish_fetches(
+    #     self,
+    #     seqs: dict[str, list],
+    #     dont_notify: Optional["Authenticated"] = None,
+    #     publish_uids: bool = False,
+    # ) -> None:
+    #     """
+    #     A helper function for resync()
+
+    #     We see what messages have been added to any of the sequences since the
+    #     last time self.sequences was synchornized with what is on disk.
+
+    #     For every message that is a member of a sequence that was not a member
+    #     previously we issue a "FETCH" to every client listening to this
+    #     mailbox.
+
+    #     The "FETCH" lists all of the flags associated with that message.
+
+    #     We _skip_ the client that is indicated by 'dont_notify'
+
+    #     Arguments:
+    #     - `seqs`: The latest representation of what the on disk sequences are
+    #     - `dont_notify`: The client to NOT send "FETCH" notices to
+    #     - `publish_uids`: If this is true then ALSO include the messages UID in
+    #       the FETCH response
+    #     """
+    #     # We build up the set of messages that have changed flags
+    #     #
+    #     changed_msg_keys = set()
+    #     # If any sequence exists now that did not exist before, or does not
+    #     # exist now but did exist before then all of those messages in those
+    #     # sequences have changed flags.
+    #     #
+    #     for seq in set(seqs.keys()) ^ set(self.sequences.keys()):
+    #         if seqs[seq]:
+    #             changed_msg_keys |= set(seqs[seq])
+    #         if self.sequences[seq]:
+    #             changed_msg_keys |= set(self.sequences[seq])
+
+    #     # Now that we have handled the messages that were in sequences that do
+    #     # not exist in one of seqs or self.sequences go through the sequences
+    #     # in seqs. For every sequence if it is in self.sequences find out what
+    #     # messages have either been added or removed from these sequences and
+    #     # add it to the set of changed messages.
+    #     #
+    #     for seq in list(seqs.keys()):
+    #         if seq not in self.sequences:
+    #             continue
+    #         changed_msg_keys |= set(seqs[seq]) ^ set(self.sequences[seq])
+
+    #     # Now eliminate all entries in our changed_msg_keys set that are NOT in
+    #     # msg_keys. We can not send FETCH's for messages that are no longer in
+    #     # the folder.
+    #     #
+    #     changed_msg_keys = changed_msg_keys & set(self.msg_keys)
+
+    #     # And go through each message and publish a FETCH to every client with
+    #     # all the flags that this message has.
+    #     #
+    #     for msg_key in sorted(list(changed_msg_keys)):
+    #         flags = []
+    #         for seq in list(seqs.keys()):
+    #             if msg_key in seqs[seq]:
+    #                 flags.append(seq_to_flag(seq))
+
+    #         # Publish to every listening client except the ones who do not want
+    #         # notifications.
+    #         #
+    #         flags_str = " ".join(flags)
+    #         msg_idx = self.msg_keys.index(msg_key) + 1
+
+    #         uidstr = ""
+    #         if publish_uids:
+    #             try:
+    #                 uidstr = f" UID {self.uids[msg_idx - 1]}"
+    #             except IndexError:
+    #                 logger.error(
+    #                     "Mailbox %s: UID command but "
+    #                     "message index: %d is not inside list "
+    #                     "of UIDs, whose length is: %d",
+    #                     self.name,
+    #                     (msg_idx - 1),
+    #                     len(self.uids),
+    #                 )
+    #         msg = f"* {msg_idx} FETCH (FLAGS ({flags_str}){uidstr})\r\n"
+    #         await self._dispatch_or_pend_notifications(
+    #             msg, dont_notify=dont_notify
+    #         )
+
     ##################################################################
     #
-    async def _compute_and_publish_fetches(
-        self,
-        seqs: dict[str, list],
-        dont_notify: Optional["Authenticated"] = None,
-        publish_uids: bool = False,
-    ) -> None:
-        """
-        A helper function for resync()
-
-        We see what messages have been added to any of the sequences since the
-        last time self.sequences was synchornized with what is on disk.
-
-        For every message that is a member of a sequence that was not a member
-        previously we issue a "FETCH" to every client listening to this
-        mailbox.
-
-        The "FETCH" lists all of the flags associated with that message.
-
-        We _skip_ the client that is indicated by 'dont_notify'
-
-        Arguments:
-        - `seqs`: The latest representation of what the on disk sequences are
-        - `dont_notify`: The client to NOT send "FETCH" notices to
-        - `publish_uids`: If this is true then ALSO include the messages UID in
-          the FETCH response
-        """
-        # We build up the set of messages that have changed flags
-        #
-        changed_msg_keys = set()
-        # If any sequence exists now that did not exist before, or does not
-        # exist now but did exist before then all of those messages in those
-        # sequences have changed flags.
-        #
-        for seq in set(seqs.keys()) ^ set(self.sequences.keys()):
-            if seqs[seq]:
-                changed_msg_keys |= set(seqs[seq])
-            if self.sequences[seq]:
-                changed_msg_keys |= set(self.sequences[seq])
-
-        # Now that we have handled the messages that were in sequences that do
-        # not exist in one of seqs or self.sequences go through the sequences
-        # in seqs. For every sequence if it is in self.sequences find out what
-        # messages have either been added or removed from these sequences and
-        # add it to the set of changed messages.
-        #
-        for seq in list(seqs.keys()):
-            if seq not in self.sequences:
-                continue
-            changed_msg_keys |= set(seqs[seq]) ^ set(self.sequences[seq])
-
-        # Now eliminate all entries in our changed_msg_keys set that are NOT in
-        # msg_keys. We can not send FETCH's for messages that are no longer in
-        # the folder.
-        #
-        changed_msg_keys = changed_msg_keys & set(self.msg_keys)
-
-        # And go through each message and publish a FETCH to every client with
-        # all the flags that this message has.
-        #
-        for msg_key in sorted(list(changed_msg_keys)):
-            flags = []
-            for seq in list(seqs.keys()):
-                if msg_key in seqs[seq]:
-                    flags.append(seq_to_flag(seq))
-
-            # Publish to every listening client except the ones who do not want
-            # notifications.
-            #
-            flags_str = " ".join(flags)
-            msg_idx = self.msg_keys.index(msg_key) + 1
-
-            uidstr = ""
-            if publish_uids:
-                try:
-                    uidstr = f" UID {self.uids[msg_idx - 1]}"
-                except IndexError:
-                    logger.error(
-                        "Mailbox %s: UID command but "
-                        "message index: %d is not inside list "
-                        "of UIDs, whose length is: %d",
-                        self.name,
-                        (msg_idx - 1),
-                        len(self.uids),
-                    )
-            msg = f"* {msg_idx} FETCH (FLAGS ({flags_str}){uidstr})\r\n"
-            await self._dispatch_or_pend_notifications(
-                [msg], dont_notify=dont_notify
-            )
-
-    ##################################################################
-    #
-    async def _pack_if_necessary(self):
+    async def _pack_if_necessary(self) -> bool:
         """
         We use the array of message keys from the folder to determine if it is
         time to pack the folder.
@@ -1683,19 +1679,22 @@ class Mailbox:
         folder is larger than 20. This tells us it has a considerable number
         of gaps and we then call pack on the folder.
 
-        NOTE: Immediately after calling 'pack' we update the in-memory copy of
-              the sequences with what is on the disk so that we do not generate
-              spurious 'FETCH' messages on the next folder resync().
+        The cache for this mailbox is cleared so any any cached message
+        sequences are cleared out.
+
+        This is expected to only be called when no imap tasks are running
+        against this mailbox to prevent sync problems between server and
+        client.
 
         Arguments:
         - `msgs`: The list of all message keys in the folder.
         """
         num_msgs = len(self.msg_keys)
         if num_msgs < self.folder_size_pack_limit:
-            return
+            return False
 
         if num_msgs / self.msg_keys[-1] > self.folder_ratio_pack_limit:
-            return
+            return False
 
         logger.debug(
             "Packing mailbox '%s', num msgs: %d, max msg key: %d",
@@ -1703,11 +1702,27 @@ class Mailbox:
             num_msgs,
             self.msg_keys[-1],
         )
+
+        # NOTE: Because we take care to write the sequences whenever we do
+        #       commands on the mailbox that update the in-memory sequences,
+        #       and this function can only be called when no command is running
+        #       we expect the sequences on disk to be up to date with respect
+        #       to self.sequences. It may also have new unseen messages and we
+        #       wish to make sure we do not lose those. So we read the
+        #       sequences back in after the pack.
+        #
         async with self.mailbox.lock_folder():
             await self.mailbox.apack()
             self.msg_keys = await self.mailbox.akeys()
             self.sequences = await self.mailbox.aget_sequences()
         self.server.msg_cache.clear_mbox(self.name)
+
+        self.mtime = await Mailbox.get_actual_mtime(
+            self.server.mailbox, self.name
+        )
+        await self.commit_to_db()
+
+        return True
 
     ##################################################################
     #
@@ -2563,15 +2578,11 @@ class Mailbox:
             await utime(mbox_msg_path(self.mailbox, msg_key), (mtime, mtime))
 
         self.optional_resync = False
-        self.allow_pack = False
-        try:
-            # We expect it to issue EXISTS and RECENT since there is a new
-            # message. We also want it to send a 'FETCH FLAGS' for every new
-            # message.
-            #
-            await self.check_new_msgs_and_flags(optional=False)
-        finally:
-            self.allow_pack = True
+        # We expect it to issue EXISTS and RECENT since there is a new
+        # message. We also want it to send a 'FETCH FLAGS' for every new
+        # message.
+        #
+        await self.check_new_msgs_and_flags(optional=False)
 
         uid_vv, uid = await self.get_uid_from_msg(msg_key)
         if uid is None:
@@ -3281,15 +3292,10 @@ class Mailbox:
 
                     # Done copying messages to dest folder.. Resync to give all
                     # the messages proper uids for their new mailbox, update
-                    # mailbox sequences, etc. Do not allow packing during
-                    # resync so that our msg keys remain valid.
+                    # mailbox sequences, etc.
                     #
-                    try:
-                        dst_mbox.allow_pack = False
-                        dst_mbox.optional_resync = False
-                        await dst_mbox.check_new_msgs_and_flags()
-                    finally:
-                        dst_mbox.allow_pack = True
+                    dst_mbox.optional_resync = False
+                    await dst_mbox.check_new_msgs_and_flags()
 
                     # Now get the uid's for all the newly copied messages.
                     # NOTE: Since we added the messages in the same order
