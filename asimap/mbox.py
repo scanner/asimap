@@ -342,8 +342,8 @@ class Mailbox:
         #
         async with mbox.mailbox.lock_folder():
             mbox.msg_keys = await mbox.mailbox.akeys()
-        mbox.optional_resync = await mbox._restore_from_db()
-        await mbox.check_new_msgs_and_flags()
+        optional_resync = not await mbox._restore_from_db()
+        await mbox.check_new_msgs_and_flags(optional=optional_resync)
         mbox.mgmt_task = asyncio.create_task(
             mbox.management_task(), name=f"mbox '{mbox.name}' mgmt task"
         )
@@ -835,10 +835,7 @@ class Mailbox:
         # A mailbox gets '\Marked' if it has any unseen messages or
         # '\Recent' messages.
         #
-        if "unseen" in seq or "Recent" in seq:
-            self.marked(True)
-        else:
-            self.marked(False)
+        self.marked(seq["unseen"] or seq["Recent"])
 
         if modified:
             async with self.mailbox.lock_folder():
@@ -929,6 +926,12 @@ class Mailbox:
         NOTE: `self.msg_keys` needs to have been updated right before this
               message is called.
         """
+        # If there are no messages in the mailbox then there is nothing to
+        # search for.
+        #
+        if not self.msg_keys:
+            return None
+
         # There will be a time when we need to scan the entire mailbox looking
         # for the first foreign key. The most common occurrence is at the end
         # of the mailbox so that is the default search.
@@ -1009,7 +1012,7 @@ class Mailbox:
         #
 
         start_time = time.monotonic()
-        self.last_resync = start_time
+        self.last_resync = time.time()
 
         # We do NOT resync mailboxes marked '\Noselect'. These mailboxes
         # essentially do not exist as far as any IMAP client can really tell.
@@ -1035,6 +1038,7 @@ class Mailbox:
         # the mtime.
         #
         if start_mtime <= self.mtime and self.optional_resync and optional:
+            await self.commit_to_db()
             return False
 
         logger.debug(
@@ -1860,7 +1864,6 @@ class Mailbox:
             mtime = date_time.timestamp()
             await utime(mbox_msg_path(self.mailbox, msg_key), (mtime, mtime))
 
-        self.optional_resync = False
         # We expect it to issue EXISTS and RECENT since there is a new
         # message. We also want it to send a 'FETCH FLAGS' for every new
         # message.
@@ -2581,8 +2584,7 @@ class Mailbox:
                     # the messages proper uids for their new mailbox, update
                     # mailbox sequences, etc.
                     #
-                    dst_mbox.optional_resync = False
-                    await dst_mbox.check_new_msgs_and_flags()
+                    await dst_mbox.check_new_msgs_and_flags(optional=False)
 
                     # Now get the uid's for all the newly copied messages.
                     # NOTE: Since we added the messages in the same order

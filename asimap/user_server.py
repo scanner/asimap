@@ -513,8 +513,9 @@ class IMAPUserServer:
             async with self.active_mailboxes_lock.write_lock():
                 self.active_mailboxes = {}
 
-        for mbox in mboxes:
-            await mbox.shutdown()
+        async with asyncio.TaskGroup() as tg:
+            for mbox in mboxes:
+                tg.create_task(mbox.shutdown())
 
         self.msg_cache.clear()
         await self.db.commit()
@@ -740,47 +741,18 @@ class IMAPUserServer:
                 self.active_mailboxes[name] = mbox
                 return mbox
 
-    # XXX As long as a folder is active it will have an active management
-    #     task. That task will insure that the folder is checked at least every
-    #     10 seconds while it is getting messages from the client.
-    #
-    # ##################################################################
-    # #
-    # async def check_all_active_folders(self):
-    #     """
-    #     Like 'check_all_folders' except this only checks folders that are
-    #     active and have clients in IDLE listening to them.
-    #     """
-
-    #     async def read_lock_resync(mbox: Mailbox):
-    #         try:
-    #             async with mbox.lock.read_lock():
-    #                 await mbox.resync()
-    #         except MailboxInconsistency as e:
-    #             # If hit one of these exceptions they are usually
-    #             # transient.  we will skip it. The command processor in
-    #             # client.py knows how to handle these better.
-    #             #
-    #             logger.warning("Skipping mailbox '%s' due to: %s", name, str(e))
-
-    #     async with asyncio.TaskGroup() as tg:
-    #         async with self.active_mailboxes_lock.read_lock():
-    #             for name, mbox in self.active_mailboxes.items():
-    #                 if any(x.idling for x in mbox.clients.values()):
-    #                     tg.create_task(read_lock_resync(mbox))
-
     ##################################################################
     #
     async def expire_inactive_folders(self):
         """
         Go through the list of active mailboxes and if any of them are around
-        past their expiry time, expire time.
+        past their expiry time, expire them.
         """
         # And finally check all active mailboxes to see if they have no clients
         # and are beyond their expiry time.
         #
         expired = []
-        active_mboxes = []
+        expired_mboxes = []
         async with self.active_mailboxes_lock.read_lock():
             for mbox_name, mbox in self.active_mailboxes.items():
                 if (
@@ -793,23 +765,20 @@ class IMAPUserServer:
                 for mbox_name in expired:
                     if mbox_name in self.active_mailboxes:
                         mbox = self.active_mailboxes[mbox_name]
-                        active_mboxes.append(mbox)
+                        expired_mboxes.append(mbox)
                         del self.active_mailboxes[mbox_name]
 
         # Go through the mbox's we deleted from `active_mailboxes` and shut
         # them down.
         #
-        for mbox in active_mboxes:
-            if not mbox.mgmt_task.done():
-                mbox.mgmt_task.cancel()
-                await mbox.mgmt_task
-            self.msg_cache.clear_mbox(mbox_name)
-            await mbox.commit_to_db()
+        if expired_mboxes:
+            async with asyncio.TaskGroup() as tg:
+                for mbox in expired_mboxes:
+                    tg.create_task(mbox.shutdown())
 
-        if active_mboxes:
             logger.debug(
-                "Expring active mailboxes: %s",
-                (mbox.name for mbox in active_mboxes),
+                "Expiring active mailboxes: %s",
+                (mbox.name for mbox in expired_mboxes),
             )
 
     ##################################################################

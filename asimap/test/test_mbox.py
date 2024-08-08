@@ -88,7 +88,7 @@ async def test_mailbox_init(imap_user_server):
     assert id == mbox.id
     assert uid_vv == 1  # 1 because first mailbox in server
     assert mbox.uid_vv == uid_vv
-    assert sorted(attributes.split(",")) == [r"\HasNoChildren", r"\Marked"]
+    assert sorted(attributes.split(",")) == [r"\HasNoChildren", r"\Unmarked"]
     assert mbox.mtime == mtime
     assert mtime == IsNow(unix_number=True)
     assert next_uid == 1
@@ -603,7 +603,7 @@ async def test_mbox_expunge_with_client(
     num_msgs = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
     for i in range(1, num_msgs_to_delete + 1):
-        seqs["Deleted"].append(msg_keys[i])
+        seqs["Deleted"].add(msg_keys[i])
 
     await mbox.mailbox.aset_sequences(seqs)
 
