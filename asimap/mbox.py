@@ -1957,7 +1957,7 @@ class Mailbox:
         #
         async with self.mailbox.lock_folder(), self.mh_sequences_lock:
             for seq in self.sequences.keys():
-                for msg_key in msg_keys_to_delete:
+                for msg_key in to_delete:
                     self.sequences[seq].discard(msg_key)
             await self.mailbox.aset_sequences(self.sequences)
         self.num_recent = len(self.sequences["Recent"])

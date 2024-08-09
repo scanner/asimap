@@ -513,7 +513,7 @@ async def test_mbox_resync_auto_pack(
 #
 @pytest.mark.asyncio
 async def test_mbox_selected_unselected(
-    mocker, bunch_of_email_in_folder, imap_user_server_and_client
+    bunch_of_email_in_folder, imap_user_server_and_client
 ):
     NAME = "inbox"
     bunch_of_email_in_folder()
@@ -597,11 +597,10 @@ async def test_mbox_expunge_with_client(
     #
     msg_keys = await mbox.mailbox.akeys()
     num_msgs = len(msg_keys)
-    seqs = await mbox.mailbox.aget_sequences()
     for i in range(1, num_msgs_to_delete + 1):
-        seqs["Deleted"].add(msg_keys[i])
+        mbox.sequences["Deleted"].add(msg_keys[i])
 
-    await mbox.mailbox.aset_sequences(seqs)
+    await mbox.mailbox.aset_sequences(mbox.sequences)
 
     imap_client.cmd_processor.idling = True
     await mbox.expunge()
@@ -613,8 +612,6 @@ async def test_mbox_expunge_with_client(
         "* 4 EXPUNGE",
         "* 3 EXPUNGE",
         "* 2 EXPUNGE",
-        "* 16 EXISTS",
-        "* 16 RECENT",
     ]
     assert mbox.uids == [
         1,
@@ -638,7 +635,8 @@ async def test_mbox_expunge_with_client(
     assert len(msg_keys) == num_msgs - num_msgs_to_delete
     assert len(mbox.uids) == len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    assert "Delete" not in seqs
+    assert "Deleted" not in seqs
+    assert not mbox.sequences["Deleted"]
 
 
 ####################################################################
