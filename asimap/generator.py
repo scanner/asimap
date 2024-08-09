@@ -15,7 +15,7 @@ from email.message import Message
 from email.policy import SMTP, Policy
 from functools import lru_cache
 from io import StringIO
-from typing import List, Optional, TextIO
+from typing import List, Optional, TextIO, Tuple
 
 logger = logging.getLogger("asimap.generator")
 
@@ -306,7 +306,7 @@ def get_msg_size_nc(msg: Message, headers: bool = True) -> int:
 @lru_cache(maxsize=32)
 def msg_headers_as_string(
     msg: Message,
-    headers: Optional[List[str]] = None,
+    headers: Optional[Tuple[str]] = None,
     skip: bool = True,
 ) -> str:
     """
@@ -328,10 +328,11 @@ def msg_headers_as_string(
     # representations are for presenting to an IMAP client and not sending over
     # the wire this is okay.
     #
+    hdrs = list(headers) if headers else None
     try:
         failed = False
         fp = StringIO()
-        g = HeaderGenerator(fp, mangle_from_=False, headers=headers, skip=skip)
+        g = HeaderGenerator(fp, mangle_from_=False, headers=hdrs, skip=skip)
         g.flatten(msg)
     except UnicodeEncodeError:
         failed = True
@@ -341,7 +342,7 @@ def msg_headers_as_string(
         g = HeaderGenerator(
             fp,
             mangle_from_=False,
-            headers=headers,
+            headers=hdrs,
             skip=skip,
             policy=SMTP_LONG_LINES,
         )

@@ -246,11 +246,11 @@ class FetchAtt:
             return msg_as_string(msg, headers=False)
         elif isinstance(section, (list, tuple)):
             if section[0].upper() == "HEADER.FIELDS":
-                return msg_headers_as_string(
-                    msg, headers=section[1], skip=False
-                )
+                headers = tuple(section[1])
+                return msg_headers_as_string(msg, headers=headers, skip=False)
             elif section[0].upper() == "HEADER.FIELDS.NOT":
-                return msg_headers_as_string(msg, headers=section[1], skip=True)
+                headers = tuple(section[1])
+                return msg_headers_as_string(msg, headers=headers, skip=True)
             else:
                 raise BadSection(
                     "Section value must be either HEADER.FIELDS or "
