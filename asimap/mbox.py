@@ -342,8 +342,14 @@ class Mailbox:
         #
         async with mbox.mailbox.lock_folder():
             mbox.msg_keys = await mbox.mailbox.akeys()
-        optional_resync = not await mbox._restore_from_db()
-        await mbox.check_new_msgs_and_flags(optional=optional_resync)
+        new_mbox = not await mbox._restore_from_db()
+        # IF this is a new mbox then not only should the next resync be
+        # non-optional, we should start looking for foreign keys from the start
+        # of the mailbox. Since it is new it is likely that every message is
+        # "foreign".
+        #
+        mbox.full_search = new_mbox
+        await mbox.check_new_msgs_and_flags(optional=new_mbox)
         mbox.mgmt_task = asyncio.create_task(
             mbox.management_task(), name=f"mbox '{mbox.name}' mgmt task"
         )
@@ -937,6 +943,7 @@ class Mailbox:
         # of the mailbox so that is the default search.
         #
         if full_search or self.full_search:
+            self.full_search = False
             for msg_key in self.msg_keys:
                 uid_vv, uid = await self.get_uid_from_msg(msg_key, cache=False)
 
@@ -945,8 +952,6 @@ class Mailbox:
                 #
                 if uid_vv != self.uid_vv:
                     return msg_key
-
-            self.full_search = False
             return None
 
         # Go through the list of msg_keys in reverse order. Preserve the
@@ -967,6 +972,15 @@ class Mailbox:
         if msg_key == self.msg_keys[-1]:
             return None
 
+        # If the msg_key is the one at the beginning of self.msg_keys then
+        # there are no non-foreign messages in the folder.
+        #
+        if msg_key == self.msg_keys[0]:
+            return msg_key
+
+        # Otherwise return the message at the previous index as the first
+        # foreign message.
+        #
         return self.msg_keys[idx + 1]
 
     ##################################################################
@@ -1110,10 +1124,10 @@ class Mailbox:
                     msg.remove_sequence("unseen")
                     msg_sequences.remove("unseen")
 
+                for sequence in msg_sequences:
+                    self.sequences[sequence].add(key)
                 for sequence in self.sequences.keys():
-                    if sequence in msg_sequences:
-                        self.sequences[sequence].add(key)
-                    else:
+                    if sequence not in msg_sequences:
                         self.sequences[sequence].discard(key)
 
                 async with self.mailbox.lock_folder():

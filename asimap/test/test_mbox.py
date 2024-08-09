@@ -107,13 +107,8 @@ async def test_mailbox_init(imap_user_server):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_mailbox_init_with_messages(
-    bunch_of_email_in_folder, imap_user_server
-):
-    NAME = "inbox"
-    bunch_of_email_in_folder(folder=NAME)
-    server = imap_user_server
-    mbox = await server.get_mailbox(NAME)
+async def test_mailbox_init_with_messages(mailbox_with_bunch_of_email):
+    mbox = mailbox_with_bunch_of_email
     assert mbox.uid_vv == 1
     assert r"\Marked" in mbox.attributes
     assert r"\HasNoChildren" in mbox.attributes
