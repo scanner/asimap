@@ -961,24 +961,22 @@ class Mailbox:
         # original index for each msg_key so we know its position in
         # self.msg_keys
         #
+        found_foreign = False
         for idx, msg_key in reversed(list(enumerate(self.msg_keys))):
             uid_vv, uid = await self.get_uid_from_msg(msg_key, cache=False)
-            # if we have encountered a valid uid_vv then we are done. The
-            # previous message, if there was one, is the foreign key.
-            #
+            if uid_vv != self.uid_vv:
+                found_foreign = True
+                continue
             if uid_vv == self.uid_vv:
                 break
 
-        # If the msg_key is the one at the end of self.msg_keys then there
-        # are no foreign messages in the folder.
-        #
-        if msg_key == self.msg_keys[-1]:
+        if not found_foreign:
             return None
 
-        # If the msg_key is the one at the beginning of self.msg_keys then
-        # there are no non-foreign messages in the folder.
+        # If the msg_key is the first or last message then that is the first
+        # foreign key.
         #
-        if msg_key == self.msg_keys[0]:
+        if msg_key == self.msg_keys[-1] or msg_key == self.msg_keys[0]:
             return msg_key
 
         # Otherwise return the message at the previous index as the first
@@ -1851,28 +1849,28 @@ class Mailbox:
         - `flags`: A list of flags to set on this message
         - `date_time`: The internal date on this message
         """
+        # Whatever sequences the message we are passed has, clear them.
+        # and then add sequences based on the flags passed in.
+        #
         msg.set_sequences([])
-        msg_key = await self.mailbox.aadd(msg)
         flags = [] if flags is None else flags
+
+        msg_key = await self.mailbox.aadd(msg)
+
+        # Update the message and internal sequences.
+        #
+        self.sequences["Recent"].add(msg_key)
+        msg.add_sequence("Recent")
         for flag in flags:
-            # We need to translate some flags in to the equivalent MH mailbox
-            # sequence name.
-            #
             if flag in REVERSE_SYSTEM_FLAG_MAP:
                 flag = REVERSE_SYSTEM_FLAG_MAP[flag]
             msg.add_sequence(flag)
             self.sequences[flag].add(msg_key)
 
-        # And messages that are appended to the mailbox always get the \Recent
-        # flag
-        #
-        msg.add_sequence("Recent")
-        self.sequences["Recent"].add(msg_key)
-
         # Keep the .mh_sequences up to date.
         #
         async with self.mailbox.lock_folder():
-            self.mailbox.aset_sequences(self.sequences)
+            await self.mailbox.aset_sequences(self.sequences)
 
         # if a date_time was supplied then set the mtime on the file to
         # that. We use mtime as our 'internal date' on messages.

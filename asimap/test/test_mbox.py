@@ -566,8 +566,10 @@ async def test_mbox_append(imap_user_server, email_factory):
     msg_key = msg_keys[0]
     mhmsg = await mbox.mailbox.aget_message(msg_key)
     uid_vv, msg_uid = get_uidvv_uid(mhmsg[UID_HDR])
-    assert mhmsg.get_sequences() == ["flagged", "unseen", "Recent"]
-    assert mbox.sequences == {"flagged": [1], "unseen": [1], "Recent": [1]}
+    assert sorted(mhmsg.get_sequences()) == sorted(
+        ["flagged", "unseen", "Recent"]
+    )
+    assert mbox.sequences == {"flagged": {1}, "unseen": {1}, "Recent": {1}}
     assert msg_uid == uid
     assert uid_vv == mbox.uid_vv
 
