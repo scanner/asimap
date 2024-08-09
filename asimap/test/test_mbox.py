@@ -504,8 +504,8 @@ async def test_mbox_resync_auto_pack(
     msg_keys = list(range(1, 21))  # After pack it should be 1..20
     assert mbox.num_msgs == len(msg_keys)
     assert len(mbox.sequences["unseen"]) == len(msg_keys)
-    assert mbox.sequences["unseen"] == msg_keys
-    assert mbox.sequences["Recent"] == msg_keys
+    assert mbox.sequences["unseen"] == set(msg_keys)
+    assert mbox.sequences["Recent"] == set(msg_keys)
     await assert_uids_match_msgs(msg_keys, mbox)
 
 
@@ -522,7 +522,7 @@ async def test_mbox_selected_unselected(
     msg_keys = await mbox.mailbox.akeys()
     num_msgs = len(msg_keys)
 
-    await mbox.selected(imap_client_proxy.cmd_processor)
+    results = await mbox.selected(imap_client_proxy.cmd_processor)
 
     expected = [
         f"* {num_msgs} EXISTS",
@@ -534,7 +534,7 @@ async def test_mbox_selected_unselected(
         r"* OK [PERMANENTFLAGS (\Answered \Deleted \Draft \Flagged \Seen \*)]",
     ]
 
-    results = [x.strip() for x in imap_client_proxy.push.call_args.args]
+    results = [x.strip() for x in results]
     assert expected == results
 
     with pytest.raises(No):
@@ -542,9 +542,8 @@ async def test_mbox_selected_unselected(
 
     mbox.unselected(imap_client_proxy.cmd_processor.name)
 
-    await mbox.selected(imap_client_proxy.cmd_processor)
-
-    results = [x.strip() for x in imap_client_proxy.push.call_args.args]
+    results = await mbox.selected(imap_client_proxy.cmd_processor)
+    results = [x.strip() for x in results]
     assert expected == results
 
 

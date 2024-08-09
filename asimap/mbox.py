@@ -739,17 +739,20 @@ class Mailbox:
                 self.executing_tasks.append(imap_cmd)
                 imap_cmd.ready.set()
 
+            except RuntimeError as e:
+                self.logger.exception("RuntimeError in management task: %s", e)
+                return
             except asyncio.CancelledError:
                 self.logger.info("Management task cancelled. Exiting")
                 await self.commit_to_db()
-                return
+                raise
             except Exception as e:
                 # We ignore all other exceptions because otherwise the
                 # management task would exit and no mbox commands would be
                 # processed.
                 #
                 self.logger.exception(
-                    f"Management task got exception: {e}," " Ignoring!"
+                    "Management task got exception: %s, Ignoring!", e
                 )
 
     ####################################################################
