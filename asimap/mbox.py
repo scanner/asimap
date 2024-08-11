@@ -37,7 +37,7 @@ from .constants import (
     seq_to_flag,
 )
 from .exceptions import Bad, MailboxInconsistency, No
-from .fetch import FetchAtt
+from .fetch import FetchAtt, FetchOp
 from .message_cache import MessageCache
 from .mh import (
     MH,
@@ -303,7 +303,7 @@ class Mailbox:
         Make sure the message cache for this mbox is cleared.
         """
         try:
-            if not self.mgmt_task.done():
+            if hasattr(self, "mgmt_task") and not self.mgmt_task.done():
                 self.mgmt_task.cancel()
         except RuntimeError:
             # Include runtime errors 'event loop is closed'. Happens when del
@@ -2099,18 +2099,18 @@ class Mailbox:
             # the folder, ie: msgs[0].
             #
             fetch_started = time.time()
-            for idx in msg_set:
+            for msg_seq_num in msg_set:
                 single_fetch_started = time.time()
                 try:
-                    msg_key = self.msg_keys[idx - 1]
+                    msg_key = self.msg_keys[msg_seq_num - 1]
                 except IndexError:
                     # Every key in msg_idx should be in the folder. If it is
                     # not then something is off between our state and the
                     # folder's state.
                     #
                     log_msg = (
-                        f"fetch: Attempted to look up message index "
-                        f"{idx - 1}, but msgs is only of length {self.num_msgs}"
+                        f"fetch: Attempted to look up msg key "
+                        f"{msg_seq_num - 1}, but msgs is only of length {self.num_msgs}"
                     )
                     logger.warning(log_msg)
                     self.optional_resync = False
@@ -2118,13 +2118,24 @@ class Mailbox:
                     raise MailboxInconsistency(log_msg)
 
                 ctx = SearchContext(
-                    self, msg_key, idx, seq_max, uid_max, self.sequences
+                    self, msg_key, msg_seq_num, seq_max, uid_max, self.sequences
                 )
                 fetched_flags = False
-                fetched_body = False
+                fetched_body_seen = False
                 iter_results = []
 
-                for elt in fetch_ops:
+                # If this is a uid_cmd add the UID to the fetch atts we need to
+                # return. ie: a fetch response that would have been:
+                # * 23 FETCH (FLAGS (\Seen))
+                # is now going to be:
+                # * 23 FETCH (FLAGS (\Seen) UID 4827313)
+                #
+                fo = (
+                    fetch_ops
+                    if not uid_cmd
+                    else fetch_ops + [FetchAtt(FetchOp.UID)]
+                )
+                for elt in fo:
                     iter_results.append(await elt.fetch(ctx))
                     # If one of the FETCH ops gets the FLAGS we want to
                     # know and likewise if one of the FETCH ops gets the
@@ -2133,7 +2144,7 @@ class Mailbox:
                     # the message.
                     #
                     if elt.attribute == "body" and elt.peek is False:
-                        fetched_body = True
+                        fetched_body_seen = True
                     if elt.attribute == "flags":
                         fetched_flags = True
 
@@ -2154,7 +2165,7 @@ class Mailbox:
                 # in it) and added to the 'Seen' sequence (if it was not in
                 # it.)
                 #
-                if fetched_body:
+                if fetched_body_seen:
                     if cached_msg:
                         cached_msg.remove_sequence("unseen")
                         cached_msg.add_sequence("Seen")
@@ -2164,7 +2175,7 @@ class Mailbox:
                 fetch_yield_times.append(time.time() - single_fetch_started)
                 num_results += 1
                 yield_start = time.time()
-                yield (idx, iter_results)
+                yield (msg_seq_num, iter_results)
                 yield_times.append(time.time() - yield_start)
 
             fetch_finished_time = time.time()
@@ -2179,14 +2190,18 @@ class Mailbox:
             if no_longer_unseen_msgs or no_longer_recent_msgs:
                 notifies_for = no_longer_unseen_msgs | no_longer_recent_msgs
                 async with self.mh_sequences_lock, self.mailbox.lock_folder():
+                    seqs = await self.mailbox.aget_sequences()
                     for msg_key in no_longer_recent_msgs:
                         self.sequences["Recent"].discard(msg_key)
+                        seqs["Recent"].discard(msg_key)
                     for msg_key in no_longer_unseen_msgs:
                         self.sequences["unseen"].discard(msg_key)
+                        seqs["unseen"].discard(msg_key)
                         if msg_key not in self.sequences["Seen"]:
                             self.sequences["Seen"].add(msg_key)
+                            seqs["Seen"].add(msg_key)
 
-                    await self.mailbox.aset_sequences(self.sequences)
+                    await self.mailbox.aset_sequences(seqs)
 
                 # XXX Move this into a helper function?
                 #

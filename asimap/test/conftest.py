@@ -527,6 +527,8 @@ async def imap_user_server_and_client(imap_user_server, imap_client_proxy):
     server = imap_user_server
     client_proxy = await imap_client_proxy()
     yield (server, client_proxy)
+    # Give various tasks a chance to shutdown after being cancelled.
+    await asyncio.sleep(0.1)
 
 
 ####################################################################

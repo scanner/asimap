@@ -673,7 +673,6 @@ async def test_mailbox_fetch(mailbox_with_bunch_of_email):
     # We know this mailbox has messages numbered from 1 to 20.
     #
     mbox = mailbox_with_bunch_of_email
-    seqs = await mbox.mailbox.aget_sequences()
     msg_keys = await mbox.mailbox.akeys()
     msg_set = [2, 3, 4]
 
@@ -682,9 +681,9 @@ async def test_mailbox_fetch(mailbox_with_bunch_of_email):
     #
     seen = flag_to_seq(r"\Seen")
     unseen = flag_to_seq("unseen")
-    assert unseen in seqs
-    assert seqs[unseen] == msg_keys
-    assert not seqs[seen]
+    assert unseen in mbox.sequences
+    assert mbox.sequences[unseen] == set(msg_keys)
+    assert not mbox.sequences[seen]
 
     # UID's, message number, and message key are all the same value for a fresh
     # mailbox.
@@ -725,13 +724,12 @@ async def test_mailbox_fetch(mailbox_with_bunch_of_email):
             assert seen not in msg.get_sequences()
             assert unseen in msg.get_sequences()
 
-    seqs = await mbox.mailbox.aget_sequences()
     for msg_key in msg_set:
         # One of the FETCH's is a BODY.PEEK, thus `\Seen` flag should
         # not be on the messages yet, and they should still be `unseen`.
         #
-        assert msg_key not in seqs[seen]
-        assert msg_key in seqs[unseen]
+        assert msg_key not in mbox.sequences[seen]
+        assert msg_key in mbox.sequences[unseen]
 
         msg = await mbox.mailbox.aget_message(msg_key)
         assert seen not in msg.get_sequences()
@@ -740,35 +738,53 @@ async def test_mailbox_fetch(mailbox_with_bunch_of_email):
     # Twiggle the FETCH BODY.PEEK to be a FETCH BODY.
     #
     fetch_ops[1].peek = False
-    async for fetch_result in mbox.fetch(msg_set, fetch_ops, uid_cmd=True):
-        msg_key, result = fetch_result
+    async for idx, result in mbox.fetch(msg_set, fetch_ops, uid_cmd=True):
         assert msg_key in expected_keys
-        uid, flags, headers = result
+        flags, headers, uid = result
         uid_str, uid_val = uid.split()
         assert uid_str == "UID"
-        assert int(uid_val) == msg_key
+        # NOTE: idx is a imap message sequence number, which is 1-based. So need
+        #       -1 to get the proper UID.
+        #
+        assert int(uid_val) == mbox.uids[idx - 1]
         assert flags.startswith("FLAGS (")
         assert headers.startswith("BODY[HEADER.FIELDS (Date From)] {")
 
         # FETCH BODY is no longer a PEEK, thus these messages are now
         # `\Seen`
         #
+        msg_key = mbox.msg_keys[idx - 1]
         msg = mbox.server.msg_cache.get(mbox.name, msg_key)
         if msg:
-            assert seen in msg.get_sequences()
-            assert unseen not in msg.get_sequences()
+            msg_sequences = msg.get_sequences()
+            assert seen in msg_sequences
+            assert unseen not in msg_sequences
 
-    seqs = await mbox.mailbox.aget_sequences()
     for msg_key in msg_set:
         # One of the FETCH's is a BODY.PEEK, thus `\Seen` flag should
         # not be on the messages yet, and they should still be `unseen`.
         #
-        assert msg_key in seqs[seen]
-        assert msg_key not in seqs[unseen]
+        assert msg_key in mbox.sequences[seen]
+        assert msg_key not in mbox.sequences[unseen]
 
         msg = await mbox.mailbox.aget_message(msg_key)
         assert seen in msg.get_sequences()
         assert unseen not in msg.get_sequences()
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mailbox_fetch_notifies_other_clients():
+    """
+    If a fetch modifies flags (Recent & unseen) then we need to make sure
+    other clients were notified of these changes by being sent untagged FETCH
+    messages.
+    """
+    # XXX Do this by mocking _dispatch_or_pend_notifications and checking to
+    #     see if it was called with the right messages.
+    #
+    assert False
 
 
 ####################################################################
