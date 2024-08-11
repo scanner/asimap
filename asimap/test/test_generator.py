@@ -134,7 +134,7 @@ def test_header_generator_some_headers(lots_of_headers_email):
     msg = MHMessage(lots_of_headers_email)
 
     headers = msg_headers_as_string(
-        msg, ["to", "from", "SuBjEct", "Date"], skip=False
+        msg, ("to", "from", "SuBjEct", "Date"), skip=False
     )
 
     assert (
@@ -245,7 +245,7 @@ Content-Type: multipart/alternative;\r
 \tboundary="----=_NextPart_000_0031_01D36222.8A648550"\r
 X-Mailer: Microsoft Outlook Express 6.00.2900.5931\r\n\r\n"""
 
-    headers = msg_headers_as_string(msg, to_skip, skip=True)
+    headers = msg_headers_as_string(msg, tuple(to_skip), skip=True)
     assert headers == expected
 
 
