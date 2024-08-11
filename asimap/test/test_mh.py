@@ -207,7 +207,7 @@ async def test_mh_aget_sequences(bunch_of_email_in_folder):
     #
     keys = await inbox.akeys()
     sequences = await inbox.aget_sequences()
-    assert keys == sequences["unseen"]
+    assert set(keys) == sequences["unseen"]
 
 
 ####################################################################
@@ -226,10 +226,10 @@ async def test_mh_aset_sequences(bunch_of_email_in_folder):
     #
     seen = []
     for i in range(int(len(keys) / 2)):
-        key = random.choice(sequences["unseen"])
+        key = random.choice(list(sequences["unseen"]))
         seen.append(key)
         sequences["unseen"].remove(key)
-    sequences["Seen"] = sorted(seen)
+    sequences["Seen"] = set(seen)
     await inbox.aset_sequences(sequences)
     new_sequences = await inbox.aget_sequences()
     assert sequences == new_sequences
@@ -283,4 +283,4 @@ async def test_mh_apack(bunch_of_email_in_folder):
     keys = await inbox.akeys()
     assert keys == list(range(1, len(keys) + 1))
     sequences = await inbox.aget_sequences()
-    assert sequences["unseen"] == keys
+    assert sequences["unseen"] == set(keys)
