@@ -30,7 +30,6 @@ from .utils import utime
 if TYPE_CHECKING:
     from _typeshed import StrPath
 
-# Sequences: TypeAlias = Dict[str, List[int]]
 Sequences: TypeAlias = Dict[str, Set[int]]
 
 LINESEP = str(mailbox.linesep, "ascii")

@@ -375,7 +375,10 @@ class Mailbox:
         except asyncio.QueueEmpty:
             pass
 
-        await self.mgmt_task
+        try:
+            await self.mgmt_task
+        except asyncio.CancelledError:
+            pass
 
         if commit_db:
             await self.commit_to_db()
@@ -744,7 +747,6 @@ class Mailbox:
                 return
             except asyncio.CancelledError:
                 self.logger.info("Management task cancelled. Exiting")
-                await self.commit_to_db()
                 raise
             except Exception as e:
                 # We ignore all other exceptions because otherwise the
@@ -824,7 +826,7 @@ class Mailbox:
             #
             new_seen = set(self.msg_keys) - seq["unseen"]
             if new_seen != seq["Seen"]:
-                seq["Seen"] = new_seen
+                seq["Seen"] = set(new_seen)
                 modified = True
         else:
             # There are no unseen messages in the mailbox thus the Seen
@@ -839,7 +841,7 @@ class Mailbox:
             if "Recent" in seq:
                 seq["Recent"].update(recent_msg_keys)
             else:
-                seq["Recent"] = recent_msg_keys
+                seq["Recent"] = set(recent_msg_keys)
 
         # A mailbox gets '\Marked' if it has any unseen messages or
         # '\Recent' messages.
@@ -2697,6 +2699,10 @@ class Mailbox:
                 mbox.attributes.remove(r"\Noselect")
                 await mbox.check_set_haschildren_attr()
                 await mbox.commit_to_db()
+                await mbox.check_new_msgs_and_flags(optional=False)
+                mbox.mgmt_task = asyncio.create_task(
+                    mbox.management_task(), name=f"mbox '{mbox.name}' mgmt task"
+                )
             else:
                 raise MailboxExists(f"Mailbox '{name}' already exists")
 
@@ -2782,7 +2788,7 @@ class Mailbox:
         mbox.num_msgs = 0
         mbox.num_recent = 0
         mbox.uids = []
-        mbox.sequences = defaultdict(list)
+        mbox.sequences = defaultdict(set)
 
         # Set the mbox deleted flag to true. Cancel the management
         # task. Go through the task queue and signal all waiting
@@ -2811,6 +2817,7 @@ class Mailbox:
         # existing mailbox.
         #
         if inferior_mailboxes or mbox.subscribed:
+            mbox.deleted = False
             mbox.attributes.add(r"\Noselect")
             mbox.uid_vv = await server.get_next_uid_vv()
             await mbox.commit_to_db()
