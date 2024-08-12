@@ -639,14 +639,15 @@ async def test_authenticated_client_expunge(
     cmd.parse()
     await client_handler.command(cmd)
     results = client_push_responses(imap_client)
-    # Since this client is _sending_ the EXPUNGE command it is alright for it
-    # to get back the untagged `EXISTS` response from the server .. hence
-    # len(results) - 3 -- 3 for the "OK", "EXISTS", and "RECENT".
+    # The results should have the same message sequence numbers as to_delete,
+    # in reverse.
     #
-    assert len(results) - 3 == len(to_delete)
-    assert results[-3:] == [
-        "* 15 EXISTS",
-        "* 15 RECENT",
+    for msg, msg_seq_num in zip(results[:-1], sorted(to_delete, reverse=True)):
+        assert msg == f"* {msg_seq_num} EXPUNGE"
+    # len(results) - 1 for the "OK"
+    #
+    assert len(results) - 1 == len(to_delete)
+    assert results[-1:] == [
         "A005 OK EXPUNGE command completed",
     ]
     for deleted, result in zip(sorted(to_delete, reverse=True), results):
@@ -782,15 +783,9 @@ async def test_authenticated_client_fetch_lotta_fields(
     results = client_push_responses(imap_client, strip=False)
     assert results[-1] == "A001 OK FETCH command completed\r\n"
     for msg_key in msg_keys:
-        # msg = await mbox.mailbox.aget_message(msg_key)
-        print(f"msg key: {msg_key:>3}, result: {repr(results[msg_key-1])}")
         res = [x for x in results[msg_key - 1].split("\r\n")]
-        print(f"msg key: {msg_key:>3} -- number of results: {len(res)}")
         for r in res:
             print(f"    result: {r}")
-        # _, subj, frm = (x.strip() for x in results[msg_key - 1].split("\r\n"))
-        # assert msg["Subject"] == subj.split(":")[1].strip()
-        # assert msg["From"] == frm.split(":")[1].strip()
 
 
 ####################################################################
