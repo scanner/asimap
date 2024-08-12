@@ -629,8 +629,8 @@ class IMAPUserServer:
             while True:
                 await self.expire_inactive_folders()
 
-                # If it has been more than 5 minutes since a full scan, then do
-                # a full scan.
+                # If it has been more than <n> seconds since a full scan, then
+                # do a full scan.
                 #
                 now = time.time()
                 if now - self.last_full_check > 300:
@@ -651,6 +651,7 @@ class IMAPUserServer:
                 #
                 await asyncio.sleep(30)
         except asyncio.exceptions.CancelledError:
+            logger.info("folder_scan task has been cancelled")
             raise
         finally:
             if self.asyncio_server.is_serving():
@@ -691,7 +692,7 @@ class IMAPUserServer:
 
     ##################################################################
     #
-    async def get_next_uid_vv(self):
+    async def get_next_uid_vv(self) -> int:
         """
         Return the next uid_vv. Also update the underlying database
         so that its uid_vv state remains up to date.
@@ -706,7 +707,7 @@ class IMAPUserServer:
 
     ##################################################################
     #
-    async def get_mailbox(self, name: str, expiry=900):
+    async def get_mailbox(self, name: str, expiry: int = 900) -> Mailbox:
         """
         A factory of sorts.. if we have an active mailbox with the given name
         return it.
@@ -727,12 +728,32 @@ class IMAPUserServer:
         if name.lower() == "inbox":
             name = "inbox"
 
+        # NOTE: If it takes a long time for the initial scan of a mailbox to
+        #       complete this whole function will lock up for all callers until
+        #       that scan completes.
+        #
+        #       We should consider some way to release the write lock as soon
+        #       as we begin the scan so that other callers for other mailboxes
+        #       can get in quickly. ANd then we should block all other callers
+        #       for this mailbox until that initial scan has completed.  B-/
+        #       Once initial scans are complete re-newals scans should be
+        #       pretty quick.  Mainly need a solid way to block other tasks
+        #       asking for the same mailbox while it is being scanned, and let
+        #       them continue when it has finished that initial scan.
+        #
         async with self.active_mailboxes_lock.read_lock():
             if name in self.active_mailboxes:
                 if self.active_mailboxes[name].deleted:
                     raise NoSuchMailbox(f"'{name}' has been deleted.")
                 return self.active_mailboxes[name]
             async with self.active_mailboxes_lock.write_lock():
+                # After we get the write lock, see if another task already got
+                # the mailbox for us.
+                #
+                if name in self.active_mailboxes:
+                    if self.active_mailboxes[name].deleted:
+                        raise NoSuchMailbox(f"'{name}' has been deleted.")
+                    return self.active_mailboxes[name]
                 # otherwise.. make an instance of this mailbox.
                 #
                 mbox = await Mailbox.new(name, self, expiry=expiry)
@@ -754,7 +775,7 @@ class IMAPUserServer:
         async with self.active_mailboxes_lock.read_lock():
             for mbox_name, mbox in self.active_mailboxes.items():
                 if (
-                    len(mbox.clients) == 0
+                    not mbox.clients
                     and mbox.expiry is not None
                     and mbox.expiry < time.time()
                 ):
@@ -843,19 +864,13 @@ class IMAPUserServer:
                     mtime,
                     fmtime,
                 )
-                m = await self.get_mailbox(mbox_name, 20)
-                if (m.mtime >= fmtime) and not force:
-                    # Looking at the mailbox object its mtime is NOT
-                    # earlier than the mtime of the folder so we can
-                    # skip this resync. But commit the mailbox data to the
-                    # db so that the actual mtime value is stored.
-                    #
-                    # (This may be because someone updated the mailbox before
-                    # this task actaully ran.)
-                    #
-                    await m.commit_to_db()
-                else:
-                    await m.check_new_msgs_and_flags()
+                # Just calling `get_mailbox` on a mailbox that is not active
+                # will cause a 'check_new_msgs_and_flags()' to be called, thus
+                # checking the folder. Since the expiry time is 0, it will be
+                # expired the next time the `expired_inactive_folders()` method
+                # runs (and the mailbox is not resyncing)
+                #
+                await self.get_mailbox(mbox_name, expiry=0)
         except MailboxInconsistency as e:
             # If hit one of these exceptions they are usually
             # transient.  we will skip it. The command processor in
@@ -940,30 +955,28 @@ class IMAPUserServer:
             queue.put_nowait((mbox_name, mtime))
 
         self.folder_check_durations = {}
-
         # Create 10 asyncio workers to process the folders so that we have 10
         # folders being processed at any one time.
         #
-        workers = []
-        for i in range(10):
-            worker = asyncio.create_task(
-                check_folder_worker(f"check-folder-worker-{i}", queue)
-            )
-            workers.append(worker)
+        async with asyncio.TaskGroup() as tg:
+            workers = []
+            for i in range(10):
+                worker = tg.create_task(
+                    check_folder_worker(f"check-folder-worker-{i}", queue)
+                )
+                workers.append(worker)
 
-        worker_start = time.monotonic()
-        await queue.join()
-        worker_duration = time.monotonic() - worker_start
-        for worker in workers:
-            worker.cancel()
-        while any([not x.done for x in workers]):
-            await asyncio.sleep(0.01)
+            worker_start = time.monotonic()
+            await queue.join()
+            worker_duration = time.monotonic() - worker_start
+            for worker in workers:
+                worker.cancel()
 
         # Now point in doing all the math if we are not going to log it.
         # NOTE: In the future we might submit these as metrics.
         #
-        if self.debug:
-            scan_durations = list(self.folder_check_durations.values())
+        scan_durations = list(self.folder_check_durations.values())
+        if self.debug and len(scan_durations) > 1:
             mean_scan_duration = fmean(scan_durations)
             median_scan_duration = median(scan_durations)
             stddev_scan_duration = (

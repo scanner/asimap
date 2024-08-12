@@ -175,6 +175,11 @@ async def test_check_all_folders(
                 continue
             await Mailbox.create(sub_folder, server)
             folders.append(sub_folder)
+            await server.get_mailbox(sub_folder, expiry=0)
+
+    # Expire all the mailboxes we made so `check_all_folders` will check them.
+    #
+    await server.expire_inactive_folders()
 
     # select and idle on the inbox
     #
@@ -186,9 +191,11 @@ async def test_check_all_folders(
     cmd.parse()
     await client_handler.command(cmd)
 
-    # basically all the sub-components of this action are already tested.
-    # We are making sure that this code that invokes them runs.
+    # basically all the sub-components of this action are already tested.  We
+    # are making sure that this code that invokes them runs. Turn debug on for
+    # the server to test the debugging log statements with statistics.
     #
+    server.debug = True
     await server.check_all_folders(force=True)
 
     # And stop idling on the inbox.
