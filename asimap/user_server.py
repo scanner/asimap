@@ -627,8 +627,6 @@ class IMAPUserServer:
         """
         try:
             while True:
-                # XXX Handled by active folder's management task.
-                # await self.check_all_active_folders()
                 await self.expire_inactive_folders()
 
                 # If it has been more than 5 minutes since a full scan, then do
@@ -845,7 +843,7 @@ class IMAPUserServer:
                     mtime,
                     fmtime,
                 )
-                m = await self.get_mailbox(mbox_name, 10)
+                m = await self.get_mailbox(mbox_name, 20)
                 if (m.mtime >= fmtime) and not force:
                     # Looking at the mailbox object its mtime is NOT
                     # earlier than the mtime of the folder so we can
@@ -857,8 +855,7 @@ class IMAPUserServer:
                     #
                     await m.commit_to_db()
                 else:
-                    async with m.lock.read_lock():
-                        await m.resync(force=force)
+                    await m.check_new_msgs_and_flags()
         except MailboxInconsistency as e:
             # If hit one of these exceptions they are usually
             # transient.  we will skip it. The command processor in
@@ -900,48 +897,44 @@ class IMAPUserServer:
             """
             while True:
                 mbox_name, mtime = await queue.get()
-                # can skip doing a check since it is already active.
-                #
-                if mbox_name in self.active_mailboxes and (
-                    any(
-                        x.idling
-                        for x in self.active_mailboxes[
-                            mbox_name
-                        ].clients.values()
-                    )
-                ):
-                    queue.task_done()
-                    return
-
                 try:
-                    await self.check_folder(mbox_name, mtime, force=False)
-                except asyncio.CancelledError:
-                    logger.info("Cancelled")
-                    raise
-                except Exception as e:
-                    logger.exception(
-                        "Problem checking folder '%s': %s", mbox_name, e
-                    )
-                queue.task_done()
+                    # Do not bother checking on an active folder that has any
+                    # clients in IDLE. THis loops is only to check for updates
+                    # to folders that are not active. (Active folders try to
+                    # recheck for updates every 10 secs.) This is in case the
+                    # folder became active while we were running the check.
+                    #
+                    if mbox_name in self.active_mailboxes:
+                        continue
+
+                    try:
+                        await self.check_folder(mbox_name, mtime, force=False)
+                    except asyncio.CancelledError:
+                        logger.info("Cancelled")
+                        raise
+                    except Exception as e:
+                        logger.exception(
+                            "Problem checking folder '%s': %s", mbox_name, e
+                        )
+                finally:
+                    queue.task_done()
 
         start_time = time.time()
+
         # Go through all of the folders and mtimes we know about from the
-        # sqlite db.
+        # sqlite db. Put each non-active folder on to our worker queue for the
+        # workers process.
         #
         kount = 0
-        queue = asyncio.Queue()
+        queue: asyncio.Queue[tuple[str, float]] = asyncio.Queue()
         async for mbox_name, mtime in self.db.query(
             "SELECT name, mtime FROM mailboxes WHERE attributes "
             "NOT LIKE '%%ignored%%' ORDER BY name"
         ):
-            # can skip doing a check since it is already active.
+            # can skip doing a check since it is already active. They will
+            # check themselves while they are active.
             #
-            if mbox_name in self.active_mailboxes and (
-                any(
-                    x.idling
-                    for x in self.active_mailboxes[mbox_name].clients.values()
-                )
-            ):
+            if mbox_name in self.active_mailboxes:
                 continue
             kount += 1
             queue.put_nowait((mbox_name, mtime))
@@ -963,6 +956,8 @@ class IMAPUserServer:
         worker_duration = time.monotonic() - worker_start
         for worker in workers:
             worker.cancel()
+        while any([not x.done for x in workers]):
+            await asyncio.sleep(0.01)
 
         # Now point in doing all the math if we are not going to log it.
         # NOTE: In the future we might submit these as metrics.
