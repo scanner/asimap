@@ -367,7 +367,7 @@ userpath==1.9.2
     # via
     #   -r build.txt
     #   hatch
-uv==0.2.34
+uv==0.2.35
     # via
     #   -r build.txt
     #   hatch
@@ -385,7 +385,7 @@ wheel==0.44.0
     #   pip-tools
 yapf==0.40.2
     # via -r lint.txt
-zipp==3.19.2
+zipp==3.20.0
     # via
     #   -r lint.txt
     #   importlib-metadata
