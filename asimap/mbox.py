@@ -2979,7 +2979,6 @@ class Mailbox:
         # Every '*' becomes '.*' and every % becomes [^/]
         #
         mbox_match = mbox_match.replace(r"\*", r".*").replace(r"%", r"[^\/]*")
-
         # NOTE: We do not present to the IMAP client any folders that
         #       have the flag 'ignored' set on them.
         #
@@ -2989,7 +2988,6 @@ class Mailbox:
             f"regexp ? {subscribed} AND attributes NOT LIKE '%ignored%' "
             "ORDER BY name"
         )
-
         async for mbox_name, attributes in server.db.query(
             query, (mbox_match,)
         ):

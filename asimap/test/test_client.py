@@ -188,8 +188,8 @@ async def test_authenticated_client_handler_commands(
     ]
     expecteds = [
         ["A001 OK NOOP command completed"],
-        ["A002 BAD client already is in the authenticated state"],
-        ["A003 BAD client already is in the authenticated state"],
+        ["A002 NO client already is in the authenticated state"],
+        ["A003 NO client already is in the authenticated state"],
         [
             '* STATUS "inbox" (MESSAGES 20 RECENT 20 UIDNEXT 21 UIDVALIDITY 1 UNSEEN 20)',
             "A003.5 OK STATUS command completed",
@@ -247,11 +247,9 @@ async def test_authenticated_client_handler_commands(
             "* 3 EXPUNGE",
             "* 2 EXPUNGE",
             "* 1 EXPUNGE",
-            "* 0 EXISTS",
-            "* 0 RECENT",
             "A009 OK RENAME command completed",
         ],
-        ["A001 OK NOOP command completed"],
+        ["* 0 EXISTS", "* 0 RECENT", "A001 OK NOOP command completed"],
         ["A010 NO You are not allowed to delete the inbox"],
         ["A011 NO No such mailbox: 'bar'"],
         ["A012 OK CREATE command completed"],
@@ -371,8 +369,12 @@ async def test_authenticated_client_subscribe_lsub_unsubscribe(
         folders.append(folder_name)
         for _ in range(3):
             sub_folder = f"{folder_name}/{faker.word()}"
+
+            # Do not make folders that already exist.
+            #
             if sub_folder in folders:
                 continue
+
             await Mailbox.create(sub_folder, server)
             folders.append(sub_folder)
 
@@ -533,10 +535,9 @@ async def test_authenticated_client_close(
     # Messages that are marked `\Deleted` are removed when the mbox is closed.
     #
     mbox = await server.get_mailbox("inbox")
-    async with mbox.lock.read_lock():
-        msg_keys = await mbox.mailbox.akeys()
-        to_delete = sorted(random.sample(msg_keys, 5))
-        await mbox.store(to_delete, StoreAction.ADD_FLAGS, [r"\Deleted"])
+    msg_keys = await mbox.mailbox.akeys()
+    to_delete = sorted(random.sample(msg_keys, 5))
+    await mbox.store(to_delete, StoreAction.ADD_FLAGS, [r"\Deleted"])
 
     # Closing when we had done 'EXAMINE' does not result in messages being
     # purged.
@@ -600,10 +601,9 @@ async def test_authenticated_client_expunge(
     # Messages that are marked `\Deleted` are removed when the mbox is closed.
     #
     mbox = await server.get_mailbox("inbox")
-    async with mbox.lock.read_lock():
-        msg_keys = await mbox.mailbox.akeys()
-        to_delete = sorted(random.sample(msg_keys, 5))
-        await mbox.store(to_delete, StoreAction.ADD_FLAGS, [r"\Deleted"])
+    msg_keys = await mbox.mailbox.akeys()
+    to_delete = sorted(random.sample(msg_keys, 5))
+    await mbox.store(to_delete, StoreAction.ADD_FLAGS, [r"\Deleted"])
 
     # Expunging when we had done 'EXAMINE' does not result in messages being
     # purged.

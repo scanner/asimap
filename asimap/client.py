@@ -700,7 +700,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_rename(self, cmd: IMAPClientCommand):
+    async def do_rename(self, cmd: IMAPClientCommand) -> None:
         """
         Renames a mailbox from one name to another.
 
@@ -708,7 +708,7 @@ class Authenticated(BaseClientHandler):
         - `cmd`: The IMAP command we are executing
         """
         await self.send_pending_notifications()
-        mbox = await self.server.get_mailbox(cmd.mailbox_name)
+        mbox = await self.server.get_mailbox(cmd.mailbox_src_name)
         async with cmd.ready_and_okay(mbox):
             await Mailbox.rename(
                 cmd.mailbox_src_name, cmd.mailbox_dst_name, self.server
@@ -717,7 +717,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_subscribe(self, cmd: IMAPClientCommand):
+    async def do_subscribe(self, cmd: IMAPClientCommand) -> None:
         """
         The SUBSCRIBE command adds the specified mailbox name to the
         server's set of "active" or "subscribed" mailboxes as returned by
@@ -731,14 +731,11 @@ class Authenticated(BaseClientHandler):
 
         mbox = await self.server.get_mailbox(cmd.mailbox_name)
         mbox.subscribed = True
-        # Next resync will not be optional, and it will write the subscribed
-        # flag to the db.
-        #
-        mbox.optional_resync = False
+        await mbox.commit_to_db()
 
     ##################################################################
     #
-    async def do_unsubscribe(self, cmd: IMAPClientCommand):
+    async def do_unsubscribe(self, cmd: IMAPClientCommand) -> None:
         """
         The UNSUBSCRIBE command removes the specified mailbox name
         from the server's set of "active" or "subscribed" mailboxes as
@@ -752,15 +749,11 @@ class Authenticated(BaseClientHandler):
 
         mbox = await self.server.get_mailbox(cmd.mailbox_name)
         mbox.subscribed = False
-        # Next resync will not be optional, and it will write the subscribed
-        # flag to the db.
-        #
-        mbox.optional_resync = False
-        return None
+        await mbox.commit_to_db()
 
     ##################################################################
     #
-    async def do_list(self, cmd, lsub=False):
+    async def do_list(self, cmd, lsub=False) -> None:
         """
         The LIST command returns a subset of names from the complete
         set of all names available to the client.  Zero or more
@@ -795,7 +788,7 @@ class Authenticated(BaseClientHandler):
 
     ####################################################################
     #
-    async def do_lsub(self, cmd: IMAPClientCommand):
+    async def do_lsub(self, cmd: IMAPClientCommand) -> None:
         """
         The lsub command lists mailboxes we are subscribed to with the
         'SUBSCRIBE' command.
