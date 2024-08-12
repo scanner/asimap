@@ -1167,3 +1167,37 @@ async def test_append_when_other_msgs_also_added():
     appropripately.
     """
     assert False
+
+
+####################################################################
+#
+# XXX Consider using parametrize and some sort of scenario class that lists the
+#     executing commands, the command that wants to test if it woulc conflict,
+#     and the result of whether we expect it to conflict or not.
+#
+def test_would_conflict():
+    """
+    Test the variations of executing commands along with a new command to
+    execute to see if the 'would conflict' or not
+    """
+    assert False
+
+
+####################################################################
+#
+# Needs a mailbox with some messages so we can refer to self.uids and
+# self.num_msgs.
+#
+def test_msg_set_to_msg_seq_set():
+    """ """
+    assert False
+
+
+####################################################################
+#
+# Needs to setup executing commands and mocks the mbox's task_queue so that
+# self.task_queue.done() can be called.
+#
+@pytest.mark.asyncio
+async def test_command_can_proceed():
+    assert False
