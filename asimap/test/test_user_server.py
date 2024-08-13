@@ -59,6 +59,10 @@ async def test_expire_inactive_folders(
 
     client_handler = Authenticated(imap_client, server)
 
+    # Expire all the mailboxes we made so `check_all_folders` will check them.
+    #
+    await server.expire_inactive_folders()
+
     # Get a handle on two mailboxes.
     #
     mbox1 = await server.get_mailbox(folders[2])
@@ -70,9 +74,10 @@ async def test_expire_inactive_folders(
     cmd.parse()
     await client_handler.command(cmd)
 
-    # We should have three active mailboxes now.
+    # We should have three active mailboxes now (since we forced an expiry
+    # check above)
     #
-    assert len(server.active_mailboxes) == len(folders)
+    assert len(server.active_mailboxes) == 3
 
     # The inbox will have no expiry since a client has it selected.
     #
@@ -86,15 +91,16 @@ async def test_expire_inactive_folders(
 
     await server.expire_inactive_folders()
 
-    # no expiries since they all hvae expiry times in the future.
+    # and after an expiry check again, still 3 active folders.
     #
-    assert len(server.active_mailboxes) == len(folders)
+    assert len(server.active_mailboxes) == 3
 
-    # For mbox1's expiry time back to the unix epoch.
+    # For mbox1's expiry time back to the unix epoch. This should result in one
+    # of the three being expired.
     #
     mbox1.expiry = 0.0
     await server.expire_inactive_folders()
-    assert len(server.active_mailboxes) == len(folders) - 1
+    assert len(server.active_mailboxes) == 2
     assert mbox1.name not in server.active_mailboxes
 
 

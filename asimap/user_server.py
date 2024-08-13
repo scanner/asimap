@@ -18,6 +18,7 @@ import socket
 import sys
 import time
 from datetime import datetime, timezone
+from mailbox import NoSuchMailboxError
 from pathlib import Path
 from statistics import fmean, median, stdev
 from typing import TYPE_CHECKING, Dict, List, Optional, Union
@@ -40,7 +41,9 @@ from .mbox import Mailbox, NoSuchMailbox
 from .mh import MH
 from .parse import BadCommand, IMAPClientCommand
 from .trace import trace
-from .utils import UpgradeableReadWriteLock
+from .utils import with_timeout
+
+# from .utils import UpgradeableReadWriteLock
 
 if TYPE_CHECKING:
     from _typeshed import StrPath
@@ -420,7 +423,16 @@ class IMAPUserServer:
         # Need to acquire the lock if we are adding or removing a mailbox from
         # the active mailboxes.
         #
-        self.active_mailboxes_lock = UpgradeableReadWriteLock()
+        self.active_mailboxes_lock = asyncio.Lock()
+
+        # We also have a dict of asyncio.Event's for mailboxes that are "being
+        # activated". If multiple tasks want a mailbox and it has not been
+        # activated we use these asyncio.Events so that only one task actually
+        # activates the mailbox and then informs all the other waiting tasks
+        # that it has been activated.
+        #
+        self.activating_mailboxes_lock = asyncio.Lock()
+        self.activating_mailboxes: Dict[str, asyncio.Event] = {}
 
         # A dict of the active IMAP clients that are talking to us.
         #
@@ -507,11 +519,10 @@ class IMAPUserServer:
         # Shutdown all active mailboxes
         #
         mboxes = []
-        async with self.active_mailboxes_lock.read_lock():
+        async with self.active_mailboxes_lock:
             for mbox_name, mbox in self.active_mailboxes.items():
                 mboxes.append(mbox)
-            async with self.active_mailboxes_lock.write_lock():
-                self.active_mailboxes = {}
+            self.active_mailboxes = {}
 
         async with asyncio.TaskGroup() as tg:
             for mbox in mboxes:
@@ -707,6 +718,19 @@ class IMAPUserServer:
 
     ##################################################################
     #
+    def folder_exists(self, name: str) -> bool:
+        """
+        Returns True if the underlying MH folder exists. False otherwise.
+        """
+        try:
+            self.mailbox.get_folder(name)
+        except NoSuchMailboxError:
+            return False
+        return True
+
+    ##################################################################
+    #
+    @with_timeout(10)
     async def get_mailbox(self, name: str, expiry: int = 900) -> Mailbox:
         """
         A factory of sorts.. if we have an active mailbox with the given name
@@ -728,37 +752,67 @@ class IMAPUserServer:
         if name.lower() == "inbox":
             name = "inbox"
 
-        # NOTE: If it takes a long time for the initial scan of a mailbox to
-        #       complete this whole function will lock up for all callers until
-        #       that scan completes.
+        if not self.folder_exists(name):
+            raise NoSuchMailbox(f"No such mailbox: '{name}'")
+
+        # If the mailbox is active we can return it immediately. If not then,
+        # outside of the self.active_mailboxes_lock we will activate the
+        # mailbox.
         #
-        #       We should consider some way to release the write lock as soon
-        #       as we begin the scan so that other callers for other mailboxes
-        #       can get in quickly. ANd then we should block all other callers
-        #       for this mailbox until that initial scan has completed.  B-/
-        #       Once initial scans are complete re-newals scans should be
-        #       pretty quick.  Mainly need a solid way to block other tasks
-        #       asking for the same mailbox while it is being scanned, and let
-        #       them continue when it has finished that initial scan.
-        #
-        async with self.active_mailboxes_lock.read_lock():
+        async with self.active_mailboxes_lock:
             if name in self.active_mailboxes:
                 if self.active_mailboxes[name].deleted:
                     raise NoSuchMailbox(f"'{name}' has been deleted.")
                 return self.active_mailboxes[name]
-            async with self.active_mailboxes_lock.write_lock():
-                # After we get the write lock, see if another task already got
-                # the mailbox for us.
-                #
-                if name in self.active_mailboxes:
-                    if self.active_mailboxes[name].deleted:
-                        raise NoSuchMailbox(f"'{name}' has been deleted.")
-                    return self.active_mailboxes[name]
-                # otherwise.. make an instance of this mailbox.
-                #
-                mbox = await Mailbox.new(name, self, expiry=expiry)
-                self.active_mailboxes[name] = mbox
-                return mbox
+
+        # If multiple tasks are trying to activate a mailbox only *ONE* will
+        # get `creating=True`
+        #
+        creating = False
+        async with self.activating_mailboxes_lock:
+            if name in self.activating_mailboxes:
+                event = self.activating_mailboxes[name]
+            else:
+                event = asyncio.Event()
+                self.activating_mailboxes[name] = event
+                creating = True
+
+        if not creating:
+            logger.debug("Waiting for mailbox '%s' to be instantiated", name)
+            inst_start = time.monotonic()
+            await event.wait()
+            duration = time.monotonic() - inst_start
+            if duration > 0.1:
+                logger.debug(
+                    "Done waiting for mailbox '%s', took: %.3fs", name, duration
+                )
+
+            # Once the wait completes we are guaranteed that
+            # `self.active_mailboxes` has the key `name` in it.
+            #
+            async with self.active_mailboxes_lock:
+                if self.active_mailboxes[name].deleted:
+                    raise NoSuchMailbox(f"'{name}' has been deleted.")
+                return self.active_mailboxes[name]
+
+        logger.debug("Instantiating mailbox '%s'", name)
+        inst_start = time.monotonic()
+        # Instantiate the mailbox. Add it to `active_mailboxes`, signal any
+        # other task waiting on the event that it can now get the mailbox.
+        #
+        mbox = await Mailbox.new(name, self, expiry=expiry)
+        async with self.active_mailboxes_lock:
+            self.active_mailboxes[name] = mbox
+
+        event.set()
+        async with self.activating_mailboxes_lock:
+            del self.activating_mailboxes[name]
+        duration = time.monotonic() - inst_start
+        if duration > 0.1:
+            logger.debug(
+                "Instantiated mailbox '%s', took: %.3fs", name, duration
+            )
+        return mbox
 
     ##################################################################
     #
@@ -772,7 +826,8 @@ class IMAPUserServer:
         #
         expired = []
         expired_mboxes = []
-        async with self.active_mailboxes_lock.read_lock():
+
+        async with self.active_mailboxes_lock:
             for mbox_name, mbox in self.active_mailboxes.items():
                 if (
                     not mbox.clients
@@ -780,12 +835,12 @@ class IMAPUserServer:
                     and mbox.expiry < time.time()
                 ):
                     expired.append(mbox_name)
-            async with self.active_mailboxes_lock.write_lock():
-                for mbox_name in expired:
-                    if mbox_name in self.active_mailboxes:
-                        mbox = self.active_mailboxes[mbox_name]
-                        expired_mboxes.append(mbox)
-                        del self.active_mailboxes[mbox_name]
+                    expired_mboxes.append(mbox)
+
+            # Remove the to-be expired mailboxees from active_mailboxes.
+            #
+            for mbox_name in expired:
+                del self.active_mailboxes[mbox_name]
 
         # Go through the mbox's we deleted from `active_mailboxes` and shut
         # them down.
@@ -797,7 +852,7 @@ class IMAPUserServer:
 
             logger.debug(
                 "Expiring active mailboxes: %s",
-                (mbox.name for mbox in expired_mboxes),
+                ",".join(f"'{mbox.name}'" for mbox in expired_mboxes),
             )
 
     ##################################################################
@@ -850,7 +905,7 @@ class IMAPUserServer:
         - `force` : If True this will force a full resync on all
                     mailbox regardless of their mtimes.
         """
-        start_time = time.time()
+        start_time = time.monotonic()
         path = os.path.join(self.mailbox._path, mbox_name)
         seq_path = os.path.join(path, ".mh_sequences")
         try:
@@ -884,7 +939,10 @@ class IMAPUserServer:
                     path,
                     seq_path,
                 )
-        self.folder_check_durations[mbox_name] = time.time() - start_time
+        finally:
+            self.folder_check_durations[mbox_name] = (
+                time.monotonic() - start_time
+            )
 
     ##################################################################
     #
@@ -913,11 +971,11 @@ class IMAPUserServer:
             while True:
                 mbox_name, mtime = await queue.get()
                 try:
-                    # Do not bother checking on an active folder that has any
-                    # clients in IDLE. THis loops is only to check for updates
-                    # to folders that are not active. (Active folders try to
-                    # recheck for updates every 10 secs.) This is in case the
-                    # folder became active while we were running the check.
+                    # Do not bother checking on an active folder. This loops is
+                    # only to check for updates to folders that are not
+                    # active. (Active folders try to recheck for updates every
+                    # 10 secs.) This is in case the folder became active while
+                    # we were running the check.
                     #
                     if mbox_name in self.active_mailboxes:
                         continue

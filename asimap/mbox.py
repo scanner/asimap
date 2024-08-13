@@ -279,13 +279,13 @@ class Mailbox:
         # "reasons" before the next imap command gets processed it sets this
         # False. The management task will pass this to the resync method.
         #
-        self.optional_resync = True
+        self.optional_resync: bool = True
 
         # If a command got a mailbox inconsistency error it can signal on the
         # next resync to do a full scan from the beginning of the folder for
         # alien messages in the mbox
         #
-        self.full_search = False
+        self.full_search: bool = False
 
         # It is possible for a mailbox to be deleted while there are commands
         # in the task_queue waiting their chance to be processed. We need a way
@@ -293,7 +293,7 @@ class Mailbox:
         # working on has been deleted and will know to give up and exit. If
         # this boolean is True then the mailbox has been deleted.
         #
-        self.deleted = False
+        self.deleted: bool = False
 
     ####################################################################
     #
@@ -327,7 +327,6 @@ class Mailbox:
         doing both. So this is the entry point to instantiate a mailbox.
         """
         mbox = cls(*args, **kwargs)
-
         # If the .mh_sequence file does not exist create it.
         #
         mh_seq_fname = mbox_msg_path(mbox.mailbox, ".mh_sequences")
@@ -343,16 +342,22 @@ class Mailbox:
         async with mbox.mailbox.lock_folder():
             mbox.msg_keys = await mbox.mailbox.akeys()
         new_mbox = not await mbox._restore_from_db()
-        # IF this is a new mbox then not only should the next resync be
-        # non-optional, we should start looking for foreign keys from the start
-        # of the mailbox. Since it is new it is likely that every message is
-        # "foreign".
+
+        # If this new mbox has `\Noselect` then it is essentially a deleted
+        # mailbox. We will return it but we will not check for new messages and
+        # we will not create a management task.
         #
-        mbox.full_search = new_mbox
-        await mbox.check_new_msgs_and_flags(optional=new_mbox)
-        mbox.mgmt_task = asyncio.create_task(
-            mbox.management_task(), name=f"mbox '{mbox.name}' mgmt task"
-        )
+        if r"\Noselect" not in mbox.attributes:
+            # IF this is a new mbox then not only should the next resync be
+            # non-optional, we should start looking for foreign keys from the
+            # start of the mailbox. Since it is new it is likely that every
+            # message is "foreign".
+            #
+            mbox.full_search = new_mbox
+            await mbox.check_new_msgs_and_flags(optional=new_mbox)
+            mbox.mgmt_task = asyncio.create_task(
+                mbox.management_task(), name=f"mbox '{mbox.name}' mgmt task"
+            )
         return mbox
 
     ####################################################################
@@ -2679,7 +2684,7 @@ class Mailbox:
     #########################################################################
     #
     @classmethod
-    async def create(cls, name: str, server: "IMAPUserServer"):
+    async def create(cls, name: str, server: "IMAPUserServer") -> None:
         """
         Creates a mailbox on disk that does not already exist and
         instantiates a Mailbox object for it.
@@ -2842,10 +2847,9 @@ class Mailbox:
             # mailboxes and if it has any clients that have it selected
             # they are moved back to the unauthenticated state.
             #
-            async with server.active_mailboxes_lock.read_lock():
+            async with server.active_mailboxes_lock:
                 if name in server.active_mailboxes:
-                    async with server.active_mailboxes_lock.write_lock():
-                        del server.active_mailboxes[name]
+                    del server.active_mailboxes[name]
 
             # Delete all traces of the mailbox from our db.
             #
@@ -3041,10 +3045,7 @@ async def _helper_rename_folder(mbox: Mailbox, new_name: str):
         db and active mailboxes once we have the mbox write lock.
         """
         mbox_old_name = old_mbox.name
-        async with (
-            srvr.active_mailboxes_lock.read_lock(),
-            srvr.active_mailboxes_lock.write_lock(),
-        ):
+        async with srvr.active_mailboxes_lock:
             await srvr.db.execute(
                 "UPDATE mailboxes SET name=? WHERE id=?",
                 (mbox_new_name, old_id),
