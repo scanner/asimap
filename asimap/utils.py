@@ -697,3 +697,32 @@ async def update_replace_header_in_binary_file(fname: "StrPath", header: str):
     os.chmod(new_fname, stat.S_IMODE(stats.st_mode))
     await utime(new_fname, (stats.st_mtime, stats.st_mtime))
     await aiofiles.os.rename(new_fname, fname)
+
+
+####################################################################
+#
+def compact_sequence(msg_set: List[int]) -> str:
+    """
+    Turns a msg set in to a compact string. Contiguous ranges are turned
+    from 1,3,4,5,6 to '1-6'
+
+    Based on the truncation routine from mailbox.py:set_sequences
+    """
+    prev = None
+    completing = False
+    result = []
+    for key in sorted(msg_set):
+        if key - 1 == prev:
+            if not completing:
+                completing = True
+                result.append("-")
+        elif completing:
+            completing = False
+            result.append(f"{prev},{key}")
+        else:
+            result.append(f",{key}")
+        prev = key
+    if completing:
+        result.append(str(prev))
+
+    return "".join(result)

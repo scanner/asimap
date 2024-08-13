@@ -775,7 +775,9 @@ async def test_mailbox_fetch(mailbox_with_bunch_of_email):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_mailbox_fetch_notifies_other_clients():
+async def test_mailbox_fetch_notifies_other_clients(
+    mailbox_with_bunch_of_email,
+):
     """
     If a fetch modifies flags (Recent & unseen) then we need to make sure
     other clients were notified of these changes by being sent untagged FETCH

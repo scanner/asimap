@@ -41,9 +41,6 @@ from .mbox import Mailbox, NoSuchMailbox
 from .mh import MH
 from .parse import BadCommand, IMAPClientCommand
 from .trace import trace
-from .utils import with_timeout
-
-# from .utils import UpgradeableReadWriteLock
 
 if TYPE_CHECKING:
     from _typeshed import StrPath
@@ -730,7 +727,6 @@ class IMAPUserServer:
 
     ##################################################################
     #
-    @with_timeout(10)
     async def get_mailbox(self, name: str, expiry: int = 900) -> Mailbox:
         """
         A factory of sorts.. if we have an active mailbox with the given name
@@ -782,10 +778,10 @@ class IMAPUserServer:
             inst_start = time.monotonic()
             await event.wait()
             duration = time.monotonic() - inst_start
-            if duration > 0.1:
-                logger.debug(
-                    "Done waiting for mailbox '%s', took: %.3fs", name, duration
-                )
+            # if duration > 0.1:
+            logger.debug(
+                "Done waiting for mailbox '%s', took: %.3fs", name, duration
+            )
 
             # Once the wait completes we are guaranteed that
             # `self.active_mailboxes` has the key `name` in it.
@@ -808,10 +804,8 @@ class IMAPUserServer:
         async with self.activating_mailboxes_lock:
             del self.activating_mailboxes[name]
         duration = time.monotonic() - inst_start
-        if duration > 0.1:
-            logger.debug(
-                "Instantiated mailbox '%s', took: %.3fs", name, duration
-            )
+        # if duration > 0.1:
+        logger.debug("Instantiated mailbox '%s', took: %.3fs", name, duration)
         return mbox
 
     ##################################################################
@@ -851,8 +845,8 @@ class IMAPUserServer:
                     tg.create_task(mbox.shutdown())
 
             logger.debug(
-                "Expiring active mailboxes: %s",
-                ",".join(f"'{mbox.name}'" for mbox in expired_mboxes),
+                "Expiring active %d mailboxes",
+                len(expired_mboxes),
             )
 
     ##################################################################

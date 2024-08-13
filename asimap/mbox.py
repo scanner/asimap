@@ -56,6 +56,7 @@ from .search import IMAPSearch, SearchContext
 from .utils import (
     UID_HDR,
     MsgSet,
+    compact_sequence,
     get_uidvv_uid,
     sequence_set_to_list,
     update_replace_header_in_binary_file,
@@ -187,7 +188,7 @@ class Mailbox:
         self.name = name
         self.id = None
         self.uid_vv = 0
-        self.mtime: float = 0.0
+        self.mtime: int = 0
         self.next_uid = 1
         self.num_msgs = 0
         self.num_recent = 0
@@ -427,16 +428,16 @@ class Mailbox:
         #
         match imap_cmd.command:
             case (
-                IMAPCommand.APPEND,
-                IMAPCommand.CHECK,
-                IMAPCommand.DELETE,
-                IMAPCommand.RENAME,
+                IMAPCommand.APPEND
+                | IMAPCommand.CHECK
+                | IMAPCommand.DELETE
+                | IMAPCommand.RENAME
             ):
                 # Can only run when there are no other commands running
                 #
                 return True
 
-            case (IMAPCommand.CLOSE, IMAPCommand.EXPUNGE):
+            case IMAPCommand.CLOSE | IMAPCommand.EXPUNGE:
                 # Non-conflicting if there are no messages to delete.
                 #
                 # NOTE: Once this command begins executing it will block any
@@ -483,11 +484,11 @@ class Mailbox:
                     if not imap_cmd.fetch_peek:
                         match cmd.command:
                             case (
-                                IMAPCommand.EXAMINE,
-                                IMAPCommand.NOOP,
-                                IMAPCommand.SEARCH,
-                                IMAPCommand.SELECT,
-                                IMAPCommand.STATUS,
+                                IMAPCommand.EXAMINE
+                                | IMAPCommand.NOOP
+                                | IMAPCommand.SEARCH
+                                | IMAPCommand.SELECT
+                                | IMAPCommand.STATUS
                             ):
                                 # no peek fetch's will conflict with any
                                 # command that depends on overall message
@@ -495,9 +496,9 @@ class Mailbox:
                                 #
                                 return True
                             case (
-                                IMAPCommand.COPY,
-                                IMAPCommand.FETCH,
-                                IMAPCommand.STORE,
+                                IMAPCommand.COPY
+                                | IMAPCommand.FETCH
+                                | IMAPCommand.STORE
                             ):
                                 # For COPY, FETCH, and STORE it will only
                                 # conflict with those commands if they are
@@ -516,7 +517,7 @@ class Mailbox:
                 #
                 return False
 
-            case (IMAPCommand.SEARCH, IMAPCommand.SELECT, IMAPCommand.STATUS):
+            case IMAPCommand.SEARCH | IMAPCommand.SELECT | IMAPCommand.STATUS:
                 # SEARCH, SELECT, STATUS can not run if the other currently
                 # executing commands do alter message state. This means:
                 # - STORE
@@ -543,14 +544,14 @@ class Mailbox:
                 for cmd in self.executing_tasks:
                     match cmd.command:
                         case (
-                            IMAPCommand.EXAMINE,
-                            IMAPCommand.NOOP,
-                            IMAPCommand.SEARCH,
-                            IMAPCommand.SELECT,
-                            IMAPCommand.STATUS,
+                            IMAPCommand.EXAMINE
+                            | IMAPCommand.NOOP
+                            | IMAPCommand.SEARCH
+                            | IMAPCommand.SELECT
+                            | IMAPCommand.STATUS
                         ):
                             return True
-                        case (IMAPCommand.STORE, IMAPCommand.FETCH):
+                        case IMAPCommand.STORE | IMAPCommand.FETCH:
                             # Store can operate the same time as other FETCH
                             # and STORE's as long as they operate on different
                             # messages.
@@ -563,7 +564,7 @@ class Mailbox:
                 # accounted, we mark it as conflicting.
                 #
                 raise RuntimeError(
-                    f"Uhandled conflict supprot for command {imap_cmd.qstr()}"
+                    f"Uhandled conflict support for command '{imap_cmd.qstr()}'"
                 )
 
     ####################################################################
@@ -600,7 +601,8 @@ class Mailbox:
         duration = time.monotonic() - self.last_resync
         if duration >= 10:
             self.logger.debug(
-                "IMAP Command %s: more than 10s since last resync, blocking",
+                "mbox: '%s', IMAP Command %s: more than 10s since last resync, blocking",
+                self.name,
                 imap_cmd.qstr(),
             )
             while self.executing_tasks:
@@ -610,7 +612,8 @@ class Mailbox:
         duration = time.monotonic() - start_time
         if duration >= 0.1:
             self.logger.debug(
-                "IMAP Command %s waited %.3fs before allowed to run",
+                "mbox: '%s', IMAP Command %s waited %.3fs before allowed to proceed",
+                self.name,
                 imap_cmd.qstr(),
                 duration,
             )
@@ -702,10 +705,8 @@ class Mailbox:
                     async with asyncio.timeout(10):
                         imap_cmd = await self.task_queue.get()
                 except asyncio.TimeoutError:
-                    self.logger.debug("Timed out waiting for IMAP Commands.")
                     self._cleanup_executing_tasks()
                     if not self.executing_tasks:
-                        self.logger.debug("Checking folder for new messages.")
                         await self.check_new_msgs_and_flags()
                     continue
 
@@ -748,10 +749,13 @@ class Mailbox:
                 imap_cmd.ready.set()
 
             except RuntimeError as e:
-                self.logger.exception("RuntimeError in management task: %s", e)
+                self.logger.exception(
+                    "mbox: '%s', RuntimeError in management task: %s",
+                    self.name,
+                    e,
+                )
                 return
             except asyncio.CancelledError:
-                self.logger.info("Management task cancelled. Exiting")
                 raise
             except Exception as e:
                 # We ignore all other exceptions because otherwise the
@@ -759,7 +763,9 @@ class Mailbox:
                 # processed.
                 #
                 self.logger.exception(
-                    "Management task got exception: %s, Ignoring!", e
+                    "mbox: '%s', Management task got exception: %s, Ignoring!",
+                    self.name,
+                    e,
                 )
 
     ####################################################################
@@ -1184,7 +1190,8 @@ class Mailbox:
 
                 if num_msgs < self.num_msgs:
                     self.logger.warning(
-                        "Number of messages decreased from %d to %d",
+                        "mbox: '%s', number of messages decreased from %d to %d",
+                        self.name,
                         self.num_msgs,
                         num_msgs,
                     )
@@ -1259,13 +1266,13 @@ class Mailbox:
         uidstr = ""
         if publish_uid:
             try:
-                uidstr = f" UID {self.uids[msg_key]}"
+                uidstr = f" UID {self.uids[msg_seq_number-1]}"
             except IndexError:
                 logger.error(
-                    "Mailbox %s: UID command but message key: %d is not inside"
-                    " list of UIDs, whose length is: %d",
+                    "Mailbox '%s': UID command but msg seq number: %d is not "
+                    "inside list of UIDs, whose length is: %d",
                     self.name,
-                    msg_key,
+                    msg_seq_number,
                     len(self.uids),
                 )
         fetch = f"* {msg_seq_number} FETCH (FLAGS ({flags_str}))\r\n"
@@ -1459,6 +1466,7 @@ class Mailbox:
         the list of msg_keys.
         """
         start_time = time.monotonic()
+        last_log = start_time
         uids = []
         num_msgs = 0
         total_msgs = len(msg_keys)
@@ -1473,8 +1481,9 @@ class Mailbox:
             # Keep track of how long we have been running. Every second publish
             # progress stats.
             #
-            duration = time.monotonic() - start_time
+            duration = time.monotonic() - last_log
             if duration > 1.0:
+                last_log = time.monotonic()
                 logger.debug(
                     "In progress, mailbox: '%s', num msgs: %d/%d, "
                     "duration: %.3fs",
@@ -2269,12 +2278,12 @@ class Mailbox:
                 )
 
                 logger.debug(
-                    "FETCH finished, mailbox: '%s', msg_set: %r, num "
+                    "FETCH finished, mailbox: '%s', msg_set: %s, num "
                     "results: %d, total duration: %.3fs, fetch duration: "
                     "%.3fs, mean time per fetch: %.3fs, median: %.3fs, "
                     "stdev: %.3fs",
                     self.name,
-                    msg_set,
+                    compact_sequence(msg_set),
                     num_results,
                     total_time,
                     fetch_time,
@@ -2284,11 +2293,11 @@ class Mailbox:
                 )
             else:
                 logger.debug(
-                    "FETCH finished, mailbox: '%s', msg_set: %r, num "
+                    "FETCH finished, mailbox: '%s', msg_set: %s, num "
                     "results: %d, total duration: %.3fs, fetch duration: "
                     "%.3fs",
                     self.name,
-                    msg_set,
+                    compact_sequence(msg_set),
                     num_results,
                     total_time,
                     fetch_time,
@@ -2435,7 +2444,9 @@ class Mailbox:
             notifications, dont_notify=dont_notify
         )
         self.logger.debug(
-            "Completed, took %.3f seconds", time.monotonic() - store_start
+            "mbox: '%s', completed, took %.3f seconds",
+            self.name,
+            time.monotonic() - store_start,
         )
         return response
 
@@ -2475,7 +2486,8 @@ class Mailbox:
 
         with TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
             self.logger.debug(
-                "TemporaryDirectory create: %.3f",
+                "mbox: '%s', TemporaryDirectory create: %.3f",
+                self.name,
                 (time.monotonic() - start_time),
             )
             try:
@@ -2550,7 +2562,8 @@ class Mailbox:
 
             if imap_cmd:
                 self.logger.debug(
-                    "IMAP Command '%s' read messages took %.3fs",
+                    "mbox: '%s', IMAP Command '%s' read messages took %.3fs",
+                    self.name,
                     imap_cmd.qstr(),
                     time.monotonic() - msg_copy_start,
                 )
@@ -2576,8 +2589,9 @@ class Mailbox:
                     wait_duration = time.monotonic() - wait_start
                     if imap_cmd:
                         self.logger.debug(
-                            "%s: Took %.3fs before `write` part of the copy "
+                            "mbox: '%s', %s: Took %.3fs before `write` part of the copy "
                             "command got permission to run on mailbox '%s'",
+                            self.name,
                             imap_cmd.qstr(),
                             wait_duration,
                             dst_mbox.name,
@@ -2598,7 +2612,8 @@ class Mailbox:
                     msg_copy_duration = time.monotonic() - msg_copy_time_start
                     if imap_cmd:
                         self.logger.debug(
-                            "%s: Took %.3fs to write %d messages to mailbox '%s'",
+                            "mbox: '%s', %s: Took %.3fs to write %d messages to mailbox '%s'",
+                            self.name,
                             imap_cmd.qstr(),
                             msg_copy_duration,
                             len(copy_msgs),
@@ -2625,8 +2640,9 @@ class Mailbox:
                     if duration > 0.1:
                         imap_cmd_str = imap_cmd.qstr() if imap_cmd else "none"
                         self.logger.debug(
-                            "IMAP Command '%s': On mailbox '%s', waited for "
+                            "mbox: '%s', IMAP Command '%s': On mailbox '%s', waited for "
                             "%.3fs before we could begin resync",
+                            self.name,
                             imap_cmd_str,
                             dst_mbox.name,
                             duration,
@@ -2653,7 +2669,7 @@ class Mailbox:
     ##################################################################
     #
     @classmethod
-    async def get_actual_mtime(cls, mh: MH, name: str) -> float:
+    async def get_actual_mtime(cls, mh: MH, name: str) -> int:
         """
         Get the max of the mtimes of the actual folder directory and its
         .mh_sequences file.
@@ -2679,7 +2695,7 @@ class Mailbox:
 
         path_mtime = await aiofiles.os.path.getmtime(str(path))
         seq_mtime = await aiofiles.os.path.getmtime(str(seq_path))
-        return max(path_mtime, seq_mtime)
+        return max(int(path_mtime), int(seq_mtime))
 
     #########################################################################
     #
