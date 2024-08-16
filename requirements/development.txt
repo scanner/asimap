@@ -65,7 +65,7 @@ cryptography==43.0.0
     #   types-redis
 decorator==5.1.1
     # via ipython
-dirty-equals==0.7.1.post0
+dirty-equals==0.8.0
     # via -r development.in
 distlib==0.3.8
     # via
@@ -78,7 +78,7 @@ executing==2.0.1
     # via stack-data
 factory-boy==3.3.0
     # via pytest-factoryboy
-faker==26.3.0
+faker==27.0.0
     # via factory-boy
 filelock==3.15.4
     # via
@@ -269,8 +269,6 @@ python-dotenv==1.0.1
     # via -r production.txt
 python-json-logger==2.0.7
     # via -r production.txt
-pytz==2024.1
-    # via dirty-equals
 pyyaml==6.0.2
     # via
     #   -r lint.txt
@@ -284,9 +282,9 @@ rich==13.7.1
     #   -r build.txt
     #   -r development.in
     #   hatch
-ruff==0.5.7
+ruff==0.6.0
     # via -r lint.txt
-sentry-sdk==2.12.0
+sentry-sdk==2.13.0
     # via -r production.txt
 shellingham==1.5.4
     # via
@@ -313,7 +311,7 @@ tomli-w==1.0.0
     # via
     #   -r build.txt
     #   hatch
-tomlkit==0.13.0
+tomlkit==0.13.2
     # via
     #   -r build.txt
     #   hatch
@@ -345,7 +343,7 @@ types-redis==4.6.0.20240806
     # via -r lint.txt
 types-requests==2.32.0.20240712
     # via -r lint.txt
-types-setuptools==71.1.0.20240806
+types-setuptools==71.1.0.20240813
     # via
     #   -r lint.txt
     #   types-cffi
@@ -367,7 +365,7 @@ userpath==1.9.2
     # via
     #   -r build.txt
     #   hatch
-uv==0.2.35
+uv==0.2.37
     # via
     #   -r build.txt
     #   hatch

@@ -84,13 +84,13 @@ sniffio==1.3.1
     #   httpx
 tomli-w==1.0.0
     # via hatch
-tomlkit==0.13.0
+tomlkit==0.13.2
     # via hatch
 trove-classifiers==2024.7.2
     # via hatchling
 userpath==1.9.2
     # via hatch
-uv==0.2.35
+uv==0.2.37
     # via hatch
 virtualenv==20.26.3
     # via hatch

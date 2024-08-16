@@ -20,7 +20,7 @@ python-dotenv==1.0.1
     # via -r production.in
 python-json-logger==2.0.7
     # via -r production.in
-sentry-sdk==2.12.0
+sentry-sdk==2.13.0
     # via -r production.in
 typing-extensions==4.12.2
     # via aiosqlite
