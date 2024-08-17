@@ -563,7 +563,11 @@ class Mailbox:
                             | IMAPCommand.STATUS
                         ):
                             return True
-                        case IMAPCommand.STORE | IMAPCommand.FETCH:
+                        case (
+                            IMAPCommand.STORE
+                            | IMAPCommand.FETCH
+                            | IMAPCommand.COPY
+                        ):
                             # Store can operate the same time as other FETCH
                             # and STORE's as long as they operate on different
                             # messages.

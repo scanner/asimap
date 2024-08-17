@@ -1394,12 +1394,51 @@ SEARCH_SELECT_STATUS_VS_FETCH_STORE = [
     ]
 ]
 
+STORE_VS_EXAMINE_NOOP_SEARCH_SELECT_STATUS = [
+    pytest.param(
+        IMAPCommandConflictScenario(
+            imap_command=IMAPClientCommand("A002 STORE 3 FLAGS unseen").parse(),
+            executing_commands=[IMAPClientCommand(x).parse()],
+            sequences={},
+            would_conflict=True,
+        ),
+        id=f"store_vs_{x.split(' ')[1]}",
+    )
+    for x in [
+        "A001 EXAMINE foo",
+        "A001 NOOP",
+        "A001 SEARCH unseen",
+        "A001 SELECT foo",
+        "A001 STATUS foo (RECENT)",
+    ]
+]
+
+STORE_VS_STORE_FETCH_COPY = [
+    pytest.param(
+        IMAPCommandConflictScenario(
+            imap_command=IMAPClientCommand(
+                "A002 STORE 2:4 FLAGS unseen"
+            ).parse(),
+            executing_commands=[IMAPClientCommand(executing_cmd).parse()],
+            sequences={},
+            would_conflict=conflicting,
+        ),
+        id=f"copy_vs_{executing_cmd.split(' ')[1]}_{conflicting}",
+    )
+    for executing_cmd, conflicting in [
+        ["A001 STORE 3 FLAGS unseen", True],
+        ["A001 STORE 5 FLAGS unseen", False],
+        ["A001 FETCH 3 BODY[HEADER]", True],
+        ["A001 FETCH 5 BODY[HEADER]", False],
+        ["A001 FETCH 3 BODY.PEEK[HEADER]", True],
+        ["A001 COPY 2:5 bar", True],
+        ["A001 COPY 5 bar", False],
+    ]
+]
+
 
 ####################################################################
 #
-# XXX Consider using parametrize and some sort of scenario class that lists the
-#     executing commands, the command that wants to test if it woulc conflict,
-#     and the result of whether we expect it to conflict or not.
 @pytest.mark.parametrize(
     "scenario",
     COMMANDS_WITH_NO_CONFLICTS
@@ -1409,7 +1448,9 @@ SEARCH_SELECT_STATUS_VS_FETCH_STORE = [
     + FETCH_VS_MBOX_STATE_CMDS
     + FETCH_PEEK_VS_MBOX_STATE_CMDS
     + FETCH_VS_COPY_FETCH_STORE
-    + SEARCH_SELECT_STATUS_VS_FETCH_STORE,
+    + SEARCH_SELECT_STATUS_VS_FETCH_STORE
+    + STORE_VS_EXAMINE_NOOP_SEARCH_SELECT_STATUS
+    + STORE_VS_STORE_FETCH_COPY,
 )
 def test_would_conflict(
     scenario: IMAPCommandConflictScenario,
