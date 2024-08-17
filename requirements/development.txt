@@ -282,7 +282,7 @@ rich==13.7.1
     #   -r build.txt
     #   -r development.in
     #   hatch
-ruff==0.6.0
+ruff==0.6.1
     # via -r lint.txt
 sentry-sdk==2.13.0
     # via -r production.txt
