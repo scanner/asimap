@@ -454,6 +454,7 @@ class IMAPClientCommand:
         gets created at least and potentially has self.tag set.
         """
         self._parse()
+        return self
 
     ####################################################################
     #

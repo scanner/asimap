@@ -7,15 +7,17 @@ Tests for the mbox module
 import asyncio
 import os
 import random
+from dataclasses import dataclass
 from datetime import datetime
 from mailbox import MHMessage
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 # 3rd party imports
 #
 import aiofiles
 import pytest
 from dirty_equals import IsNow
+from pytest_mock import MockerFixture
 
 # Project imports
 #
@@ -23,7 +25,7 @@ from ..constants import flag_to_seq
 from ..exceptions import Bad, No
 from ..fetch import FetchAtt, FetchOp
 from ..mbox import InvalidMailbox, Mailbox, MailboxExists, NoSuchMailbox
-from ..parse import StoreAction
+from ..parse import IMAPClientCommand, StoreAction
 from ..search import IMAPSearch
 from ..utils import UID_HDR, get_uidvv_uid
 from .conftest import assert_email_equal, client_push_responses
@@ -1171,18 +1173,271 @@ async def test_append_when_other_msgs_also_added():
     assert False
 
 
+@dataclass(frozen=True)
+class IMAPCommandConflictScenario:
+    """
+    A structure for representing a set of test case parameters.
+    imap_command: The IMAP Command being tested
+    executing_commands: A list of IMAP Commands currently executing.
+    would_conflict: Whether the imap_command would conflict with any of the
+                     executing commands.
+
+    This lets us test the various combinations of commands to test if we can
+    correcty predict which ones would conflict or not when trying to run at the
+    same time.
+    """
+
+    imap_command: IMAPClientCommand
+    executing_commands: List[IMAPClientCommand]
+    sequences: Dict[str, set]
+    would_conflict: bool
+
+
+# Make sure all of our base commands are supported (and since no other commands
+# are listed as executing, none of these would conflict.)
+#
+COMMANDS_WITH_NO_CONFLICTS = [
+    pytest.param(
+        IMAPCommandConflictScenario(
+            imap_command=IMAPClientCommand(x).parse(),
+            executing_commands=[],
+            sequences={},
+            would_conflict=False,
+        ),
+        id="no_conflicts_" + x.split(" ")[1],  # 'A01 SELECT INBOX' -> SELECT
+    )
+    for x in [
+        "A001 APPEND foo (unseen) {11}\r\nFrom no one",
+        "A001 CHECK foo",
+        "A001 CLOSE",
+        "A001 COPY 2:4 bar",
+        "A001 DELETE foo",
+        "A001 EXAMINE foo",
+        "A001 EXPUNGE",
+        "A001 FETCH 2:4 ALL",
+        "A001 NOOP",
+        "A001 RENAME foo bar",
+        "A001 SEARCH unseen",
+        "A001 SELECT foo",
+        "A001 STATUS foo (RECENT)",
+        "A001 STORE 2:4 FLAGS unseen",
+    ]
+]
+
+# If these cmmands are executing, they would conflict with every other
+# command. We are not testing every other command here, but will use NOOP which
+# is the most innocuous of the commands.
+#
+CONFLICTING_COMMANDS = [
+    pytest.param(
+        IMAPCommandConflictScenario(
+            imap_command=IMAPClientCommand("A01 NOOP").parse(),
+            executing_commands=[
+                IMAPClientCommand(x).parse(),
+            ],
+            sequences={},
+            would_conflict=True,
+        ),
+        id="conflicting_" + x.split(" ")[1],  # 'A01 SELECT INBOX' -> SELECT
+    )
+    for x in [
+        "A001 APPEND foo (unseen) {11}\r\nFrom no one",
+        "A001 CHECK foo",
+        "A001 CLOSE",
+        "A001 DELETE foo",
+        "A001 EXPUNGE",
+        "A001 RENAME foo bar",
+    ]
+]
+
+# These commands in most cases conflict if any other command is running, so we
+# test against NOOP. The exceptions are CLOSE and EXPUNGE which only conflict
+# with an executing task if the `\Deleted` sequence is not empty.
+#
+CONFLICTING_CMD_VS_NOOP = [
+    pytest.param(
+        IMAPCommandConflictScenario(
+            imap_command=IMAPClientCommand(cmd).parse(),
+            executing_commands=[IMAPClientCommand("A002 NOOP").parse()],
+            sequences=sequences,
+            would_conflict=conflicting,
+        ),
+        id=f"noop_vs_{cmd.split(' ')[1]}_{conflicting}",
+    )
+    for cmd, conflicting, sequences in [
+        ["A001 APPEND foo (unseen) {11}\r\nFrom no one", True, {}],
+        ["A001 CHECK foo", True, {}],
+        ["A001 CLOSE", False, {}],
+        ["A001 CLOSE", True, {"Deleted": {1}}],
+        ["A001 DELETE foo", True, {}],
+        ["A001 EXPUNGE", False, {}],
+        ["A001 EXPUNGE", True, {"Deleted": {1}}],
+        ["A001 RENAME foo bar", True, {}],
+    ]
+]
+
+
+# COPY conflicts with STORE & FETCH if they operate on the same messages,
+# unless the FETCH is a BODY.PEEK
+#
+COPY_VS_STORE_FETCH = [
+    pytest.param(
+        IMAPCommandConflictScenario(
+            imap_command=IMAPClientCommand("A001 COPY 1:4 bar").parse(),
+            executing_commands=[IMAPClientCommand(executing_cmd).parse()],
+            sequences={},
+            would_conflict=conflicting,
+        ),
+        id=f"copy_vs_{executing_cmd.split(' ')[1]}_{conflicting}",
+    )
+    for executing_cmd, conflicting in [
+        ["A002 STORE 3 FLAGS unseen", True],
+        ["A002 STORE 5 FLAGS unseen", False],
+        ["A002 FETCH 3 BODY[HEADER]", True],
+        ["A002 FETCH 5 BODY[HEADER]", False],
+        ["A002 FETCH 3 BODY.PEEK[HEADER]", False],
+    ]
+]
+
+# If a FETCH command could alter any sequences then it would conflict with any
+# running command that depends on that sequence state not changing while
+# running. Conversly, if the FETCH would not affect any sequence then it would
+# notn conflict with any of EXAMINE, NOOP, SEARCH, SELECT, STATUS
+#
+FETCH_VS_MBOX_STATE_CMDS = [
+    pytest.param(
+        IMAPCommandConflictScenario(
+            imap_command=IMAPClientCommand("A002 FETCH 3 BODY[HEADER]").parse(),
+            executing_commands=[IMAPClientCommand(x).parse()],
+            sequences={},
+            would_conflict=True,
+        ),
+        id=f"fetch_{x.split(' ')[1]}_peek",
+    )
+    for x in [
+        "A001 EXAMINE foo",
+        "A001 NOOP",
+        "A001 SEARCH unseen",
+        "A001 SELECT foo",
+        "A001 STATUS foo (RECENT)",
+    ]
+]
+
+FETCH_PEEK_VS_MBOX_STATE_CMDS = [
+    pytest.param(
+        IMAPCommandConflictScenario(
+            imap_command=IMAPClientCommand(
+                "A002 FETCH 3 BODY.PEEK[HEADER]"
+            ).parse(),
+            executing_commands=[IMAPClientCommand(x).parse()],
+            sequences={},
+            would_conflict=False,
+        ),
+        id=f"fetch_peek_{x.split(' ')[1]}_peek",
+    )
+    for x in [
+        "A001 EXAMINE foo",
+        "A001 NOOP",
+        "A001 SEARCH unseen",
+        "A001 SELECT foo",
+        "A001 STATUS foo (RECENT)",
+    ]
+]
+
+FETCH_VS_COPY_FETCH_STORE = [
+    pytest.param(
+        IMAPCommandConflictScenario(
+            imap_command=IMAPClientCommand(cmd).parse(),
+            executing_commands=[IMAPClientCommand(executing_cmd).parse()],
+            sequences={},
+            would_conflict=conflicting,
+        ),
+        id=f"fetch_{cmd.split(' ')[3]}{executing_cmd.split(' ')[1]}_{conflicting}",
+    )
+    for cmd, conflicting, executing_cmd in [
+        ["A002 FETCH 3 BODY[HEADER]", True, "A001 COPY 2:4 bar"],
+        ["A002 FETCH 3 BODY[HEADER]", True, "A001 FETCH 2:4 ALL"],
+        ["A002 FETCH 3 BODY[HEADER]", True, "A001 STORE 2:4 FLAGS unseen"],
+        ["A002 FETCH 3 BODY[HEADER]", False, "A001 COPY 5 bar"],
+        ["A002 FETCH 3 BODY[HEADER]", False, "A001 FETCH 5 ALL"],
+        ["A002 FETCH 3 BODY[HEADER]", False, "A001 STORE 5 FLAGS unseen"],
+        ["A002 FETCH 3 BODY.PEEK[HEADER]", False, "A001 COPY 2:4 bar"],
+        ["A002 FETCH 3 BODY.PEEK[HEADER]", False, "A001 FETCH 2:4 ALL"],
+        ["A002 FETCH 3 BODY.PEEK[HEADER]", True, "A001 STORE 2:4 FLAGS unseen"],
+    ]
+]
+
+SEARCH_SELECT_STATUS: List[str] = [
+    "A002 SEARCH unseen",
+    "A002 SELECT foo",
+    "A002 STATUS foo (RECENT)",
+]
+FETCH_STORE: List[Tuple[bool, str]] = [
+    (False, "A001 NOOP"),
+    (True, "A001 FETCH 2:4 BODY[HEADER]"),
+    (False, "A001 FETCH 2:4 BODY.PEEK[HEADER]"),
+    (True, "A001 STORE 2:4 FLAGS unseen"),
+]
+
+SEARCH_SELECT_STATUS_VS_FETCH_STORE = [
+    pytest.param(
+        IMAPCommandConflictScenario(
+            imap_command=IMAPClientCommand(cmd).parse(),
+            executing_commands=[IMAPClientCommand(executing_cmd).parse()],
+            sequences={},
+            would_conflict=conflicting,
+        ),
+        id=f"{cmd.split(' ')[1]}{executing_cmd.split(' ')[1]}_{conflicting}",
+    )
+    for cmd, conflicting, executing_cmd in [
+        [c, e[0], e[1]] for c in SEARCH_SELECT_STATUS for e in FETCH_STORE
+    ]
+]
+
+
 ####################################################################
 #
 # XXX Consider using parametrize and some sort of scenario class that lists the
 #     executing commands, the command that wants to test if it woulc conflict,
 #     and the result of whether we expect it to conflict or not.
-#
-def test_would_conflict():
+@pytest.mark.parametrize(
+    "scenario",
+    COMMANDS_WITH_NO_CONFLICTS
+    + CONFLICTING_COMMANDS
+    + CONFLICTING_CMD_VS_NOOP
+    + COPY_VS_STORE_FETCH
+    + FETCH_VS_MBOX_STATE_CMDS
+    + FETCH_PEEK_VS_MBOX_STATE_CMDS
+    + FETCH_VS_COPY_FETCH_STORE
+    + SEARCH_SELECT_STATUS_VS_FETCH_STORE,
+)
+def test_would_conflict(
+    scenario: IMAPCommandConflictScenario,
+    mocker: MockerFixture,
+    mailbox_with_bunch_of_email: Mailbox,
+):
     """
     Test the variations of executing commands along with a new command to
     execute to see if the 'would conflict' or not
     """
-    assert False
+    mbox = mailbox_with_bunch_of_email
+    imap_cmd = scenario.imap_command
+    # XXX Be nice if the scenario did this for us.. maybe make it a proper
+    #     class with a method that takes the mbox and does the
+    #     msg_setOt_msg_seq_set conversion for us.
+    #
+    imap_cmd.msg_set_as_set = mbox.msg_set_to_msg_seq_set(
+        imap_cmd.msg_set, imap_cmd.uid_command
+    )
+    mbox.executing_tasks = []
+    mbox.sequences.update(scenario.sequences)
+
+    for cmd in scenario.executing_commands:
+        cmd.msg_set_as_set = mbox.msg_set_to_msg_seq_set(
+            cmd.msg_set, cmd.uid_command
+        )
+        mbox.executing_tasks.append(cmd)
+    assert mbox.would_conflict(imap_cmd) == scenario.would_conflict
 
 
 ####################################################################

@@ -509,6 +509,18 @@ class Mailbox:
                                 raise RuntimeError(
                                     f"Unhandled case FETCH vs {cmd.command}"
                                 )
+                    else:
+                        # A FETCH PEEK will still conflict with a STORE if they
+                        # intersect (although maybe they should only conflict
+                        # if the FETCH fetchees flags... but I suspect that
+                        # doees not happen often enough to warrant the extra
+                        # logic.)
+                        #
+                        if cmd.command == IMAPCommand.STORE and intersect(
+                            imap_cmd, cmd
+                        ):
+                            return True
+
                 return False
 
             case IMAPCommand.NOOP:
@@ -1983,6 +1995,11 @@ class Mailbox:
             await self.mailbox.aremove(msg_key)
             expunge_msg = f"* {which+1} EXPUNGE\r\n"
             await self._dispatch_or_pend_notifications(expunge_msg)
+
+            # XXX For debugging purposes we should do a check to make sure all
+            #     msg keys and uid's line up after we aremove a message. It
+            #     will be slow but it is only for debugging to make sure we do
+            #     not lose sync on anything.
 
         # Remove all deleted msg keys from all sequences
         #
