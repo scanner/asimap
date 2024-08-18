@@ -1522,13 +1522,3 @@ def test_msg_set_to_msg_seq_set(
     mbox = mailbox_with_bunch_of_email
     msg_set_as_set = mbox.msg_set_to_msg_seq_set(sequence_set, uid_cmd)
     assert msg_set_as_set == expected
-
-
-####################################################################
-#
-# Needs to setup executing commands and mocks the mbox's task_queue so that
-# self.task_queue.done() can be called.
-#
-@pytest.mark.asyncio
-async def test_command_can_proceed() -> None:
-    assert False

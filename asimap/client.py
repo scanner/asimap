@@ -51,6 +51,13 @@ SERVER_ID = {
     "os": sys.platform,
 }
 
+# How many seconds a command will be left to run before the client consider it
+# to have taken too long to run. Basically if commands get stuck this is a
+# safety measure. We should make it dynamic (so along as commands are doing
+# something it lets them run.)
+#
+COMMAND_TIMEOUT = 360
+
 
 ########################################################################
 ########################################################################
@@ -165,7 +172,7 @@ class BaseClientHandler:
             #     short, like 15 seconds, and pass the timeout context manager
             #     into subcontexts where it can extend it if it needs to.
             #
-            async with asyncio.timeout(360) as tcm:
+            async with asyncio.timeout(COMMAND_TIMEOUT) as tcm:
                 imap_command.timeout_cm = tcm
                 result = await getattr(self, f"do_{imap_command.command}")(
                     imap_command

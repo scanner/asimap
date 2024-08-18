@@ -605,7 +605,7 @@ def with_timeout(t: int):
 
 ##################################################################
 #
-async def find_header_in_binary_file(
+def find_header_in_binary_file(
     fname: "StrPath", header: str
 ) -> Union[str | None]:
     """
@@ -629,8 +629,8 @@ async def find_header_in_binary_file(
     """
     fname = str(fname)
     header_b = bytes(header, "latin-1").lower()
-    async with aiofiles.open(fname, "rb") as f:
-        async for line in f:
+    with open(fname, "rb") as f:
+        for line in f:
             line = line.strip().lower()
             if len(line) == 0:
                 return None
@@ -679,9 +679,10 @@ async def update_replace_header_in_binary_file(fname: "StrPath", header: str):
     found_header = False
     stats = await aiofiles.os.stat(fname)
     line_sep = None
-    async with aiofiles.open(fname, "rb") as input:
-        async with aiofiles.open(new_fname, "wb") as output:
-            async for line in input:
+
+    with open(fname, "rb") as input:
+        with open(new_fname, "wb") as output:
+            for line in input:
                 if line_sep is None:
                     line_sep = b"\r\n" if line.endswith(b"\r\n") else b"\n"
 
@@ -689,11 +690,27 @@ async def update_replace_header_in_binary_file(fname: "StrPath", header: str):
                     if len(line.strip()) == 0:
                         in_header = False
                         if not found_header:
-                            await output.write(headerb + line_sep)
+                            output.write(headerb + line_sep)
                     elif line.lower().startswith(header_name):
                         found_header = True
-                        line = headerb + b"\n"
-                await output.write(line)
+                        line = headerb + line_sep
+                output.write(line)
+
+    # async with aiofiles.open(fname, "rb") as input:
+    #     async with aiofiles.open(new_fname, "wb") as output:
+    #         async for line in input:
+    #             if line_sep is None:
+    #                 line_sep = b"\r\n" if line.endswith(b"\r\n") else b"\n"
+
+    #             if in_header:
+    #                 if len(line.strip()) == 0:
+    #                     in_header = False
+    #                     if not found_header:
+    #                         await output.write(headerb + line_sep)
+    #                 elif line.lower().startswith(header_name):
+    #                     found_header = True
+    #                     line = headerb + b"\n"
+    #             await output.write(line)
     os.chmod(new_fname, stat.S_IMODE(stats.st_mode))
     await utime(new_fname, (stats.st_mtime, stats.st_mtime))
     await aiofiles.os.rename(new_fname, fname)

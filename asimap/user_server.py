@@ -445,7 +445,7 @@ class IMAPUserServer:
         # None. Otherwise use it to determine when we have hung around long
         # enough with no connected clients and decide to exit.
         #
-        self.expiry: Optional[float] = time.time() + 1800
+        self.expiry: Optional[float] = time.monotonic() + 1800
 
         # `self.db` will be setup in the `new()` class method.
         #
@@ -462,6 +462,15 @@ class IMAPUserServer:
         #
         self.commands_in_progress: int = 0
         self.active_commands: List[IMAPClientCommand] = []
+
+        # The first time the user server starts up, when it does its initial
+        # folder scan, we subject the folders to a uid validation check to make
+        # sure that everything is as it should be. This flag indicates that
+        # this check should be done. It will be set to `False` after the
+        # initial folder check has finished.
+        #
+        self.folder_uid_validity_check = True
+        self.last_full_check = 0.0
 
     ##################################################################
     #
@@ -578,7 +587,13 @@ class IMAPUserServer:
 
             # Start the task that checks all folders
             #
-            self.last_full_check = 0.0
+            logger.debug("Starting initial `check_all_folders()`")
+            await self.check_all_folders()
+            self.last_full_check = time.monotonic()
+            self.folder_uid_validity_check = False
+            logger.debug("Completed initial `check_all_folders()`")
+
+            # self.last_full_check = 0.0
             self.folder_scan_task = asyncio.create_task(self.folder_scan())
 
             # Print the port we are listening on to stdout so that the parent
@@ -590,7 +605,7 @@ class IMAPUserServer:
             # Delay accepting connections for a short bit so that the initial
             # folder check will have started.
             #
-            await asyncio.sleep(5)
+            # await asyncio.sleep(5)
             async with self.asyncio_server:
                 await self.asyncio_server.serve_forever()
 
@@ -633,6 +648,7 @@ class IMAPUserServer:
         at regular intervals we need to scan all the inactive folders to
         see if any new mail has arrived.
         """
+        logger.debug("Folder scan task is starting")
         try:
             while True:
                 await self.expire_inactive_folders()
@@ -640,10 +656,10 @@ class IMAPUserServer:
                 # If it has been more than <n> seconds since a full scan, then
                 # do a full scan.
                 #
-                now = time.time()
+                now = time.monotonic()
                 if now - self.last_full_check > 300:
                     await self.check_all_folders()
-                    self.last_full_check = time.time()
+                    self.last_full_check = time.monotonic()
 
                 # At the end of loop see if we have hit our lifetime expiry.
                 # This will be None as long as there are active
@@ -690,7 +706,7 @@ class IMAPUserServer:
         # time.
         #
         if not self.clients:
-            self.expiry = time.time() + 1800
+            self.expiry = time.monotonic() + 1800
             self.log.debug(
                 "No more IMAP clients. Expiry set for %s",
                 datetime.fromtimestamp(self.expiry, timezone.utc).astimezone(),
@@ -796,7 +812,12 @@ class IMAPUserServer:
         # Instantiate the mailbox. Add it to `active_mailboxes`, signal any
         # other task waiting on the event that it can now get the mailbox.
         #
-        mbox = await Mailbox.new(name, self, expiry=expiry)
+        mbox = await Mailbox.new(
+            name,
+            self,
+            expiry=expiry,
+            validity_check=self.folder_uid_validity_check,
+        )
         async with self.active_mailboxes_lock:
             self.active_mailboxes[name] = mbox
 
@@ -920,6 +941,7 @@ class IMAPUserServer:
                 # runs (and the mailbox is not resyncing)
                 #
                 await self.get_mailbox(mbox_name, expiry=0)
+
         except MailboxInconsistency as e:
             # If hit one of these exceptions they are usually
             # transient.  we will skip it. The command processor in
@@ -975,7 +997,11 @@ class IMAPUserServer:
                         continue
 
                     try:
-                        await self.check_folder(mbox_name, mtime, force=False)
+                        await self.check_folder(
+                            mbox_name,
+                            mtime,
+                            force=self.folder_uid_validity_check,
+                        )
                     except asyncio.CancelledError:
                         logger.info("Cancelled")
                         raise

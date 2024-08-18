@@ -155,7 +155,7 @@ class SearchContext(object):
                 uid_vv, uid = get_uidvv_uid(self._msg[UID_HDR])
                 if self._uid != uid or uid is None:
                     logger.error(
-                        "Mailbox: %s, msg: %d, uid mismatch, was: %d, "
+                        "Mailbox: %s, msg key: %d, uid mismatch, was: %d, "
                         "now is: %d",
                         self.mailbox.name,
                         self.msg_key,
