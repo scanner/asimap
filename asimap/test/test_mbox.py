@@ -1483,12 +1483,37 @@ def test_would_conflict(
 
 ####################################################################
 #
-# Needs a mailbox with some messages so we can refer to self.uids and
-# self.num_msgs.
-#
-def test_msg_set_to_msg_seq_set():
-    """ """
-    assert False
+@pytest.mark.parametrize(
+    "sequence_set,expected,uid_cmd",
+    [
+        (
+            (2, (4, 7), 9, (12, "*")),
+            {2, 4, 5, 6, 7, 9, 12, 13, 14, 15, 16, 17, 18, 19, 20},
+            False,
+        ),
+        (
+            (("*", 4), (5, 7)),
+            {4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20},
+            False,
+        ),
+        (
+            (2, (4, 7), 9, (12, "*")),
+            {2, 4, 5, 6, 7, 9, 12, 13, 14, 15, 16, 17, 18, 19, 20},
+            True,
+        ),
+        (
+            (("*", 4), (5, 7)),
+            {4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20},
+            True,
+        ),
+    ],
+)
+def test_msg_set_to_msg_seq_set(
+    sequence_set, expected, uid_cmd, mailbox_with_bunch_of_email: Mailbox
+) -> None:
+    mbox = mailbox_with_bunch_of_email
+    msg_set_as_set = mbox.msg_set_to_msg_seq_set(sequence_set, uid_cmd)
+    assert msg_set_as_set == expected
 
 
 ####################################################################
@@ -1497,5 +1522,5 @@ def test_msg_set_to_msg_seq_set():
 # self.task_queue.done() can be called.
 #
 @pytest.mark.asyncio
-async def test_command_can_proceed():
+async def test_command_can_proceed() -> None:
     assert False
