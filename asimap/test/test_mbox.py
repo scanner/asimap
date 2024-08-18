@@ -1511,6 +1511,14 @@ def test_would_conflict(
 def test_msg_set_to_msg_seq_set(
     sequence_set, expected, uid_cmd, mailbox_with_bunch_of_email: Mailbox
 ) -> None:
+    """
+    Make sure that we can properly convert a parsed "sequence set" in to a
+    set of the messages it indicates.
+
+    The mbox fixture returns a mailbox with 20 messages in it. Since it is a
+    newly created mailbox the message sequence numbers will be from 1 to 20,
+    and the UID's will also be from 1 to 20.
+    """
     mbox = mailbox_with_bunch_of_email
     msg_set_as_set = mbox.msg_set_to_msg_seq_set(sequence_set, uid_cmd)
     assert msg_set_as_set == expected
