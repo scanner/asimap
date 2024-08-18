@@ -27,32 +27,30 @@ from ..fetch import FetchAtt, FetchOp
 from ..mbox import InvalidMailbox, Mailbox, MailboxExists, NoSuchMailbox
 from ..parse import IMAPClientCommand, StoreAction
 from ..search import IMAPSearch
-from ..utils import UID_HDR, get_uidvv_uid
 from .conftest import assert_email_equal, client_push_responses
 
+# ####################################################################
+# #
+# async def assert_uids_match_msgs(msg_keys: List[int], mbox: Mailbox):
+#     """
+#     A helper function to validate that the messages in the mailbox all have
+#     the UID_HDR, and that all the uid's set in the messages match the ones in
+#     `mbox.uids` (and that the order is the same.)
 
-####################################################################
-#
-async def assert_uids_match_msgs(msg_keys: List[int], mbox: Mailbox):
-    """
-    A helper function to validate that the messages in the mailbox all have
-    the UID_HDR, and that all the uid's set in the messages match the ones in
-    `mbox.uids` (and that the order is the same.)
+#     This assures that one of the most basic functions of `mbox.resync()` works
+#     properly.
+#     """
+#     assert len(msg_keys) == len(mbox.uids)
+#     for msg_key, uid in zip(msg_keys, mbox.uids):
+#         msg = await mbox.mailbox.aget_message(msg_key)
+#         assert UID_HDR in msg
+#         uid_vv, msg_uid = get_uidvv_uid(msg[UID_HDR])
+#         assert uid_vv == mbox.uid_vv
+#         assert uid == msg_uid
 
-    This assures that one of the most basic functions of `mbox.resync()` works
-    properly.
-    """
-    assert len(msg_keys) == len(mbox.uids)
-    for msg_key, uid in zip(msg_keys, mbox.uids):
-        msg = await mbox.mailbox.aget_message(msg_key)
-        assert UID_HDR in msg
-        uid_vv, msg_uid = get_uidvv_uid(msg[UID_HDR])
-        assert uid_vv == mbox.uid_vv
-        assert uid == msg_uid
-
-        cached_uid_vv, cached_uid = await mbox.get_uid_from_msg(msg_key)
-        assert cached_uid_vv == mbox.uid_vv
-        assert uid == cached_uid
+#         cached_uid_vv, cached_uid = await mbox.get_uid_from_msg(msg_key)
+#         assert cached_uid_vv == mbox.uid_vv
+#         assert uid == cached_uid
 
 
 ####################################################################
@@ -133,10 +131,10 @@ async def test_mailbox_init_with_messages(mailbox_with_bunch_of_email):
     assert mbox.sequences["unseen"] == msg_keys
     assert len(mbox.sequences["Seen"]) == 0
     assert mbox.sequences["Recent"] == msg_keys
-    await assert_uids_match_msgs(sorted(msg_keys), mbox)
+    assert len(mbox.msg_keys) == len(mbox.uids)
+    # await assert_uids_match_msgs(sorted(msg_keys), mbox)
 
-    # The messages have been re-writen to have UID's. However the mtimes should
-    # not have changed.
+    # The messages mtimes should not have changed.
     #
     for msg_key, orig_mtime in zip(sorted(msg_keys), mtimes):
         path = os.path.join(mbox.mailbox._path, str(msg_key))
@@ -177,7 +175,7 @@ async def test_mailbox_gets_new_message(
     assert mbox.sequences["unseen"] == set(msg_keys)
     assert mbox.sequences["Recent"] == set(msg_keys)
     assert len(mbox.sequences["Seen"]) == 0
-    await assert_uids_match_msgs(msg_keys, mbox)
+    assert len(mbox.msg_keys) == len(mbox.uids)
 
 
 ####################################################################
@@ -508,7 +506,7 @@ async def test_mbox_resync_auto_pack(
     assert len(mbox.sequences["unseen"]) == len(msg_keys)
     assert mbox.sequences["unseen"] == set(msg_keys)
     assert mbox.sequences["Recent"] == set(msg_keys)
-    await assert_uids_match_msgs(msg_keys, mbox)
+    assert len(mbox.msg_keys) == len(mbox.uids)
 
 
 ####################################################################
@@ -567,7 +565,7 @@ async def test_mbox_append(imap_user_server, email_factory):
     assert len(msg_keys) == 1
     msg_key = msg_keys[0]
     mhmsg = await mbox.mailbox.aget_message(msg_key)
-    uid_vv, msg_uid = get_uidvv_uid(mhmsg[UID_HDR])
+    uid_vv, msg_uid = mbox.get_uid_from_msg(msg_key)
     assert sorted(mhmsg.get_sequences()) == sorted(
         ["flagged", "unseen", "Recent"]
     )
@@ -575,10 +573,8 @@ async def test_mbox_append(imap_user_server, email_factory):
     assert msg_uid == uid
     assert uid_vv == mbox.uid_vv
 
-    # Make sure the messages match. `append()` added the UID_HDR, so we need to
-    # remove that before we compare the messages.
+    # Make sure the messages match.
     #
-    del mhmsg[UID_HDR]
     assert_email_equal(msg, mhmsg)
 
 
@@ -808,15 +804,15 @@ async def test_mailbox_fetch_after_new_messages(
     bunch_of_email_in_folder(folder=mbox.name, num_emails=1)
     msg_keys = await mbox.mailbox.akeys()
 
-    # Set a random uid to the new message, handling the case where it was moved
-    # here from another folder.
-    #
-    new_msg = msg_keys[-1]
-    msg = await mbox.mailbox.aget_message(new_msg)
-    uid_vv = faker.pyint()
-    uid = faker.pyint()
-    msg[UID_HDR] = f"{uid_vv:010d}.{uid:010d}"
-    await mbox.mailbox.asetitem(new_msg, msg)
+    # # Set a random uid to the new message, handling the case where it was moved
+    # # here from another folder.
+    # #
+    # new_msg = msg_keys[-1]
+    # msg = await mbox.mailbox.aget_message(new_msg)
+    # uid_vv = faker.pyint()
+    # uid = faker.pyint()
+    # msg[UID_HDR] = f"{uid_vv:010d}.{uid:010d}"
+    # await mbox.mailbox.asetitem(new_msg, msg)
 
     await mbox.check_new_msgs_and_flags(optional=False)
     assert len(msg_keys) == mbox.num_msgs
@@ -983,21 +979,24 @@ async def test_mailbox_copy(mailbox_with_bunch_of_email):
     assert dst_msg_keys == await archive_mh.akeys()
 
     # in the source mailbox the message keys, message indices, and uid's are
-    # all the same values for the same messages.
+    # all the same values for the same messages (because this is the initial
+    # population of the mailbox it turns out this way).
     #
     assert src_uids == msg_set
 
-    # Compare the messages. Ignore the UID_HDR when comparing.
+    # Compare the messages.
     #
-    src_msgs = [await mbox.mailbox.aget_message(x) for x in msg_set]
-    dst_msgs = [await dst_mbox.mailbox.aget_message(x) for x in dst_msg_keys]
-    for src_msg, dst_msg, src_uid, dst_uid in zip(
-        src_msgs, dst_msgs, src_uids, dst_uids
+    for src_msg_key, src_uid, dst_msg_key, dst_uid in zip(
+        msg_set, src_uids, dst_msg_keys, dst_uids
     ):
-        assert_email_equal(src_msg, dst_msg, ignore_headers=[UID_HDR])
-        _, uid = get_uidvv_uid(src_msg[UID_HDR])
+        src_msg = await mbox.mailbox.aget_message(src_msg_key)
+        dst_msg = await dst_mbox.mailbox.aget_message(dst_msg_key)
+
+        assert_email_equal(src_msg, dst_msg)
+
+        _, uid = mbox.get_uid_from_msg(src_msg_key)
         assert uid == src_uid
-        _, uid = get_uidvv_uid(dst_msg[UID_HDR])
+        _, uid = dst_mbox.get_uid_from_msg(dst_msg_key)
         assert uid == dst_uid
 
 

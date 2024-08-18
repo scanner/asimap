@@ -84,7 +84,7 @@ async def test_fetch_body(mailbox_with_mimekit_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     for msg_idx, msg_key in enumerate(msg_keys):
@@ -117,7 +117,7 @@ async def test_fetch_bodystructure(mailbox_with_mimekit_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     # XXX Yeah.. should move these in data files and have it come out with the
@@ -173,7 +173,7 @@ async def test_fetch_envelope(mailbox_with_mimekit_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     expecteds = [
@@ -218,7 +218,7 @@ async def test_fetch_rfc822_size(mailbox_with_mimekit_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     expecteds = [
@@ -265,7 +265,7 @@ async def test_fetch_flags(mailbox_with_bunch_of_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     # Set some flags on the messages
@@ -304,7 +304,7 @@ async def test_fetch_internaldate(mailbox_with_bunch_of_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     # Get all the mtime's of the messages in the mailbox and convert these in
@@ -336,7 +336,7 @@ async def test_fetch_uid(mailbox_with_bunch_of_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     uid_by_msg: Dict[int, int] = {}
@@ -366,7 +366,7 @@ async def test_fetch_body_section_text(mailbox_with_mimekit_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     msg_key = 10
@@ -434,7 +434,7 @@ async def test_fetch_body_section_header(mailbox_with_mimekit_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     msg_key = 10
@@ -515,7 +515,7 @@ async def test_fetch_body_section_header_fields(mailbox_with_mimekit_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     msg_key = 10
@@ -573,7 +573,7 @@ async def test_fetch_body_text_with_partials(mailbox_with_mimekit_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     msg_key = 10
@@ -616,7 +616,7 @@ async def test_fetch_body_braces(mailbox_with_bunch_of_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     for msg_idx, msg_key in enumerate(msg_keys):

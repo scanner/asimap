@@ -273,12 +273,6 @@ def msg_as_string(msg: Message, headers: bool = True) -> str:
 
 ####################################################################
 #
-def msg_as_string_nc(msg: Message, headers: bool = True) -> str:
-    return _msg_as_string(msg, headers=headers)
-
-
-####################################################################
-#
 @lru_cache
 def get_msg_size(msg: Message, headers: bool = True) -> int:
     """
@@ -288,16 +282,6 @@ def get_msg_size(msg: Message, headers: bool = True) -> int:
     of a message's size.
     """
     msg_str = msg_as_string(msg, headers=headers)
-    return len(msg_str)
-
-
-####################################################################
-#
-def get_msg_size_nc(msg: Message, headers: bool = True) -> int:
-    """
-    No-cache variant..
-    """
-    msg_str = _msg_as_string(msg, headers=headers)
     return len(msg_str)
 
 

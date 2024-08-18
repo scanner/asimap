@@ -469,7 +469,7 @@ class IMAPUserServer:
         # this check should be done. It will be set to `False` after the
         # initial folder check has finished.
         #
-        self.folder_uid_validity_check = True
+        # self.folder_uid_validity_check = True
         self.last_full_check = 0.0
 
     ##################################################################
@@ -590,7 +590,7 @@ class IMAPUserServer:
             logger.debug("Starting initial `check_all_folders()`")
             await self.check_all_folders()
             self.last_full_check = time.monotonic()
-            self.folder_uid_validity_check = False
+            # self.folder_uid_validity_check = False
             logger.debug("Completed initial `check_all_folders()`")
 
             # self.last_full_check = 0.0
@@ -816,7 +816,7 @@ class IMAPUserServer:
             name,
             self,
             expiry=expiry,
-            validity_check=self.folder_uid_validity_check,
+            # validity_check=self.folder_uid_validity_check,
         )
         async with self.active_mailboxes_lock:
             self.active_mailboxes[name] = mbox
@@ -1000,7 +1000,7 @@ class IMAPUserServer:
                         await self.check_folder(
                             mbox_name,
                             mtime,
-                            force=self.folder_uid_validity_check,
+                            # force=self.folder_uid_validity_check,
                         )
                     except asyncio.CancelledError:
                         logger.info("Cancelled")

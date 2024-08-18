@@ -23,9 +23,8 @@ import aiofiles
 # asimap imports
 #
 from .constants import flag_to_seq
-from .exceptions import MailboxInconsistency
 from .generator import get_msg_size, msg_as_string
-from .utils import UID_HDR, get_uidvv_uid, parsedate
+from .utils import parsedate
 
 if TYPE_CHECKING:
     from .mbox import Mailbox, Sequences
@@ -141,30 +140,6 @@ class SearchContext(object):
         # We have not actually loaded the message yet..
         #
         self._msg = await self.mailbox.get_and_cache_msg(self.msg_key)
-
-        if self._uid is None:
-            if UID_HDR in self._msg:
-                self._uid_vv, self._uid = get_uidvv_uid(self._msg[UID_HDR])
-        else:
-            # NOTE: This should never happen. It used to happen in the past but
-            #       if our locking is correct, it should never happen again.
-            #       So this is more for making sure that the code is correct
-            #       now wrt locking.
-            #
-            if UID_HDR in self._msg:
-                uid_vv, uid = get_uidvv_uid(self._msg[UID_HDR])
-                if self._uid != uid or uid is None:
-                    logger.error(
-                        "Mailbox: %s, msg key: %d, uid mismatch, was: %d, "
-                        "now is: %d",
-                        self.mailbox.name,
-                        self.msg_key,
-                        self._uid,
-                        uid,
-                    )
-                    raise MailboxInconsistency(
-                        mbox_name=self.mailbox.name, msg_key=self.msg_key
-                    )
         return self._msg
 
     ####################################################################
@@ -196,14 +171,7 @@ class SearchContext(object):
         if self._uid:
             return self._uid
 
-        # Check the uids cache in the mailbox first.
-        #
-        try:
-            self._uid = self.mailbox.uids[self.msg_number - 1]
-        except IndexError:
-            self._uid_vv, self._uid = await self.mailbox.get_uid_from_msg(
-                self.msg_key
-            )
+        self._uid_vv, self._uid = self.mailbox.get_uid_from_msg(self.msg_key)
         return self._uid
 
     ##################################################################
@@ -214,11 +182,7 @@ class SearchContext(object):
         """
         if self._uid_vv:
             return self._uid_vv
-        # Use the fast method of getting the uid/uidvv.
-        #
-        self._uid_vv, self._uid = await self.mailbox.get_uid_from_msg(
-            self.msg_key
-        )
+        self._uid_vv, self._uid = self.mailbox.get_uid_from_msg(self.msg_key)
         return self._uid_vv
 
     ##################################################################

@@ -37,7 +37,7 @@ async def test_search_context(mailbox_instance):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     sequences = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     for idx, msg_key in enumerate(msg_keys):
@@ -69,7 +69,7 @@ async def test_search_keywords(mailbox_with_bunch_of_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     # Set some flags on the messages
@@ -109,7 +109,7 @@ async def test_search_all(mailbox_with_bunch_of_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
     matched: List[int] = []
     search_op = IMAPSearch("all")
@@ -130,7 +130,7 @@ async def test_search_headers(mailbox_with_bunch_of_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     # First, searching on an empty string matches messages that have the header.
@@ -180,7 +180,7 @@ async def test_search_sent_before_since_on(mailbox_with_bunch_of_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     # Go through and find the middle most date.
@@ -234,7 +234,7 @@ async def test_search_before_since_on(mailbox_with_bunch_of_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     # Go through the messages and set the mtime on each message to be the
@@ -296,7 +296,7 @@ async def test_search_body(mailbox_with_bunch_of_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     # First, searching on an empty string matches all messages with a body.
@@ -354,7 +354,7 @@ async def test_search_text(mailbox_with_bunch_of_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     # First, searching on an empty string matches all messages with a body.
@@ -410,7 +410,7 @@ async def test_search_larger_smaller(mailbox_with_bunch_of_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     # Go through and find the various sizes and determine a mid-point
@@ -454,7 +454,7 @@ async def test_search_message_set_and_not(mailbox_with_bunch_of_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     # We have 20 messages.. so construct a message set that tests all the
@@ -491,7 +491,7 @@ async def test_search_uid(mailbox_with_bunch_of_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     # We have 20 messages.. so construct a message set that tests all the
@@ -518,7 +518,7 @@ async def test_search_and_or(mailbox_with_bunch_of_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     # Use message sets to test and & or
