@@ -647,7 +647,7 @@ class Mailbox:
             return None
 
         if from_uids:
-            seq_max = self.uids[-1]
+            seq_max = self.uids[-1] if self.uids else 1
         else:
             seq_max = self.num_msgs
 
@@ -2182,52 +2182,53 @@ class Mailbox:
         finally:
             now = time.time()
             total_time = now - start_time
-            fetch_time = (
-                fetch_finished_time - fetch_started
-                if fetch_finished_time is not None
-                else 9999999.9
-            )
-            if len(yield_times) > 1:
-                # Only bother to calculate more statistics if there was
-                # more than one message fetched.
-                #
-                mean_fetch_yield_time = (
-                    fmean(fetch_yield_times) if fetch_yield_times else 0.0
+            if total_time > 1.0:
+                fetch_time = (
+                    fetch_finished_time - fetch_started
+                    if fetch_finished_time is not None
+                    else 9999999.9
                 )
-                median_yield_time = (
-                    median(fetch_yield_times) if fetch_yield_times else 0.0
-                )
-                stdev_yield_time = (
-                    stdev(fetch_yield_times, mean_fetch_yield_time)
-                    if len(fetch_yield_times) > 2
-                    else 0.0
-                )
+                if len(yield_times) > 1:
+                    # Only bother to calculate more statistics if there was
+                    # more than one message fetched.
+                    #
+                    mean_fetch_yield_time = (
+                        fmean(fetch_yield_times) if fetch_yield_times else 0.0
+                    )
+                    median_yield_time = (
+                        median(fetch_yield_times) if fetch_yield_times else 0.0
+                    )
+                    stdev_yield_time = (
+                        stdev(fetch_yield_times, mean_fetch_yield_time)
+                        if len(fetch_yield_times) > 2
+                        else 0.0
+                    )
 
-                logger.debug(
-                    "FETCH finished, mailbox: '%s', msg_set: %s, num "
-                    "results: %d, total duration: %.3fs, fetch duration: "
-                    "%.3fs, mean time per fetch: %.3fs, median: %.3fs, "
-                    "stdev: %.3fs",
-                    self.name,
-                    compact_sequence(msg_set),
-                    num_results,
-                    total_time,
-                    fetch_time,
-                    mean_fetch_yield_time,
-                    median_yield_time,
-                    stdev_yield_time,
-                )
-            else:
-                logger.debug(
-                    "FETCH finished, mailbox: '%s', msg_set: %s, num "
-                    "results: %d, total duration: %.3fs, fetch duration: "
-                    "%.3fs",
-                    self.name,
-                    compact_sequence(msg_set),
-                    num_results,
-                    total_time,
-                    fetch_time,
-                )
+                    logger.debug(
+                        "FETCH finished, mailbox: '%s', msg_set: %s, num "
+                        "results: %d, total duration: %.3fs, fetch duration: "
+                        "%.3fs, mean time per fetch: %.3fs, median: %.3fs, "
+                        "stdev: %.3fs",
+                        self.name,
+                        compact_sequence(msg_set),
+                        num_results,
+                        total_time,
+                        fetch_time,
+                        mean_fetch_yield_time,
+                        median_yield_time,
+                        stdev_yield_time,
+                    )
+                else:
+                    logger.debug(
+                        "FETCH finished, mailbox: '%s', msg_set: %s, num "
+                        "results: %d, total duration: %.3fs, fetch duration: "
+                        "%.3fs",
+                        self.name,
+                        compact_sequence(msg_set),
+                        num_results,
+                        total_time,
+                        fetch_time,
+                    )
 
     ####################################################################
     #
@@ -2373,11 +2374,13 @@ class Mailbox:
         await self._dispatch_or_pend_notifications(
             notifications, dont_notify=dont_notify
         )
-        self.logger.debug(
-            "mbox: '%s', completed, took %.3f seconds",
-            self.name,
-            time.monotonic() - store_start,
-        )
+        duration = time.monotonic() - store_start
+        if duration > 0.5:
+            self.logger.debug(
+                "mbox: '%s', completed, took %.3f seconds",
+                self.name,
+                duration,
+            )
         return response
 
     ##################################################################
