@@ -220,12 +220,13 @@ class BaseClientHandler:
         finally:
             imap_command.timeout_cm = None
             cmd_duration = time.time() - start_time
-            logger.debug(
-                "FINISH: Client: %s, IMAP Command '%s' took %.3f seconds",
-                self.client.name,
-                imap_command.qstr(),
-                cmd_duration,
-            )
+            if cmd_duration > 0.1:
+                logger.debug(
+                    "FINISH: Client: %s, IMAP Command '%s' took %.3f seconds",
+                    self.client.name,
+                    imap_command.qstr(),
+                    cmd_duration,
+                )
 
         # If there was no result from running this command then everything went
         # okay and we send back a final 'OK' to the client for processing this
@@ -557,24 +558,6 @@ class Authenticated(BaseClientHandler):
         #        server.
         #
         self.fetch_while_pending_count = 0
-
-    # XXX Remove this method. Resync's can only happen in the mbox's management
-    #     task or the final bit of the COPY command.
-    #
-    # ##################################################################
-    # #
-    # async def notifies(self):
-    #     """
-    #     Handles the common case of sending pending expunges and a resync where
-    #     we only notify this client of exists/recent.
-    #     """
-    #     if self.state == ClientState.SELECTED and self.mbox is not None:
-    #         if self.mbox.lock.this_task_has_read_lock():
-    #             await self.mbox.resync()
-    #         else:
-    #             async with self.mbox.lock.read_lock():
-    #                 await self.mbox.resync()
-    #     await self.send_pending_notifications()
 
     #########################################################################
     #
@@ -1102,7 +1085,6 @@ class Authenticated(BaseClientHandler):
                     )
         except MailboxInconsistency as exc:
             self.server.msg_cache.clear_mbox(self.mbox.name)
-            self.mbox.full_search = True
             self.mbox.optional_resync = False
             raise Bad(f"Problem while fetching: {exc}")
 

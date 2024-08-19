@@ -784,14 +784,13 @@ class IMAPUserServer:
                 creating = True
 
         if not creating:
-            logger.debug("Waiting for mailbox '%s' to be instantiated", name)
             inst_start = time.monotonic()
             await event.wait()
             duration = time.monotonic() - inst_start
-            # if duration > 0.1:
-            logger.debug(
-                "Done waiting for mailbox '%s', took: %.3fs", name, duration
-            )
+            if duration > 0.1:
+                logger.debug(
+                    "Done waiting for mailbox '%s', took: %.3fs", name, duration
+                )
 
             # Once the wait completes we are guaranteed that
             # `self.active_mailboxes` has the key `name` in it.
@@ -801,7 +800,6 @@ class IMAPUserServer:
                     raise NoSuchMailbox(f"'{name}' has been deleted.")
                 return self.active_mailboxes[name]
 
-        logger.debug("Instantiating mailbox '%s'", name)
         inst_start = time.monotonic()
         # Instantiate the mailbox. Add it to `active_mailboxes`, signal any
         # other task waiting on the event that it can now get the mailbox.
@@ -819,8 +817,10 @@ class IMAPUserServer:
         async with self.activating_mailboxes_lock:
             del self.activating_mailboxes[name]
         duration = time.monotonic() - inst_start
-        # if duration > 0.1:
-        logger.debug("Instantiated mailbox '%s', took: %.3fs", name, duration)
+        if duration > 0.1:
+            logger.debug(
+                "Instantiated mailbox '%s', took: %.3fs", name, duration
+            )
         return mbox
 
     ##################################################################
@@ -922,14 +922,6 @@ class IMAPUserServer:
         try:
             fmtime = await Mailbox.get_actual_mtime(self.mailbox, mbox_name)
             if (fmtime > mtime) or force:
-                # The mtime differs we probably need resync.
-                #
-                logger.debug(
-                    "doing resync on '%s' stored mtime: %d, actual mtime: %d",
-                    mbox_name,
-                    mtime,
-                    fmtime,
-                )
                 # Just calling `get_mailbox` on a mailbox that is not active
                 # will cause a 'check_new_msgs_and_flags()' to be called, thus
                 # checking the folder. Since the expiry time is 0, it will be

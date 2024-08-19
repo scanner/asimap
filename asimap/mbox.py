@@ -936,79 +936,6 @@ class Mailbox:
                 #
                 c.pending_notifications.extend(notifications)
 
-    # ##################################################################
-    # #
-    # async def _find_first_foreign_message(
-    #     self, full_search: bool = False
-    # ) -> Optional[int]:
-    #     """
-    #     Search the MH folder for the first message that either has no uid
-    #     or has a uid_vv that is not this mailbox's uid.
-
-    #     If `full_search` is False (the default), we will search from the
-    #     highest numbered message down based on the assumption that almost all
-    #     new messages are appended to the mailbox.
-
-    #     If `full_search` is True we search from the start of the mailbox.
-
-    #     Also if `self.full_search` is True it will also do a full search (and
-    #     set self.full_search to False)
-
-    #     We return the MH msg key for the first foreign message we find,
-    #     otherwise return None.
-
-    #     NOTE: `self.msg_keys` needs to have been updated right before this
-    #           message is called.
-    #     """
-    #     # If there are no messages in the mailbox then there is nothing to
-    #     # search for.
-    #     #
-    #     if not self.msg_keys:
-    #         return None
-
-    #     # There will be a time when we need to scan the entire mailbox looking
-    #     # for the first foreign key. The most common occurrence is at the end
-    #     # of the mailbox so that is the default search.
-    #     #
-    #     if full_search or self.full_search:
-    #         self.full_search = False
-    #         for msg_key in self.msg_keys:
-    #             uid_vv, uid = self.get_uid_from_msg(msg_key)
-
-    #             # if we have encountered an invalid uid_vv then we are done.
-    #             # This message is the first foreign key.
-    #             #
-    #             if uid_vv != self.uid_vv:
-    #                 return msg_key
-    #         return None
-
-    #     # Go through the list of msg_keys in reverse order. Preserve the
-    #     # original index for each msg_key so we know its position in
-    #     # self.msg_keys
-    #     #
-    #     found_foreign = False
-    #     for idx, msg_key in reversed(list(enumerate(self.msg_keys))):
-    #         uid_vv, uid = self.get_uid_from_msg(msg_key)
-    #         if uid_vv != self.uid_vv:
-    #             found_foreign = True
-    #             continue
-    #         if uid_vv == self.uid_vv:
-    #             break
-
-    #     if not found_foreign:
-    #         return None
-
-    #     # If the msg_key is the first or last message then that is the first
-    #     # foreign key.
-    #     #
-    #     if msg_key == self.msg_keys[-1] or msg_key == self.msg_keys[0]:
-    #         return msg_key
-
-    #     # Otherwise return the message at the previous index as the first
-    #     # foreign message.
-    #     #
-    #     return self.msg_keys[idx + 1]
-
     ##################################################################
     #
     async def check_new_msgs_and_flags(
@@ -1227,8 +1154,7 @@ class Mailbox:
             #
             notifications = []
             notifications.append(f"* {num_msgs} EXISTS\r\n")
-            if num_recent != self.num_recent:
-                notifications.append(f"* {num_recent} RECENT\r\n")
+            notifications.append(f"* {num_recent} RECENT\r\n")
             for c in self.clients.values():
                 await c.client.push(*notifications)
 
@@ -1369,83 +1295,6 @@ class Mailbox:
         )
         await self.commit_to_db()
         return True
-
-    # ##################################################################
-    # #
-    # async def send_expunges(self, uids):
-    #     """
-    #     This is called as part of resync()
-
-    #     We are given the list of UID's that we know to be in the folder. This
-    #     list may be different than the UID's we have from the last time we did
-    #     a run through resync, stored in self.uids
-
-    #     Our job is to see what uid's used to exist in this folder but no longer
-    #     do. We then issue an EXPUNGE message for every UID that is missing,
-    #     takin in to account its position in self.uids.
-
-    #     Without this the IMAP client will get hopefully confused when the
-    #     contents of the folder changes by having messages removed by some
-    #     external force.
-
-    #     Arguments:
-    #     - `uids`: The list of uids, in order that are currently in the mailbox.
-    #     """
-    #     uids = list(uids)
-    #     missing_uids = set(self.uids) - set(uids)
-
-    #     # If none are missing then update the list of all uid's with what was
-    #     # passed in and return. No EXPUNGE's need to be sent. At most we only
-    #     # have new UID's added to our list.
-    #     #
-    #     if not missing_uids:
-    #         self.uids = uids
-    #         return
-
-    #     logger.debug(
-    #         "Mailbox %s, %d UID's missing. Sending EXPUNGEs.",
-    #         self.name,
-    #         len(missing_uids),
-    #     )
-
-    #     # Go through the UID's that are missing and send an expunge for each
-    #     # one taking into account its position in the folder as we delete them.
-    #     #
-    #     notifications = []
-    #     for uid in sorted(missing_uids, reverse=True):
-    #         # NOTE: The expunge is the _message index_ of the message being
-    #         #       deleted.
-    #         which = self.uids.index(uid) + 1
-    #         self.uids.remove(uid)
-    #         notifications.append(f"* {which} EXPUNGE\r\n")
-    #     self.uids = uids
-    #     await self._dispatch_or_pend_notifications(notifications)
-
-    # ##################################################################
-    # #
-    # def _safety_check_uid_uidvv(
-    #     self, msg_key: int, msg: MHMessage
-    # ) -> Tuple[int, int]:
-    #     """
-    #     Perform a safety check on the message: it must have a UID_HDR, and
-    #     its uid_vv must be the same as the mbox's. If not raise a
-    #     MailboxInconsistency exception.
-
-    #     Returns the uid_vv, uid if the message passes the check.
-    #     """
-    #     if UID_HDR not in msg:
-    #         raise MailboxInconsistency(
-    #             f"Mailbox '{self.name}': msg_key {msg_key}"
-    #             f"has no uid header: {UID_HDR}"
-    #         )
-    #     uid_vv, uid = get_uidvv_uid(msg[UID_HDR])
-    #     if uid_vv != self.uid_vv or uid is None:
-    #         raise MailboxInconsistency(
-    #             f"Mailbox '{self.name}': uid_vv: {self.uid_vv}, msg "
-    #             f"key: {msg_key}, uid_vv:uid: {uid_vv}:{uid_vv}"
-    #         )
-
-    #     return (uid_vv, uid)
 
     ##################################################################
     #
