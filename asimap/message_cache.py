@@ -24,11 +24,10 @@ from typing import Dict, List, Optional, Tuple, TypeAlias
 
 # Project imports
 #
-from .generator import get_msg_size, get_msg_size_nc
-from .utils import UID_HDR
+from .generator import get_msg_size
 
 logger = logging.getLogger("asimap.message_cache")
-CACHE_SIZE = 41_943_040  # Max cache size (in bytes) -- 40MiB
+CACHE_SIZE = 20_971_520  # Max cache size (in bytes) -- 20MiB
 
 # CacheEntry members are:
 #
@@ -184,10 +183,7 @@ class MessageCache:
             self.msgs_by_mailbox[mbox] = []
 
         try:
-            if UID_HDR not in msg:
-                msg_size = get_msg_size_nc(msg)
-            else:
-                msg_size = get_msg_size(msg)
+            msg_size = get_msg_size(msg)
         except Exception as e:
             # One of the first hints that we have a message that python's mail
             # module can not handle due to encoding errors happens when we try

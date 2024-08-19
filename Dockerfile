@@ -2,7 +2,7 @@
 #
 # Builder stage
 #
-FROM python:3.12 as builder
+FROM python:3.12 AS builder
 
 ARG APP_HOME=/app
 WORKDIR ${APP_HOME}
@@ -22,7 +22,7 @@ RUN . /venv/bin/activate && python -m build
 #
 # includes the 'development' requirements
 #
-FROM builder as dev
+FROM builder AS dev
 
 LABEL org.opencontainers.image.source=https://github.com/scanner/asimap
 LABEL org.opencontainers.image.description="Apricot Systematic IMAP Demon"
@@ -30,13 +30,13 @@ LABEL org.opencontainers.image.licenses=BSD-3-Clause
 
 RUN apt update && apt install --assume-yes jove vim nmh && apt clean
 
-ENV PYTHONUNBUFFERED 1
-ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
 
 ARG APP_HOME=/app
 
 WORKDIR ${APP_HOME}
-ENV PYTHONPATH ${APP_HOME}
+ENV PYTHONPATH=${APP_HOME}
 
 COPY README.md LICENSE Makefile Make.rules pyproject.toml /app/
 COPY requirements/development.txt /app/requirements/development.txt
@@ -46,7 +46,7 @@ RUN . /venv/bin/activate && pip install -r requirements/development.txt
 # Puts the venv's python (and other executables) at the front of the
 # PATH so invoking 'python' will activate the venv.
 #
-ENV PATH /venv/bin:/usr/bin/mh:$PATH
+ENV PATH=/venv/bin:/usr/bin/mh:$PATH
 
 WORKDIR ${APP_HOME}
 
@@ -61,7 +61,7 @@ CMD ["python", "/app/asimap/asimapd.py"]
 #
 # `app` - The docker image for the django app web service
 #
-FROM python:3.12-slim as prod
+FROM python:3.12-slim AS prod
 
 LABEL org.opencontainers.image.source=https://github.com/scanner/asimap
 LABEL org.opencontainers.image.description="Apricot Systematic IMAP Demon"
@@ -69,8 +69,8 @@ LABEL org.opencontainers.image.licenses=BSD-3-Clause
 
 RUN apt update && apt install --assume-yes nmh && apt clean
 
-ENV PYTHONUNBUFFERED 1
-ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
 
 # We only want the installable dist we created in the builder.
 #
@@ -84,7 +84,7 @@ RUN . /venv/bin/activate && \
 # Puts the venv's python (and other executables) at the front of the
 # PATH so invoking 'python' will activate the venv.
 #
-ENV PATH /venv/bin:/usr/bin/mh:$PATH
+ENV PATH=/venv/bin:/usr/bin/mh:$PATH
 
 ARG APP_HOME=/app
 WORKDIR ${APP_HOME}

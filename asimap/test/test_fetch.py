@@ -24,7 +24,7 @@ from ..generator import msg_as_string, msg_headers_as_string
 from ..mbox import mbox_msg_path
 from ..parse import _lit_ref_re
 from ..search import SearchContext
-from ..utils import UID_HDR, get_uidvv_uid, parsedate
+from ..utils import parsedate
 from .conftest import assert_email_equal
 
 
@@ -84,17 +84,16 @@ async def test_fetch_body(mailbox_with_mimekit_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
-        async with mbox.lock.read_lock():
-            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
-            msg = await ctx.email_message()
-            msg_size = await ctx.msg_size()
-            fetch = FetchAtt(FetchOp.BODY)
-            result = await fetch.fetch(ctx)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        msg = await ctx.email_message()
+        msg_size = await ctx.msg_size()
+        fetch = FetchAtt(FetchOp.BODY)
+        result = await fetch.fetch(ctx)
 
         assert result.startswith("BODY {")
         m = _lit_ref_re.search(result)
@@ -118,7 +117,7 @@ async def test_fetch_bodystructure(mailbox_with_mimekit_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     # XXX Yeah.. should move these in data files and have it come out with the
@@ -154,10 +153,9 @@ async def test_fetch_bodystructure(mailbox_with_mimekit_email):
     #
     for msg_idx, (msg_key, expected) in enumerate(zip(msg_keys, expecteds)):
         msg_idx += 1
-        async with mbox.lock.read_lock():
-            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
-            fetch = FetchAtt(FetchOp.BODYSTRUCTURE)
-            result = await fetch.fetch(ctx)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        fetch = FetchAtt(FetchOp.BODYSTRUCTURE)
+        result = await fetch.fetch(ctx)
 
         assert result.startswith("BODYSTRUCTURE ")
         if result[14:] != expected:
@@ -175,7 +173,7 @@ async def test_fetch_envelope(mailbox_with_mimekit_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     expecteds = [
@@ -204,10 +202,9 @@ async def test_fetch_envelope(mailbox_with_mimekit_email):
     ]
     for msg_idx, (msg_key, expected) in enumerate(zip(msg_keys, expecteds)):
         msg_idx += 1
-        async with mbox.lock.read_lock():
-            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
-            fetch = FetchAtt(FetchOp.ENVELOPE)
-            result = await fetch.fetch(ctx)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        fetch = FetchAtt(FetchOp.ENVELOPE)
+        result = await fetch.fetch(ctx)
 
         assert result.startswith("ENVELOPE ")
         assert result[9:] == expected
@@ -221,41 +218,39 @@ async def test_fetch_rfc822_size(mailbox_with_mimekit_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     expecteds = [
-        291,
-        309,
-        491,
-        632,
-        816,
-        1056,
-        1056,
-        624,
-        624,
-        # 28244,   # why did our body rfc822.size change from 28242 to 28244?
-        28242,
-        2479,
-        2477,
-        1479,
-        757,
-        1259,
-        9434,
-        623,
-        302,
-        505,
-        2724,
-        1391,
-        138447,
+        253,
+        271,
+        453,
+        594,
+        778,
+        1018,
+        1018,
+        586,
+        586,
+        28204,
+        2441,
+        2439,
+        1441,
+        719,
+        1221,
+        9396,
+        585,
+        264,
+        467,
+        2686,
+        1353,
+        138409,
     ]
 
     for msg_idx, (msg_key, expected) in enumerate(zip(msg_keys, expecteds)):
         msg_idx += 1
-        async with mbox.lock.read_lock():
-            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
-            fetch = FetchAtt(FetchOp.RFC822_SIZE)
-            result = await fetch.fetch(ctx)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        fetch = FetchAtt(FetchOp.RFC822_SIZE)
+        result = await fetch.fetch(ctx)
 
         assert result.startswith("RFC822.SIZE ")
         assert int(result[12:]) == expected
@@ -269,7 +264,7 @@ async def test_fetch_flags(mailbox_with_bunch_of_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     # Set some flags on the messages
@@ -290,10 +285,9 @@ async def test_fetch_flags(mailbox_with_bunch_of_email):
 
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
-        async with mbox.lock.read_lock():
-            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
-            fetch = FetchAtt(FetchOp.FLAGS)
-            result = await fetch.fetch(ctx)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        fetch = FetchAtt(FetchOp.FLAGS)
+        result = await fetch.fetch(ctx)
 
         assert result.startswith("FLAGS ")
         flags = result[6:]
@@ -309,7 +303,7 @@ async def test_fetch_internaldate(mailbox_with_bunch_of_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     # Get all the mtime's of the messages in the mailbox and convert these in
@@ -323,10 +317,9 @@ async def test_fetch_internaldate(mailbox_with_bunch_of_email):
         )
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
-        async with mbox.lock.read_lock():
-            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
-            fetch = FetchAtt(FetchOp.INTERNALDATE)
-            result = await fetch.fetch(ctx)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        fetch = FetchAtt(FetchOp.INTERNALDATE)
+        result = await fetch.fetch(ctx)
 
         assert result.startswith("INTERNALDATE ")
         assert result[13] == '"' and result[-1] == '"'
@@ -342,21 +335,19 @@ async def test_fetch_uid(mailbox_with_bunch_of_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     uid_by_msg: Dict[int, int] = {}
     for msg_key in msg_keys:
-        msg = await mbox.mailbox.aget_message(msg_key)
-        uid_vv, uid = get_uidvv_uid(msg[UID_HDR])
+        uid_vv, uid = mbox.get_uid_from_msg(msg_key)
         uid_by_msg[msg_key] = uid
 
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
-        async with mbox.lock.read_lock():
-            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
-            fetch = FetchAtt(FetchOp.UID)
-            result = await fetch.fetch(ctx)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        fetch = FetchAtt(FetchOp.UID)
+        result = await fetch.fetch(ctx)
 
         assert result.startswith("UID ")
         assert int(result[4:]) == uid_by_msg[msg_key]
@@ -373,17 +364,16 @@ async def test_fetch_body_section_text(mailbox_with_mimekit_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     msg_key = 10
     msg_idx = 10
 
-    async with mbox.lock.read_lock():
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
-        fetch = FetchAtt(FetchOp.BODY, section=["TEXT"])
-        result = await fetch.fetch(ctx)
-        email_msg = await ctx.email_message()
+    ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+    fetch = FetchAtt(FetchOp.BODY, section=["TEXT"])
+    result = await fetch.fetch(ctx)
+    email_msg = await ctx.email_message()
 
     assert result.startswith("BODY[TEXT] {")
     body_start = result.find("}") + 3
@@ -398,10 +388,9 @@ async def test_fetch_body_section_text(mailbox_with_mimekit_email):
 
     # section 1 TEXT
     #
-    async with mbox.lock.read_lock():
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
-        fetch = FetchAtt(FetchOp.BODY, section=[1, "TEXT"])
-        result = await fetch.fetch(ctx)
+    ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+    fetch = FetchAtt(FetchOp.BODY, section=[1, "TEXT"])
+    result = await fetch.fetch(ctx)
 
     assert result.startswith("BODY[1.TEXT] {")
     body_start = result.find("}") + 3
@@ -416,10 +405,9 @@ async def test_fetch_body_section_text(mailbox_with_mimekit_email):
 
     # section 2.1.TEXT
     #
-    async with mbox.lock.read_lock():
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
-        fetch = FetchAtt(FetchOp.BODY, section=[2, 4, "TEXT"])
-        result = await fetch.fetch(ctx)
+    ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+    fetch = FetchAtt(FetchOp.BODY, section=[2, 4, "TEXT"])
+    result = await fetch.fetch(ctx)
 
     assert result.startswith("BODY[2.4.TEXT] {")
     body_start = result.find("}") + 3
@@ -444,17 +432,16 @@ async def test_fetch_body_section_header(mailbox_with_mimekit_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     msg_key = 10
     msg_idx = 10
 
-    async with mbox.lock.read_lock():
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
-        fetch = FetchAtt(FetchOp.BODY, peek=True, section=["HEADER"])
-        result = await fetch.fetch(ctx)
-        email_msg = await ctx.email_message()
+    ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+    fetch = FetchAtt(FetchOp.BODY, peek=True, section=["HEADER"])
+    result = await fetch.fetch(ctx)
+    email_msg = await ctx.email_message()
 
     assert result.startswith("BODY[HEADER] {")
     headers_start = result.find("}") + 3
@@ -470,10 +457,9 @@ async def test_fetch_body_section_header(mailbox_with_mimekit_email):
 
     # With or without peek the response is the same.
     #
-    async with mbox.lock.read_lock():
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
-        fetch = FetchAtt(FetchOp.BODY, section=["HEADER"])
-        result = await fetch.fetch(ctx)
+    ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+    fetch = FetchAtt(FetchOp.BODY, section=["HEADER"])
+    result = await fetch.fetch(ctx)
 
     # And also make sure headers are the same
     #
@@ -482,10 +468,9 @@ async def test_fetch_body_section_header(mailbox_with_mimekit_email):
 
     # headers of sub-parts - 1.HEADER
     #
-    async with mbox.lock.read_lock():
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
-        fetch = FetchAtt(FetchOp.BODY, section=[1, "HEADER"])
-        result = await fetch.fetch(ctx)
+    ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+    fetch = FetchAtt(FetchOp.BODY, section=[1, "HEADER"])
+    result = await fetch.fetch(ctx)
 
     result_headers = result[headers_start:]
     assert result.startswith("BODY[1.HEADER] {")
@@ -501,10 +486,9 @@ async def test_fetch_body_section_header(mailbox_with_mimekit_email):
 
     # headers of sub-parts - 2.4.HEADER
     #
-    async with mbox.lock.read_lock():
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
-        fetch = FetchAtt(FetchOp.BODY, section=[2, 4, "HEADER"])
-        result = await fetch.fetch(ctx)
+    ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+    fetch = FetchAtt(FetchOp.BODY, section=[2, 4, "HEADER"])
+    result = await fetch.fetch(ctx)
 
     result_headers = result[headers_start:]
     assert result.startswith("BODY[2.4.HEADER] {")
@@ -529,18 +513,17 @@ async def test_fetch_body_section_header_fields(mailbox_with_mimekit_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     msg_key = 10
     msg_idx = 10
 
     headers = ["date", "subject", "from", "to", "cc", "message-id"]
-    async with mbox.lock.read_lock():
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
-        fetch = FetchAtt(FetchOp.BODY, section=[["HEADER.FIELDS", headers]])
-        result = await fetch.fetch(ctx)
-        email_msg = await ctx.email_message()
+    ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+    fetch = FetchAtt(FetchOp.BODY, section=[["HEADER.FIELDS", headers]])
+    result = await fetch.fetch(ctx)
+    email_msg = await ctx.email_message()
 
     assert result.startswith(f"BODY[HEADER.FIELDS ({' '.join(headers)})] {{")
     headers_start = result.find("}") + 3
@@ -549,18 +532,19 @@ async def test_fetch_body_section_header_fields(mailbox_with_mimekit_email):
 
     assert len(result_headers) == res_length
 
-    msg_headers = msg_headers_as_string(email_msg, headers=headers, skip=False)
+    msg_headers = msg_headers_as_string(
+        email_msg, headers=tuple(headers), skip=False
+    )
 
     assert res_length == len(msg_headers)
     assert msg_headers == result_headers
 
     # HEADER.FIELDS.NOT...
     #
-    async with mbox.lock.read_lock():
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
-        fetch = FetchAtt(FetchOp.BODY, section=[["HEADER.FIELDS.NOT", headers]])
-        result = await fetch.fetch(ctx)
-        email_msg = await ctx.email_message()
+    ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+    fetch = FetchAtt(FetchOp.BODY, section=[["HEADER.FIELDS.NOT", headers]])
+    result = await fetch.fetch(ctx)
+    email_msg = await ctx.email_message()
 
     assert result.startswith(
         f"BODY[HEADER.FIELDS.NOT ({' '.join(headers)})] {{"
@@ -571,7 +555,9 @@ async def test_fetch_body_section_header_fields(mailbox_with_mimekit_email):
 
     assert len(result_headers) == res_length
 
-    msg_headers = msg_headers_as_string(email_msg, headers=headers, skip=True)
+    msg_headers = msg_headers_as_string(
+        email_msg, headers=tuple(headers), skip=True
+    )
 
     assert res_length == len(msg_headers)
     assert msg_headers == result_headers
@@ -585,22 +571,21 @@ async def test_fetch_body_text_with_partials(mailbox_with_mimekit_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     msg_key = 10
     msg_idx = 10
-    async with mbox.lock.read_lock():
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
-        email_msg = await ctx.email_message()
-        msg_body = msg_as_string(email_msg, headers=False)
-        size = len(msg_body)
-        mid = int(size / 2)
+    ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+    email_msg = await ctx.email_message()
+    msg_body = msg_as_string(email_msg, headers=False)
+    size = len(msg_body)
+    mid = int(size / 2)
 
-        fetch = FetchAtt(FetchOp.BODY, section=["TEXT"], partial=(0, mid))
-        result1 = await fetch.fetch(ctx)
-        fetch = FetchAtt(FetchOp.BODY, section=["TEXT"], partial=(mid, size))
-        result2 = await fetch.fetch(ctx)
+    fetch = FetchAtt(FetchOp.BODY, section=["TEXT"], partial=(0, mid))
+    result1 = await fetch.fetch(ctx)
+    fetch = FetchAtt(FetchOp.BODY, section=["TEXT"], partial=(mid, size))
+    result2 = await fetch.fetch(ctx)
 
     assert result1.startswith(f"BODY[TEXT]<0.{mid}> {{")
 
@@ -629,22 +614,21 @@ async def test_fetch_body_braces(mailbox_with_bunch_of_email):
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
-    uid_vv, uid_max = await mbox.get_uid_from_msg(msg_keys[-1])
+    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
-        async with mbox.lock.read_lock():
-            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
-            email_msg = await ctx.email_message()
-            msg_body = msg_as_string(email_msg)
-            size = len(msg_body)
-            mid = int(size / 2)
-            fetch = FetchAtt(FetchOp.BODY, section=[], partial=(0, mid))
-            result1 = await fetch.fetch(ctx)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        email_msg = await ctx.email_message()
+        msg_body = msg_as_string(email_msg)
+        size = len(msg_body)
+        mid = int(size / 2)
+        fetch = FetchAtt(FetchOp.BODY, section=[], partial=(0, mid))
+        result1 = await fetch.fetch(ctx)
 
-            fetch = FetchAtt(FetchOp.BODY, section=[], partial=(mid, size))
-            result2 = await fetch.fetch(ctx)
+        fetch = FetchAtt(FetchOp.BODY, section=[], partial=(mid, size))
+        result2 = await fetch.fetch(ctx)
 
         assert result1.startswith(f"BODY[]<0.{mid}> {{")
 

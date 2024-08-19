@@ -188,8 +188,8 @@ async def test_authenticated_client_handler_commands(
     ]
     expecteds = [
         ["A001 OK NOOP command completed"],
-        ["A002 BAD client already is in the authenticated state"],
-        ["A003 BAD client already is in the authenticated state"],
+        ["A002 NO client already is in the authenticated state"],
+        ["A003 NO client already is in the authenticated state"],
         [
             '* STATUS "inbox" (MESSAGES 20 RECENT 20 UIDNEXT 21 UIDVALIDITY 1 UNSEEN 20)',
             "A003.5 OK STATUS command completed",
@@ -247,8 +247,6 @@ async def test_authenticated_client_handler_commands(
             "* 3 EXPUNGE",
             "* 2 EXPUNGE",
             "* 1 EXPUNGE",
-            "* 0 EXISTS",
-            "* 0 RECENT",
             "A009 OK RENAME command completed",
         ],
         ["A001 OK NOOP command completed"],
@@ -371,8 +369,12 @@ async def test_authenticated_client_subscribe_lsub_unsubscribe(
         folders.append(folder_name)
         for _ in range(3):
             sub_folder = f"{folder_name}/{faker.word()}"
+
+            # Do not make folders that already exist.
+            #
             if sub_folder in folders:
                 continue
+
             await Mailbox.create(sub_folder, server)
             folders.append(sub_folder)
 
@@ -533,10 +535,9 @@ async def test_authenticated_client_close(
     # Messages that are marked `\Deleted` are removed when the mbox is closed.
     #
     mbox = await server.get_mailbox("inbox")
-    async with mbox.lock.read_lock():
-        msg_keys = await mbox.mailbox.akeys()
-        to_delete = sorted(random.sample(msg_keys, 5))
-        await mbox.store(to_delete, StoreAction.ADD_FLAGS, [r"\Deleted"])
+    msg_keys = await mbox.mailbox.akeys()
+    to_delete = sorted(random.sample(msg_keys, 5))
+    await mbox.store(to_delete, StoreAction.ADD_FLAGS, [r"\Deleted"])
 
     # Closing when we had done 'EXAMINE' does not result in messages being
     # purged.
@@ -600,10 +601,9 @@ async def test_authenticated_client_expunge(
     # Messages that are marked `\Deleted` are removed when the mbox is closed.
     #
     mbox = await server.get_mailbox("inbox")
-    async with mbox.lock.read_lock():
-        msg_keys = await mbox.mailbox.akeys()
-        to_delete = sorted(random.sample(msg_keys, 5))
-        await mbox.store(to_delete, StoreAction.ADD_FLAGS, [r"\Deleted"])
+    msg_keys = await mbox.mailbox.akeys()
+    to_delete = sorted(random.sample(msg_keys, 5))
+    await mbox.store(to_delete, StoreAction.ADD_FLAGS, [r"\Deleted"])
 
     # Expunging when we had done 'EXAMINE' does not result in messages being
     # purged.
@@ -639,14 +639,15 @@ async def test_authenticated_client_expunge(
     cmd.parse()
     await client_handler.command(cmd)
     results = client_push_responses(imap_client)
-    # Since this client is _sending_ the EXPUNGE command it is alright for it
-    # to get back the untagged `EXISTS` response from the server .. hence
-    # len(results) - 3 -- 3 for the "OK", "EXISTS", and "RECENT".
+    # The results should have the same message sequence numbers as to_delete,
+    # in reverse.
     #
-    assert len(results) - 3 == len(to_delete)
-    assert results[-3:] == [
-        "* 15 EXISTS",
-        "* 15 RECENT",
+    for msg, msg_seq_num in zip(results[:-1], sorted(to_delete, reverse=True)):
+        assert msg == f"* {msg_seq_num} EXPUNGE"
+    # len(results) - 1 for the "OK"
+    #
+    assert len(results) - 1 == len(to_delete)
+    assert results[-1:] == [
         "A005 OK EXPUNGE command completed",
     ]
     for deleted, result in zip(sorted(to_delete, reverse=True), results):
@@ -782,15 +783,9 @@ async def test_authenticated_client_fetch_lotta_fields(
     results = client_push_responses(imap_client, strip=False)
     assert results[-1] == "A001 OK FETCH command completed\r\n"
     for msg_key in msg_keys:
-        # msg = await mbox.mailbox.aget_message(msg_key)
-        print(f"msg key: {msg_key:>3}, result: {repr(results[msg_key-1])}")
         res = [x for x in results[msg_key - 1].split("\r\n")]
-        print(f"msg key: {msg_key:>3} -- number of results: {len(res)}")
         for r in res:
             print(f"    result: {r}")
-        # _, subj, frm = (x.strip() for x in results[msg_key - 1].split("\r\n"))
-        # assert msg["Subject"] == subj.split(":")[1].strip()
-        # assert msg["From"] == frm.split(":")[1].strip()
 
 
 ####################################################################

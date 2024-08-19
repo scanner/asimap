@@ -15,10 +15,9 @@ from dirty_equals import IsDatetime
 # Project imports
 #
 from ..client import Authenticated
-from ..mbox import Mailbox
+from ..mbox import Mailbox, NoSuchMailbox
 from ..parse import IMAPClientCommand
 from ..user_server import IMAPUserServer
-from .conftest import client_push_responses
 
 
 ####################################################################
@@ -31,34 +30,6 @@ async def test_user_server_instantiate(mh_folder):
         assert user_server
     finally:
         await user_server.shutdown()
-
-
-####################################################################
-#
-@pytest.mark.asyncio
-async def test_check_all_active_folders(
-    mailbox_with_bunch_of_email, imap_user_server_and_client
-):
-    server, imap_client = imap_user_server_and_client
-    _ = mailbox_with_bunch_of_email
-    client_handler = Authenticated(imap_client, server)
-
-    # Select the inbox.
-    #
-    cmd = IMAPClientCommand("A001 SELECT inbox")
-    cmd.parse()
-    await client_handler.command(cmd)
-    _ = client_push_responses(imap_client)
-    cmd = IMAPClientCommand("A001 IDLE\r\n")
-    cmd.parse()
-    await client_handler.command(cmd)
-    results = client_push_responses(imap_client)
-    assert results == ["+ idling"]
-    assert client_handler.idling is True
-
-    # Check all active folders will now scan the inbox.
-    #
-    await server.check_all_active_folders()
 
 
 ####################################################################
@@ -88,6 +59,10 @@ async def test_expire_inactive_folders(
 
     client_handler = Authenticated(imap_client, server)
 
+    # Expire all the mailboxes we made so `check_all_folders` will check them.
+    #
+    await server.expire_inactive_folders()
+
     # Get a handle on two mailboxes.
     #
     mbox1 = await server.get_mailbox(folders[2])
@@ -99,9 +74,10 @@ async def test_expire_inactive_folders(
     cmd.parse()
     await client_handler.command(cmd)
 
-    # We should have three active mailboxes now.
+    # We should have three active mailboxes now (since we forced an expiry
+    # check above)
     #
-    assert len(server.active_mailboxes) == len(folders)
+    assert len(server.active_mailboxes) == 3
 
     # The inbox will have no expiry since a client has it selected.
     #
@@ -115,15 +91,16 @@ async def test_expire_inactive_folders(
 
     await server.expire_inactive_folders()
 
-    # no expiries since they all hvae expiry times in the future.
+    # and after an expiry check again, still 3 active folders.
     #
-    assert len(server.active_mailboxes) == len(folders)
+    assert len(server.active_mailboxes) == 3
 
-    # For mbox1's expiry time back to the unix epoch.
+    # For mbox1's expiry time back to the unix epoch. This should result in one
+    # of the three being expired.
     #
     mbox1.expiry = 0.0
     await server.expire_inactive_folders()
-    assert len(server.active_mailboxes) == len(folders) - 1
+    assert len(server.active_mailboxes) == 2
     assert mbox1.name not in server.active_mailboxes
 
 
@@ -185,6 +162,15 @@ async def test_check_folder(
 ####################################################################
 #
 @pytest.mark.asyncio
+async def test_there_is_no_root_folder(imap_user_server):
+    server = imap_user_server
+    with pytest.raises(NoSuchMailbox):
+        await server.get_mailbox("")
+
+
+####################################################################
+#
+@pytest.mark.asyncio
 async def test_check_all_folders(
     faker, mailbox_with_bunch_of_email, imap_user_server_and_client
 ):
@@ -204,6 +190,11 @@ async def test_check_all_folders(
                 continue
             await Mailbox.create(sub_folder, server)
             folders.append(sub_folder)
+            await server.get_mailbox(sub_folder, expiry=0)
+
+    # Expire all the mailboxes we made so `check_all_folders` will check them.
+    #
+    await server.expire_inactive_folders()
 
     # select and idle on the inbox
     #
@@ -215,9 +206,11 @@ async def test_check_all_folders(
     cmd.parse()
     await client_handler.command(cmd)
 
-    # basically all the sub-components of this action are already tested.
-    # We are making sure that this code that invokes them runs.
+    # basically all the sub-components of this action are already tested.  We
+    # are making sure that this code that invokes them runs. Turn debug on for
+    # the server to test the debugging log statements with statistics.
     #
+    server.debug = True
     await server.check_all_folders(force=True)
 
     # And stop idling on the inbox.

@@ -77,6 +77,7 @@ async def test_db_init_migrate(db):
             "date": "TEXT",
             "uids": "TEXT",
             "last_resync": "INTEGER",
+            "msg_keys": "TEXT",
             "subscribed": "INTEGER",
         },
         "sequences": {

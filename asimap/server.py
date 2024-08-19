@@ -196,7 +196,7 @@ class IMAPSubprocess:
         # went wrong.
         #
         try:
-            async with asyncio.timeout(10):
+            async with asyncio.timeout(300):
                 m = await self.subprocess.stdout.readline()
                 self.port = int(str(m, "latin-1").strip())
                 self.has_port.set()
@@ -880,7 +880,7 @@ class IMAPSubprocessInterface:
         # more than <n> seconds.
         #
         try:
-            async with asyncio.timeout(30):
+            async with asyncio.timeout(300):
                 await self.subprocess.has_port.wait()
         except asyncio.TimeoutError:
             logger.warning(

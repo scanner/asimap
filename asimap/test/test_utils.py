@@ -205,7 +205,7 @@ async def test_rwlock_basic():
     #
     with pytest.raises(RuntimeError):
         async with urw_lock.write_lock():
-            print("write lock")
+            pass
 
 
 ####################################################################
@@ -559,7 +559,7 @@ async def test_find_header_in_binary_file(tmp_path, faker, email_factory):
     for msg_file, expected in zip(
         sorted(tmp_path.glob("*.msg")), expected_uidvv_uids
     ):
-        uid_hdr = await find_header_in_binary_file(msg_file, UID_HDR)
+        uid_hdr = find_header_in_binary_file(msg_file, UID_HDR)
         assert uid_hdr
         hdr, value = [x.strip() for x in uid_hdr.split(":")]
         assert value == expected
@@ -569,7 +569,7 @@ async def test_find_header_in_binary_file(tmp_path, faker, email_factory):
     msg = email_factory()
     msg_file = tmp_path / "nouid-hdr.msg"
     msg_file.write_bytes(msg.as_bytes(policy=email.policy.default))
-    uid_hdr = await find_header_in_binary_file(msg_file, UID_HDR)
+    uid_hdr = find_header_in_binary_file(msg_file, UID_HDR)
     assert uid_hdr is None
 
 
@@ -620,7 +620,7 @@ async def test_update_replace_header_in_binary_file(
     for msg_file, expected in zip(
         sorted(tmp_path.glob("*.msg")), expected_hdrs
     ):
-        uid_hdr = await find_header_in_binary_file(msg_file, UID_HDR)
+        uid_hdr = find_header_in_binary_file(msg_file, UID_HDR)
         assert uid_hdr
         hdr, value = [x.strip() for x in uid_hdr.split(":")]
         assert value == expected
