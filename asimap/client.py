@@ -220,7 +220,7 @@ class BaseClientHandler:
         finally:
             imap_command.timeout_cm = None
             cmd_duration = time.time() - start_time
-            if cmd_duration > 0.1:
+            if cmd_duration > 1.0:
                 logger.debug(
                     "FINISH: Client: %s, IMAP Command '%s' took %.3f seconds",
                     self.client.name,

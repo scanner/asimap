@@ -1159,32 +1159,44 @@ def test_would_conflict(
 ####################################################################
 #
 @pytest.mark.parametrize(
-    "sequence_set,expected,uid_cmd",
+    # XXX Consider making this a frozen data attr class so it is eaier to read.
+    "sequence_set,expected,uid_cmd,num_msgs",
     [
         (
             (2, (4, 7), 9, (12, "*")),
             {2, 4, 5, 6, 7, 9, 12, 13, 14, 15, 16, 17, 18, 19, 20},
             False,
+            20,
         ),
         (
             (("*", 4), (5, 7)),
             {4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20},
             False,
+            20,
         ),
         (
             (2, (4, 7), 9, (12, "*")),
             {2, 4, 5, 6, 7, 9, 12, 13, 14, 15, 16, 17, 18, 19, 20},
             True,
+            20,
         ),
         (
             (("*", 4), (5, 7)),
             {4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20},
             True,
+            20,
+        ),
+        (
+            ((1, "*")),
+            set(),
+            True,
+            0,
         ),
     ],
 )
-def test_msg_set_to_msg_seq_set(
-    sequence_set, expected, uid_cmd, mailbox_with_bunch_of_email: Mailbox
+@pytest.mark.asyncio
+async def test_msg_set_to_msg_seq_set(
+    sequence_set, expected, uid_cmd, num_msgs, imap_user_server
 ) -> None:
     """
     Make sure that we can properly convert a parsed "sequence set" in to a
@@ -1194,6 +1206,15 @@ def test_msg_set_to_msg_seq_set(
     newly created mailbox the message sequence numbers will be from 1 to 20,
     and the UID's will also be from 1 to 20.
     """
-    mbox = mailbox_with_bunch_of_email
+    NAME = "inbox"
+    server = imap_user_server
+    mbox = await server.get_mailbox(NAME)
+
+    # For this test we only need to set 'num_msgs', 'msg_keys', and 'uids' on
+    # the mailbox.
+    #
+    mbox.num_msgs = num_msgs
+    mbox.uids = list(range(1, num_msgs + 1))
+    mbox.msg_keys = list(range(1, num_msgs + 1))
     msg_set_as_set = mbox.msg_set_to_msg_seq_set(sequence_set, uid_cmd)
     assert msg_set_as_set == expected
