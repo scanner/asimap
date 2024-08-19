@@ -24,7 +24,7 @@ from ..generator import msg_as_string, msg_headers_as_string
 from ..mbox import mbox_msg_path
 from ..parse import _lit_ref_re
 from ..search import SearchContext
-from ..utils import UID_HDR, get_uidvv_uid, parsedate
+from ..utils import parsedate
 from .conftest import assert_email_equal
 
 
@@ -222,29 +222,28 @@ async def test_fetch_rfc822_size(mailbox_with_mimekit_email):
     assert uid_max
 
     expecteds = [
-        291,
-        309,
-        491,
-        632,
-        816,
-        1056,
-        1056,
-        624,
-        624,
-        # 28244,   # why did our body rfc822.size change from 28242 to 28244?
-        28242,
-        2479,
-        2477,
-        1479,
-        757,
-        1259,
-        9434,
-        623,
-        302,
-        505,
-        2724,
-        1391,
-        138447,
+        253,
+        271,
+        453,
+        594,
+        778,
+        1018,
+        1018,
+        586,
+        586,
+        28204,
+        2441,
+        2439,
+        1441,
+        719,
+        1221,
+        9396,
+        585,
+        264,
+        467,
+        2686,
+        1353,
+        138409,
     ]
 
     for msg_idx, (msg_key, expected) in enumerate(zip(msg_keys, expecteds)):
@@ -341,8 +340,7 @@ async def test_fetch_uid(mailbox_with_bunch_of_email):
 
     uid_by_msg: Dict[int, int] = {}
     for msg_key in msg_keys:
-        msg = await mbox.mailbox.aget_message(msg_key)
-        uid_vv, uid = get_uidvv_uid(msg[UID_HDR])
+        uid_vv, uid = mbox.get_uid_from_msg(msg_key)
         uid_by_msg[msg_key] = uid
 
     for msg_idx, msg_key in enumerate(msg_keys):

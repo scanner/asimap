@@ -249,7 +249,7 @@ async def test_authenticated_client_handler_commands(
             "* 1 EXPUNGE",
             "A009 OK RENAME command completed",
         ],
-        ["* 0 EXISTS", "* 0 RECENT", "A001 OK NOOP command completed"],
+        ["A001 OK NOOP command completed"],
         ["A010 NO You are not allowed to delete the inbox"],
         ["A011 NO No such mailbox: 'bar'"],
         ["A012 OK CREATE command completed"],

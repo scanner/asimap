@@ -711,7 +711,6 @@ class Mailbox:
         # (will only be one for conflicting commands)
         #
         self.executing_tasks = []
-
         while True:
             try:
                 # Block until we have an IMAP Command that wants to run on this
@@ -1051,7 +1050,6 @@ class Mailbox:
         # function except the management task. So the only thing it would
         # conflict with is the destitnation of a COPY command.
         #
-
         start_time = time.monotonic()
         self.last_resync = time.time()
 
@@ -1128,6 +1126,12 @@ class Mailbox:
             #
             if msg_keys == self.msg_keys:
                 self.mtime = start_mtime
+                marked = (
+                    True
+                    if self.sequences["unseen"] or self.sequences["Recent"]
+                    else False
+                )
+                self.marked(marked)
                 await self.commit_to_db()
                 return False
 
@@ -1253,14 +1257,16 @@ class Mailbox:
             await self.commit_to_db()
 
             end_time = time.monotonic()
-            logger.debug(
-                "Finished. Mailbox '%s', duration: %.3fs, num messages: %d, "
-                "num recent: %d",
-                self.name,
-                (end_time - start_time),
-                self.num_msgs,
-                self.num_recent,
-            )
+            duration = end_time - start_time
+            if duration > 0.01:
+                logger.debug(
+                    "Finished. Mailbox '%s', duration: %.3fs, num messages: "
+                    "%d, num recent: %d",
+                    self.name,
+                    duration,
+                    self.num_msgs,
+                    self.num_recent,
+                )
             return True
         finally:
             self.expiry = expiry
@@ -1632,7 +1638,19 @@ class Mailbox:
         self.subscribed = bool(self.subscribed)
         self.attributes = set(attributes.split(","))
         self.uids = [int(x) for x in uids.split(",")] if uids else []
-        self.msg_keys = [int(x) for x in msg_keys.split(",")] if uids else []
+        self.msg_keys = (
+            [int(x) for x in msg_keys.split(",")] if msg_keys else []
+        )
+        # To handle the initial migration for when we start storing all the
+        # message keys. `msg_keys` in the db will be an empty list, but uids
+        # will not be empty. Based on the rule that messages are only added to
+        # the mailbox by external systems, we can just read the msg keys from
+        # the folder, truncated to the length of the list of uid's.
+        #
+        if not self.msg_keys and self.uids:
+            msg_keys = await self.mailbox.akeys()
+            self.msg_keys = msg_keys[: len(self.uids)]
+            self.num_msgs = len(self.msg_keys)
 
         # And fill in the sequences we find for this mailbox.
         #

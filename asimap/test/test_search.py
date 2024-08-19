@@ -21,7 +21,7 @@ from dirty_equals import IsNow
 from ..constants import REVERSE_SYSTEM_FLAG_MAP, SYSTEM_FLAGS
 from ..generator import get_msg_size, msg_as_string
 from ..search import IMAPSearch, SearchContext
-from ..utils import UID_HDR, get_uidvv_uid, parsedate, utime
+from ..utils import parsedate, utime
 from .conftest import assert_email_equal
 
 
@@ -43,7 +43,7 @@ async def test_search_context(mailbox_instance):
     for idx, msg_key in enumerate(msg_keys):
         ctx = SearchContext(mbox, msg_key, idx + 1, seq_max, uid_max, sequences)
         mhmsg = await mbox.mailbox.aget_message(msg_key)
-        uid_vv, uid = get_uidvv_uid(mhmsg[UID_HDR])
+        uid_vv, uid = mbox.get_uid_from_msg(msg_key)
         assert uid == await ctx.uid()
         ctx._uid = None
         assert await ctx.internal_date() == IsNow(tz=timezone.utc)

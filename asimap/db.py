@@ -357,4 +357,5 @@ MIGRATIONS = [
     folders_can_be_subscribed,
     get_rid_of_root_folder,
     add_msg_keys_to_mbox,
+    get_rid_of_root_folder,  # For real this time.
 ]

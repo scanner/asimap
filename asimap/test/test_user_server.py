@@ -15,7 +15,7 @@ from dirty_equals import IsDatetime
 # Project imports
 #
 from ..client import Authenticated
-from ..mbox import Mailbox
+from ..mbox import Mailbox, NoSuchMailbox
 from ..parse import IMAPClientCommand
 from ..user_server import IMAPUserServer
 
@@ -157,6 +157,15 @@ async def test_check_folder(
     #
     await server.check_folder(mbox.name, 0, force=False)
     await server.check_folder(mbox.name, 0, force=True)
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_there_is_no_root_folder(imap_user_server):
+    server = imap_user_server
+    with pytest.raises(NoSuchMailbox):
+        await server.get_mailbox("")
 
 
 ####################################################################

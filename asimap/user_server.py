@@ -17,7 +17,7 @@ import re
 import socket
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta
 from mailbox import NoSuchMailboxError
 from pathlib import Path
 from statistics import fmean, median, stdev
@@ -464,12 +464,12 @@ class IMAPUserServer:
         self.active_commands: List[IMAPClientCommand] = []
 
         # The first time the user server starts up, when it does its initial
-        # folder scan, we subject the folders to a uid validation check to make
+        # folder scan, we subject the folders to do a force check to make
         # sure that everything is as it should be. This flag indicates that
         # this check should be done. It will be set to `False` after the
         # initial folder check has finished.
         #
-        # self.folder_uid_validity_check = True
+        self.initial_folder_scan = True
         self.last_full_check = 0.0
 
     ##################################################################
@@ -588,12 +588,12 @@ class IMAPUserServer:
             # Start the task that checks all folders
             #
             logger.debug("Starting initial `check_all_folders()`")
+            self.initial_folder_scan = True
             await self.check_all_folders()
+            self.initial_folder_scan = False
             self.last_full_check = time.monotonic()
-            # self.folder_uid_validity_check = False
             logger.debug("Completed initial `check_all_folders()`")
 
-            # self.last_full_check = 0.0
             self.folder_scan_task = asyncio.create_task(self.folder_scan())
 
             # Print the port we are listening on to stdout so that the parent
@@ -602,10 +602,6 @@ class IMAPUserServer:
             sys.stdout.write(f"{self.port}\n")
             sys.stdout.flush()
 
-            # Delay accepting connections for a short bit so that the initial
-            # folder check will have started.
-            #
-            # await asyncio.sleep(5)
             async with self.asyncio_server:
                 await self.asyncio_server.serve_forever()
 
@@ -707,10 +703,8 @@ class IMAPUserServer:
         #
         if not self.clients:
             self.expiry = time.monotonic() + 1800
-            self.log.debug(
-                "No more IMAP clients. Expiry set for %s",
-                datetime.fromtimestamp(self.expiry, timezone.utc).astimezone(),
-            )
+            expiry = datetime.now() + timedelta(seconds=1800)
+            self.log.debug("No more IMAP clients. Expiry set for %s", expiry)
 
         self.log.debug("IMAP Client task done (disconnected): %s", client.name)
 
@@ -764,7 +758,7 @@ class IMAPUserServer:
         if name.lower() == "inbox":
             name = "inbox"
 
-        if not self.folder_exists(name):
+        if not name.strip() or not self.folder_exists(name):
             raise NoSuchMailbox(f"No such mailbox: '{name}'")
 
         # If the mailbox is active we can return it immediately. If not then,
@@ -880,7 +874,7 @@ class IMAPUserServer:
         For every folder found on disk that does not exist in the database
         create an entry for it.
         """
-        start_time = time.time()
+        start_time = time.monotonic()
         extant_mboxes = {}
         async for row in self.db.query(
             "SELECT name, mtime FROM mailboxes ORDER BY name"
@@ -897,7 +891,9 @@ class IMAPUserServer:
                         tg.create_task(self.get_mailbox(dirname, expiry=0))
                         await asyncio.sleep(0)
 
-        logger.debug("Finished. Took %.3f seconds", time.time() - start_time)
+        logger.debug(
+            "Finished. Took %.3f seconds", time.monotonic() - start_time
+        )
 
     ##################################################################
     #
@@ -998,9 +994,7 @@ class IMAPUserServer:
 
                     try:
                         await self.check_folder(
-                            mbox_name,
-                            mtime,
-                            # force=self.folder_uid_validity_check,
+                            mbox_name, mtime, force=self.initial_folder_scan
                         )
                     except asyncio.CancelledError:
                         logger.info("Cancelled")
