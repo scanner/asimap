@@ -294,6 +294,10 @@ class BaseClientHandler:
         Arguments:
         - `msg`: The message to send to the client in the BYE.
         """
+        if self.mbox:
+            self.mbox.unselected(self.client.name)
+            self.mbox = None
+
         await self.client.push(f"* BYE {msg}\r\n")
         await self.client.close()
 
@@ -559,6 +563,16 @@ class Authenticated(BaseClientHandler):
         #
         self.fetch_while_pending_count = 0
 
+        # How many times this client has done a 'SELECT' while already having
+        # selected the folder that it wants to 'SELECT'. Apple's Mail.app every
+        # now and then goes in to spazzes where it spends 30 minutes spamming
+        # "SELECT" on the same connection over and over again. It is like it
+        # does not see the response.
+        #
+        # If they do it too often in we will forcibly disconnect the client.
+        #
+        self.select_while_selected_count = 0
+
     #########################################################################
     #
     async def do_noop(self, cmd: IMAPClientCommand):
@@ -609,6 +623,21 @@ class Authenticated(BaseClientHandler):
         if self.state == ClientState.SELECTED:
             self.state = ClientState.AUTHENTICATED
             if self.mbox:
+
+                # Check if they are spamming SELECT. If they are, then dismiss
+                # them.
+                #
+                if self.mbox.name == cmd.mailbox_name:
+                    self.select_while_selected_count += 1
+                    if self.select_while_selected_count > 10:
+                        self.select_while_selected_count = 0
+                        self.unceremonious_bye(
+                            "You are SELECTING the same mailbox too often."
+                        )
+                        return
+
+                # Otherwise, unselect the selected mailbox and move on.
+                #
                 self.mbox.unselected(self.client.name)
                 self.mbox = None
 
@@ -646,6 +675,7 @@ class Authenticated(BaseClientHandler):
         if self.state != ClientState.SELECTED:
             raise No("Client must be in the selected state")
 
+        self.select_while_selected_count = 0
         if self.mbox:
             self.mbox.unselected(self.client.name)
             self.mbox = None
