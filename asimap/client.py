@@ -635,6 +635,8 @@ class Authenticated(BaseClientHandler):
                             "You are SELECTING the same mailbox too often."
                         )
                         return
+                else:
+                    self.select_while_selected_count = 0
 
                 # Otherwise, unselect the selected mailbox and move on.
                 #
