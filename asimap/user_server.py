@@ -817,7 +817,7 @@ class IMAPUserServer:
         async with self.activating_mailboxes_lock:
             del self.activating_mailboxes[name]
         duration = time.monotonic() - inst_start
-        if duration > 0.1:
+        if duration > 3:
             logger.debug(
                 "Instantiated mailbox '%s', took: %.3fs", name, duration
             )

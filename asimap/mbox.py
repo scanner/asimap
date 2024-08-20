@@ -483,14 +483,8 @@ class Mailbox:
                 for cmd in self.executing_tasks:
                     if not imap_cmd.fetch_peek:
                         match cmd.command:
-                            case (
-                                IMAPCommand.EXAMINE
-                                | IMAPCommand.NOOP
-                                | IMAPCommand.SEARCH
-                                | IMAPCommand.SELECT
-                                | IMAPCommand.STATUS
-                            ):
-                                # no peek fetch's will conflict with any
+                            case IMAPCommand.SEARCH:
+                                # non-peek fetch's will conflict with any
                                 # command that depends on overall message
                                 # state.
                                 #
@@ -505,10 +499,6 @@ class Mailbox:
                                 # operating on the same messages.
                                 if intersect(imap_cmd, cmd):
                                     return True
-                            case _:
-                                raise RuntimeError(
-                                    f"Unhandled case FETCH vs {cmd.command}"
-                                )
                     else:
                         # A FETCH PEEK will still conflict with a STORE if they
                         # intersect (although maybe they should only conflict
@@ -523,14 +513,19 @@ class Mailbox:
 
                 return False
 
-            case IMAPCommand.NOOP:
-                # No-op conflicts with nothing except for the conflicting
+            case (
+                IMAPCommand.NOOP
+                | IMAPCommand.SELECT
+                | IMAPCommand.STATUS
+                | IMAPCommand.EXAMINE
+            ):
+                # These conflict with nothing except for the conflicting
                 # commands.
                 #
                 return False
 
-            case IMAPCommand.SEARCH | IMAPCommand.SELECT | IMAPCommand.STATUS:
-                # SEARCH, SELECT, STATUS can not run if the other currently
+            case IMAPCommand.SEARCH:
+                # SEARCH can not run if the other currently
                 # executing commands do alter message state. This means:
                 # - STORE
                 # - FETCH, fetch_peek=False
@@ -555,13 +550,7 @@ class Mailbox:
                 #
                 for cmd in self.executing_tasks:
                     match cmd.command:
-                        case (
-                            IMAPCommand.EXAMINE
-                            | IMAPCommand.NOOP
-                            | IMAPCommand.SEARCH
-                            | IMAPCommand.SELECT
-                            | IMAPCommand.STATUS
-                        ):
+                        case IMAPCommand.SEARCH:
                             return True
                         case (
                             IMAPCommand.STORE
@@ -1015,16 +1004,6 @@ class Mailbox:
             if start_mtime <= self.mtime and self.optional_resync and optional:
                 await self.commit_to_db()
                 return False
-
-            logger.debug(
-                "mailbox: '%s', arg optional: %s, optional_resync: %s, "
-                "start mtime: %d, self.mtime: %d",
-                self.name,
-                optional,
-                self.optional_resync,
-                start_mtime,
-                self.mtime,
-            )
 
             # We always reset `optional_resync` once we begin a non-optional
             # resync
