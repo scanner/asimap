@@ -1665,9 +1665,6 @@ class Mailbox:
         Arguments:
         - `client`: The client that has selected this mailbox.
         """
-        if client.name in self.clients:
-            raise No(f"Mailbox '{self.name}' is already selected")
-
         if r"\Noselect" in self.attributes:
             raise No(f"You can not select the mailbox '{self.name}'")
 
@@ -1675,10 +1672,15 @@ class Mailbox:
         #
         self.expiry = None
 
-        # Add the client to the mailbox _after_ we do the resync. This way
-        # we will not potentially send EXISTS and RECENT messages to the
-        # client twice.
-        #
+        if client.name in self.clients and self.clients[client.name] != client:
+            logger.warning(
+                "Mailbox: '%s': client %s already in clients, but it is a "
+                "different client: %s",
+                self.name,
+                client.name,
+                self.clients[client.name],
+            )
+
         self.clients[client.name] = client
 
         # Now send back messages to this client that it expects upon

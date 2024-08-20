@@ -591,7 +591,7 @@ class IMAPUserServer:
             # Let the initial folder scan begin before we accept any clients to
             # give it a head start.
             #
-            await asyncio.sleep(1)
+            await asyncio.sleep(2)
 
             # Print the port we are listening on to stdout so that the parent
             # process gets this information.

@@ -322,7 +322,7 @@ def imap_server(
     client_ssl_context = ssl.create_default_context()
     ca.configure_trust(client_ssl_context)
     imap = imaplib.IMAP4_SSL(
-        host=host, port=port, ssl_context=client_ssl_context, timeout=2
+        host=host, port=port, ssl_context=client_ssl_context, timeout=10
     )
 
     yield {"client": imap, "user": user, "password": password, "server": server}
@@ -526,9 +526,11 @@ async def imap_user_server_and_client(imap_user_server, imap_client_proxy):
     """
     server = imap_user_server
     client_proxy = await imap_client_proxy()
-    yield (server, client_proxy)
-    # Give various tasks a chance to shutdown after being cancelled.
-    await asyncio.sleep(0.1)
+    try:
+        yield (server, client_proxy)
+    finally:
+        # Give various tasks a chance to shutdown after being cancelled.
+        await asyncio.sleep(0.5)
 
 
 ####################################################################

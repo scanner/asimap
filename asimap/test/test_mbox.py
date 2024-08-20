@@ -211,9 +211,6 @@ async def test_mbox_selected_unselected(
     results = [x.strip() for x in results]
     assert expected == results
 
-    with pytest.raises(No):
-        await mbox.selected(imap_client_proxy.cmd_processor)
-
     mbox.unselected(imap_client_proxy.cmd_processor.name)
 
     results = await mbox.selected(imap_client_proxy.cmd_processor)
