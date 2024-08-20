@@ -15,6 +15,7 @@ import shutil
 import stat
 import time
 from collections import defaultdict
+from copy import copy
 from datetime import datetime
 from mailbox import FormatError, MHMessage, NoSuchMailboxError, NotEmptyError
 from pathlib import Path
@@ -2028,7 +2029,7 @@ class Mailbox:
 
         try:
             seq_max = self.num_msgs
-            uid_max = self.uids[-1]
+            uid_max = self.uids[-1] if self.uids else 1
 
             # Go through each message and apply the fetch_ops.fetch() to it
             # building up a set of data to respond to the client with. Remember
@@ -2348,7 +2349,7 @@ class Mailbox:
             #     sequences under lock folder, and update that in parallel with
             #     the above code.
             #
-            await self.mailbox.aset_sequences(self.sequences)
+            await self.mailbox.aset_sequences(copy(self.sequences))
 
         await self._dispatch_or_pend_notifications(
             notifications, dont_notify=dont_notify
