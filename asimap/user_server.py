@@ -587,14 +587,11 @@ class IMAPUserServer:
 
             # Start the task that checks all folders
             #
-            logger.debug("Starting initial `check_all_folders()`")
-            self.initial_folder_scan = True
-            await self.check_all_folders()
-            self.initial_folder_scan = False
-            self.last_full_check = time.monotonic()
-            logger.debug("Completed initial `check_all_folders()`")
-
             self.folder_scan_task = asyncio.create_task(self.folder_scan())
+            # Let the initial folder scan begin before we accept any clients to
+            # give it a head start.
+            #
+            await asyncio.sleep(1)
 
             # Print the port we are listening on to stdout so that the parent
             # process gets this information.
@@ -655,6 +652,7 @@ class IMAPUserServer:
                 now = time.monotonic()
                 if now - self.last_full_check > 300:
                     await self.check_all_folders()
+                    self.initial_folder_scan = False
                     self.last_full_check = time.monotonic()
 
                 # At the end of loop see if we have hit our lifetime expiry.
@@ -817,7 +815,7 @@ class IMAPUserServer:
         async with self.activating_mailboxes_lock:
             del self.activating_mailboxes[name]
         duration = time.monotonic() - inst_start
-        if duration > 0.1:
+        if duration > 3:
             logger.debug(
                 "Instantiated mailbox '%s', took: %.3fs", name, duration
             )

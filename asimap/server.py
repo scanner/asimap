@@ -883,13 +883,16 @@ class IMAPSubprocessInterface:
             async with asyncio.timeout(300):
                 await self.subprocess.has_port.wait()
         except asyncio.TimeoutError:
-            logger.warning(
+            logger.error(
                 "IMAPClient %s, username '%s' - timed out waiting for "
                 "existing sub-process to have a port we can connect to: %s",
                 self.imap_client.name,
                 user.username,
                 self.subprocess,
             )
+            # XXX We should delete the subprocess from the list of subprocesses
+            #     and make sure it is dead.
+            #
             raise
 
         # And initiate a connection to the subprocess.

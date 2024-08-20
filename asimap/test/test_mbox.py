@@ -848,6 +848,11 @@ async def test_append_when_other_msgs_also_added():
     assert False
 
 
+####################################################################
+#
+# Dataclass used for scenarios of testing which IMAP Commands would conflict
+# with each other.
+#
 @dataclass(frozen=True)
 class IMAPCommandConflictScenario:
     """
@@ -985,16 +990,16 @@ FETCH_VS_MBOX_STATE_CMDS = [
             imap_command=IMAPClientCommand("A002 FETCH 3 BODY[HEADER]").parse(),
             executing_commands=[IMAPClientCommand(x).parse()],
             sequences={},
-            would_conflict=True,
+            would_conflict=conflicting,
         ),
         id=f"fetch_{x.split(' ')[1]}_peek",
     )
-    for x in [
-        "A001 EXAMINE foo",
-        "A001 NOOP",
-        "A001 SEARCH unseen",
-        "A001 SELECT foo",
-        "A001 STATUS foo (RECENT)",
+    for x, conflicting in [
+        ("A001 EXAMINE foo", False),
+        ("A001 NOOP", False),
+        ("A001 SEARCH unseen", True),
+        ("A001 SELECT foo", False),
+        ("A001 STATUS foo (RECENT)", False),
     ]
 ]
 
@@ -1027,7 +1032,7 @@ FETCH_VS_COPY_FETCH_STORE = [
             sequences={},
             would_conflict=conflicting,
         ),
-        id=f"fetch_{cmd.split(' ')[3]}{executing_cmd.split(' ')[1]}_{conflicting}",
+        id=f"fetch_{cmd.split(' ')[3]}_{executing_cmd.split(' ')[1]}_{conflicting}",
     )
     for cmd, conflicting, executing_cmd in [
         ["A002 FETCH 3 BODY[HEADER]", True, "A001 COPY 2:4 bar"],
@@ -1042,10 +1047,13 @@ FETCH_VS_COPY_FETCH_STORE = [
     ]
 ]
 
+# I know this is 'search, select, status vs fetch, store. However have decided
+# to let SELECT and STATUS not conflict with FETCH, STORE.
+#
 SEARCH_SELECT_STATUS: List[str] = [
     "A002 SEARCH unseen",
-    "A002 SELECT foo",
-    "A002 STATUS foo (RECENT)",
+    # "A002 SELECT foo",
+    # "A002 STATUS foo (RECENT)",
 ]
 FETCH_STORE: List[Tuple[bool, str]] = [
     (False, "A001 NOOP"),
@@ -1062,7 +1070,7 @@ SEARCH_SELECT_STATUS_VS_FETCH_STORE = [
             sequences={},
             would_conflict=conflicting,
         ),
-        id=f"{cmd.split(' ')[1]}{executing_cmd.split(' ')[1]}_{conflicting}",
+        id=f"{cmd.split(' ')[1]}_{executing_cmd.split(' ')[1]}_{conflicting}",
     )
     for cmd, conflicting, executing_cmd in [
         [c, e[0], e[1]] for c in SEARCH_SELECT_STATUS for e in FETCH_STORE
@@ -1075,16 +1083,16 @@ STORE_VS_EXAMINE_NOOP_SEARCH_SELECT_STATUS = [
             imap_command=IMAPClientCommand("A002 STORE 3 FLAGS unseen").parse(),
             executing_commands=[IMAPClientCommand(x).parse()],
             sequences={},
-            would_conflict=True,
+            would_conflict=conflicting,
         ),
         id=f"store_vs_{x.split(' ')[1]}",
     )
-    for x in [
-        "A001 EXAMINE foo",
-        "A001 NOOP",
-        "A001 SEARCH unseen",
-        "A001 SELECT foo",
-        "A001 STATUS foo (RECENT)",
+    for x, conflicting in [
+        ("A001 EXAMINE foo", False),
+        ("A001 NOOP", False),
+        ("A001 SEARCH unseen", True),
+        ("A001 SELECT foo", False),
+        ("A001 STATUS foo (RECENT)", False),
     ]
 ]
 
