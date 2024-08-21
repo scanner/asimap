@@ -14,6 +14,7 @@ import logging
 import os
 import os.path
 import re
+import signal
 import socket
 import sys
 import time
@@ -34,6 +35,7 @@ from sentry_sdk.integrations.asyncio import AsyncioIntegration
 import asimap
 import asimap.mbox
 import asimap.message_cache
+import asimap.trace
 
 from .client import Authenticated
 from .db import Database
@@ -41,7 +43,7 @@ from .exceptions import MailboxInconsistency
 from .mbox import Mailbox, NoSuchMailbox
 from .mh import MH
 from .parse import BadCommand, IMAPClientCommand
-from .trace import trace
+from .trace import toggle_trace, trace
 
 if TYPE_CHECKING:
     from _typeshed import StrPath
@@ -114,10 +116,8 @@ class IMAPClientProxy:
         port: int,
         reader: asyncio.StreamReader,
         writer: asyncio.StreamWriter,
-        trace_enabled: Optional[bool] = False,
     ):
         self.log = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-        self.trace_enabled = trace_enabled
         self.client_num = client_num
         self.name = name
         self.rem_addr = rem_addr
@@ -164,7 +164,7 @@ class IMAPClientProxy:
               command at a time.
 
         XXX This needs to handle all exceptions since it is the root
-            of an asyncio task.
+            of an asyncio task, and shutdown and exit on CancelledError.
         """
         msg: bytes
         try:
@@ -309,6 +309,7 @@ class IMAPClientProxy:
         msg -- a dict that contains the rest of the message to trace log
         """
         msg["connection"] = self.name
+        msg["remote"] = f"{self.rem_addr}:{self.port}"
         msg["msg_type"] = msg_type
         trace(msg)
 
@@ -350,10 +351,15 @@ class IMAPClientProxy:
                 )
                 self.writer.close()
 
-        if self.trace_enabled:
-            for d in data:
-                msg = str(d, "latin-1") if isinstance(d, bytes) else d
-                self.trace("SEND", {"data": msg})
+        if asimap.trace.TRACE_ENABLED:
+            try:
+                for d in data:
+                    msg = str(d, "latin-1") if isinstance(d, bytes) else d
+                    self.trace("SEND", {"data": msg})
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.exception("Error sending trace: %s", e)
 
     ##################################################################
     #
@@ -382,7 +388,6 @@ class IMAPUserServer:
         self,
         maildir: Path,
         debug: Optional[bool] = False,
-        trace_enabled: Optional[bool] = False,
     ):
         """
         Setup our dispatcher.. listen on a port we are supposed to accept
@@ -395,7 +400,6 @@ class IMAPUserServer:
         """
         self.maildir = maildir
         self.debug = debug
-        self.trace_enabled = trace_enabled
 
         self.log = logging.getLogger(
             "%s.%s" % (__name__, self.__class__.__name__)
@@ -521,9 +525,8 @@ class IMAPUserServer:
         cls,
         maildir: Path,
         debug: Optional[bool] = False,
-        trace_enabled: Optional[bool] = False,
     ) -> "IMAPUserServer":
-        user_server = cls(maildir, debug=debug, trace_enabled=trace_enabled)
+        user_server = cls(maildir, debug=debug)
 
         # A handle to the sqlite3 database where we store our persistent
         # information.
@@ -593,6 +596,11 @@ class IMAPUserServer:
                 "Not initializing sentry_sdk: SENTRY_DSN not in enviornment"
             )
 
+        # Listen to SIGUSR1 to toggle tracing on and office
+        #
+        loop = asyncio.get_event_loop()
+        loop.add_signal_handler(signal.SIGUSR1, toggle_trace)
+
         # Listen on localhost for connections from the main server process.
         #
         self.asyncio_server = await asyncio.start_server(
@@ -654,7 +662,6 @@ class IMAPUserServer:
             port,
             reader,
             writer,
-            trace_enabled=self.trace_enabled,
         )
         task = asyncio.create_task(client_handler.run(), name=name)
         task.add_done_callback(self.client_done)

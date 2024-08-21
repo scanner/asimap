@@ -82,8 +82,8 @@ logger = logging.getLogger("asimap.asimapd_user")
 
 #############################################################################
 #
-async def create_and_start_user_server(maildir: Path, debug: bool, trace: bool):
-    server = await IMAPUserServer.new(maildir, debug=debug, trace_enabled=trace)
+async def create_and_start_user_server(maildir: Path, debug: bool):
+    server = await IMAPUserServer.new(maildir, debug=debug)
     await server.run()
 
 
@@ -113,12 +113,10 @@ def main():
     )
 
     if trace:
-        logger.debug("Tracing enabled")
-        asimap.trace.TRACE_ENABLED = True
-        asimap.trace.trace({"trace_format": "1.0"})
+        asimap.trace.toggle_trace(turn_on=True)
 
     try:
-        asyncio.run(create_and_start_user_server(maildir, debug, trace))
+        asyncio.run(create_and_start_user_server(maildir, debug))
     except KeyboardInterrupt:
         logger.warning("Keyboard interrupt, exiting, user: %s", username)
     except Exception as e:

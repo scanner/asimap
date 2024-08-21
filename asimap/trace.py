@@ -8,20 +8,24 @@ The support for writing (and eventually reading) trace files.
 Defines a method for setting up the trace writer and writing messages
 to trace writer if it has been initialized.
 """
+
 import logging
 import logging.handlers
 
 # system imports
 #
 import time
+from typing import Any, Dict, Optional
 
 trace_logger = logging.getLogger("asimap.trace")
+logger = logging.getLogger("asimap.trace_logger")
+
 TRACE_ENABLED = False
 
 # Trace message timestamps are seconds.microseconds relative to the first
 # logged message for the life time of a user subprocess.
 #
-TRACE_START_TIME = time.time()
+TRACE_START_TIME = time.monotonic()
 TRACE_LAST_TIME = 0.0
 
 # ########################################################################
@@ -100,14 +104,49 @@ TRACE_LAST_TIME = 0.0
 
 ####################################################################
 #
-def trace(msg):
+def toggle_trace(turn_on: Optional[bool] = None) -> None:
+    """
+    If `turn_on` is True, tracing is turned on.
+    If `turn_on` is False, tracing is truned off.
+    If `turn_on` is None, tracing is toggled: Turned on if it is off,
+                          turned off it is on.
+    """
+    global TRACE_ENABLED, TRACE_LAST_TIME, TRACE_START_TIME
+    if turn_on is None:
+        match turn_on:
+            case True:
+                if TRACE_ENABLED is False:
+                    TRACE_ENABLED = True
+                    logger.info("Tracing is enabled")
+                    TRACE_START_TIME = time.monotonic()
+                    TRACE_LAST_TIME = 0.0
+                    trace({"trace_format": "1.0"})
+            case False:
+                if TRACE_ENABLED is True:
+                    TRACE_ENABLED = False
+                    logger.info("Tracing is disabled")
+            case None:
+                if TRACE_ENABLED is True:
+                    TRACE_ENABLED = False
+                    logger.info("Tracing is disabled")
+                else:
+                    TRACE_ENABLED = True
+                    logger.info("Tracing is enabled")
+                    TRACE_START_TIME = time.monotonic()
+                    TRACE_LAST_TIME = 0.0
+                    trace({"trace_format": "1.0"})
+
+
+####################################################################
+#
+def trace(msg: Dict[str, Any]) -> None:
     """
     Keyword Arguments:
     msg --
     """
-    global TRACE_LAST_TIME
+    global TRACE_ENABLED, TRACE_LAST_TIME, TRACE_START_TIME
     if TRACE_ENABLED:
-        now = time.time() - TRACE_START_TIME
+        now = time.monotonic() - TRACE_START_TIME
         trace_delta_time = now - TRACE_LAST_TIME
         TRACE_LAST_TIME = now
         msg["trace_time"] = now
