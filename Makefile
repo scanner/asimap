@@ -59,7 +59,7 @@ restart:	## docker compose restart for the `dev` profile
 	@docker compose --profile dev restart
 
 shell:	## Make a bash shell an ephemeral dev container
-	@docker compose run --rm imap-dev /bin/bash
+	@docker compose exec -ti asimap-dev /bin/bash
 
 exec_shell: ## Make a bash shell in the docker-compose running imap-dev container
 	@docker compose exec imap-dev /bin/bash

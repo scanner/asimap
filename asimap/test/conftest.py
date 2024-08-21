@@ -494,8 +494,9 @@ async def imap_client_proxy(faker, mocker, imap_user_server):
         )
         reader = asyncio.StreamReader()
         imap_client_proxy = IMAPClientProxy(
-            server, name, rem_addr, port, reader, writer
+            server, name, server.next_client_num, rem_addr, port, reader, writer
         )
+        server.next_client_num += 1
         mocker.patch.object(imap_client_proxy, "push", mocker.AsyncMock())
         writers.append(writer)
         return imap_client_proxy

@@ -11,7 +11,7 @@ import sys
 import time
 from enum import StrEnum
 from itertools import count, groupby
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 # asimapd imports
 #
@@ -96,6 +96,12 @@ class BaseClientHandler:
         self.name: str = client.name
         self.mbox: Optional[Mailbox] = None
 
+        self.server: Optional[IMAPUserServer] = None
+
+        # If the client sends its IMAP ID we record it as a dict
+        #
+        self.client_id: Optional[Dict[str, str]] = None
+
         # Idling is like a sub-state. When we are idling we expect a 'DONE'
         # completion from the IMAP client before it sends us any other
         # message. However during this time the server may still send async
@@ -128,7 +134,7 @@ class BaseClientHandler:
         """
         if self.mbox:
             logger.debug(
-                "START: Client: %s, State: '%s', mbox: '%s', IMAP Command: %s",
+                "START: %s, '%s', '%s', '%s'",
                 self.client.name,
                 self.state.value,
                 self.mbox.name,
@@ -136,11 +142,13 @@ class BaseClientHandler:
             )
         else:
             logger.debug(
-                "START: Client: %s, State: '%s', IMAP Command: %s",
+                "START: %s, '%s', '%s'",
                 self.client.name,
                 self.state.value,
                 imap_command,
             )
+        if self.server and imap_command.command:
+            self.server.num_rcvd_commands[imap_command.command] += 1
 
         # Since the imap command was properly parsed we know it is a valid
         # command. If it is one we support there will be a method
@@ -178,16 +186,22 @@ class BaseClientHandler:
                     imap_command
                 )
         except No as e:
+            if self.server and imap_command.command:
+                self.server.num_failed_commands[imap_command.command] += 1
             result = f"{imap_command.tag} NO {e}\r\n"
             await self.client.push(result)
             logger.debug(result.strip())
             return
         except Bad as e:
+            if self.server and imap_command.command:
+                self.server.num_failed_commands[imap_command.command] += 1
             result = f"{imap_command.tag} BAD {e}\r\n"
             await self.client.push(result)
             logger.debug(result.strip())
             return
         except asyncio.TimeoutError:
+            if self.server and imap_command.command:
+                self.server.num_failed_commands[imap_command.command] += 1
             result = f"{imap_command.tag} BAD Command timed out: '{imap_command.qstr()}'"
             try:
                 await self.client.push(result)
@@ -210,6 +224,8 @@ class BaseClientHandler:
         except asyncio.CancelledError:
             raise
         except Exception as e:
+            if self.server and imap_command.command:
+                self.server.num_failed_commands[imap_command.command] += 1
             result = f"{imap_command.tag} BAD Unhandled exception: {e}"
             try:
                 await self.client.push(result.strip())
@@ -222,10 +238,10 @@ class BaseClientHandler:
             cmd_duration = time.time() - start_time
             if cmd_duration > 1.0:
                 logger.debug(
-                    "FINISH: Client: %s, IMAP Command '%s' took %.3f seconds",
+                    "FINISH: %s, took %.3f seconds: '%s'",
                     self.client.name,
-                    imap_command.qstr(),
                     cmd_duration,
+                    imap_command.qstr(),
                 )
 
         # If there was no result from running this command then everything went
@@ -631,6 +647,12 @@ class Authenticated(BaseClientHandler):
                     self.select_while_selected_count += 1
                     if self.select_while_selected_count > 10:
                         self.select_while_selected_count = 0
+                        logger.warning(
+                            "%s, mailbox: '%s': excessive selects while selected, count: %d",
+                            self.client.name,
+                            self.mbox.name,
+                            self.select_while_selected_count,
+                        )
                         self.unceremonious_bye(
                             "You are SELECTING the same mailbox too often."
                         )
@@ -832,7 +854,7 @@ class Authenticated(BaseClientHandler):
         """
         await self.send_pending_notifications()
 
-        mbox = await self.server.get_mailbox(cmd.mailbox_name, expiry=45)
+        mbox = await self.server.get_mailbox(cmd.mailbox_name, expiry=5)
         result: List[str] = []
         async with cmd.ready_and_okay(mbox):
             for att in cmd.status_att_list:
@@ -1055,7 +1077,7 @@ class Authenticated(BaseClientHandler):
                 self.optional_resync = False
                 self.full_search = True
                 self.server.msg_cache.clear_mbox(self.mbox.name)
-                logger.warning("Mailbox %s: %s", self.mbox.name, str(e))
+                logger.warning("Mailbox '%s': %s", self.mbox.name, str(e))
 
     ##################################################################
     #
