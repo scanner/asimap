@@ -17,6 +17,7 @@ import re
 import socket
 import sys
 import time
+from collections import Counter
 from datetime import datetime, timedelta
 from mailbox import NoSuchMailboxError
 from pathlib import Path
@@ -53,6 +54,9 @@ logger = logging.getLogger("asimap.user_server")
 BACKLOG = 5
 USER_SERVER_PROGRAM: str = ""
 RE_LITERAL_STRING_START = re.compile(rb"\{(\d+)(\+)?\}$")
+
+TIME_BETWEEN_FULL_FOLDER_SCANS = 300
+TIME_BETWEEN_METRIC_DUMPS = 60
 
 
 ####################################################################
@@ -105,6 +109,7 @@ class IMAPClientProxy:
         self,
         server: "IMAPUserServer",
         name: str,
+        client_num: int,
         rem_addr: str,
         port: int,
         reader: asyncio.StreamReader,
@@ -113,12 +118,16 @@ class IMAPClientProxy:
     ):
         self.log = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self.trace_enabled = trace_enabled
+        self.client_num = client_num
         self.name = name
         self.rem_addr = rem_addr
         self.port = port
         self.reader = reader
         self.writer = writer
         self.server = server
+        # XXX if the main server got a client's id info via ID, it should pass
+        #     it on to the subprocess like it should pass on the original
+        #     source ip & port.
         self.cmd_processor = Authenticated(self, self.server)
 
     ####################################################################
@@ -261,8 +270,7 @@ class IMAPClientProxy:
                 #
                 if self.cmd_processor.state == "logged_out":
                     self.log.info(
-                        "Client %s has logged out of the subprocess"
-                        % self.log_string()
+                        "Client %s has logged out" % self.log_string()
                     )
                     return
 
@@ -353,7 +361,7 @@ class IMAPClientProxy:
         """
         format the username/remote address/port as a string
         """
-        return f"from {self.name}"
+        return self.name
 
 
 ##################################################################
@@ -463,6 +471,13 @@ class IMAPUserServer:
         self.commands_in_progress: int = 0
         self.active_commands: List[IMAPClientCommand] = []
 
+        # We keep track of how many commands of which type we have received,
+        # how many have failed, etc. These are for basic stats that will be
+        # logged at level INFO
+        #
+        self.num_rcvd_commands: Counter[str] = Counter()
+        self.num_failed_commands: Counter[str] = Counter()
+
         # The first time the user server starts up, when it does its initial
         # folder scan, we subject the folders to do a force check to make
         # sure that everything is as it should be. This flag indicates that
@@ -471,6 +486,14 @@ class IMAPUserServer:
         #
         self.initial_folder_scan = True
         self.last_full_check = 0.0
+
+        # To give individual client connections a more easily read name then
+        # '120.0.1:<port number>' we will keep an incrementing integer. We plan
+        # to also include the client's actual source address when we add
+        # support for that but this is to make our logs easier to read so you
+        # can tell which client is sending which command.
+        #
+        self.next_client_num = 1
 
     ##################################################################
     #
@@ -588,6 +611,7 @@ class IMAPUserServer:
             # Start the task that checks all folders
             #
             self.folder_scan_task = asyncio.create_task(self.folder_scan())
+
             # Let the initial folder scan begin before we accept any clients to
             # give it a head start.
             #
@@ -618,11 +642,14 @@ class IMAPUserServer:
         future communications with the new client.
         """
         rem_addr, port = writer.get_extra_info("peername")
-        name = f"{rem_addr}:{port}"
-        self.log.debug(f"New IMAP client proxy: {name}")
+        client_num = self.next_client_num
+        self.next_client_num += 1
+        name = f"client-{client_num:08d}"
+        self.log.info(f"New IMAP client: {name}({rem_addr}:{port})")
         client_handler = IMAPClientProxy(
             self,
             name,
+            client_num,
             rem_addr,
             port,
             reader,
@@ -636,21 +663,59 @@ class IMAPUserServer:
 
     ####################################################################
     #
+    def dump_metrics(self):
+        """
+        Dump the metrics we have collected to the logs (and any metrics
+        exporter when we hook that up), and reset the counters after dumping
+        the metrics.
+        """
+        cmds = ", ".join(
+            [f"{x}: {y}" for x, y in self.num_rcvd_commands.most_common()]
+        )
+        failed_cmds = ", ".join(
+            [f"{x}: {y}" for x, y in self.num_failed_commands.most_common()]
+        )
+        logger.info("Count of commands: %s", cmds)
+        logger.info(
+            "Count of total number of commands: %d",
+            self.num_rcvd_commands.total(),
+        )
+        logger.info("Count of failed commands: %s", failed_cmds)
+        logger.info(
+            "Count of total number of failed commands: %d",
+            self.num_failed_commands.total(),
+        )
+
+        self.num_rcvd_commands.clear()
+        self.num_failed_commands.clear()
+
+    ####################################################################
+    #
     async def folder_scan(self):
         """
         at regular intervals we need to scan all the inactive folders to
         see if any new mail has arrived.
         """
         logger.debug("Folder scan task is starting")
+        last_metrics_dump = time.monotonic()
         try:
             while True:
                 await self.expire_inactive_folders()
 
+                now = time.monotonic()
+                if now - last_metrics_dump > TIME_BETWEEN_METRIC_DUMPS:
+                    self.dump_metrics()
+                    logger.info(
+                        "Number of active mailboxes: %d",
+                        len(self.active_mailboxes),
+                    )
+                    logger.info("Number of clients: %d", len(self.clients))
+                    last_metrics_dump = now
+
                 # If it has been more than <n> seconds since a full scan, then
                 # do a full scan.
                 #
-                now = time.monotonic()
-                if now - self.last_full_check > 300:
+                if now - self.last_full_check > TIME_BETWEEN_FULL_FOLDER_SCANS:
                     await self.check_all_folders()
                     self.initial_folder_scan = False
                     self.last_full_check = time.monotonic()
