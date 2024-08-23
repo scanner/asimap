@@ -327,21 +327,15 @@ class Mailbox:
         # database (and if there are none, then create an entry in the
         # db for this mailbox.)
         #
-        new_mbox = not await mbox._restore_from_db()
+        await mbox._restore_from_db()
 
         # If this new mbox has `\Noselect` then it is essentially a deleted
         # mailbox. We will return it but we will not check for new messages and
         # we will not create a management task.
         #
         if r"\Noselect" not in mbox.attributes:
-            # IF this is a new mbox then not only should the next resync be
-            # non-optional, we should start looking for foreign keys from the
-            # start of the mailbox. Since it is new it is likely that every
-            # message is "foreign".
-            #
             async with mbox.mailbox.lock_folder():
-                await mbox.check_new_msgs_and_flags(optional=new_mbox)
-
+                await mbox.check_new_msgs_and_flags(optional=False)
             mbox.mgmt_task = asyncio.create_task(
                 mbox.management_task(), name=f"mbox '{mbox.name}' mgmt task"
             )
@@ -758,6 +752,7 @@ class Mailbox:
                     self.name,
                     e,
                 )
+                return
             except asyncio.CancelledError:
                 self.expiry = 0.0
                 return
@@ -861,7 +856,8 @@ class Mailbox:
         # A mailbox gets '\Marked' if it has any unseen messages or
         # '\Recent' messages.
         #
-        self.marked(seq["unseen"] or seq["Recent"])
+        marked = True if seq["unseen"] or seq["Recent"] else False
+        self.marked(marked)
 
         if modified:
             await self.mailbox.aset_sequences(seq)
@@ -1295,86 +1291,6 @@ class Mailbox:
             return (self.uid_vv, self.uids[idx])
         except ValueError:
             return (self.uid_vv, None)
-
-        # # If we are not using the message cache then just get directly read the
-        # # binary file (synchronously) for pure speed.
-        # #
-        # if cache is False:
-        #     msg_path = self.mailbox.get_message_path(msg_key)
-        #     hdr = find_header_in_binary_file(msg_path, UID_HDR)
-        #     if hdr is None:
-        #         return (None, None)
-        #     return get_uidvv_uid(hdr)
-
-        # try:
-        #     msg = await self.get_and_cache_msg(msg_key, cache=cache)
-        # except KeyError:
-        #     # Our caller should have locked the mailbox, but it may happen..
-        #     #
-        #     raise Bad("Unable to retrieve message. Deleted apparently.")
-
-        # if UID_HDR not in msg:
-        #     return (None, None)
-
-        # try:
-        #     uid_vv, uid = get_uidvv_uid(msg[UID_HDR])
-        #     return (uid_vv, uid)
-        # except ValueError:
-        #     logger.error(
-        #         "Mailbox %s: msg %d had malformed uid header: %s",
-        #         self.name,
-        #         msg_key,
-        #         msg[UID_HDR],
-        #     )
-        #     return (None, None)
-
-    # ####################################################################
-    # #
-    # async def add_uids_to_msgs(self, msg_keys: List[int]) -> List[int]:
-    #     """
-    #     Goes through the set of msg_keys and updates the uid_vv/uid for
-    #     those messages.
-
-    #     It returns the list of uid's for the new messages, in the same order as
-    #     the list of msg_keys.
-    #     """
-    #     start_time = time.monotonic()
-    #     last_log = start_time
-    #     uids = []
-    #     num_msgs = 0
-    #     total_msgs = len(msg_keys)
-    #     for msg_key in msg_keys:
-    #         msg_path = self.mailbox.get_message_path(msg_key)
-    #         uid_hdr = f"{UID_HDR}: {self.uid_vv:010d}.{self.next_uid:010d}"
-    #         await update_replace_header_in_binary_file(msg_path, uid_hdr)
-    #         uids.append(self.next_uid)
-    #         self.next_uid += 1
-    #         num_msgs += 1
-
-    #         # Keep track of how long we have been running. Every second publish
-    #         # progress stats.
-    #         #
-    #         duration = time.monotonic() - last_log
-    #         if duration > 1.0:
-    #             last_log = time.monotonic()
-    #             logger.debug(
-    #                 "In progress, mailbox: '%s', num msgs: %d/%d, "
-    #                 "duration: %.3fs",
-    #                 self.name,
-    #                 num_msgs,
-    #                 total_msgs,
-    #                 time.monotonic() - start_time,
-    #             )
-
-    #     duration = time.monotonic() - start_time
-    #     logger.debug(
-    #         "Finished, mailbox '%s', num msgs: %d/%d, duration: %.3fs",
-    #         self.name,
-    #         num_msgs,
-    #         total_msgs,
-    #         duration,
-    #     )
-    #     return uids
 
     ##################################################################
     #
@@ -1861,7 +1777,6 @@ class Mailbox:
         logger.debug(
             "Mailbox: '%s', msg keys to delete: %s", self.name, to_delete
         )
-        # await self.helper_validate_uids()
 
         for msg_key in to_delete:
             # Remove the message from the folder.. and also remove it from our
@@ -1889,21 +1804,7 @@ class Mailbox:
             self.num_msgs -= 1
             await self.mailbox.aremove(msg_key)
             expunge_msg = f"* {which+1} EXPUNGE\r\n"
-            logger.debug(
-                "Mailbox: '%s', deleted msg key: %d, uid: %d, msg seq num: %d",
-                self.name,
-                msg_key,
-                uid,
-                which + 1,
-            )
             await self._dispatch_or_pend_notifications(expunge_msg)
-
-            # XXX For debugging purposes we should do a check to make sure all
-            #     msg keys and uid's line up after we aremove a message. It
-            #     will be slow but it is only for debugging to make sure we do
-            #     not lose sync on anything.
-
-        # await self.helper_validate_uids()
 
         # Remove all deleted msg keys from all sequences
         #
@@ -1937,9 +1838,6 @@ class Mailbox:
         - `search`: An IMAPSearch object instance
         - `uid_cmd`: whether or not this is a UID command.
         """
-        if uid_cmd:
-            logger.debug("Mailbox: '%s', doing a UID SEARCH", self.name)
-
         if not self.num_msgs:
             return []
 
@@ -2753,13 +2651,6 @@ class Mailbox:
         mbox.uids = []
         mbox.sequences = defaultdict(set)
 
-        # Set the mbox deleted flag to true. Cancel the management
-        # task. Go through the task queue and signal all waiting
-        # commands to proceed. They will check the mbox.deleted flag
-        # and exit immediately.
-        #
-        await mbox.shutdown(commit_db=False)
-
         # If the mailbox has any active clients we set their selected
         # mailbox to None. client.py will know if they try to do any
         # operations that require they have a mailbox selected that
@@ -2779,12 +2670,6 @@ class Mailbox:
         # removed from the db no imap client will confuse it with the
         # existing mailbox.
         #
-        logger.debug(
-            "**** Mailbox: '%s', inferior mboxes: %s, subscribed: %s",
-            mbox.name,
-            inferior_mailboxes,
-            mbox.subscribed,
-        )
         if inferior_mailboxes or mbox.subscribed:
             mbox.deleted = False
             mbox.attributes.add(r"\Noselect")
@@ -2799,6 +2684,13 @@ class Mailbox:
             async with server.active_mailboxes_lock:
                 if name in server.active_mailboxes:
                     del server.active_mailboxes[name]
+
+            # Set the mbox deleted flag to true. Cancel the management
+            # task. Go through the task queue and signal all waiting
+            # commands to proceed. They will check the mbox.deleted flag
+            # and exit immediately.
+            #
+            await mbox.shutdown(commit_db=False)
 
             # Delete all traces of the mailbox from our db.
             #
@@ -2930,7 +2822,8 @@ class Mailbox:
 
         # Now we tack the ref_mbox_name and mbox_match together.
         #
-        mbox_match = os.path.join(ref_mbox_name, mbox_match)
+        # mbox_match = os.path.join(ref_mbox_name, mbox_match)
+        mbox_match = ref_mbox_name + mbox_match
 
         # We need to escape all possible regular expression characters
         # in our string so that it only matches what is expected by the
@@ -2941,6 +2834,7 @@ class Mailbox:
         # Every '*' becomes '.*' and every % becomes [^/]
         #
         mbox_match = mbox_match.replace(r"\*", r".*").replace(r"%", r"[^\/]*")
+
         # NOTE: We do not present to the IMAP client any folders that
         #       have the flag 'ignored' set on them.
         #
@@ -2957,54 +2851,6 @@ class Mailbox:
             if mbox_name.lower() == "inbox":
                 mbox_name = "INBOX"
             yield (mbox_name, attributes)
-
-    ####################################################################
-    #
-    async def helper_validate_uids(self) -> Optional[int]:
-        """
-        Go through all of the messages in self.msg_key in the mailbox and
-        make sure that that they match up with the message keys and and that
-        their uid's matches up with the list of uids in self.uids
-
-        Returns the msg_key of the first message that has a uid mismatch.
-        Returns None if no mismatch was found.
-        """
-        logger.debug("Mailbox '%s': Checking for mismatches", self.name)
-        start_time = time.monotonic()
-        last_log = start_time
-        num_msgs = len(self.msg_keys)
-        for idx, (msg_key, uid) in enumerate(zip(self.msg_keys, self.uids)):
-            # Keep track of how long we have been running. Every second
-            # publish progress stats.
-            #
-            now = time.monotonic()
-            duration = now - last_log
-            if duration > 5.0:
-                last_log = time.monotonic()
-                logger.debug(
-                    "mailbox: '%s', num msgs: %d/%d, duration: %.3fs",
-                    self.name,
-                    idx,
-                    num_msgs,
-                    now - start_time,
-                )
-
-            uid_vv, muid = self.get_uid_from_msg(msg_key)
-            if uid_vv != self.uid_vv or muid != uid:
-                logger.warning(
-                    "Mailbox: '%s', mismatch: msg key: %d, found "
-                    "uid: %d, expected uid: %d",
-                    self.name,
-                    msg_key,
-                    muid,
-                    uid,
-                )
-                return msg_key
-            await asyncio.sleep(0)
-        logger.debug(
-            "Mailbox '%s': Done checking for mismatches, none found", self.name
-        )
-        return None
 
 
 ####################################################################

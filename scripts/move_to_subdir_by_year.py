@@ -1,13 +1,12 @@
 #!/usr/bin/env python
 #
-# File: $Id$
-#
 """
-A little tool that given an MH folder will move messages in the folder
+A little tool that connect to an IMAP Server and given a folder will move messages in the folder
 in to subfolders that are named '<parent folder name>_<year>' by the
 timestamp of when the mail was received in its headers.
 
-Except we will keep at least 1,000 in the folder
+We will exclude the current year from this process (ie: we move all messages
+from previous years in to subfolders.)
 """
 # system imports
 #

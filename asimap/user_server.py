@@ -550,7 +550,7 @@ class IMAPUserServer:
         """
         Close various things when the server is shutting down.
         """
-        if self.folder_scan_task:
+        if self.folder_scan_task and not self.folder_scan_task.done():
             self.folder_scan_task.cancel()
             await self.folder_scan_task
 
@@ -645,7 +645,8 @@ class IMAPUserServer:
 
             async with self.asyncio_server:
                 await self.asyncio_server.serve_forever()
-
+        except asyncio.CancelledError:
+            logger.debug("Server has been cancelled. Exiting.")
         finally:
             await self.shutdown()
 
