@@ -83,6 +83,31 @@ def test_server_list_status_select(
     assert status == "BYE"
 
 
+# NOTE: Need to change from imaplib to the imapclient library so we can test
+#       idle.
+#
+# ####################################################################
+# #
+# def test_server_idle(
+#     bunch_of_email_in_folder, imap_server, imap_user_server_program
+# ):
+#     """
+#     select inbox, idle, sleep 1 second, done, logout.
+#     """
+#     fixtures = imap_server
+#     imap = fixtures["client"]
+#     status, capabilities = imap.capability()
+#     assert status == "OK"
+#     status, resp = imap.login(fixtures["user"].username, fixtures["password"])
+#     assert status == "OK"
+#     status, resp = imap.select(mailbox="INBOX")
+#     imap.idle()
+#     _ = imap.idle_check(timeout=1)
+#     imap.idle_done
+#     status, resp = imap.logout()
+#     assert status == "BYE"
+
+
 ####################################################################
 #
 def test_server_append_and_fetch(

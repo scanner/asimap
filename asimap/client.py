@@ -41,6 +41,7 @@ CAPABILITIES = (
     "UIDPLUS",
     "LITERAL+",
     "CHILDREN",
+    "NAMESPACE",
 )
 SERVER_ID = {
     "name": "asimapd",
@@ -190,14 +191,12 @@ class BaseClientHandler:
                 self.server.num_failed_commands[imap_command.command] += 1
             result = f"{imap_command.tag} NO {e}\r\n"
             await self.client.push(result)
-            logger.debug(result.strip())
             return
         except Bad as e:
             if self.server and imap_command.command:
                 self.server.num_failed_commands[imap_command.command] += 1
             result = f"{imap_command.tag} BAD {e}\r\n"
             await self.client.push(result)
-            logger.debug(result.strip())
             return
         except asyncio.TimeoutError:
             if self.server and imap_command.command:
@@ -207,7 +206,6 @@ class BaseClientHandler:
                 await self.client.push(result)
             except Exception:
                 pass
-            logger.error(result)
             return
         except ConnectionResetError as e:
             mbox_name = self.mbox.name if self.mbox else "no mailbox"
@@ -231,7 +229,6 @@ class BaseClientHandler:
                 await self.client.push(result.strip())
             except Exception:
                 pass
-            logger.debug(result)
             raise
         finally:
             imap_command.timeout_cm = None
@@ -324,7 +321,7 @@ class BaseClientHandler:
     #
     ##################################################################
     #
-    async def do_done(self, cmd: Optional[IMAPClientCommand] = None):
+    async def do_done(self, cmd: Optional[IMAPClientCommand] = None) -> None:
         """
         We have gotten a DONE. This is only called when we are idling.
 
@@ -334,7 +331,7 @@ class BaseClientHandler:
         self.idling = False
         await self.send_pending_notifications()
         await self.client.push(f"{self.tag} OK IDLE terminated\r\n")
-        return
+        return None
 
     #########################################################################
     #
@@ -725,6 +722,7 @@ class Authenticated(BaseClientHandler):
         - `cmd`: The IMAP command we are executing
         """
         await self.send_pending_notifications()
+        assert self.server
         await Mailbox.create(cmd.mailbox_name, self.server)
         cmd.completed = True
 
@@ -737,6 +735,7 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
+        assert self.server
         await self.send_pending_notifications()
         mbox = await self.server.get_mailbox(cmd.mailbox_name)
         async with cmd.ready_and_okay(mbox):
@@ -752,6 +751,7 @@ class Authenticated(BaseClientHandler):
         - `cmd`: The IMAP command we are executing
         """
         await self.send_pending_notifications()
+        assert self.server
         mbox = await self.server.get_mailbox(cmd.mailbox_src_name)
         async with cmd.ready_and_okay(mbox):
             await Mailbox.rename(

@@ -195,7 +195,9 @@ class IMAPClientProxy:
                     # Messages from the server MUST start with '{\d}\n' If they
                     # do not conform to this then just disconnect this client.
                     #
-                    self.log.info(f"Client sent invalid message start: {msg!r}")
+                    self.log.warning(
+                        "Client sent invalid message start: %r", msg
+                    )
                     client_connected = False
                     break
                 length = int(m.group(1))
@@ -218,7 +220,7 @@ class IMAPClientProxy:
                         )
                     else:
                         await self.cmd_processor.do_done()
-                    return
+                    continue
 
                 try:
                     imap_cmd = IMAPClientCommand(imap_msg)
@@ -253,7 +255,12 @@ class IMAPClientProxy:
                     except asyncio.CancelledError:
                         logger.info("Cancelled: %s, %s", self, imap_cmd.qstr())
                         raise
-                    except Exception:
+                    except Exception as e:
+                        logger.exception(
+                            "Command %s had an exception: %s",
+                            imap_cmd.qstr(),
+                            e,
+                        )
                         pass
                     self.server.commands_in_progress -= 1
                     if self.server.commands_in_progress > 0:
@@ -288,6 +295,7 @@ class IMAPClientProxy:
             raise
         except Exception as exc:
             self.log.exception("Exception in %s: %s", self, exc)
+            raise
         finally:
             # We get here when we are no longer supposed to be connected to the
             # client. Close our connection and return which will cause this

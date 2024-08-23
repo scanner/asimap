@@ -64,7 +64,7 @@ shell:	## Make a bash shell an ephemeral dev container
 	@docker compose run --rm -ti asimap-dev /bin/bash
 
 exec-shell: ## Make a bash shell in the docker-compose running imap-dev container
-	@docker compose exec -ti imap-dev /bin/bash
+	@docker compose exec -ti asimap-dev /bin/bash
 
 .package: version venv $(PY_FILES) pyproject.toml README.md LICENSE Makefile requirements/build.txt requirements/production.txt
 	@PYTHONPATH=`pwd` $(ACTIVATE) python -m build
