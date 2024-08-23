@@ -327,15 +327,16 @@ class Mailbox:
         # database (and if there are none, then create an entry in the
         # db for this mailbox.)
         #
-        await mbox._restore_from_db()
+        new_folder = await mbox._restore_from_db()
 
         # If this new mbox has `\Noselect` then it is essentially a deleted
         # mailbox. We will return it but we will not check for new messages and
         # we will not create a management task.
         #
         if r"\Noselect" not in mbox.attributes:
+            optional = not (new_folder or "\Marked" in mbox.attributes)
             async with mbox.mailbox.lock_folder():
-                await mbox.check_new_msgs_and_flags(optional=False)
+                await mbox.check_new_msgs_and_flags(optional=optional)
             mbox.mgmt_task = asyncio.create_task(
                 mbox.management_task(), name=f"mbox '{mbox.name}' mgmt task"
             )
