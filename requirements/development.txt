@@ -78,7 +78,7 @@ executing==2.0.1
     # via stack-data
 factory-boy==3.3.1
     # via pytest-factoryboy
-faker==27.0.0
+faker==27.4.0
     # via factory-boy
 filelock==3.15.4
     # via
@@ -249,7 +249,7 @@ pytest==8.3.2
     #   pytest-factoryboy
     #   pytest-mock
     #   pytest-sugar
-pytest-asyncio==0.23.8
+pytest-asyncio==0.24.0
     # via -r development.in
 pytest-cov==5.0.0
     # via pytest-cover
@@ -282,7 +282,7 @@ rich==13.7.1
     #   -r build.txt
     #   -r development.in
     #   hatch
-ruff==0.6.1
+ruff==0.6.2
     # via -r lint.txt
 sentry-sdk==2.13.0
     # via -r production.txt
@@ -343,7 +343,7 @@ types-redis==4.6.0.20240819
     # via -r lint.txt
 types-requests==2.32.0.20240712
     # via -r lint.txt
-types-setuptools==72.2.0.20240821
+types-setuptools==73.0.0.20240822
     # via
     #   -r lint.txt
     #   types-cffi
@@ -365,7 +365,7 @@ userpath==1.9.2
     # via
     #   -r build.txt
     #   hatch
-uv==0.3.0
+uv==0.3.1
     # via
     #   -r build.txt
     #   hatch

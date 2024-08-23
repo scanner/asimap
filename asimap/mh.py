@@ -10,10 +10,17 @@ import email.generator
 import errno
 import mailbox
 import os
+import stat
 import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
-from mailbox import FormatError, MHMessage, NotEmptyError, _lock_file
+from mailbox import (
+    FormatError,
+    MHMessage,
+    NoSuchMailboxError,
+    NotEmptyError,
+    _lock_file,
+)
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Set, TypeAlias, Union
 
@@ -155,7 +162,12 @@ class MH(mailbox.MH):
         is fine.
         """
         if not self._locked:
-            self._file = open(os.path.join(self._path, ".mh_sequences"), "rb+")
+            mh_seq_fname = os.path.join(self._path, ".mh_sequences")
+            if not os.path.exists(mh_seq_fname):
+                f = open(mh_seq_fname, "a")
+                f.close()
+                os.chmod(mh_seq_fname, stat.S_IRUSR | stat.S_IWUSR)
+            self._file = open(mh_seq_fname, "rb+")
             _lock_file(self._file, dotlock=False)
             self._locked = True
 
@@ -184,6 +196,9 @@ class MH(mailbox.MH):
         #       code that has the folder already locked will properly release
         #       it when done with it.
         #
+        if not os.path.exists(self._path):
+            raise NoSuchMailboxError(self._path)
+
         if self._locked:
             yield
         else:

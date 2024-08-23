@@ -1,11 +1,7 @@
 #!/bin/sh
 #
-# $Id$
-#
 # PROVIDE: asimapd_daemon
 # KEYWORD: FreeBSD
-#
-# Start the daemon that will gather temperature data and submit it to Paglo.
 #
 pid_file="/var/run/asimapd.pid"
 

@@ -29,6 +29,7 @@ Options:
 # system imports
 #
 import asyncio
+import getpass
 import logging
 import os
 from pathlib import Path
@@ -98,6 +99,15 @@ def main():
     maildir_str: str = args["<maildir>"]
 
     load_dotenv()
+
+    if not password:
+        while True:
+            pw1 = getpass.getpass("Password: ")
+            pw2 = getpass.getpass("Enter password again to verify: ")
+            if pw1 == pw2:
+                password = pw1
+                break
+            print("Passwords do NOT match! Re-enter please.")
 
     if pwfile is None:
         pwfile = (

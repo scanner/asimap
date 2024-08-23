@@ -212,6 +212,11 @@ class Mailbox:
         self.sequences: Sequences = defaultdict(set)
         self.mh_sequences_lock = asyncio.Lock()
 
+        # Since the db access is async we need to make sure only one task is
+        # reading or writing this mbox's records in the db at a time.
+        #
+        self.db_lock = asyncio.Lock()
+
         # You can not instantiate a mailbox that does not exist in the
         # underlying file system.
         #
@@ -322,41 +327,15 @@ class Mailbox:
         # database (and if there are none, then create an entry in the
         # db for this mailbox.)
         #
-        new_mbox = not await mbox._restore_from_db()
+        await mbox._restore_from_db()
 
         # If this new mbox has `\Noselect` then it is essentially a deleted
         # mailbox. We will return it but we will not check for new messages and
         # we will not create a management task.
         #
         if r"\Noselect" not in mbox.attributes:
-            # IF this is a new mbox then not only should the next resync be
-            # non-optional, we should start looking for foreign keys from the
-            # start of the mailbox. Since it is new it is likely that every
-            # message is "foreign".
-            #
             async with mbox.mailbox.lock_folder():
-                await mbox.check_new_msgs_and_flags(optional=new_mbox)
-
-            # # If we are being asked to a uid validity check on this folder,
-            # # then do so and if it fails, force a full resync.
-            # #
-            # if validity_check:
-            #     first_uid_mismatch = await mbox.helper_validate_uids()
-            #     if first_uid_mismatch:
-            #         seq_num = mbox.msg_keys.index(first_uid_mismatch)
-            #         logger.warning(
-            #             "Mailbox: '%s', msg key %d had a uid mismatch. Expected %d. Re assigning UID's",
-            #             mbox.name,
-            #             mbox.uids[seq_num],
-            #             first_uid_mismatch,
-            #         )
-            #         added_uids = await mbox.add_uids_to_msgs(
-            #             mbox.msg_keys[seq_num:]
-            #         )
-            #         mbox.uids = mbox.uids[seq_num:] + added_uids
-            #         await mbox.commit_to_db()
-            #         await mbox.check_new_msgs_and_flags(optional=False)
-
+                await mbox.check_new_msgs_and_flags(optional=False)
             mbox.mgmt_task = asyncio.create_task(
                 mbox.management_task(), name=f"mbox '{mbox.name}' mgmt task"
             )
@@ -372,8 +351,11 @@ class Mailbox:
         Clear the message cache entries for this mbox.
         """
         self.deleted = True  # Causes any waiting IMAP Commands to exit.
-        if not self.mgmt_task.done():
+        self.expiry = 0.0
+        wait_for_mgmt_task = False
+        if hasattr(self, "mgmt_task") and not self.mgmt_task.done():
             self.mgmt_task.cancel()
+            wait_for_mgmt_task = True
 
         try:
             while True:
@@ -382,10 +364,11 @@ class Mailbox:
         except asyncio.QueueEmpty:
             pass
 
-        try:
-            await self.mgmt_task
-        except asyncio.CancelledError:
-            pass
+        if hasattr(self, "mgmt_task") and wait_for_mgmt_task:
+            try:
+                await self.mgmt_task
+            except asyncio.CancelledError:
+                pass
 
         if commit_db:
             await self.commit_to_db()
@@ -756,15 +739,23 @@ class Mailbox:
                 self.executing_tasks.append(imap_cmd)
                 imap_cmd.ready.set()
 
+            except NoSuchMailboxError:
+                self.logger.info(
+                    "mbox: '%s', mailbox deleted exiting management task",
+                    self.name,
+                )
+                self.expiry = 0.0
+                return
             except RuntimeError as e:
                 self.logger.exception(
-                    "mbox: '%s', RuntimeError in management task: %s",
+                    "mbox: '%s', exception in management task: %s",
                     self.name,
                     e,
                 )
                 return
             except asyncio.CancelledError:
-                raise
+                self.expiry = 0.0
+                return
             except Exception as e:
                 # We ignore all other exceptions because otherwise the
                 # management task would exit and no mbox commands would be
@@ -865,7 +856,8 @@ class Mailbox:
         # A mailbox gets '\Marked' if it has any unseen messages or
         # '\Recent' messages.
         #
-        self.marked(seq["unseen"] or seq["Recent"])
+        marked = True if seq["unseen"] or seq["Recent"] else False
+        self.marked(marked)
 
         if modified:
             await self.mailbox.aset_sequences(seq)
@@ -1300,86 +1292,6 @@ class Mailbox:
         except ValueError:
             return (self.uid_vv, None)
 
-        # # If we are not using the message cache then just get directly read the
-        # # binary file (synchronously) for pure speed.
-        # #
-        # if cache is False:
-        #     msg_path = self.mailbox.get_message_path(msg_key)
-        #     hdr = find_header_in_binary_file(msg_path, UID_HDR)
-        #     if hdr is None:
-        #         return (None, None)
-        #     return get_uidvv_uid(hdr)
-
-        # try:
-        #     msg = await self.get_and_cache_msg(msg_key, cache=cache)
-        # except KeyError:
-        #     # Our caller should have locked the mailbox, but it may happen..
-        #     #
-        #     raise Bad("Unable to retrieve message. Deleted apparently.")
-
-        # if UID_HDR not in msg:
-        #     return (None, None)
-
-        # try:
-        #     uid_vv, uid = get_uidvv_uid(msg[UID_HDR])
-        #     return (uid_vv, uid)
-        # except ValueError:
-        #     logger.error(
-        #         "Mailbox %s: msg %d had malformed uid header: %s",
-        #         self.name,
-        #         msg_key,
-        #         msg[UID_HDR],
-        #     )
-        #     return (None, None)
-
-    # ####################################################################
-    # #
-    # async def add_uids_to_msgs(self, msg_keys: List[int]) -> List[int]:
-    #     """
-    #     Goes through the set of msg_keys and updates the uid_vv/uid for
-    #     those messages.
-
-    #     It returns the list of uid's for the new messages, in the same order as
-    #     the list of msg_keys.
-    #     """
-    #     start_time = time.monotonic()
-    #     last_log = start_time
-    #     uids = []
-    #     num_msgs = 0
-    #     total_msgs = len(msg_keys)
-    #     for msg_key in msg_keys:
-    #         msg_path = self.mailbox.get_message_path(msg_key)
-    #         uid_hdr = f"{UID_HDR}: {self.uid_vv:010d}.{self.next_uid:010d}"
-    #         await update_replace_header_in_binary_file(msg_path, uid_hdr)
-    #         uids.append(self.next_uid)
-    #         self.next_uid += 1
-    #         num_msgs += 1
-
-    #         # Keep track of how long we have been running. Every second publish
-    #         # progress stats.
-    #         #
-    #         duration = time.monotonic() - last_log
-    #         if duration > 1.0:
-    #             last_log = time.monotonic()
-    #             logger.debug(
-    #                 "In progress, mailbox: '%s', num msgs: %d/%d, "
-    #                 "duration: %.3fs",
-    #                 self.name,
-    #                 num_msgs,
-    #                 total_msgs,
-    #                 time.monotonic() - start_time,
-    #             )
-
-    #     duration = time.monotonic() - start_time
-    #     logger.debug(
-    #         "Finished, mailbox '%s', num msgs: %d/%d, duration: %.3fs",
-    #         self.name,
-    #         num_msgs,
-    #         total_msgs,
-    #         duration,
-    #     )
-    #     return uids
-
     ##################################################################
     #
     async def _restore_from_db(self) -> bool:
@@ -1393,104 +1305,113 @@ class Mailbox:
         We return True if we had to create the record for this mailbox in the
         db.
         """
-        results = await self.server.db.fetchone(
-            "select id, uid_vv,attributes,mtime,next_uid,num_msgs,"
-            "num_recent,uids,msg_keys,last_resync,subscribed from mailboxes "
-            "where name=?",
-            (self.name,),
-        )
-
-        # If we got back no results than this mailbox does not exist in the
-        # database so we need to create it.
-        #
-        if results is None:
-            # Create the entry in the db reflects what is on the disk as
-            # far as we know.
-            #
-            await self.check_set_haschildren_attr()
-            self.mtime = await Mailbox.get_actual_mtime(
-                self.server.mailbox, self.name
-            )
-            self.uid_vv = await self.server.get_next_uid_vv()
-            await self.server.db.execute(
-                "INSERT INTO mailboxes (id, name, uid_vv, attributes, "
-                "mtime, next_uid, num_msgs, num_recent) "
-                "VALUES (NULL,?,?,?,?,?,?,0)",
-                (
-                    self.name,
-                    self.uid_vv,
-                    ",".join(self.attributes),
-                    self.mtime,
-                    self.next_uid,
-                    len(list(self.mailbox.keys())),
-                ),
-            )
-
-            # After we insert the record we pull it out again because we need
-            # the mailbox id to relate the mailbox to its sequences.
-            #
+        async with self.db_lock:
             results = await self.server.db.fetchone(
-                "SELECT id FROM mailboxes WHERE name=?", (self.name,)
+                "select id, uid_vv,attributes,mtime,next_uid,num_msgs,"
+                "num_recent,uids,msg_keys,last_resync,subscribed from mailboxes "
+                "where name=?",
+                (self.name,),
             )
-            self.id = results[0]
 
-            # For every sequence we store it in the db also so we can later on
-            # do smart diffs of sequence changes between mailbox resyncs.
+            # If we got back no results than this mailbox does not exist in the
+            # database so we need to create it.
             #
-            async with self.mailbox.lock_folder():
-                self.sequences = await self._get_sequences_update_seen()
-
-            for name, values in self.sequences.items():
-                await self.server.db.execute(
-                    "INSERT INTO sequences (id,name,mailbox_id,sequence)"
-                    " VALUES (NULL,?,?,?)",
-                    (name, self.id, ",".join([str(x) for x in sorted(values)])),
+            if results is None:
+                # Create the entry in the db reflects what is on the disk as
+                # far as we know.
+                #
+                await self.check_set_haschildren_attr()
+                self.mtime = await Mailbox.get_actual_mtime(
+                    self.server.mailbox, self.name
                 )
-            await self.server.db.commit()
-            return True
+                self.uid_vv = await self.server.get_next_uid_vv()
+                await self.server.db.execute(
+                    "INSERT INTO mailboxes (id, name, uid_vv, attributes, "
+                    "mtime, next_uid, num_msgs, num_recent) "
+                    "VALUES (NULL,?,?,?,?,?,?,0)",
+                    (
+                        self.name,
+                        self.uid_vv,
+                        ",".join(self.attributes),
+                        self.mtime,
+                        self.next_uid,
+                        len(list(self.mailbox.keys())),
+                    ),
+                )
 
-        # We got back an actual result. Fill in the values in the mailbox.
-        #
-        (
-            self.id,
-            self.uid_vv,
-            attributes,
-            self.mtime,
-            self.next_uid,
-            self.num_msgs,
-            self.num_recent,
-            uids,
-            msg_keys,
-            self.last_resync,
-            self.subscribed,
-        ) = results
-        self.subscribed = bool(self.subscribed)
-        self.attributes = set(attributes.split(","))
-        self.uids = [int(x) for x in uids.split(",")] if uids else []
-        self.msg_keys = (
-            [int(x) for x in msg_keys.split(",")] if msg_keys else []
-        )
-        # To handle the initial migration for when we start storing all the
-        # message keys. `msg_keys` in the db will be an empty list, but uids
-        # will not be empty. Based on the rule that messages are only added to
-        # the mailbox by external systems, we can just read the msg keys from
-        # the folder, truncated to the length of the list of uid's.
-        #
-        if not self.msg_keys and self.uids:
-            msg_keys = await self.mailbox.akeys()
-            self.msg_keys = msg_keys[: len(self.uids)]
-            self.num_msgs = len(self.msg_keys)
+                # After we insert the record we pull it out again because we
+                # need the mailbox id to relate the mailbox to its sequences.
+                #
+                results = await self.server.db.fetchone(
+                    "SELECT id FROM mailboxes WHERE name=?", (self.name,)
+                )
+                self.id = results[0]
 
-        # And fill in the sequences we find for this mailbox.
-        #
-        async for row in self.server.db.query(
-            "SELECT name, sequence FROM sequences WHERE mailbox_id=?",
-            (self.id,),
-        ):
-            name, sequence = row
-            sequence = sequence.strip()
-            if sequence:
-                self.sequences[name] = set(int(x) for x in sequence.split(","))
+                # For every sequence we store it in the db also so we can later
+                # on do smart diffs of sequence changes between mailbox
+                # resyncs.
+                #
+                async with self.mailbox.lock_folder():
+                    self.sequences = await self._get_sequences_update_seen()
+
+                for name, values in self.sequences.items():
+                    await self.server.db.execute(
+                        "INSERT INTO sequences (id,name,mailbox_id,sequence)"
+                        " VALUES (NULL,?,?,?)",
+                        (
+                            name,
+                            self.id,
+                            ",".join([str(x) for x in sorted(values)]),
+                        ),
+                    )
+                await self.server.db.commit()
+                return True
+
+            # We got back an actual result. Fill in the values in the mailbox.
+            #
+            (
+                self.id,
+                self.uid_vv,
+                attributes,
+                self.mtime,
+                self.next_uid,
+                self.num_msgs,
+                self.num_recent,
+                uids,
+                msg_keys,
+                self.last_resync,
+                self.subscribed,
+            ) = results
+            self.subscribed = bool(self.subscribed)
+            self.attributes = set(attributes.split(","))
+            self.uids = [int(x) for x in uids.split(",")] if uids else []
+            self.msg_keys = (
+                [int(x) for x in msg_keys.split(",")] if msg_keys else []
+            )
+            # To handle the initial migration for when we start storing all the
+            # message keys. `msg_keys` in the db will be an empty list, but
+            # uids will not be empty. Based on the rule that messages are only
+            # added to the mailbox by external systems, we can just read the
+            # msg keys from the folder, truncated to the length of the list of
+            # uid's.
+            #
+            if not self.msg_keys and self.uids:
+                msg_keys = await self.mailbox.akeys()
+                self.msg_keys = msg_keys[: len(self.uids)]
+                self.num_msgs = len(self.msg_keys)
+
+            # And fill in the sequences we find for this mailbox.
+            #
+            async for row in self.server.db.query(
+                "SELECT name, sequence FROM sequences WHERE mailbox_id=?",
+                (self.id,),
+            ):
+                name, sequence = row
+                sequence = sequence.strip()
+                if sequence:
+                    self.sequences[name] = set(
+                        int(x) for x in sequence.split(",")
+                    )
 
         return False
 
@@ -1514,58 +1435,63 @@ class Mailbox:
             self.subscribed,
             self.id,
         )
-        await self.server.db.execute(
-            "UPDATE mailboxes SET uid_vv=?, attributes=?, next_uid=?,"
-            "mtime=?, num_msgs=?, num_recent=?, uids=?, msg_keys=?, "
-            "last_resync=?, subscribed=? WHERE id=?",
-            values,
-        )
-
-        # Remove any empty sequences from our list of sequences
-        #
-        empty_seqs = [k for k, v in self.sequences.items() if not v]
-        for seq in empty_seqs:
-            del self.sequences[seq]
-
-        # For the sequences we have to do a fetch before a store because we
-        # need to delete the sequence entries from the db for sequences that
-        # are no longer in this mailbox's list of sequences.
-        #
-        old_names = set()
-        async for row in self.server.db.query(
-            "SELECT name FROM sequences WHERE mailbox_id=?", (self.id,)
-        ):
-            old_names.add(row[0])
-
-        new_names = set(self.sequences.keys())
-        names_to_delete = old_names.difference(new_names)
-        names_to_insert = new_names.difference(old_names)
-        names_to_update = new_names.intersection(old_names)
-        for name in names_to_delete:
+        async with self.db_lock:
             await self.server.db.execute(
-                "DELETE FROM sequences WHERE mailbox_id=? AND name=?",
-                (self.id, name),
+                "UPDATE mailboxes SET uid_vv=?, attributes=?, next_uid=?,"
+                "mtime=?, num_msgs=?, num_recent=?, uids=?, msg_keys=?, "
+                "last_resync=?, subscribed=? WHERE id=?",
+                values,
             )
-        for name in names_to_insert:
-            await self.server.db.execute(
-                "INSERT INTO sequences (id,name,mailbox_id,sequence) "
-                "VALUES (NULL,?,?,?)",
-                (
-                    name,
-                    self.id,
-                    ",".join([str(x) for x in sorted(self.sequences[name])]),
-                ),
-            )
-        for name in names_to_update:
-            await self.server.db.execute(
-                "UPDATE sequences SET sequence=? WHERE mailbox_id=? AND name=?",
-                (
-                    ",".join([str(x) for x in sorted(self.sequences[name])]),
-                    self.id,
-                    name,
-                ),
-            )
-        await self.server.db.commit()
+
+            # Remove any empty sequences from our list of sequences
+            #
+            empty_seqs = [k for k, v in self.sequences.items() if not v]
+            for seq in empty_seqs:
+                del self.sequences[seq]
+
+            # For the sequences we have to do a fetch before a store because we
+            # need to delete the sequence entries from the db for sequences that
+            # are no longer in this mailbox's list of sequences.
+            #
+            old_names = set()
+            async for row in self.server.db.query(
+                "SELECT name FROM sequences WHERE mailbox_id=?", (self.id,)
+            ):
+                old_names.add(row[0])
+
+            new_names = set(self.sequences.keys())
+            names_to_delete = old_names.difference(new_names)
+            names_to_insert = new_names.difference(old_names)
+            names_to_update = new_names.intersection(old_names)
+            for name in names_to_delete:
+                await self.server.db.execute(
+                    "DELETE FROM sequences WHERE mailbox_id=? AND name=?",
+                    (self.id, name),
+                )
+            for name in names_to_insert:
+                await self.server.db.execute(
+                    "INSERT INTO sequences (id,name,mailbox_id,sequence) "
+                    "VALUES (NULL,?,?,?)",
+                    (
+                        name,
+                        self.id,
+                        ",".join(
+                            [str(x) for x in sorted(self.sequences[name])]
+                        ),
+                    ),
+                )
+            for name in names_to_update:
+                await self.server.db.execute(
+                    "UPDATE sequences SET sequence=? WHERE mailbox_id=? AND name=?",
+                    (
+                        ",".join(
+                            [str(x) for x in sorted(self.sequences[name])]
+                        ),
+                        self.id,
+                        name,
+                    ),
+                )
+            await self.server.db.commit()
 
     ##################################################################
     #
@@ -1851,7 +1777,6 @@ class Mailbox:
         logger.debug(
             "Mailbox: '%s', msg keys to delete: %s", self.name, to_delete
         )
-        # await self.helper_validate_uids()
 
         for msg_key in to_delete:
             # Remove the message from the folder.. and also remove it from our
@@ -1879,21 +1804,7 @@ class Mailbox:
             self.num_msgs -= 1
             await self.mailbox.aremove(msg_key)
             expunge_msg = f"* {which+1} EXPUNGE\r\n"
-            logger.debug(
-                "Mailbox: '%s', deleted msg key: %d, uid: %d, msg seq num: %d",
-                self.name,
-                msg_key,
-                uid,
-                which + 1,
-            )
             await self._dispatch_or_pend_notifications(expunge_msg)
-
-            # XXX For debugging purposes we should do a check to make sure all
-            #     msg keys and uid's line up after we aremove a message. It
-            #     will be slow but it is only for debugging to make sure we do
-            #     not lose sync on anything.
-
-        # await self.helper_validate_uids()
 
         # Remove all deleted msg keys from all sequences
         #
@@ -1927,9 +1838,6 @@ class Mailbox:
         - `search`: An IMAPSearch object instance
         - `uid_cmd`: whether or not this is a UID command.
         """
-        if uid_cmd:
-            logger.debug("Mailbox: '%s', doing a UID SEARCH", self.name)
-
         if not self.num_msgs:
             return []
 
@@ -2743,13 +2651,6 @@ class Mailbox:
         mbox.uids = []
         mbox.sequences = defaultdict(set)
 
-        # Set the mbox deleted flag to true. Cancel the management
-        # task. Go through the task queue and signal all waiting
-        # commands to proceed. They will check the mbox.deleted flag
-        # and exit immediately.
-        #
-        await mbox.shutdown(commit_db=False)
-
         # If the mailbox has any active clients we set their selected
         # mailbox to None. client.py will know if they try to do any
         # operations that require they have a mailbox selected that
@@ -2784,21 +2685,24 @@ class Mailbox:
                 if name in server.active_mailboxes:
                     del server.active_mailboxes[name]
 
+            # Set the mbox deleted flag to true. Cancel the management
+            # task. Go through the task queue and signal all waiting
+            # commands to proceed. They will check the mbox.deleted flag
+            # and exit immediately.
+            #
+            await mbox.shutdown(commit_db=False)
+
             # Delete all traces of the mailbox from our db.
             #
-            await server.db.execute(
-                "DELETE FROM mailboxes WHERE id = ?", (mbox.id,)
-            )
-            await server.db.execute(
-                "DELETE FROM sequences WHERE mailbox_id = ?", (mbox.id,)
-            )
+            async with mbox.db_lock:
+                await server.db.execute(
+                    "DELETE FROM mailboxes WHERE id = ?", (mbox.id,)
+                )
+                await server.db.execute(
+                    "DELETE FROM sequences WHERE mailbox_id = ?", (mbox.id,)
+                )
             await server.db.commit()
 
-            # We need to delay the 'delete' of the actual mailbox until
-            # after we release the lock but we only delete the actual
-            # mailbox outside of the lock context manager if we are
-            # actually deleting it.
-            #
             do_delete = True
 
         # if this mailbox was the child of another mailbox than we may need to
@@ -2806,13 +2710,11 @@ class Mailbox:
         #
         parent_name = os.path.dirname(name)
         if parent_name:
-            parent_mbox = await server.get_mailbox(parent_name, expiry=10)
-            async with (
-                parent_mbox.lock.read_lock(),
-                parent_mbox.lock.write_lock(),
-            ):
-                await parent_mbox.check_set_haschildren_attr()
-                await parent_mbox.commit_to_db()
+            parent_mbox = await server.get_mailbox(parent_name)
+            await parent_mbox.check_set_haschildren_attr()
+            await parent_mbox.commit_to_db()
+
+        # await mbox.shutdown(commit_db=False)
 
         # And remove the mailbox from the filesystem.
         #
@@ -2920,7 +2822,8 @@ class Mailbox:
 
         # Now we tack the ref_mbox_name and mbox_match together.
         #
-        mbox_match = os.path.join(ref_mbox_name, mbox_match)
+        # mbox_match = os.path.join(ref_mbox_name, mbox_match)
+        mbox_match = ref_mbox_name + mbox_match
 
         # We need to escape all possible regular expression characters
         # in our string so that it only matches what is expected by the
@@ -2931,6 +2834,7 @@ class Mailbox:
         # Every '*' becomes '.*' and every % becomes [^/]
         #
         mbox_match = mbox_match.replace(r"\*", r".*").replace(r"%", r"[^\/]*")
+
         # NOTE: We do not present to the IMAP client any folders that
         #       have the flag 'ignored' set on them.
         #
@@ -2947,54 +2851,6 @@ class Mailbox:
             if mbox_name.lower() == "inbox":
                 mbox_name = "INBOX"
             yield (mbox_name, attributes)
-
-    ####################################################################
-    #
-    async def helper_validate_uids(self) -> Optional[int]:
-        """
-        Go through all of the messages in self.msg_key in the mailbox and
-        make sure that that they match up with the message keys and and that
-        their uid's matches up with the list of uids in self.uids
-
-        Returns the msg_key of the first message that has a uid mismatch.
-        Returns None if no mismatch was found.
-        """
-        logger.debug("Mailbox '%s': Checking for mismatches", self.name)
-        start_time = time.monotonic()
-        last_log = start_time
-        num_msgs = len(self.msg_keys)
-        for idx, (msg_key, uid) in enumerate(zip(self.msg_keys, self.uids)):
-            # Keep track of how long we have been running. Every second
-            # publish progress stats.
-            #
-            now = time.monotonic()
-            duration = now - last_log
-            if duration > 5.0:
-                last_log = time.monotonic()
-                logger.debug(
-                    "mailbox: '%s', num msgs: %d/%d, duration: %.3fs",
-                    self.name,
-                    idx,
-                    num_msgs,
-                    now - start_time,
-                )
-
-            uid_vv, muid = self.get_uid_from_msg(msg_key)
-            if uid_vv != self.uid_vv or muid != uid:
-                logger.warning(
-                    "Mailbox: '%s', mismatch: msg key: %d, found "
-                    "uid: %d, expected uid: %d",
-                    self.name,
-                    msg_key,
-                    muid,
-                    uid,
-                )
-                return msg_key
-            await asyncio.sleep(0)
-        logger.debug(
-            "Mailbox '%s': Done checking for mismatches, none found", self.name
-        )
-        return None
 
 
 ####################################################################

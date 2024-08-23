@@ -51,6 +51,8 @@ up: build dirs certs	## build and then `docker compose up` for the `dev` profile
 down:	## `docker compose down` for the `dev` profile
 	@docker compose --profile dev down --remove-orphans
 
+rebuild-restart: down build up  ## docker compose down -> build -> up for the `dev` profile
+
 delete: clean	## docker compose down for `dev` and `prod` and `make clean`.
 	@docker compose --profile dev down --remove-orphans
 	@docker compose --profile prod down --remove-orphans
@@ -59,10 +61,10 @@ restart:	## docker compose restart for the `dev` profile
 	@docker compose --profile dev restart
 
 shell:	## Make a bash shell an ephemeral dev container
-	@docker compose exec -ti asimap-dev /bin/bash
+	@docker compose run --rm -ti asimap-dev /bin/bash
 
-exec_shell: ## Make a bash shell in the docker-compose running imap-dev container
-	@docker compose exec imap-dev /bin/bash
+exec-shell: ## Make a bash shell in the docker-compose running imap-dev container
+	@docker compose exec -ti asimap-dev /bin/bash
 
 .package: version venv $(PY_FILES) pyproject.toml README.md LICENSE Makefile requirements/build.txt requirements/production.txt
 	@PYTHONPATH=`pwd` $(ACTIVATE) python -m build

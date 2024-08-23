@@ -140,7 +140,6 @@ class IMAPClientProxy:
             if not self.writer.is_closing():
                 self.writer.close()
             await self.writer.wait_closed()
-            self.trace("CLOSE", {})
         except socket.error:
             pass
         except asyncio.CancelledError:
@@ -148,6 +147,8 @@ class IMAPClientProxy:
             raise
         except Exception as exc:
             self.log.error("Exception when closing %s: %s", self, exc)
+        finally:
+            self.trace("CLOSE", {})
 
     ####################################################################
     #
@@ -194,7 +195,9 @@ class IMAPClientProxy:
                     # Messages from the server MUST start with '{\d}\n' If they
                     # do not conform to this then just disconnect this client.
                     #
-                    self.log.info(f"Client sent invalid message start: {msg!r}")
+                    self.log.warning(
+                        "Client sent invalid message start: %r", msg
+                    )
                     client_connected = False
                     break
                 length = int(m.group(1))
@@ -217,7 +220,7 @@ class IMAPClientProxy:
                         )
                     else:
                         await self.cmd_processor.do_done()
-                    return
+                    continue
 
                 try:
                     imap_cmd = IMAPClientCommand(imap_msg)
@@ -252,7 +255,12 @@ class IMAPClientProxy:
                     except asyncio.CancelledError:
                         logger.info("Cancelled: %s, %s", self, imap_cmd.qstr())
                         raise
-                    except Exception:
+                    except Exception as e:
+                        logger.exception(
+                            "Command %s had an exception: %s",
+                            imap_cmd.qstr(),
+                            e,
+                        )
                         pass
                     self.server.commands_in_progress -= 1
                     if self.server.commands_in_progress > 0:
@@ -287,6 +295,7 @@ class IMAPClientProxy:
             raise
         except Exception as exc:
             self.log.exception("Exception in %s: %s", self, exc)
+            raise
         finally:
             # We get here when we are no longer supposed to be connected to the
             # client. Close our connection and return which will cause this
@@ -541,12 +550,15 @@ class IMAPUserServer:
         """
         Close various things when the server is shutting down.
         """
-        if self.folder_scan_task:
+        if self.folder_scan_task and not self.folder_scan_task.done():
             self.folder_scan_task.cancel()
             await self.folder_scan_task
-        clients = [c.close() for c in self.clients.values()]
-        if clients:
-            await asyncio.gather(*clients, return_exceptions=True)
+
+        # Close all client connections
+        #
+        async with asyncio.TaskGroup() as tg:
+            for client in self.clients.values():
+                tg.create_task(client.close())
 
         # Shutdown all active mailboxes
         #
@@ -633,7 +645,8 @@ class IMAPUserServer:
 
             async with self.asyncio_server:
                 await self.asyncio_server.serve_forever()
-
+        except asyncio.CancelledError:
+            logger.debug("Server has been cancelled. Exiting.")
         finally:
             await self.shutdown()
 
@@ -682,12 +695,14 @@ class IMAPUserServer:
         failed_cmds = ", ".join(
             [f"{x}: {y}" for x, y in self.num_failed_commands.most_common()]
         )
-        logger.info("Count of commands: %s", cmds)
+        if cmds:
+            logger.info("Count of commands: %s", cmds)
         logger.info(
             "Count of total number of commands: %d",
             self.num_rcvd_commands.total(),
         )
-        logger.info("Count of failed commands: %s", failed_cmds)
+        if failed_cmds:
+            logger.info("Count of failed commands: %s", failed_cmds)
         logger.info(
             "Count of total number of failed commands: %d",
             self.num_failed_commands.total(),
@@ -695,6 +710,12 @@ class IMAPUserServer:
 
         self.num_rcvd_commands.clear()
         self.num_failed_commands.clear()
+
+        logger.info(
+            "Number of active mailboxes: %d",
+            len(self.active_mailboxes),
+        )
+        logger.info("Number of clients: %d", len(self.clients))
 
     ####################################################################
     #
@@ -712,11 +733,6 @@ class IMAPUserServer:
                 now = time.monotonic()
                 if now - last_metrics_dump > TIME_BETWEEN_METRIC_DUMPS:
                     self.dump_metrics()
-                    logger.info(
-                        "Number of active mailboxes: %d",
-                        len(self.active_mailboxes),
-                    )
-                    logger.info("Number of clients: %d", len(self.clients))
                     last_metrics_dump = now
 
                 # If it has been more than <n> seconds since a full scan, then

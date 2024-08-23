@@ -63,7 +63,7 @@ pyproject-hooks==1.1.0
     #   pip-tools
 pyyaml==6.0.2
     # via pre-commit
-ruff==0.6.1
+ruff==0.6.2
     # via -r lint.in
 tomli==2.0.1
     # via yapf
@@ -81,7 +81,7 @@ types-redis==4.6.0.20240819
     # via -r lint.in
 types-requests==2.32.0.20240712
     # via -r lint.in
-types-setuptools==72.2.0.20240821
+types-setuptools==73.0.0.20240822
     # via
     #   -r lint.in
     #   types-cffi
