@@ -748,7 +748,7 @@ class IMAPUserServer:
         if len(total_times) == 1:
             logger.info("max total command duration: %.3fs", total_times[0])
             logger.info("mean total command duration: %.3fs", total_times[0])
-        else:
+        elif len(total_times) > 1:
             mean_time = fmean(total_times)
             median_time = median(total_times)
             logger.info("max total command duration: %.3fs", max(total_times))
