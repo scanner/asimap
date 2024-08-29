@@ -28,11 +28,11 @@ hatchling==1.25.0
     # via hatch
 httpcore==1.0.5
     # via httpx
-httpx==0.27.0
+httpx==0.27.2
     # via hatch
 hyperlink==21.0.0
     # via hatch
-idna==3.7
+idna==3.8
     # via
     #   anyio
     #   httpx
@@ -74,7 +74,7 @@ pygments==2.18.0
     # via rich
 pyproject-hooks==1.1.0
     # via build
-rich==13.7.1
+rich==13.8.0
     # via hatch
 shellingham==1.5.4
     # via hatch
@@ -90,7 +90,7 @@ trove-classifiers==2024.7.2
     # via hatchling
 userpath==1.9.2
     # via hatch
-uv==0.3.1
+uv==0.4.0
     # via hatch
 virtualenv==20.26.3
     # via hatch

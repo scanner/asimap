@@ -32,7 +32,7 @@ importlib-metadata==8.4.0
     # via yapf
 isort==5.13.2
     # via -r lint.in
-mypy==1.11.1
+mypy==1.11.2
     # via -r lint.in
 mypy-extensions==1.0.0
     # via
@@ -63,7 +63,7 @@ pyproject-hooks==1.1.0
     #   pip-tools
 pyyaml==6.0.2
     # via pre-commit
-ruff==0.6.2
+ruff==0.6.3
     # via -r lint.in
 tomli==2.0.1
     # via yapf
@@ -95,7 +95,7 @@ wheel==0.44.0
     # via pip-tools
 yapf==0.40.2
     # via -r lint.in
-zipp==3.20.0
+zipp==3.20.1
     # via importlib-metadata
 
 # The following packages are considered to be unsafe in a requirements file:
