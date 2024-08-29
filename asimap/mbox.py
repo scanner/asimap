@@ -334,7 +334,7 @@ class Mailbox:
         # we will not create a management task.
         #
         if r"\Noselect" not in mbox.attributes:
-            optional = not (new_folder or "\Marked" in mbox.attributes)
+            optional = not (new_folder or r"\Marked" in mbox.attributes)
             async with mbox.mailbox.lock_folder():
                 await mbox.check_new_msgs_and_flags(optional=optional)
             mbox.mgmt_task = asyncio.create_task(
@@ -1460,36 +1460,39 @@ class Mailbox:
             ):
                 old_names.add(row[0])
 
-            new_names = set(self.sequences.keys())
-            names_to_delete = old_names.difference(new_names)
-            names_to_insert = new_names.difference(old_names)
-            names_to_update = new_names.intersection(old_names)
-            for name in names_to_delete:
+            new_names = set(
+                mbox for mbox in self.sequences.keys() if self.sequences[mbox]
+            )
+
+            names_to_delete = old_names - new_names
+            if names_to_delete:
+                # Need to build the a string of comma separated '?''s for the
+                # sqlite binding to work with a variable number of names.
+                #
+                qms = ",".join(["?"] * len(names_to_delete))
                 await self.server.db.execute(
-                    "DELETE FROM sequences WHERE mailbox_id=? AND name=?",
-                    (self.id, name),
+                    "DELETE FROM sequences"
+                    f"  WHERE mailbox_id=? AND name in ({qms})",
+                    (self.id, *(list(names_to_delete))),
                 )
-            for name in names_to_insert:
-                await self.server.db.execute(
-                    "INSERT INTO sequences (id,name,mailbox_id,sequence) "
-                    "VALUES (NULL,?,?,?)",
-                    (
-                        name,
-                        self.id,
-                        ",".join(
-                            [str(x) for x in sorted(self.sequences[name])]
-                        ),
-                    ),
+                await self.server.db.commit()
+            for name in new_names:
+                sequence = ",".join(
+                    str(x) for x in sorted(self.sequences[name])
                 )
-            for name in names_to_update:
                 await self.server.db.execute(
-                    "UPDATE sequences SET sequence=? WHERE mailbox_id=? AND name=?",
+                    "INSERT INTO sequences(name,mailbox_id,sequence) "
+                    "  VALUES (?,?,?)"
+                    "  ON CONFLICT DO UPDATE SET"
+                    "    sequence=?"
+                    "  WHERE mailbox_id=? AND name=?",
                     (
-                        ",".join(
-                            [str(x) for x in sorted(self.sequences[name])]
-                        ),
-                        self.id,
-                        name,
+                        name,  # values 0
+                        self.id,  # values 1
+                        sequence,  # values 2
+                        sequence,  # set sequence=?
+                        self.id,  # mailbox_id=?
+                        name,  # name=?
                     ),
                 )
             await self.server.db.commit()

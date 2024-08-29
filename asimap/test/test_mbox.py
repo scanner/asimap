@@ -462,6 +462,38 @@ async def test_mailbox_fetch_notifies_other_clients(
 ####################################################################
 #
 @pytest.mark.asyncio
+async def test_mailbox_db_commit_sequence_changes(
+    faker, bunch_of_email_in_folder, mailbox_with_bunch_of_email
+):
+    """
+    Make sure our db commit code works when we change the sequences on a
+    mailbox.
+    """
+    mbox = mailbox_with_bunch_of_email
+    msg_keys = await mbox.mailbox.akeys()
+
+    # Create new sequences
+    #
+    mbox.sequences["newnew"] = set(msg_keys[:5])
+    mbox.sequences["newnew2"] = set(msg_keys[:5])
+    await mbox.commit_to_db()
+
+    # Update an existing sequence
+    #
+    mbox.sequences["newnew"] = set(msg_keys[:8])
+    await mbox.commit_to_db()
+
+    # Effectively delete sequences via empty set and removing the element
+    # entirely.
+    #
+    mbox.sequences["newnew"] = set()
+    del mbox.sequences["newnew2"]
+    await mbox.commit_to_db()
+
+
+####################################################################
+#
+@pytest.mark.asyncio
 async def test_mailbox_fetch_after_new_messages(
     faker, bunch_of_email_in_folder, mailbox_with_bunch_of_email
 ):
