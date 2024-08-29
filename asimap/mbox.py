@@ -679,7 +679,8 @@ class Mailbox:
         """
         # Opportunistically pack before we start processing IMAP Commands.
         #
-        await self._pack_if_necessary()
+        async with self.mailbox.lock_folder():
+            await self._pack_if_necessary()
 
         # List of tasks currently acting on this mailbox.
         # (will only be one for conflicting commands)
@@ -1111,7 +1112,7 @@ class Mailbox:
             num_recent = len(self.sequences["Recent"])
             num_msgs = len(msg_keys)
 
-            logger.debug(
+            logger.info(
                 "Mailbox: '%s', num msgs: %d, num new msgs: %d, "
                 "first new msg: %d, last new msg: %d",
                 self.name,
@@ -1242,7 +1243,7 @@ class Mailbox:
         if self.num_msgs / self.msg_keys[-1] > self.folder_ratio_pack_limit:
             return False
 
-        logger.debug(
+        logger.info(
             "Packing mailbox '%s', num msgs: %d, max msg key: %d",
             self.name,
             self.num_msgs,
@@ -1629,8 +1630,19 @@ class Mailbox:
             # IMAP message sequence # of the first message that is unseen.
             # Convert from MH msg key to IMAP message sequence number
             first_unseen = sorted(self.sequences["unseen"])[0]
-            first_unseen = self.msg_keys.index(first_unseen) + 1
-            push_data.append(f"* OK [UNSEEN {first_unseen}]\r\n")
+            try:
+                first_unseen = self.msg_keys.index(first_unseen) + 1
+                push_data.append(f"* OK [UNSEEN {first_unseen}]\r\n")
+            except ValueError as exc:
+                logger.error(
+                    "Mailbox '%s': '%s', first unseen msg key: %d, "
+                    "msg keys: %s, unseen: %s",
+                    self.name,
+                    exc,
+                    first_unseen,
+                    self.msg_keys,
+                    self.sequences["unseen"],
+                )
         push_data.append(f"* OK [UIDVALIDITY {self.uid_vv}]\r\n")
         push_data.append(f"* OK [UIDNEXT {self.next_uid}]\r\n")
 
@@ -3020,40 +3032,3 @@ async def _helper_rename_inbox(mbox: Mailbox, new_name: str):
     mbox.msg_keys = []
     mbox.uids = []
     await mbox.commit_to_db()
-
-
-# ####################################################################
-# #
-# def _help_update_msg_sequences_in_cache(
-#     msg_cache: MessageCache,
-#     mbox_name: str,
-#     msg_keys: List[int],
-#     sequences: Sequences,
-# ):
-#     """
-#     A helper routine used in the Mailbox where we are modifying sequences
-#     and storing them back to the folder's .mh_sequences file. We need to make
-#     sure that all of the messages in the cache for this mbox have their
-#     sequence information udpated.
-
-#     `msg_keys` is the list of all message keys in the MH folder.
-#     `sequences` is the set of sequence data from .mh_sequences in the MH folder.
-
-#     XXX maybe this routine should be a MessageCache method?
-#     """
-#     cached_msg_keys = msg_cache.msg_keys_for_mbox(mbox_name)
-#     for key in cached_msg_keys:
-#         # Since we are going through all keys for this mbox in the cache we do
-#         # not want to mess up the LRU for this mbox so do not update the
-#         # entries as we retrieve them.
-#         #
-#         msg = msg_cache.get(mbox_name, key, do_not_update=True)
-#         assert msg  # it was in the keys, it better be true.
-
-#         # If we encounter a msg_key that is in the cache but not in the
-#         # mailbox, remove it.
-#         #
-#         if key not in msg_keys:
-#             msg_cache.remove(mbox_name, key)
-
-#         update_message_sequences(key, msg, sequences)

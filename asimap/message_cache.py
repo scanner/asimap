@@ -19,6 +19,7 @@ can tell us to clear all the entries for that mailbox.
 #
 import logging
 import time
+from collections import Counter
 from mailbox import MHMessage
 from typing import Dict, List, Optional, Tuple, TypeAlias
 
@@ -102,6 +103,9 @@ class MessageCache:
         #
         self.msgs_by_mailbox: Dict[str, List[CacheEntry]] = {}
 
+        self.cache_hits: Counter[str] = Counter()
+        self.cache_misses: Counter[str] = Counter()
+
         # XXX We should probably add a dict `msgs_by_mailbox_by_msgkey` that
         #     lets us directly look up a message by its message key instead of
         #     having to loop through the list.  Currently this would not work
@@ -124,9 +128,25 @@ class MessageCache:
         Dump to the log our stats every now and then.
         If `force` is True the stats will be dumped regardless.
         """
-        now = time.time()
+        now = time.monotonic()
         if force or now >= self.next_size_report:
             logger.info("Size report: %s", str(self))
+            logger.info(
+                "total cache hits: %d, total cache misses: %d",
+                self.cache_hits.total(),
+                self.cache_misses.total(),
+            )
+            for mbox in sorted(
+                set(self.cache_hits.keys()) | set(self.cache_misses.keys())
+            ):
+                logger.info(
+                    "mailbox '%s': cache hits: %d, cache misses: %d",
+                    mbox,
+                    self.cache_hits[mbox],
+                    self.cache_misses[mbox],
+                )
+            self.cache_hits.clear()
+            self.cache_misses.clear()
             self.next_size_report = now + self.STAT_LOG_INTERVAL
 
     ##################################################################
@@ -333,11 +353,14 @@ class MessageCache:
             do_not_update=do_not_update,
             update_size=update_size,
         )
-        self._log_stats()
+        res = None
         if result:
-            return result[2]
+            self.cache_hits[mbox] += 1
+            res = result[2]
         else:
-            return None
+            self.cache_misses[mbox] += 1
+        self._log_stats()
+        return res
 
     ####################################################################
     #
