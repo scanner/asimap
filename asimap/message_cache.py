@@ -132,6 +132,13 @@ class MessageCache:
         if force or now >= self.next_size_report:
             logger.info("Size report: %s", str(self))
             total_gets = self.cache_hits.total() + self.cache_misses.total()
+
+            # No point in logging stats if nothing happened.
+            #
+            if total_gets == 0:
+                self.next_size_report = now + self.STAT_LOG_INTERVAL
+                return
+
             ratio = (self.cache_hits.total() / total_gets) * 100.0
             logger.info(
                 "total cache hits: %d, total cache misses: %d, ratio: %.1f",
