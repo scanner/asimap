@@ -8,7 +8,7 @@ anyio==4.4.0
     # via httpx
 build==1.2.1
     # via -r build.in
-certifi==2024.7.4
+certifi==2024.8.30
     # via
     #   httpcore
     #   httpx

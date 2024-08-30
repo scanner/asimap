@@ -23,7 +23,7 @@ build==1.2.1
     #   -r build.txt
     #   -r lint.txt
     #   pip-tools
-certifi==2024.7.4
+certifi==2024.8.30
     # via
     #   -r build.txt
     #   -r production.txt
@@ -343,7 +343,7 @@ types-redis==4.6.0.20240819
     # via -r lint.txt
 types-requests==2.32.0.20240712
     # via -r lint.txt
-types-setuptools==73.0.0.20240822
+types-setuptools==74.0.0.20240830
     # via
     #   -r lint.txt
     #   types-cffi
