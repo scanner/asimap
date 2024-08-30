@@ -233,6 +233,11 @@ class BaseClientHandler:
         finally:
             imap_command.timeout_cm = None
             cmd_duration = time.time() - start_time
+            if self.server and imap_command.command:
+                self.server.command_durations[imap_command.command].append(
+                    cmd_duration
+                )
+
             if cmd_duration > 1.0:
                 logger.debug(
                     "FINISH: %s, took %.3f seconds: '%s'",
@@ -643,13 +648,13 @@ class Authenticated(BaseClientHandler):
                 if self.mbox.name == cmd.mailbox_name:
                     self.select_while_selected_count += 1
                     if self.select_while_selected_count > 10:
-                        self.select_while_selected_count = 0
                         logger.warning(
                             "%s, mailbox: '%s': excessive selects while selected, count: %d",
                             self.client.name,
                             self.mbox.name,
                             self.select_while_selected_count,
                         )
+                        self.select_while_selected_count = 0
                         self.unceremonious_bye(
                             "You are SELECTING the same mailbox too often."
                         )

@@ -278,7 +278,7 @@ async def initial_migration(c: aiosqlite.Connection):
         "date text default CURRENT_TIMESTAMP)"
     )
     await c.execute(
-        "create unique index seq_name_mbox on sequences " "(name,mailbox_id)"
+        "create unique index seq_name_mbox on sequences (name,mailbox_id)"
     )
     await c.execute("create index seq_mbox_id on sequences (mailbox_id)")
 
