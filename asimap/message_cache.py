@@ -131,19 +131,25 @@ class MessageCache:
         now = time.monotonic()
         if force or now >= self.next_size_report:
             logger.info("Size report: %s", str(self))
+            total_gets = self.cache_hits.total() + self.cache_misses.total()
+            ratio = (self.cache_hits.total() / total_gets) * 100.0
             logger.info(
-                "total cache hits: %d, total cache misses: %d",
+                "total cache hits: %d, total cache misses: %d, ratio: %.1f",
                 self.cache_hits.total(),
                 self.cache_misses.total(),
+                ratio,
             )
             for mbox in sorted(
                 set(self.cache_hits.keys()) | set(self.cache_misses.keys())
             ):
+                total_gets = self.cache_hits[mbox] + self.cache_misses[mbox]
+                ratio = (self.cache_hits[mbox] / total_gets) * 100.0
                 logger.info(
-                    "mailbox '%s': cache hits: %d, cache misses: %d",
+                    "mbox '%s': cache hits: %d, cache misses: %d, ratio: %.1f",
                     mbox,
                     self.cache_hits[mbox],
                     self.cache_misses[mbox],
+                    ratio,
                 )
             self.cache_hits.clear()
             self.cache_misses.clear()

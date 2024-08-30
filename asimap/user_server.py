@@ -718,45 +718,38 @@ class IMAPUserServer:
         )
         logger.info("Number of clients: %d", len(self.clients))
         total_times = []
-        for cmd in self.command_durations.keys():
+        for cmd in sorted(self.command_durations.keys()):
             if not self.command_durations[cmd]:
                 continue
             durations = self.command_durations[cmd]
+            cmd = cmd.rjust(12)
             total_times.extend(durations)
             if len(durations) == 1:
-                logger.info(
-                    "mean command duration: %s: %.3fs", cmd, durations[0]
-                )
+                logger.info("%s: mean duration:%.3fs", cmd, durations[0])
             else:
                 mean_time = fmean(durations)
                 median_time = median(durations)
-                logger.info(
-                    "max command duration: %s: %.3fs", cmd, max(durations)
-                )
-                logger.info("mean command duration: %s: %.3fs", cmd, mean_time)
-                logger.info(
-                    "median command duration: %s: %.3fs", cmd, median_time
-                )
+                logger.info("%s: max duration: %.3fs", cmd, max(durations))
+                logger.info("%s: mean duration: %.3fs", cmd, mean_time)
+                logger.info("%s: median duration: %.3fs", cmd, median_time)
                 if len(durations) > 2:
                     stddev = stdev(durations, mean_time)
-                    logger.info(
-                        "stddev command duration: %s: %.3fs", cmd, stddev
-                    )
+                    logger.info("%s: stddev duration: %.3fs", cmd, stddev)
 
         self.command_durations.clear()
 
         if len(total_times) == 1:
-            logger.info("max total command duration: %.3fs", total_times[0])
-            logger.info("mean total command duration: %.3fs", total_times[0])
+            logger.info("max duration: %.3fs", total_times[0])
+            logger.info("mean duration: %.3fs", total_times[0])
         elif len(total_times) > 1:
             mean_time = fmean(total_times)
             median_time = median(total_times)
-            logger.info("max total command duration: %.3fs", max(total_times))
-            logger.info("mean total command duration: %.3fs", mean_time)
-            logger.info("median total command duration: %.3fs", median_time)
+            logger.info("max duration: %.3fs", max(total_times))
+            logger.info("mean duration: %.3fs", mean_time)
+            logger.info("median duration: %.3fs", median_time)
             if len(total_times) > 2:
                 stddev = stdev(total_times, mean_time)
-                logger.info("stddev total command duration: %.3fs", stddev)
+                logger.info("stddev duration: %.3fs", stddev)
 
     ####################################################################
     #
