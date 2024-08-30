@@ -139,7 +139,8 @@ class SearchContext(object):
 
         # We have not actually loaded the message yet..
         #
-        self._msg = await self.mailbox.get_and_cache_msg(self.msg_key)
+        # self._msg = await self.mailbox.get_and_cache_msg(self.msg_key)
+        self._msg = await self.mailbox.mailbox.aget_message(self.msg_key)
         return self._msg
 
     ####################################################################

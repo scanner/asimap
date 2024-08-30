@@ -141,7 +141,7 @@ class MessageCache:
 
             ratio = (self.cache_hits.total() / total_gets) * 100.0
             logger.info(
-                "total cache hits: %d, total cache misses: %d, ratio: %.1f",
+                "total cache hits: %d, total cache misses: %d, ratio: %.1f%",
                 self.cache_hits.total(),
                 self.cache_misses.total(),
                 ratio,
@@ -152,7 +152,7 @@ class MessageCache:
                 total_gets = self.cache_hits[mbox] + self.cache_misses[mbox]
                 ratio = (self.cache_hits[mbox] / total_gets) * 100.0
                 logger.info(
-                    "mbox '%s': cache hits: %d, cache misses: %d, ratio: %.1f",
+                    "mbox '%s': cache hits: %d, cache misses: %d, ratio: %.1f%",
                     mbox,
                     self.cache_hits[mbox],
                     self.cache_misses[mbox],

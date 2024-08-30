@@ -460,7 +460,7 @@ class IMAPUserServer:
 
         # There is a single message cache per user server instance.
         #
-        self.msg_cache = asimap.message_cache.MessageCache()
+        # self.msg_cache = asimap.message_cache.MessageCache()
 
         # When we have any connected clients self.expiry gets set to
         # None. Otherwise use it to determine when we have hung around long
@@ -573,7 +573,7 @@ class IMAPUserServer:
             for mbox in mboxes:
                 tg.create_task(mbox.shutdown())
 
-        self.msg_cache.clear()
+        # self.msg_cache.clear()
         await self.db.commit()
         await self.db.close()
         self.mailbox.close()

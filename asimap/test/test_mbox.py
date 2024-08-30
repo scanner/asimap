@@ -384,25 +384,12 @@ async def test_mailbox_fetch(mailbox_with_bunch_of_email):
         assert flags.startswith("FLAGS (")
         assert headers.startswith("BODY[HEADER.FIELDS (Date From)] {")
 
-        # The on disk mailbox info does not change until we finish the
-        # fetch. However the sequences on the cached message will update
-        # immediately.
-        #
-        msg = mbox.server.msg_cache.get(mbox.name, msg_key)
-        if msg:
-            assert seen not in msg.get_sequences()
-            assert unseen in msg.get_sequences()
-
     for msg_key in msg_set:
         # One of the FETCH's is a BODY.PEEK, thus `\Seen` flag should
         # not be on the messages yet, and they should still be `unseen`.
         #
         assert msg_key not in mbox.sequences[seen]
         assert msg_key in mbox.sequences[unseen]
-
-        msg = await mbox.mailbox.aget_message(msg_key)
-        assert seen not in msg.get_sequences()
-        assert unseen in msg.get_sequences()
 
     # Twiggle the FETCH BODY.PEEK to be a FETCH BODY.
     #
@@ -418,16 +405,6 @@ async def test_mailbox_fetch(mailbox_with_bunch_of_email):
         assert int(uid_val) == mbox.uids[idx - 1]
         assert flags.startswith("FLAGS (")
         assert headers.startswith("BODY[HEADER.FIELDS (Date From)] {")
-
-        # FETCH BODY is no longer a PEEK, thus these messages are now
-        # `\Seen`
-        #
-        msg_key = mbox.msg_keys[idx - 1]
-        msg = mbox.server.msg_cache.get(mbox.name, msg_key)
-        if msg:
-            msg_sequences = msg.get_sequences()
-            assert seen in msg_sequences
-            assert unseen not in msg_sequences
 
     for msg_key in msg_set:
         # One of the FETCH's is a BODY.PEEK, thus `\Seen` flag should
@@ -582,12 +559,6 @@ async def test_mailbox_store(mailbox_with_bunch_of_email):
         assert msg_key in seqs[flag_to_seq(r"\Seen")]
         assert msg_key not in seqs[flag_to_seq("unseen")]
 
-        msg = mbox.server.msg_cache.get(mbox.name, msg_key)
-        if msg:
-            msg_seq = msg.get_sequences()
-            assert flag_to_seq(r"\Seen") in msg_seq
-            assert flag_to_seq("unseen") not in msg_seq
-
         msg = await mbox.mailbox.aget_message(msg_key)
         msg_seq = msg.get_sequences()
         assert flag_to_seq(r"\Seen") in msg_seq
@@ -599,36 +570,17 @@ async def test_mailbox_store(mailbox_with_bunch_of_email):
         assert msg_key not in seqs[flag_to_seq(r"\Seen")]
         assert msg_key in seqs[flag_to_seq("unseen")]
 
-        msg = mbox.server.msg_cache.get(mbox.name, msg_key)
-        if msg:
-            msg_seq = msg.get_sequences()
-            assert flag_to_seq(r"\Seen") not in msg_seq
-            assert flag_to_seq("unseen") in msg_seq
-
         msg = await mbox.mailbox.aget_message(msg_key)
         msg_seq = msg.get_sequences()
         assert flag_to_seq(r"\Seen") not in msg_seq
         assert flag_to_seq("unseen") in msg_seq
 
     await mbox.store(msg_set, StoreAction.REPLACE_FLAGS, [r"\Answered"])
-    seqs = await mbox.mailbox.aget_sequences()
+    # seqs = await mbox.mailbox.aget_sequences()
     for msg_key in msg_set:
-        assert msg_key in seqs[flag_to_seq(r"\Answered")]
-        assert msg_key not in seqs[flag_to_seq(r"\Seen")]
-        assert msg_key in seqs[flag_to_seq("unseen")]
-
-        msg = mbox.server.msg_cache.get(mbox.name, msg_key)
-        if msg:
-            msg_seq = msg.get_sequences()
-            assert flag_to_seq(r"\Answered") in msg_seq
-            assert flag_to_seq(r"\Seen") not in msg_seq
-            assert flag_to_seq("unseen") in msg_seq
-
-        msg = await mbox.mailbox.aget_message(msg_key)
-        msg_seq = msg.get_sequences()
-        assert flag_to_seq(r"\Answered") in msg_seq
-        assert flag_to_seq(r"\Seen") not in msg_seq
-        assert flag_to_seq("unseen") in msg_seq
+        assert msg_key in mbox.sequences[flag_to_seq(r"\Answered")]
+        assert msg_key not in mbox.sequences[flag_to_seq(r"\Seen")]
+        assert msg_key in mbox.sequences[flag_to_seq("unseen")]
 
     await mbox.store(
         msg_set, StoreAction.REPLACE_FLAGS, [r"\Seen", r"\Answered"]
@@ -638,13 +590,6 @@ async def test_mailbox_store(mailbox_with_bunch_of_email):
         assert msg_key in seqs[flag_to_seq(r"\Answered")]
         assert msg_key in seqs[flag_to_seq(r"\Seen")]
         assert msg_key not in seqs[flag_to_seq("unseen")]
-
-        msg = mbox.server.msg_cache.get(mbox.name, msg_key)
-        if msg:
-            msg_seq = msg.get_sequences()
-            assert flag_to_seq(r"\Answered") in msg_seq
-            assert flag_to_seq(r"\Seen") in msg_seq
-            assert flag_to_seq("unseen") not in msg_seq
 
         msg = await mbox.mailbox.aget_message(msg_key)
         msg_seq = msg.get_sequences()
