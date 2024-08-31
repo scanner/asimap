@@ -1005,7 +1005,7 @@ class IMAPUserServer:
                         tg.create_task(self.get_mailbox(dirname, expiry=0))
                         await asyncio.sleep(0)
 
-        logger.debug(
+        logger.info(
             "Finished. Took %.3f seconds", time.monotonic() - start_time
         )
 
@@ -1153,6 +1153,11 @@ class IMAPUserServer:
         # Now point in doing all the math if we are not going to log it.
         # NOTE: In the future we might submit these as metrics.
         #
+        logger.info(
+            "Finished, Took %.3f seconds to check %d folders",
+            (time.time() - start_time),
+            kount,
+        )
         scan_durations = list(self.folder_check_durations.values())
         if self.debug and len(scan_durations) > 1:
             mean_scan_duration = fmean(scan_durations)
@@ -1169,11 +1174,6 @@ class IMAPUserServer:
             )
             mbox_max_durations = ", ".join(
                 f"{x[0]}:{x[1]:.3f}s" for x in by_duration[:10]
-            )
-            logger.debug(
-                "Finished, Took %.3f seconds to check %d folders",
-                (time.time() - start_time),
-                kount,
             )
             logger.debug("Total worker execution time: %.3f", worker_duration)
             logger.debug(
