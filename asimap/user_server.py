@@ -34,7 +34,6 @@ from sentry_sdk.integrations.asyncio import AsyncioIntegration
 #
 import asimap
 import asimap.mbox
-import asimap.message_cache
 import asimap.trace
 
 from .client import Authenticated
@@ -458,10 +457,6 @@ class IMAPUserServer:
         #
         self.clients: Dict[asyncio.Task, IMAPClientProxy] = {}
 
-        # There is a single message cache per user server instance.
-        #
-        # self.msg_cache = asimap.message_cache.MessageCache()
-
         # When we have any connected clients self.expiry gets set to
         # None. Otherwise use it to determine when we have hung around long
         # enough with no connected clients and decide to exit.
@@ -573,7 +568,6 @@ class IMAPUserServer:
             for mbox in mboxes:
                 tg.create_task(mbox.shutdown())
 
-        # self.msg_cache.clear()
         await self.db.commit()
         await self.db.close()
         self.mailbox.close()

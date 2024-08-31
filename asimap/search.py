@@ -122,10 +122,8 @@ class SearchContext(object):
         if self._msg_size:
             return self._msg_size
 
-        # Just to make sure that the message is cached.
-        #
         msg = await self.email_message()
-        self._msg_size = get_msg_size(msg)  # len(msg_as_string(msg))
+        self._msg_size = get_msg_size(msg)
         return self._msg_size
 
     ##################################################################
@@ -137,9 +135,6 @@ class SearchContext(object):
         if self._msg:
             return self._msg
 
-        # We have not actually loaded the message yet..
-        #
-        # self._msg = await self.mailbox.get_and_cache_msg(self.msg_key)
         self._msg = await self.mailbox.mailbox.aget_message(self.msg_key)
         return self._msg
 
