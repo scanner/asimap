@@ -1081,7 +1081,6 @@ class Authenticated(BaseClientHandler):
             except MailboxInconsistency as e:
                 self.optional_resync = False
                 self.full_search = True
-                self.server.msg_cache.clear_mbox(self.mbox.name)
                 logger.warning("Mailbox '%s': %s", self.mbox.name, str(e))
 
     ##################################################################
@@ -1143,7 +1142,6 @@ class Authenticated(BaseClientHandler):
                         f"* {idx} FETCH ({' '.join(results)})\r\n"
                     )
         except MailboxInconsistency as exc:
-            self.server.msg_cache.clear_mbox(self.mbox.name)
             self.mbox.optional_resync = False
             raise Bad(f"Problem while fetching: {exc}")
 
@@ -1228,7 +1226,6 @@ class Authenticated(BaseClientHandler):
             #
             self.optional_resync = False
             self.full_search = True
-            self.server.msg_cache.clear_mbox(self.mbox.name)
             raise Bad(f"Problem while storing: {exc}")
 
         # IF this is not a "SILENT" store, we will send the FETCH messages that

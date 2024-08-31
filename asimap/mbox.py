@@ -221,7 +221,7 @@ class Mailbox:
         # underlying file system.
         #
         try:
-            self.mailbox = server.mailbox.get_folder(name)
+            self.mailbox: MH = server.mailbox.get_folder(name)
         except NoSuchMailboxError:
             raise NoSuchMailbox(f"No such mailbox: '{name}'")
 
@@ -285,7 +285,6 @@ class Mailbox:
     def __del__(self):
         """
         Make sure that the management task is cancelled on the way out.
-        Make sure the message cache for this mbox is cleared.
         """
         try:
             if hasattr(self, "mgmt_task") and not self.mgmt_task.done():
@@ -295,9 +294,6 @@ class Mailbox:
             # gets called after the event loop is gone.
             #
             pass
-
-        if self.server and self.name:
-            self.server.msg_cache.clear_mbox(self.name)
 
         if self.name in self.server.active_mailboxes:
             del self.server.active_mailboxes[self.name]
@@ -349,7 +345,6 @@ class Mailbox:
         Cancel the management task, wait for it to exit.
         Make sure any pending IMAP Tasks get told to go away.
         Make sure mbox is commited to db if commit_db is True.
-        Clear the message cache entries for this mbox.
         """
         self.deleted = True  # Causes any waiting IMAP Commands to exit.
         self.expiry = 0.0
@@ -373,8 +368,6 @@ class Mailbox:
 
         if commit_db:
             await self.commit_to_db()
-
-        self.server.msg_cache.clear_mbox(self.name)
 
     ####################################################################
     #
@@ -801,6 +794,18 @@ class Mailbox:
 
     ####################################################################
     #
+    def _msg_sequences(self, msg_key: int) -> List[str]:
+        """
+        Returns a list of all the sequences that the msg key is in.
+        """
+        seqs = []
+        for sequence in self.sequences.keys():
+            if msg_key in self.sequences[sequence]:
+                seqs.append(seq_to_flag(sequence))
+        return seqs
+
+    ####################################################################
+    #
     async def _get_sequences_update_seen(
         self, recent_msg_keys: Optional[List[int]] = None
     ) -> Sequences:
@@ -863,7 +868,6 @@ class Mailbox:
 
         if modified:
             await self.mailbox.aset_sequences(seq)
-            self.server.msg_cache.clear_mbox(self.name)
         return seq
 
     ####################################################################
@@ -1072,26 +1076,28 @@ class Mailbox:
             #
             self.marked(True)
             for key in new_msg_keys:
-                msg = await self.get_and_cache_msg(key)
-                msg.add_sequence("Recent")
+                msg = await self.mailbox.aget_message(key)
+                self.sequences["Recent"].add(key)
+                # msg.add_sequence("Recent")
                 msg_sequences = msg.get_sequences()
+                msg_sequences.append("Recent")
                 if "unseen" not in msg_sequences:
                     # If it is _not_ 'unseen', therefore it must be 'Seen'
                     #
                     if "Seen" not in msg_sequences:
-                        msg.add_sequence("Seen")
+                        # msg.add_sequence("Seen")
                         msg_sequences.append("Seen")
                 else:
                     # If it is 'unseen' then it must _not_ be 'Seen'
                     #
                     if "Seen" in msg_sequences:
-                        msg.remove_sequence("Seen")
+                        # msg.remove_sequence("Seen")
                         msg_sequences.remove("Seen")
 
                 # If it is 'Seen' then must not be 'unseen'
                 #
                 if "Seen" in msg_sequences and "unseen" in msg_sequences:
-                    msg.remove_sequence("unseen")
+                    # msg.remove_sequence("unseen")
                     msg_sequences.remove("unseen")
 
                 # For all the sequences this message was in, add it to
@@ -1140,8 +1146,8 @@ class Mailbox:
             #
             notifications = []
             for key in new_msg_keys:
-                msg = await self.get_and_cache_msg(key)
-                fetch, _ = self._generate_fetch_msg_for(key, msg)
+                msg = await self.mailbox.aget_message(key)
+                fetch, _ = self._generate_fetch_msg_for(key)
                 notifications.append(fetch)
 
             await self._dispatch_or_pend_notifications(
@@ -1174,7 +1180,7 @@ class Mailbox:
     ####################################################################
     #
     def _generate_fetch_msg_for(
-        self, msg_key: int, msg: MHMessage, publish_uid: bool = False
+        self, msg_key: int, publish_uid: bool = False
     ) -> Tuple[str, str]:
         """
         Generate a `FETCH` message for sending to a client for the flags of
@@ -1193,10 +1199,10 @@ class Mailbox:
         msg_key: int  --
         uid_cmd: bool -- (default False)
         """
-        flags = []
+        flags = self._msg_sequences(msg_key)
 
-        for sequence in msg.get_sequences():
-            flags.append(seq_to_flag(sequence))
+        # for sequence in msg.get_sequences():
+        #     flags.append(seq_to_flag(sequence))
         flags_str = " ".join(flags)
         msg_seq_number = self.msg_keys.index(msg_key) + 1
 
@@ -1230,9 +1236,6 @@ class Mailbox:
         folder is larger than 20. This tells us it has a considerable number
         of gaps and we then call pack on the folder.
 
-        The cache for this mailbox is cleared so any any cached message
-        sequences are cleared out.
-
         This is expected to only be called when no imap tasks are running
         against this mailbox to prevent sync problems between server and
         client.
@@ -1259,7 +1262,6 @@ class Mailbox:
         #       sequences back in after the pack.
         #
         await self.mailbox.aset_sequences(self.sequences)
-        self.server.msg_cache.clear_mbox(self.name)
         await self.mailbox.apack()
         self.msg_keys = await self.mailbox.akeys()
         self.sequences = await self.mailbox.aget_sequences()
@@ -1286,7 +1288,6 @@ class Mailbox:
 
         Arguments:
         - `msg_key`: the message key in the folder we want the uid_vv/uid for.
-        - `cache`: if True then also cache this message in the message cache.
         """
         try:
             idx = self.msg_keys.index(msg_key)
@@ -1526,26 +1527,6 @@ class Mailbox:
 
     ##################################################################
     #
-    async def get_and_cache_msg(
-        self, msg_key: int, cache: bool = True
-    ) -> MHMessage:
-        """
-        Get the message associated with the given message key in our mailbox.
-        We check the cache first to see if it is there.
-        If it is not we retrieve it from the MH folder and add it to the cache.
-
-        Arguments:
-        - `msg_key`: message key to look up the message by
-        """
-        msg = self.server.msg_cache.get(self.name, msg_key)
-        if msg is None:
-            msg = await self.mailbox.aget_message(msg_key)
-            if cache:
-                self.server.msg_cache.add(self.name, msg_key, msg)
-        return msg
-
-    ##################################################################
-    #
     async def selected(self, client: "Authenticated") -> List[str]:
         r"""
         This mailbox is being selected by a client.
@@ -1716,11 +1697,11 @@ class Mailbox:
         # Update the message and internal sequences.
         #
         self.sequences["Recent"].add(msg_key)
-        msg.add_sequence("Recent")
+        # msg.add_sequence("Recent")
         for flag in flags:
             if flag in REVERSE_SYSTEM_FLAG_MAP:
                 flag = REVERSE_SYSTEM_FLAG_MAP[flag]
-            msg.add_sequence(flag)
+            # msg.add_sequence(flag)
             self.sequences[flag].add(msg_key)
 
         # Keep the .mh_sequences up to date.
@@ -1749,11 +1730,12 @@ class Mailbox:
                 f"message {msg_key}"
             )
         logger.debug(
-            "Mailbox: '%s', append message: %d, uid: %d, sequences: %s",
+            # "Mailbox: '%s', append message: %d, uid: %d, sequences: %s",
+            "Mailbox: '%s', append message: %d, uid: %d",
             self.name,
             msg_key,
             uid,
-            ", ".join(msg.get_sequences()),
+            # ", ".join(msg.get_sequences()),
         )
         return uid
 
@@ -1777,13 +1759,6 @@ class Mailbox:
             return
 
         msg_keys_to_delete = self.sequences["Deleted"]
-
-        # Remove the msg keys being deleted from the message cache.
-        #
-        cached_keys = set(self.server.msg_cache.msg_keys_for_mbox(self.name))
-        purge_keys = msg_keys_to_delete.intersection(cached_keys)
-        for msg_key in purge_keys:
-            self.server.msg_cache.remove(self.name, msg_key)
 
         # We go through the to be deleted messages in reverse order so that
         # the expunges are "EXPUNGE <n>" "EXPUNGE <n-1>" etc. This is
@@ -2016,12 +1991,9 @@ class Mailbox:
                 # sequence. Only one client gets to actually see that a
                 # message is 'Recent.'
                 #
-                cached_msg = self.server.msg_cache.get(self.name, msg_key)
                 if fetched_flags:
                     if msg_key in self.sequences["Recent"]:
                         no_longer_recent_msgs.add(msg_key)
-                    if cached_msg:
-                        cached_msg.remove_sequence("Recent")
 
                 # If we dif a FETCH BODY (but NOT a BODY.PEEK) then the
                 # message is removed from the 'unseen' sequence (if it was
@@ -2029,9 +2001,6 @@ class Mailbox:
                 # it.)
                 #
                 if fetched_body_seen:
-                    if cached_msg:
-                        cached_msg.remove_sequence("unseen")
-                        cached_msg.add_sequence("Seen")
                     if msg_key in self.sequences["unseen"]:
                         no_longer_unseen_msgs.add(msg_key)
 
@@ -2138,73 +2107,66 @@ class Mailbox:
 
     ####################################################################
     #
-    def _help_add_flag(self, key: int, msg: MHMessage, flag: str):
+    def _help_add_flag(self, key: int, flag: str):
         """
         Helper function for the logic to add a message to a sequence. Updating
         both the sequences associated with the MHMessage and the sequences dict.
         """
-        msg.add_sequence(flag)
+        # msg.add_sequence(flag)
         self.sequences[flag].add(key)
 
         # Make sure that the Seen and unseen sequences are updated properly.
         #
         match flag:
             case "Seen":
-                msg.remove_sequence("unseen")
+                # msg.remove_sequence("unseen")
                 self.sequences["unseen"].discard(key)
             case "unseen":
-                msg.remove_sequence("Seen")
+                # msg.remove_sequence("Seen")
                 self.sequences["Seen"].discard(key)
 
     ####################################################################
     #
-    def _help_remove_flag(self, key: int, msg: MHMessage, flag: str):
+    def _help_remove_flag(self, key: int, flag: str):
         """
         Helper function for the logic to remove a message to a
         sequence. Updating both the sequences associated with the MHMessage and
         the sequences dict.
         """
-        msg.remove_sequence(flag)
+        # msg.remove_sequence(flag)
         self.sequences[flag].discard(key)
 
         # Make sure that the Seen and unseen sequences are updated properly.
         #
         match flag:
             case "Seen":
-                msg.add_sequence("unseen")
+                # msg.add_sequence("unseen")
                 self.sequences["unseen"].add(key)
             case "unseen":
-                msg.add_sequence("Seen")
+                # msg.add_sequence("Seen")
                 self.sequences["Seen"].add(key)
 
     ####################################################################
     #
-    def _help_replace_flags(self, key: int, msg: MHMessage, flags: List[str]):
+    def _help_replace_flags(self, key: int, flags: List[str]):
         r"""
         Replace the flags on the message.
         The flag `\Recent` if present is not affected.
         The flag `unseen` if present is not affected unless `\Seen` is in flags.
         """
-        msg_seqs = set(msg.get_sequences())
-        msg.set_sequences(flags)
+        cur_msg_seqs = set(self._msg_sequences(key))
+        new_msg_seqs = set(flags)
+        if "Seen" not in new_msg_seqs:
+            new_msg_seqs.add("unseen")
+        if "Recent" in cur_msg_seqs:
+            new_msg_seqs.add("Recent")
 
-        # If `\Recent` was present, then it is added back.
-        #
-        if "Recent" in msg_seqs:
-            msg.add_sequence("Recent")
+        to_remove = cur_msg_seqs - new_msg_seqs
 
-        # If `\Seen` is not set in flags, then `unseen` is added.
-        #
-        if "Seen" not in flags:
-            msg.add_sequence("unseen")
-
-        new_msg_seqs = set(msg.get_sequences())
-        to_remove = msg_seqs - new_msg_seqs
-
-        for flag in flags:
-            self.sequences[flag].add(key)
-        for flag in to_remove:
-            self.sequences[flag].discard(key)
+        for seq in new_msg_seqs:
+            self.sequences[seq].add(key)
+        for seq in to_remove:
+            self.sequences[seq].discard(key)
 
     ##################################################################
     #
@@ -2248,21 +2210,20 @@ class Mailbox:
         notifications: List[str] = []
         response: List[str] = []
         for key in msg_keys:
-            msg = await self.get_and_cache_msg(key)
             async with self.mh_sequences_lock:
                 match action:
                     case StoreAction.ADD_FLAGS | StoreAction.REMOVE_FLAGS:
                         for flag in flags:
                             match action:
                                 case StoreAction.ADD_FLAGS:
-                                    self._help_add_flag(key, msg, flag)
+                                    self._help_add_flag(key, flag)
                                 case StoreAction.REMOVE_FLAGS:
-                                    self._help_remove_flag(key, msg, flag)
+                                    self._help_remove_flag(key, flag)
                     case StoreAction.REPLACE_FLAGS:
-                        self._help_replace_flags(key, msg, flags)
+                        self._help_replace_flags(key, flags)
 
             fetch, fetch_uid = self._generate_fetch_msg_for(
-                key, msg, publish_uid=uid_cmd
+                key, publish_uid=uid_cmd
             )
             notifications.append(fetch)
             if uid_cmd:
@@ -2384,10 +2345,10 @@ class Mailbox:
                     mtime = await aiofiles.os.path.getmtime(
                         mbox_msg_path(self.mailbox, msg_key)
                     )
-                    msg = await self.get_and_cache_msg(msg_key, cache=False)
+                    msg = await self.mailbox.aget_message(msg_key)
                     msg_path = os.path.join(tmp_dir, str(msg_key))
-
-                    copy_msgs.append((msg_path, msg.get_sequences(), mtime))
+                    msg_seqs = self._msg_sequences(msg_key)
+                    copy_msgs.append((msg_path, msg_seqs, mtime))
                     await awrite_message(msg, msg_path)
                     uid_vv, uid = self.get_uid_from_msg(msg_key)
                     src_uids.append(uid)
@@ -2641,7 +2602,6 @@ class Mailbox:
 
         mbox = await server.get_mailbox(name)
         do_delete = False
-        server.msg_cache.clear_mbox(name)
 
         inferior_mailboxes = await mbox.mailbox.alist_folders()
 
@@ -2909,7 +2869,6 @@ async def _helper_rename_folder(mbox: Mailbox, new_name: str):
             mb.name = mbox_new_name
             mb.mailbox = srvr.mailbox.get_folder(mbox_new_name)
             srvr.active_mailboxes[mbox_new_name] = mb
-        srvr.msg_cache.clear_mbox(mbox_old_name)
 
     # Make a sym link to where the new mbox is going to be. This way as we move
     # any subordinate folders if they get activity before we have finished the

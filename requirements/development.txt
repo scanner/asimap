@@ -23,7 +23,7 @@ build==1.2.1
     #   -r build.txt
     #   -r lint.txt
     #   pip-tools
-certifi==2024.7.4
+certifi==2024.8.30
     # via
     #   -r build.txt
     #   -r production.txt
@@ -78,7 +78,7 @@ executing==2.0.1
     # via stack-data
 factory-boy==3.3.1
     # via pytest-factoryboy
-faker==28.0.0
+faker==28.1.0
     # via factory-boy
 filelock==3.15.4
     # via
@@ -129,7 +129,7 @@ inflection==0.5.1
     # via pytest-factoryboy
 iniconfig==2.0.0
     # via pytest
-ipython==8.26.0
+ipython==8.27.0
     # via -r development.in
 isort==5.13.2
     # via -r lint.txt
@@ -343,7 +343,7 @@ types-redis==4.6.0.20240819
     # via -r lint.txt
 types-requests==2.32.0.20240712
     # via -r lint.txt
-types-setuptools==73.0.0.20240822
+types-setuptools==74.0.0.20240830
     # via
     #   -r lint.txt
     #   types-cffi
@@ -365,7 +365,7 @@ userpath==1.9.2
     # via
     #   -r build.txt
     #   hatch
-uv==0.4.0
+uv==0.4.1
     # via
     #   -r build.txt
     #   hatch
