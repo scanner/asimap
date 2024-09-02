@@ -641,6 +641,35 @@ class Mailbox:
 
     ####################################################################
     #
+    def _maybe_extend_timeout(
+        self, timeout_cm: Optional[asyncio.Timeout], extend: float = 10.0
+    ):
+        """
+        If we have a timeout context manager and we are close to timing out,
+        extend the timeout to now + extend seconds.
+
+        If there currently is no timeout set, then set one for now + extend
+        seconds.
+
+        NOTE: So far we always yield multiple results within 1 second, so this
+              seems reasonable.
+        """
+        if timeout_cm is None or timeout_cm.expired():
+            return
+
+        now = asyncio.get_running_loop().time()
+        when = timeout_cm.when()
+        when = when if when is not None else now
+        if when - now < extend:
+            timeout_cm.reschedule(when + extend)
+            logger.info(
+                "Mailbox: '%s': Extended timeout to %f",
+                self.name,
+                timeout_cm.when(),
+            )
+
+    ####################################################################
+    #
     def _cleanup_executing_tasks(self) -> None:
         """
         Go through the `self.excuting_tasks` list and remove from it all
@@ -1830,7 +1859,10 @@ class Mailbox:
     ##################################################################
     #
     async def search(
-        self, search: IMAPSearch, uid_cmd: bool = False
+        self,
+        search: IMAPSearch,
+        uid_cmd: bool = False,
+        timeout_cm: Optional[asyncio.Timeout] = None,
     ) -> List[int]:
         """
         Take the given IMAP search object and apply it to all of the messages
@@ -1849,6 +1881,9 @@ class Mailbox:
         Arguments:
         - `search`: An IMAPSearch object instance
         - `uid_cmd`: whether or not this is a UID command.
+        - `timeout_cm`: Timeout context manager. If passed in, when looping
+                        over messages, if we are approaching the timeout
+                        deadline, reschedule it.
         """
         if not self.num_msgs:
             return []
@@ -1882,7 +1917,10 @@ class Mailbox:
                     results.append(uid)
                 else:
                     results.append(msg_seq_num)
+
             await asyncio.sleep(0)
+            self._maybe_extend_timeout(timeout_cm)
+
         return results
 
     #########################################################################
@@ -1892,6 +1930,7 @@ class Mailbox:
         msg_set: List[int],
         fetch_ops: List[FetchAtt],
         uid_cmd: bool = False,
+        timeout_cm: Optional[asyncio.Timeout] = None,
     ):
         """
         Go through the messages in the mailbox. For the messages that are
@@ -2030,6 +2069,8 @@ class Mailbox:
                 yield_start = time.time()
                 yield (msg_seq_num, iter_results)
                 yield_times.append(time.time() - yield_start)
+
+                self._maybe_extend_timeout(timeout_cm)
 
             fetch_finished_time = time.time()
 
@@ -2302,6 +2343,7 @@ class Mailbox:
         messages at once, albeit more slowly then only reading and writing
         once.
         """
+        timeout_cm = imap_cmd.timeout_cm if imap_cmd else None
         copy_msgs: List[Tuple[str, List[str], float]] = []
         start_time = time.monotonic()
 
@@ -2367,6 +2409,7 @@ class Mailbox:
                         mbox_msg_path(self.mailbox, msg_key)
                     )
                     msg = await self.mailbox.aget_message(msg_key)
+                    self._maybe_extend_timeout(timeout_cm)
                     msg_path = os.path.join(tmp_dir, str(msg_key))
                     msg_seqs = self._msg_sequences(msg_key)
                     copy_msgs.append((msg_path, msg_seqs, mtime))
@@ -2406,6 +2449,7 @@ class Mailbox:
 
             try:
                 wait_start = time.monotonic()
+                self._maybe_extend_timeout(timeout_cm, extend=30.0)
                 async with append_imap_cmd.ready_and_okay(dst_mbox):
                     wait_duration = time.monotonic() - wait_start
                     if imap_cmd:
@@ -2429,6 +2473,7 @@ class Mailbox:
                             mbox_msg_path(dst_mbox.mailbox, msg_key),
                             (mtime, mtime),
                         )
+                        self._maybe_extend_timeout(timeout_cm)
 
                     msg_copy_duration = time.monotonic() - msg_copy_time_start
                     if imap_cmd:
@@ -2457,6 +2502,7 @@ class Mailbox:
                     while len(dst_mbox.executing_tasks) > 1:
                         await asyncio.sleep(0)
                         self._cleanup_executing_tasks()
+                        self._maybe_extend_timeout(timeout_cm)
                     duration = time.monotonic() - wait_start
                     if duration > 0.1:
                         imap_cmd_str = imap_cmd.qstr() if imap_cmd else "none"

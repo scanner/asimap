@@ -8,7 +8,6 @@ single connected IMAP client.
 import asyncio
 import logging
 import sys
-import time
 from enum import StrEnum
 from itertools import count, groupby
 from typing import TYPE_CHECKING, Dict, List, Optional, Union
@@ -57,7 +56,7 @@ SERVER_ID = {
 # safety measure. We should make it dynamic (so along as commands are doing
 # something it lets them run.)
 #
-COMMAND_TIMEOUT = 360
+COMMAND_TIMEOUT = 120
 
 
 ########################################################################
@@ -171,7 +170,7 @@ class BaseClientHandler:
         # except the "OK" response and any exceptional errors which are handled
         # by this method.
         #
-        start_time = time.time()
+        start_time = asyncio.get_running_loop().time()
         try:
             # There may be cases where some underlying system is stuck locking
             # a folder. We are going to arbitrarily timeout out of those, but
@@ -205,8 +204,12 @@ class BaseClientHandler:
             await self.client.push(result)
             return
         except asyncio.TimeoutError:
+            mbox_name = self.mbox.name if self.mbox else "Not selected"
             logger.warning(
-                "%s: Command timed out: '%s'", self.name, imap_command.qstr()
+                "%s: Mailbox: '%s': command timed out: '%s'",
+                self.name,
+                mbox_name,
+                str(imap_command),
             )
             if self.server and imap_command.command:
                 self.server.num_failed_commands[imap_command.command] += 1
@@ -248,7 +251,7 @@ class BaseClientHandler:
             raise
         finally:
             imap_command.timeout_cm = None
-            cmd_duration = time.time() - start_time
+            cmd_duration = asyncio.get_running_loop().time() - start_time
             if self.server and imap_command.command:
                 self.server.command_durations[imap_command.command].append(
                     cmd_duration
@@ -672,7 +675,7 @@ class Authenticated(BaseClientHandler):
                         )
                         self.select_while_selected_count = 0
                         self.unceremonious_bye(
-                            "You are SELECTING the same mailbox too often."
+                            "You are SELECT'ing the same mailbox too often."
                         )
                         return
                 else:
@@ -687,6 +690,7 @@ class Authenticated(BaseClientHandler):
         # we should not set our state or the mailbox we have selected
         # until 'selected()' returns without a failure.
         #
+        assert self.server
         mbox = await self.server.get_mailbox(cmd.mailbox_name)
 
         async with cmd.ready_and_okay(mbox):
@@ -794,6 +798,7 @@ class Authenticated(BaseClientHandler):
         """
         await self.send_pending_notifications()
 
+        assert self.server
         mbox = await self.server.get_mailbox(cmd.mailbox_name)
         mbox.subscribed = True
         await mbox.commit_to_db()
@@ -812,6 +817,7 @@ class Authenticated(BaseClientHandler):
         """
         await self.send_pending_notifications()
 
+        assert self.server
         mbox = await self.server.get_mailbox(cmd.mailbox_name)
         mbox.subscribed = False
         await mbox.commit_to_db()
@@ -844,6 +850,7 @@ class Authenticated(BaseClientHandler):
         if lsub:
             res = "LSUB"
 
+        assert self.server
         async for mbox_name, attributes in Mailbox.list(
             cmd.mailbox_name, cmd.list_mailbox, self.server, lsub
         ):
@@ -875,6 +882,7 @@ class Authenticated(BaseClientHandler):
         """
         await self.send_pending_notifications()
 
+        assert self.server
         mbox = await self.server.get_mailbox(cmd.mailbox_name, expiry=5)
         result: List[str] = []
         async with cmd.ready_and_okay(mbox):
@@ -904,6 +912,7 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
+        assert self.server
         await self.send_pending_notifications()
 
         try:
@@ -1089,7 +1098,7 @@ class Authenticated(BaseClientHandler):
         async with cmd.ready_and_okay(self.mbox):
             try:
                 results = await self.mbox.search(
-                    cmd.search_key, cmd.uid_command
+                    cmd.search_key, cmd.uid_command, cmd.timeout_cm
                 )
                 await self.client.push(
                     f"* SEARCH {' '.join(str(x) for x in results)}\r\n"
@@ -1152,7 +1161,7 @@ class Authenticated(BaseClientHandler):
                     sorted(cmd.msg_set_as_set) if cmd.msg_set_as_set else []
                 )
                 async for idx, results in self.mbox.fetch(
-                    msg_set, cmd.fetch_atts, cmd.uid_command
+                    msg_set, cmd.fetch_atts, cmd.uid_command, cmd.timeout_cm
                 ):
                     await self.client.push(
                         f"* {idx} FETCH ({' '.join(results)})\r\n"
