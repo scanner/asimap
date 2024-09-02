@@ -705,9 +705,30 @@ class Mailbox:
                 # between different IMAP Commands that are allowed to run at
                 # the same time if they do not operate on the same messages.
                 #
-                imap_cmd.msg_set_as_set = self.msg_set_to_msg_seq_set(
-                    imap_cmd.msg_set, imap_cmd.uid_command
-                )
+                try:
+                    imap_cmd.msg_set_as_set = self.msg_set_to_msg_seq_set(
+                        imap_cmd.msg_set, imap_cmd.uid_command
+                    )
+                except Bad as e:
+                    # XXX This is a hack for now. We are getting some FETCH
+                    # commands where the msg seq being asked for is clearly a
+                    # UID command, yet the `imap_cmd.uid_command` field appears
+                    # to be Falsem, so quickly retry it and log the
+                    # command. Maybe this is an error in the parser.
+                    #
+                    if not imap_cmd.uid_command:
+                        logger.exception(
+                            "Mailbox: '%s', converting msg set to set. "
+                            "Re-attempging as a UID command: '%s': %s",
+                            self.name,
+                            str(imap_cmd),
+                            e,
+                        )
+                        imap_cmd.msg_set_as_set = self.msg_set_to_msg_seq_set(
+                            imap_cmd.msg_set, True
+                        )
+                    else:
+                        raise
 
                 # Block until the new IMAP command would not conflict with any
                 # of the currently executing IMAP commands.

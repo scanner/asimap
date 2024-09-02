@@ -187,18 +187,27 @@ class BaseClientHandler:
                     imap_command
                 )
         except No as e:
+            logger.warning(
+                "%s: NO Response: '%s': %s", self.name, imap_command.qstr(), e
+            )
             if self.server and imap_command.command:
                 self.server.num_failed_commands[imap_command.command] += 1
             result = f"{imap_command.tag} NO {e}\r\n"
             await self.client.push(result)
             return
         except Bad as e:
+            logger.warning(
+                "%s: BAD Response: '%s'", self.name, imap_command.qstr(), e
+            )
             if self.server and imap_command.command:
                 self.server.num_failed_commands[imap_command.command] += 1
             result = f"{imap_command.tag} BAD {e}\r\n"
             await self.client.push(result)
             return
         except asyncio.TimeoutError:
+            logger.warning(
+                "%s: Command timed out: '%s'", self.name, imap_command.qstr()
+            )
             if self.server and imap_command.command:
                 self.server.num_failed_commands[imap_command.command] += 1
             result = f"{imap_command.tag} BAD Command timed out: '{imap_command.qstr()}'"
@@ -209,7 +218,7 @@ class BaseClientHandler:
             return
         except ConnectionResetError as e:
             mbox_name = self.mbox.name if self.mbox else "no mailbox"
-            logger.debug(
+            logger.warning(
                 "%s, mailbox: %s - Connection lost while doing %s: %s",
                 self.name,
                 mbox_name,
@@ -222,6 +231,13 @@ class BaseClientHandler:
         except asyncio.CancelledError:
             raise
         except Exception as e:
+            logger.warning(
+                "%s: Command faild with exception: '%s'",
+                self.name,
+                imap_command.qstr(),
+                e,
+            )
+
             if self.server and imap_command.command:
                 self.server.num_failed_commands[imap_command.command] += 1
             result = f"{imap_command.tag} BAD Unhandled exception: {e}"
@@ -1143,6 +1159,12 @@ class Authenticated(BaseClientHandler):
                     )
         except MailboxInconsistency as exc:
             self.mbox.optional_resync = False
+            logger.exception(
+                "%s: Mailbox '%s', failure during fetch: %s",
+                self.name,
+                self.mbox.name,
+                exc,
+            )
             raise Bad(f"Problem while fetching: {exc}")
 
         # The FETCH may have caused some message flags to change, and they may
