@@ -129,12 +129,17 @@ class IMAPClientProxy:
         #     source ip & port.
         self.cmd_processor = Authenticated(self, self.server)
 
+        # used by the `run()` to continue reading from the client.
+        #
+        self.client_connected = False
+
     ####################################################################
     #
     async def close(self):
         """
         Shutdown our proxy connection to the IMAP client
         """
+        self.client_connected = False
         try:
             if not self.writer.is_closing():
                 self.writer.close()
@@ -180,8 +185,8 @@ class IMAPClientProxy:
             # {\d+}\n< ... \d octects
             #
             self.trace("CONNECT", {})
-            client_connected = True
-            while client_connected:
+            self.client_connected = True
+            while self.client_connected:
                 # Read until b'\n'. Trim off the '\n'. If the message is
                 # not of 0 length then append it to our incremental buffer.
                 #
@@ -197,7 +202,7 @@ class IMAPClientProxy:
                     self.log.warning(
                         "Client sent invalid message start: %r", msg
                     )
-                    client_connected = False
+                    self.client_connected = False
                     break
                 length = int(m.group(1))
                 msg = await self.reader.readexactly(length)
@@ -276,9 +281,7 @@ class IMAPClientProxy:
                 # need to close our connection to the main server process.
                 #
                 if self.cmd_processor.state == "logged_out":
-                    self.log.info(
-                        "Client %s has logged out" % self.log_string()
-                    )
+                    self.log.info("Client %s has logged out", self.log_string())
                     return
 
         except (
@@ -493,7 +496,9 @@ class IMAPUserServer:
         # this check should be done. It will be set to `False` after the
         # initial folder check has finished.
         #
-        self.initial_folder_scan = True
+        # self.initial_folder_scan = True
+        self.initial_folder_scan = False  # XXX I think we can safely turn this
+        #     off.
         self.last_full_check = 0.0
 
         # To give individual client connections a more easily read name then
@@ -768,7 +773,9 @@ class IMAPUserServer:
                 #
                 if now - self.last_full_check > TIME_BETWEEN_FULL_FOLDER_SCANS:
                     await self.check_all_folders()
-                    self.initial_folder_scan = False
+                    if self.initial_folder_scan:
+                        logger.info("Finished initial scan of all folders")
+                        self.initial_folder_scan = False
                     self.last_full_check = time.monotonic()
 
                 # At the end of loop see if we have hit our lifetime expiry.
@@ -820,7 +827,7 @@ class IMAPUserServer:
             expiry = datetime.now() + timedelta(seconds=1800)
             self.log.debug("No more IMAP clients. Expiry set for %s", expiry)
 
-        self.log.debug("IMAP Client task done (disconnected): %s", client.name)
+        self.log.info("IMAP Client task done (disconnected): %s", client.name)
 
     ##################################################################
     #
