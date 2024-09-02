@@ -724,7 +724,8 @@ class IMAPUserServer:
             cmd = cmd.rjust(12)
             total_times.extend(durations)
             if len(durations) == 1:
-                logger.info("%s: mean duration:%.3fs", cmd, durations[0])
+                logger.info("%s: max duration: %.3fs", cmd, durations[0])
+                logger.info("%s: mean duration: %.3fs", cmd, durations[0])
             else:
                 mean_time = fmean(durations)
                 median_time = median(durations)
