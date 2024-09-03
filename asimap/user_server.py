@@ -56,7 +56,7 @@ BACKLOG = 5
 USER_SERVER_PROGRAM: str = ""
 RE_LITERAL_STRING_START = re.compile(rb"\{(\d+)(\+)?\}$")
 
-TIME_BETWEEN_FULL_FOLDER_SCANS = 300
+TIME_BETWEEN_FULL_FOLDER_SCANS = 120
 TIME_BETWEEN_METRIC_DUMPS = 60
 
 
@@ -135,7 +135,7 @@ class IMAPClientProxy:
 
     ####################################################################
     #
-    async def close(self):
+    async def close(self, cancel_reader: bool = True):
         """
         Shutdown our proxy connection to the IMAP client
         """
@@ -144,6 +144,20 @@ class IMAPClientProxy:
             if not self.writer.is_closing():
                 self.writer.close()
             await self.writer.wait_closed()
+
+            # Find the task in the server's list of clients and attempt to
+            # cancel it. NOTE: We can get in to a deadlock because the reader
+            # task itself will call close(). When the reader task is calling
+            # close, do not try to cancel and wait on the reader task.
+            #
+            if cancel_reader:
+                for task, client in self.server.clients.items():
+                    if client == self:
+                        if not task.done():
+                            task.cancel()
+                            await task
+                        break
+
         except socket.error:
             pass
         except asyncio.CancelledError:
@@ -303,7 +317,7 @@ class IMAPClientProxy:
             # client. Close our connection and return which will cause this
             # task to be completed.
             #
-            await self.close()
+            await self.close(cancel_reader=False)
 
     ####################################################################
     #
@@ -791,7 +805,7 @@ class IMAPUserServer:
 
                 # And sleep before we do another folder scan
                 #
-                await asyncio.sleep(30)
+                await asyncio.sleep(10)
         except asyncio.exceptions.CancelledError:
             logger.info("folder_scan task has been cancelled")
             raise

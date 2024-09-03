@@ -335,11 +335,13 @@ class BaseClientHandler:
             self.mbox.unselected(self.client.name)
             self.mbox = None
 
-        await self.client.push(f"* BYE {msg}\r\n")
-        await self.client.close()
+        try:
+            await self.client.push(f"* BYE {msg}\r\n")
+            await self.client.close()
 
-        self.idling = False
-        self.state = ClientState.LOGGED_OUT
+        finally:
+            self.idling = False
+            self.state = ClientState.LOGGED_OUT
 
     # The following commands are supported in any state.
     #
@@ -668,16 +670,23 @@ class Authenticated(BaseClientHandler):
                     self.select_while_selected_count += 1
                     if self.select_while_selected_count > 10:
                         logger.warning(
-                            "%s, mailbox: '%s': excessive selects while selected, count: %d",
+                            "%s, mailbox: '%s': excessive selects while "
+                            "selected, count: %d",
                             self.client.name,
                             self.mbox.name,
                             self.select_while_selected_count,
                         )
                         self.select_while_selected_count = 0
+                        await asyncio.sleep(10)
                         self.unceremonious_bye(
                             "You are SELECT'ing the same mailbox too often."
                         )
                         return
+
+                    # We start slowing down our replies if they are spamming
+                    # SELECT but have not reached the limit.
+                    #
+                    await asyncio.sleep(self.select_while_selected_count)
                 else:
                     self.select_while_selected_count = 0
 
