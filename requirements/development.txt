@@ -57,9 +57,10 @@ coverage==7.6.1
     # via
     #   -r lint.txt
     #   pytest-cov
-cryptography==43.0.0
+cryptography==43.0.1
     # via
     #   -r lint.txt
+    #   secretstorage
     #   trustme
     #   types-pyopenssl
     #   types-redis
@@ -147,6 +148,10 @@ jaraco-functools==4.0.2
     #   keyring
 jedi==0.19.1
     # via ipython
+jeepney==0.8.0
+    # via
+    #   keyring
+    #   secretstorage
 keyring==25.3.0
     # via
     #   -r build.txt
@@ -284,6 +289,8 @@ rich==13.8.0
     #   hatch
 ruff==0.6.3
     # via -r lint.txt
+secretstorage==3.3.3
+    # via keyring
 sentry-sdk==2.13.0
     # via -r production.txt
 shellingham==1.5.4
