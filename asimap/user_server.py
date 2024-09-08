@@ -146,9 +146,12 @@ class IMAPClientProxy:
             await self.writer.wait_closed()
 
             # Find the task in the server's list of clients and attempt to
-            # cancel it. NOTE: We can get in to a deadlock because the reader
-            # task itself will call close(). When the reader task is calling
-            # close, do not try to cancel and wait on the reader task.
+            # cancel it.
+            #
+            # NOTE: We can get in to a deadlock because the reader task itself
+            # will call close(). When the reader task is calling close, pass
+            # `cancel_reader=False` so that we do not try to cancel and wait on
+            # the reader task.
             #
             if cancel_reader:
                 for task, client in self.server.clients.items():
