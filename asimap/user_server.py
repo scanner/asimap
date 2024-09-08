@@ -876,7 +876,7 @@ class IMAPUserServer:
 
     ##################################################################
     #
-    async def get_mailbox(self, name: str, expiry: int = 900) -> Mailbox:
+    async def get_mailbox(self, name: str, expiry: int = 60) -> Mailbox:
         """
         A factory of sorts.. if we have an active mailbox with the given name
         return it.
@@ -888,8 +888,8 @@ class IMAPUserServer:
         - `name`: The name of the mailbox our caller wants.
         - `expiry`: If we have to instantiate a mailbox give it this expiry
           time. Used so that boxes that are just being updated rarely expire
-          and do not take up excess memory in the server. Defaults to 15
-          minutes.
+          and do not take up excess memory in the server. NOTE: As long as a
+          mailbox has an active clients, the expiry timer will NOT be active.
         """
         # The INBOX is case-insensitive but it is stored in our file system in
         # a case sensitive lower case fashion..

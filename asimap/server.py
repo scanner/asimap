@@ -395,7 +395,7 @@ class IMAPServer:
             del self.imap_client_tasks[task]
 
         task_name = task.get_name()
-        logger.debug(
+        logger.info(
             "%s: IMAP Client task done, number of clients: %d",
             task_name,
             len(self.imap_client_tasks),
