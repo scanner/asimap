@@ -13,7 +13,6 @@ from copy import deepcopy
 from email.generator import Generator
 from email.message import Message
 from email.policy import SMTP, Policy
-from functools import lru_cache
 from io import StringIO
 from typing import List, Optional, TextIO, Tuple
 
@@ -266,14 +265,12 @@ def _msg_as_string(msg: Message, headers: bool = True):
 
 ####################################################################
 #
-@lru_cache(maxsize=32)
 def msg_as_string(msg: Message, headers: bool = True) -> str:
     return _msg_as_string(msg, headers=headers)
 
 
 ####################################################################
 #
-@lru_cache
 def get_msg_size(msg: Message, headers: bool = True) -> int:
     """
     We need to know the size of a message in octets in several different
@@ -287,7 +284,6 @@ def get_msg_size(msg: Message, headers: bool = True) -> int:
 
 ####################################################################
 #
-@lru_cache(maxsize=32)
 def msg_headers_as_string(
     msg: Message,
     headers: Optional[Tuple[str]] = None,
