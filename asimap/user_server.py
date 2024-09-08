@@ -318,7 +318,7 @@ class IMAPClientProxy:
         finally:
             # We get here when we are no longer supposed to be connected to the
             # client. Close our connection and return which will cause this
-            # task to be completed.
+            # task to be completed. Do not try to cancel this task itself.
             #
             await self.close(cancel_reader=False)
 
