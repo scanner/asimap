@@ -677,16 +677,11 @@ class Authenticated(BaseClientHandler):
                             self.select_while_selected_count,
                         )
                         self.select_while_selected_count = 0
-                        await asyncio.sleep(10)
                         self.unceremonious_bye(
                             "You are SELECT'ing the same mailbox too often."
                         )
                         return
 
-                    # We start slowing down our replies if they are spamming
-                    # SELECT but have not reached the limit.
-                    #
-                    await asyncio.sleep(self.select_while_selected_count)
                 else:
                     self.select_while_selected_count = 0
 
