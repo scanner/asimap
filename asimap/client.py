@@ -624,8 +624,9 @@ class Authenticated(BaseClientHandler):
         - `cmd`: The full IMAP command object.
         """
         if self.mbox:
-            async with cmd.ready_and_okay(self.mbox):
-                await self.send_pending_notifications()
+            with self.mbox:
+                async with cmd.ready_and_okay(self.mbox):
+                    await self.send_pending_notifications()
         return None
 
     #########################################################################
@@ -696,16 +697,16 @@ class Authenticated(BaseClientHandler):
         #
         assert self.server
         mbox = await self.server.get_mailbox(cmd.mailbox_name)
-
-        async with cmd.ready_and_okay(mbox):
-            msgs = await mbox.selected(self)
-            await self.client.push(*msgs)
-            self.mbox = mbox
-            self.state = ClientState.SELECTED
-            self.examine = examine
-            if self.examine:
-                return "[READ-ONLY]"
-            return "[READ-WRITE]"
+        with mbox:
+            async with cmd.ready_and_okay(mbox):
+                msgs = await mbox.selected(self)
+                await self.client.push(*msgs)
+                self.mbox = mbox
+                self.state = ClientState.SELECTED
+                self.examine = examine
+                if self.examine:
+                    return "[READ-ONLY]"
+                return "[READ-WRITE]"
 
     ##################################################################
     #
@@ -767,8 +768,9 @@ class Authenticated(BaseClientHandler):
         assert self.server
         await self.send_pending_notifications()
         mbox = await self.server.get_mailbox(cmd.mailbox_name)
-        async with cmd.ready_and_okay(mbox):
-            await Mailbox.delete(cmd.mailbox_name, self.server)
+        with mbox:
+            async with cmd.ready_and_okay(mbox):
+                await Mailbox.delete(cmd.mailbox_name, self.server)
 
     ##################################################################
     #
@@ -782,10 +784,11 @@ class Authenticated(BaseClientHandler):
         await self.send_pending_notifications()
         assert self.server
         mbox = await self.server.get_mailbox(cmd.mailbox_src_name)
-        async with cmd.ready_and_okay(mbox):
-            await Mailbox.rename(
-                cmd.mailbox_src_name, cmd.mailbox_dst_name, self.server
-            )
+        with mbox:
+            async with cmd.ready_and_okay(mbox):
+                await Mailbox.rename(
+                    cmd.mailbox_src_name, cmd.mailbox_dst_name, self.server
+                )
         await self.send_pending_notifications()
 
     ##################################################################
@@ -889,19 +892,22 @@ class Authenticated(BaseClientHandler):
         assert self.server
         mbox = await self.server.get_mailbox(cmd.mailbox_name, expiry=5)
         result: List[str] = []
-        async with cmd.ready_and_okay(mbox):
-            for att in cmd.status_att_list:
-                match att:
-                    case StatusAtt.MESSAGES:
-                        result.append(f"MESSAGES {mbox.num_msgs}")
-                    case StatusAtt.RECENT:
-                        result.append(f"RECENT {mbox.num_recent}")
-                    case StatusAtt.UIDNEXT:
-                        result.append(f"UIDNEXT {mbox.next_uid}")
-                    case StatusAtt.UIDVALIDITY:
-                        result.append(f"UIDVALIDITY {mbox.uid_vv}")
-                    case StatusAtt.UNSEEN:
-                        result.append(f"UNSEEN {len(mbox.sequences['unseen'])}")
+        with mbox:
+            async with cmd.ready_and_okay(mbox):
+                for att in cmd.status_att_list:
+                    match att:
+                        case StatusAtt.MESSAGES:
+                            result.append(f"MESSAGES {mbox.num_msgs}")
+                        case StatusAtt.RECENT:
+                            result.append(f"RECENT {mbox.num_recent}")
+                        case StatusAtt.UIDNEXT:
+                            result.append(f"UIDNEXT {mbox.next_uid}")
+                        case StatusAtt.UIDVALIDITY:
+                            result.append(f"UIDVALIDITY {mbox.uid_vv}")
+                        case StatusAtt.UNSEEN:
+                            result.append(
+                                f"UNSEEN {len(mbox.sequences['unseen'])}"
+                            )
 
         await self.client.push(
             f'* STATUS "{cmd.mailbox_name}" ({" ".join(result)})\r\n'
@@ -921,10 +927,11 @@ class Authenticated(BaseClientHandler):
 
         try:
             mbox = await self.server.get_mailbox(cmd.mailbox_name)
-            async with cmd.ready_and_okay(mbox):
-                uid = await mbox.append(
-                    cmd.message, cmd.flag_list, cmd.date_time
-                )
+            with mbox:
+                async with cmd.ready_and_okay(mbox):
+                    uid = await mbox.append(
+                        cmd.message, cmd.flag_list, cmd.date_time
+                    )
         except NoSuchMailbox:
             # For APPEND and COPY if the mailbox does not exist we
             # MUST supply the TRYCREATE flag so we catch the generic
@@ -970,8 +977,9 @@ class Authenticated(BaseClientHandler):
         # before control passes back to this function.
         #
         self.mbox.optional_resync = False
-        async with cmd.ready_and_okay(self.mbox):
-            pass
+        with self.mbox:
+            async with cmd.ready_and_okay(self.mbox):
+                pass
         await self.send_pending_notifications()
 
     ##################################################################
@@ -1001,9 +1009,10 @@ class Authenticated(BaseClientHandler):
         self.state = ClientState.AUTHENTICATED
         mbox = None
         if self.mbox:
-            self.mbox.unselected(self.name)
-            mbox = self.mbox
-            self.mbox = None
+            with self.mbox:
+                self.mbox.unselected(self.name)
+                mbox = self.mbox
+                self.mbox = None
 
         # If the mailbox was selected via 'examine' then closing the
         # mailbox does NOT do a purge of all messages marked with '\Delete'
@@ -1020,8 +1029,9 @@ class Authenticated(BaseClientHandler):
             # Do an EXPUNGE if there are any messages marked 'Delete'
             #
             if mbox.sequences.get("Deleted", []):
-                async with cmd.ready_and_okay(mbox):
-                    await mbox.expunge()
+                with mbox:
+                    async with cmd.ready_and_okay(mbox):
+                        await mbox.expunge()
 
     ##################################################################
     #
@@ -1059,11 +1069,12 @@ class Authenticated(BaseClientHandler):
         try:
             idling = self.idling
             self.idling = True
-            async with cmd.ready_and_okay(self.mbox):
-                # Do an EXPUNGE if there are any messages marked 'Delete'
-                #
-                if self.mbox.sequences.get("Deleted", []):
-                    await self.mbox.expunge()
+            with self.mbox:
+                async with cmd.ready_and_okay(self.mbox):
+                    # Do an EXPUNGE if there are any messages marked 'Delete'
+                    #
+                    if self.mbox.sequences.get("Deleted", []):
+                        await self.mbox.expunge()
         finally:
             self.idling = idling
 
@@ -1099,18 +1110,19 @@ class Authenticated(BaseClientHandler):
             else:
                 raise No("There are pending untagged responses")
 
-        async with cmd.ready_and_okay(self.mbox):
-            try:
-                results = await self.mbox.search(
-                    cmd.search_key, cmd.uid_command, cmd.timeout_cm
-                )
-                await self.client.push(
-                    f"* SEARCH {' '.join(str(x) for x in results)}\r\n"
-                )
-            except MailboxInconsistency as e:
-                self.optional_resync = False
-                self.full_search = True
-                logger.warning("Mailbox '%s': %s", self.mbox.name, str(e))
+        with self.mbox:
+            async with cmd.ready_and_okay(self.mbox):
+                try:
+                    results = await self.mbox.search(
+                        cmd.search_key, cmd.uid_command, cmd.timeout_cm
+                    )
+                    await self.client.push(
+                        f"* SEARCH {' '.join(str(x) for x in results)}\r\n"
+                    )
+                except MailboxInconsistency as e:
+                    self.optional_resync = False
+                    self.full_search = True
+                    logger.warning("Mailbox '%s': %s", self.mbox.name, str(e))
 
     ##################################################################
     #
@@ -1160,16 +1172,17 @@ class Authenticated(BaseClientHandler):
 
         self.fetch_while_pending_count = 0
         try:
-            async with cmd.ready_and_okay(self.mbox):
-                msg_set = (
-                    sorted(cmd.msg_set_as_set) if cmd.msg_set_as_set else []
-                )
-                async for idx, results in self.mbox.fetch(
-                    msg_set, cmd.fetch_atts, cmd.uid_command, cmd.timeout_cm
-                ):
-                    await self.client.push(
-                        f"* {idx} FETCH ({' '.join(results)})\r\n"
+            with self.mbox:
+                async with cmd.ready_and_okay(self.mbox):
+                    msg_set = (
+                        sorted(cmd.msg_set_as_set) if cmd.msg_set_as_set else []
                     )
+                    async for idx, results in self.mbox.fetch(
+                        msg_set, cmd.fetch_atts, cmd.uid_command, cmd.timeout_cm
+                    ):
+                        await self.client.push(
+                            f"* {idx} FETCH ({' '.join(results)})\r\n"
+                        )
         except MailboxInconsistency as exc:
             self.mbox.optional_resync = False
             logger.exception(
@@ -1242,17 +1255,18 @@ class Authenticated(BaseClientHandler):
         #     stuff here.
         #
         try:
-            async with cmd.ready_and_okay(self.mbox):
-                msg_set = (
-                    sorted(cmd.msg_set_as_set) if cmd.msg_set_as_set else []
-                )
-                fetch_notifications = await self.mbox.store(
-                    msg_set,
-                    cmd.store_action,
-                    cmd.flag_list,
-                    cmd.uid_command,
-                    dont_notify=self,
-                )
+            with self.mbox:
+                async with cmd.ready_and_okay(self.mbox):
+                    msg_set = (
+                        sorted(cmd.msg_set_as_set) if cmd.msg_set_as_set else []
+                    )
+                    fetch_notifications = await self.mbox.store(
+                        msg_set,
+                        cmd.store_action,
+                        cmd.flag_list,
+                        cmd.uid_command,
+                        dont_notify=self,
+                    )
         except MailboxInconsistency as exc:
             # Force a resync of this mailbox. Likely something was fiddling
             # messages directly (an nmh command run from the command line)
@@ -1282,6 +1296,7 @@ class Authenticated(BaseClientHandler):
         Arguments:
         - `cmd`: The IMAP command we are executing
         """
+        assert self.server
         if self.state != ClientState.SELECTED:
             raise No("Client must be in the selected state")
 
@@ -1297,18 +1312,25 @@ class Authenticated(BaseClientHandler):
 
         # Wait until the mailbox gives us the go-ahead to run the command.
         #
-        async with cmd.ready_and_okay(self.mbox):
-            try:
-                dest_mbox = await self.server.get_mailbox(cmd.mailbox_name)
-                src_uids, dst_uids = await self.mbox.copy(
-                    cmd.msg_set, dest_mbox, cmd.uid_command, imap_cmd=cmd
-                )
-            except NoSuchMailbox:
-                # For APPEND and COPY if the mailbox does not exist we
-                # MUST supply the TRYCREATE flag so we catch the generic
-                # exception and return the appropriate NO result.
-                #
-                raise No(f"[TRYCREATE] No such mailbox: '{cmd.mailbox_name}'")
+        with self.mbox:
+            async with cmd.ready_and_okay(self.mbox):
+                try:
+                    dest_mbox = await self.server.get_mailbox(cmd.mailbox_name)
+                    with dest_mbox:
+                        src_uids, dst_uids = await self.mbox.copy(
+                            cmd.msg_set,
+                            dest_mbox,
+                            cmd.uid_command,
+                            imap_cmd=cmd,
+                        )
+                except NoSuchMailbox:
+                    # For APPEND and COPY if the mailbox does not exist we
+                    # MUST supply the TRYCREATE flag so we catch the generic
+                    # exception and return the appropriate NO result.
+                    #
+                    raise No(
+                        f"[TRYCREATE] No such mailbox: '{cmd.mailbox_name}'"
+                    )
 
         # NOTE: I tip my hat to: http://stackoverflow.com/questions/3429510/
         # pythonic-way-to-convert-a-list-of-integers-into-a-string-of-

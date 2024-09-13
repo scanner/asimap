@@ -248,6 +248,11 @@ class Mailbox:
         #
         self.expiry: Optional[float] = time.time() + expiry
 
+        # How many things have this mailbox in use. When it is 0 the mailbox
+        # may be expired.
+        #
+        self.in_use_count = 0
+
         # The dict of clients that currently have this mailbox selected.
         # This includes clients that used 'EXAMINE' instead of 'SELECT'
         #
@@ -297,6 +302,26 @@ class Mailbox:
 
         if self.name in self.server.active_mailboxes:
             del self.server.active_mailboxes[self.name]
+
+    ####################################################################
+    #
+    def __enter__(self):
+        """
+        This context manager is used to control the mailbox from being
+        expired while still in use.
+        """
+        self.in_use_count += 1
+        logger.debug("enter: Mailbox '%s', in use count: %d", self.in_use_count)
+
+    ####################################################################
+    #
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """
+        Decrements the in-use count for this mailbox (when it goes to 0 it
+        can be expired and removed from memory)
+        """
+        self.in_use_count -= 1
+        logger.debug("exit: Mailbox '%s', in use count: %d", self.in_use_count)
 
     ####################################################################
     #
@@ -800,6 +825,9 @@ class Mailbox:
                 return
             except asyncio.CancelledError:
                 self.expiry = 0.0
+                self.logger.debug(
+                    "mbox: '%s', Management task cancelled", self.name
+                )
                 return
             except Exception as e:
                 # We ignore all other exceptions because otherwise the
@@ -1689,6 +1717,14 @@ class Mailbox:
         push_data.append(
             f"* OK [PERMANENTFLAGS ({' '.join(PERMANENT_FLAGS)})]\r\n"
         )
+
+        logger.debug(
+            "Mailbox '%s', in use count: %d, num clients:",
+            self.name,
+            self.in_use_count,
+            len(self.clients),
+        )
+
         return push_data
 
     ##################################################################
@@ -1710,9 +1746,20 @@ class Mailbox:
         # in this mailbox's list of clients.
         #
         if client_name not in self.clients:
+            logger.warning(
+                "Mailbox '%s': unselected, but client not in mbox.clients",
+                self.name,
+            )
             return
 
         del self.clients[client_name]
+
+        logger.debug(
+            "Mailbox '%s', in use count: %d, num clients",
+            self.name,
+            self.in_use_count,
+            len(self.clients),
+        )
 
         if not self.clients:
             self.expiry = time.time() + MBOX_EXPIRY_TIME

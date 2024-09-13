@@ -969,21 +969,21 @@ class IMAPUserServer:
         Go through the list of active mailboxes and if any of them are around
         past their expiry time, expire them.
         """
-        # And finally check all active mailboxes to see if they have no clients
-        # and are beyond their expiry time.
+        # And finally check all active mailboxes to see if their in-use count
+        # is 0 and expire them if it is.
         #
         expired = []
         expired_mboxes = []
 
         async with self.active_mailboxes_lock:
             for mbox_name, mbox in self.active_mailboxes.items():
-                if (
-                    not mbox.clients
-                    and mbox.expiry is not None
-                    and mbox.expiry < time.time()
-                ):
-                    expired.append(mbox_name)
-                    expired_mboxes.append(mbox)
+                # If the in-use count is positive or the mbox has clients, do
+                # not expire it.
+                #
+                if mbox.in_use_count > 0 or mbox.clients:
+                    continue
+                expired.append(mbox_name)
+                expired_mboxes.append(mbox)
 
             # Remove the to-be expired mailboxees from active_mailboxes.
             #
