@@ -4,13 +4,11 @@ Test the user server.
 
 # system imports
 #
-from datetime import datetime
 from pathlib import Path
 
 # 3rd party imports
 #
 import pytest
-from dirty_equals import IsDatetime
 
 # Project imports
 #
@@ -63,10 +61,13 @@ async def test_expire_inactive_folders(
     #
     await server.expire_inactive_folders()
 
-    # Get a handle on two mailboxes.
+    # Get a handle on two mailboxes and increment their in-use count so that
+    # they do not get expired.
     #
     mbox1 = await server.get_mailbox(folders[2])
     mbox2 = await server.get_mailbox(folders[3])
+    mbox1.in_use_count += 1
+    mbox2.in_use_count += 1
 
     # Select the inbox (so we have one folder with no expiry time at all)
     #
@@ -81,13 +82,7 @@ async def test_expire_inactive_folders(
 
     # The inbox will have no expiry since a client has it selected.
     #
-    inbox = await server.get_mailbox("inbox")
-    assert inbox.expiry is None
-
-    # mbox1 and mbox2 have a positive expiry.
-    #
-    assert mbox1.expiry == IsDatetime(ge=datetime.now(), unix_number=True)
-    assert mbox2.expiry == IsDatetime(ge=datetime.now(), unix_number=True)
+    _ = await server.get_mailbox("inbox")
 
     await server.expire_inactive_folders()
 
@@ -95,10 +90,9 @@ async def test_expire_inactive_folders(
     #
     assert len(server.active_mailboxes) == 3
 
-    # For mbox1's expiry time back to the unix epoch. This should result in one
-    # of the three being expired.
+    # Set mbox1's in_use_count to zero so that it will get expired.
     #
-    mbox1.expiry = 0.0
+    mbox1.in_use_count = 0
     await server.expire_inactive_folders()
     assert len(server.active_mailboxes) == 2
     assert mbox1.name not in server.active_mailboxes
