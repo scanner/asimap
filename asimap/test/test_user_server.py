@@ -69,6 +69,12 @@ async def test_expire_inactive_folders(
     mbox1.in_use_count += 1
     mbox2.in_use_count += 1
 
+    # Using the mailbox as a context manager increases the in-use count.
+    #
+    with mbox1:
+        assert mbox1.in_use_count == 2
+        assert mbox2.in_use_count == 1
+
     # Select the inbox (so we have one folder with no expiry time at all)
     #
     cmd = IMAPClientCommand("A001 SELECT INBOX\r\n")
