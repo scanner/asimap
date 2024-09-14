@@ -6,7 +6,7 @@
 #
 aiofiles==24.1.0
     # via -r production.in
-aioretry==5.0.2
+aioretry==5.0.6
     # via -r production.in
 aiosqlite==0.20.0
     # via -r production.in
@@ -20,9 +20,9 @@ python-dotenv==1.0.1
     # via -r production.in
 python-json-logger==2.0.7
     # via -r production.in
-sentry-sdk==2.13.0
+sentry-sdk==2.14.0
     # via -r production.in
 typing-extensions==4.12.2
     # via aiosqlite
-urllib3==2.2.2
+urllib3==2.2.3
     # via sentry-sdk

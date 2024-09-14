@@ -6,7 +6,7 @@
 #
 aiofiles==24.1.0
     # via -r production.txt
-aioretry==5.0.2
+aioretry==5.0.6
     # via -r production.txt
 aiosqlite==0.20.0
     # via -r production.txt
@@ -111,7 +111,7 @@ identify==2.6.0
     # via
     #   -r lint.txt
     #   pre-commit
-idna==3.8
+idna==3.9
     # via
     #   -r build.txt
     #   anyio
@@ -121,7 +121,7 @@ idna==3.8
     #   trustme
 imapclient==3.0.1
     # via -r development.in
-importlib-metadata==8.4.0
+importlib-metadata==8.5.0
     # via
     #   -r lint.txt
     #   yapf
@@ -203,7 +203,7 @@ pexpect==4.9.0
     #   ipython
 pip-tools==7.4.1
     # via -r lint.txt
-platformdirs==4.3.1
+platformdirs==4.3.3
     # via
     #   -r build.txt
     #   -r lint.txt
@@ -241,7 +241,7 @@ pyproject-hooks==1.1.0
     #   -r lint.txt
     #   build
     #   pip-tools
-pytest==8.3.2
+pytest==8.3.3
     # via
     #   -r development.in
     #   pytest-asyncio
@@ -277,14 +277,14 @@ requests==2.32.3
     # via requests-mock
 requests-mock==1.12.1
     # via -r development.in
-rich==13.8.0
+rich==13.8.1
     # via
     #   -r build.txt
     #   -r development.in
     #   hatch
-ruff==0.6.4
+ruff==0.6.5
     # via -r lint.txt
-sentry-sdk==2.13.0
+sentry-sdk==2.14.0
     # via -r production.txt
 shellingham==1.5.4
     # via
@@ -319,7 +319,7 @@ traitlets==5.14.3
     # via
     #   ipython
     #   matplotlib-inline
-trove-classifiers==2024.7.2
+trove-classifiers==2024.9.12
     # via
     #   -r build.txt
     #   hatchling
@@ -337,11 +337,11 @@ types-pyopenssl==24.1.0.20240722
     # via
     #   -r lint.txt
     #   types-redis
-types-pytz==2024.1.0.20240417
+types-pytz==2024.2.0.20240913
     # via -r lint.txt
 types-redis==4.6.0.20240903
     # via -r lint.txt
-types-requests==2.32.0.20240907
+types-requests==2.32.0.20240914
     # via -r lint.txt
 types-setuptools==74.1.0.20240907
     # via
@@ -354,7 +354,7 @@ typing-extensions==4.12.2
     #   aiosqlite
     #   mypy
     #   pytest-factoryboy
-urllib3==2.2.2
+urllib3==2.2.3
     # via
     #   -r lint.txt
     #   -r production.txt
@@ -365,7 +365,7 @@ userpath==1.9.2
     # via
     #   -r build.txt
     #   hatch
-uv==0.4.7
+uv==0.4.10
     # via
     #   -r build.txt
     #   hatch
@@ -383,7 +383,7 @@ wheel==0.44.0
     #   pip-tools
 yapf==0.40.2
     # via -r lint.txt
-zipp==3.20.1
+zipp==3.20.2
     # via
     #   -r lint.txt
     #   importlib-metadata
