@@ -235,7 +235,7 @@ class BaseClientHandler:
             raise
         except Exception as e:
             logger.warning(
-                "%s: Command faild with exception: '%s'",
+                "%s: Command '%s' failed with exception: %s",
                 self.name,
                 imap_command.qstr(),
                 e,
@@ -696,8 +696,7 @@ class Authenticated(BaseClientHandler):
         # until 'selected()' returns without a failure.
         #
         assert self.server
-        mbox = await self.server.get_mailbox(cmd.mailbox_name)
-        with mbox:
+        async with self.server.get_mailbox(cmd.mailbox_name) as mbox:
             async with cmd.ready_and_okay(mbox):
                 msgs = await mbox.selected(self)
                 await self.client.push(*msgs)
@@ -767,8 +766,7 @@ class Authenticated(BaseClientHandler):
         """
         assert self.server
         await self.send_pending_notifications()
-        mbox = await self.server.get_mailbox(cmd.mailbox_name)
-        with mbox:
+        async with self.server.get_mailbox(cmd.mailbox_name) as mbox:
             async with cmd.ready_and_okay(mbox):
                 await Mailbox.delete(cmd.mailbox_name, self.server)
 
@@ -783,8 +781,7 @@ class Authenticated(BaseClientHandler):
         """
         await self.send_pending_notifications()
         assert self.server
-        mbox = await self.server.get_mailbox(cmd.mailbox_src_name)
-        with mbox:
+        async with self.server.get_mailbox(cmd.mailbox_src_name) as mbox:
             async with cmd.ready_and_okay(mbox):
                 await Mailbox.rename(
                     cmd.mailbox_src_name, cmd.mailbox_dst_name, self.server
@@ -806,9 +803,9 @@ class Authenticated(BaseClientHandler):
         await self.send_pending_notifications()
 
         assert self.server
-        mbox = await self.server.get_mailbox(cmd.mailbox_name)
-        mbox.subscribed = True
-        await mbox.commit_to_db()
+        async with self.server.get_mailbox(cmd.mailbox_name) as mbox:
+            mbox.subscribed = True
+            await mbox.commit_to_db()
 
     ##################################################################
     #
@@ -825,9 +822,9 @@ class Authenticated(BaseClientHandler):
         await self.send_pending_notifications()
 
         assert self.server
-        mbox = await self.server.get_mailbox(cmd.mailbox_name)
-        mbox.subscribed = False
-        await mbox.commit_to_db()
+        async with self.server.get_mailbox(cmd.mailbox_name) as mbox:
+            mbox.subscribed = False
+            await mbox.commit_to_db()
 
     ##################################################################
     #
@@ -890,9 +887,8 @@ class Authenticated(BaseClientHandler):
         await self.send_pending_notifications()
 
         assert self.server
-        mbox = await self.server.get_mailbox(cmd.mailbox_name, expiry=5)
         result: List[str] = []
-        with mbox:
+        async with self.server.get_mailbox(cmd.mailbox_name) as mbox:
             async with cmd.ready_and_okay(mbox):
                 for att in cmd.status_att_list:
                     match att:
@@ -926,8 +922,7 @@ class Authenticated(BaseClientHandler):
         await self.send_pending_notifications()
 
         try:
-            mbox = await self.server.get_mailbox(cmd.mailbox_name)
-            with mbox:
+            async with self.server.get_mailbox(cmd.mailbox_name) as mbox:
                 async with cmd.ready_and_okay(mbox):
                     uid = await mbox.append(
                         cmd.message, cmd.flag_list, cmd.date_time
@@ -968,16 +963,17 @@ class Authenticated(BaseClientHandler):
             self.unceremonious_bye("Your selected mailbox no longer exists")
             return
 
-        await self.send_pending_notifications()
-
-        # This forces a checkpoint, which is essentially done on the next
-        # resync. Force the next resync by setting `optional_resync` to False.
-        # Then wait for the mbox to let this command execute. Because `CHECK`
-        # must execute when no other commands running, a resync will be running
-        # before control passes back to this function.
-        #
-        self.mbox.optional_resync = False
         with self.mbox:
+            await self.send_pending_notifications()
+
+            # This forces a checkpoint, which is essentially done on the next
+            # resync. Force the next resync by setting `optional_resync` to
+            # False.  Then wait for the mbox to let this command
+            # execute. Because `CHECK` must execute when no other commands
+            # running, a resync will be running before control passes back to
+            # this function.
+            #
+            self.mbox.optional_resync = False
             async with cmd.ready_and_okay(self.mbox):
                 pass
         await self.send_pending_notifications()
@@ -1007,31 +1003,31 @@ class Authenticated(BaseClientHandler):
         #
         self.pending_notifications = []
         self.state = ClientState.AUTHENTICATED
-        mbox = None
-        if self.mbox:
-            with self.mbox:
-                self.mbox.unselected(self.name)
-                mbox = self.mbox
-                self.mbox = None
 
-        # If the mailbox was selected via 'examine' then closing the
-        # mailbox does NOT do a purge of all messages marked with '\Delete'
-        #
-        if self.examine:
+        if not self.mbox:
             return
 
-        # Otherwise closing the mailbox (unlike doing a 'select' 'examine'
-        # or 'logout') will perform an expunge (just no messages will be
-        # sent to this client.) We pass no client parameter so the expunge
-        # does its work 'silently.'
-        #
-        if mbox:
-            # Do an EXPUNGE if there are any messages marked 'Delete'
+        mbox = self.mbox
+        with mbox:
+            self.mbox.unselected(self.name)
+            self.mbox = None
+
+            # If the mailbox was selected via 'examine' then closing the
+            # mailbox does NOT do a purge of all messages marked with '\Delete'
+            #
+            if self.examine:
+                return
+
+            # Otherwise closing the mailbox (unlike doing a 'select' 'examine'
+            # or 'logout') will perform an expunge (just no messages will be
+            # sent to this client.) We pass no client parameter so the expunge
+            # does its work 'silently.'
+            #
+            # Do an EXPUNGE only if there are any messages marked 'Delete'
             #
             if mbox.sequences.get("Deleted", []):
-                with mbox:
-                    async with cmd.ready_and_okay(mbox):
-                        await mbox.expunge()
+                async with cmd.ready_and_okay(mbox):
+                    await mbox.expunge()
 
     ##################################################################
     #
@@ -1054,29 +1050,29 @@ class Authenticated(BaseClientHandler):
             self.unceremonious_bye("Your selected mailbox no longer exists")
             return
 
-        await self.send_pending_notifications()
+        with self.mbox:
+            await self.send_pending_notifications()
 
-        # If we selected the mailbox via 'examine' then we can not make any
-        # changes anyways...
-        #
-        if self.examine:
-            return
+            # If we selected the mailbox via 'examine' then we can not make any
+            # changes anyways...
+            #
+            if self.examine:
+                return
 
-        # In order for the EXPUNGE operation to immediately send EXPUNGE
-        # messages to this client we will do a bit of a hack and indicate
-        # that this client is "idling" while the operation is running.
-        #
-        try:
-            idling = self.idling
-            self.idling = True
-            with self.mbox:
+            # In order for the EXPUNGE operation to immediately send EXPUNGE
+            # messages to this client we will do a bit of a hack and indicate
+            # that this client is "idling" while the operation is running.
+            #
+            try:
+                idling = self.idling
+                self.idling = True
                 async with cmd.ready_and_okay(self.mbox):
                     # Do an EXPUNGE if there are any messages marked 'Delete'
                     #
                     if self.mbox.sequences.get("Deleted", []):
                         await self.mbox.expunge()
-        finally:
-            self.idling = idling
+            finally:
+                self.idling = idling
 
     ##################################################################
     #
@@ -1099,18 +1095,19 @@ class Authenticated(BaseClientHandler):
             self.unceremonious_bye("Your selected mailbox no longer exists")
             return
 
-        # If this client has pending notifications messages then we return a
-        # tagged No response.. the client should see this and do a NOOP or such
-        # and receive the pending expunges. Unless this is a UID command. It is
-        # okay to send pending expunges during the operations of a UID SEARCH.
-        #
-        if self.pending_expunges():
-            if cmd.uid_command:
-                self.send_pending_notifications()
-            else:
-                raise No("There are pending untagged responses")
-
         with self.mbox:
+            # If this client has pending notifications messages then we return
+            # a tagged No response.. the client should see this and do a NOOP
+            # or such and receive the pending expunges. Unless this is a UID
+            # command. It is okay to send pending expunges during the
+            # operations of a UID SEARCH.
+            #
+            if self.pending_expunges():
+                if cmd.uid_command:
+                    self.send_pending_notifications()
+                else:
+                    raise No("There are pending untagged responses")
+
             async with cmd.ready_and_okay(self.mbox):
                 try:
                     results = await self.mbox.search(
@@ -1144,35 +1141,35 @@ class Authenticated(BaseClientHandler):
             self.unceremonious_bye("Your selected mailbox no longer exists")
             return
 
-        # If this client has pending EXPUNGE messages then we return a
-        # tagged No response.. the client should see this and do a NOOP or
-        # such and receive the pending expunges. Unless this is a UID
-        # command. It is okay to send pending expunges during the
-        # operations of a UID FETCH.
-        #
-        if self.pending_expunges():
-            if cmd.uid_command:
-                await self.send_pending_notifications()
-            else:
-                # If a client continues to pound us asking for FETCH's when
-                # there are pending EXPUNGE's give them the finger by
-                # forcing them to disconnect. It is obvious watching
-                # Mail.app that it will not give up when given a No so we
-                # punt this connection of theirs. They should reconnect and
-                # learn the error of their ways.
-                #
-                self.fetch_while_pending_count += 1
-                if self.fetch_while_pending_count > 3:
-                    self.unceremonious_bye("You have pending EXPUNGEs.")
-                    return
+        with self.mbox:
+            # If this client has pending EXPUNGE messages then we return a
+            # tagged No response.. the client should see this and do a NOOP or
+            # such and receive the pending expunges. Unless this is a UID
+            # command. It is okay to send pending expunges during the
+            # operations of a UID FETCH.
+            #
+            if self.pending_expunges():
+                if cmd.uid_command:
+                    await self.send_pending_notifications()
                 else:
-                    raise No("There are pending EXPUNGEs.")
-        else:
-            await self.send_pending_notifications()
+                    # If a client continues to pound us asking for FETCH's when
+                    # there are pending EXPUNGE's give them the finger by
+                    # forcing them to disconnect. It is obvious watching
+                    # Mail.app that it will not give up when given a No so we
+                    # punt this connection of theirs. They should reconnect and
+                    # learn the error of their ways.
+                    #
+                    self.fetch_while_pending_count += 1
+                    if self.fetch_while_pending_count > 3:
+                        self.unceremonious_bye("You have pending EXPUNGEs.")
+                        return
+                    else:
+                        raise No("There are pending EXPUNGEs.")
+            else:
+                await self.send_pending_notifications()
 
-        self.fetch_while_pending_count = 0
-        try:
-            with self.mbox:
+            self.fetch_while_pending_count = 0
+            try:
                 async with cmd.ready_and_okay(self.mbox):
                     msg_set = (
                         sorted(cmd.msg_set_as_set) if cmd.msg_set_as_set else []
@@ -1183,15 +1180,15 @@ class Authenticated(BaseClientHandler):
                         await self.client.push(
                             f"* {idx} FETCH ({' '.join(results)})\r\n"
                         )
-        except MailboxInconsistency as exc:
-            self.mbox.optional_resync = False
-            logger.exception(
-                "%s: Mailbox '%s', failure during fetch: %s",
-                self.name,
-                self.mbox.name,
-                exc,
-            )
-            raise Bad(f"Problem while fetching: {exc}")
+            except MailboxInconsistency as exc:
+                self.mbox.optional_resync = False
+                logger.exception(
+                    "%s: Mailbox '%s', failure during fetch: %s",
+                    self.name,
+                    self.mbox.name,
+                    exc,
+                )
+                raise Bad(f"Problem while fetching: {exc}")
 
         # The FETCH may have caused some message flags to change, and they may
         # not have been in the FETCH responses we already sent (and other
@@ -1227,35 +1224,35 @@ class Authenticated(BaseClientHandler):
             self.unceremonious_bye("Your selected mailbox no longer exists")
             return
 
-        # If this client has pending EXPUNGE messages then we return a
-        # tagged No response.. the client should see this and do a NOOP or
-        # such and receive the pending expunges.  Unless this is a UID
-        # command. It is okay to send pending expunges during the
-        # operations of a UID FETCH.
-        #
-        if self.pending_expunges():
-            if cmd.uid_command:
-                self.send_pending_notifications()
+        with self.mbox:
+            # If this client has pending EXPUNGE messages then we return a
+            # tagged No response.. the client should see this and do a NOOP or
+            # such and receive the pending expunges.  Unless this is a UID
+            # command. It is okay to send pending expunges during the
+            # operations of a UID FETCH.
+            #
+            if self.pending_expunges():
+                if cmd.uid_command:
+                    self.send_pending_notifications()
+                else:
+                    raise No("There are pending EXPUNGEs.")
             else:
-                raise No("There are pending EXPUNGEs.")
-        else:
-            await self.send_pending_notifications()
+                await self.send_pending_notifications()
 
-        # We do not issue any messages to the client here. This is done
-        # automatically when 'resync' is called because resync will examine
-        # the in-memory copy of the sequences with what is on disk and if
-        # there are differences issue FETCH messages for each message with
-        # different flags.
-        #
-        # Unless 'SILENT' was set in which case we still notify all other
-        # clients listening to this mailbox, but not this client.
-        #
-        # XXX We can use the 'client is idling' trick here for sending the
-        #     updated flags via fetches instead of the 'dont_notify=self'
-        #     stuff here.
-        #
-        try:
-            with self.mbox:
+            # We do not issue any messages to the client here. This is done
+            # automatically when 'resync' is called because resync will examine
+            # the in-memory copy of the sequences with what is on disk and if
+            # there are differences issue FETCH messages for each message with
+            # different flags.
+            #
+            # Unless 'SILENT' was set in which case we still notify all other
+            # clients listening to this mailbox, but not this client.
+            #
+            # XXX We can use the 'client is idling' trick here for sending the
+            #     updated flags via fetches instead of the 'dont_notify=self'
+            #     stuff here.
+            #
+            try:
                 async with cmd.ready_and_okay(self.mbox):
                     msg_set = (
                         sorted(cmd.msg_set_as_set) if cmd.msg_set_as_set else []
@@ -1267,23 +1264,23 @@ class Authenticated(BaseClientHandler):
                         cmd.uid_command,
                         dont_notify=self,
                     )
-        except MailboxInconsistency as exc:
-            # Force a resync of this mailbox. Likely something was fiddling
-            # messages directly (an nmh command run from the command line)
-            # and what the mbox thinks the internal state is does not
-            # actually match the state of the folder.
-            #
-            self.optional_resync = False
-            self.full_search = True
-            raise Bad(f"Problem while storing: {exc}")
+            except MailboxInconsistency as exc:
+                # Force a resync of this mailbox. Likely something was fiddling
+                # messages directly (an nmh command run from the command line)
+                # and what the mbox thinks the internal state is does not
+                # actually match the state of the folder.
+                #
+                self.optional_resync = False
+                self.full_search = True
+                raise Bad(f"Problem while storing: {exc}")
 
-        # IF this is not a "SILENT" store, we will send the FETCH messages that
-        # were generated due to the actions of this STORE command. (All the
-        # other clients will have gotten untagged FETCH messages when the
-        # resync was completed by the management task.)
-        #
-        if not cmd.silent:
-            await self.client.push(*fetch_notifications)
+            # IF this is not a "SILENT" store, we will send the FETCH messages
+            # that were generated due to the actions of this STORE
+            # command. (All the other clients will have gotten untagged FETCH
+            # messages when the resync was completed by the management task.)
+            #
+            if not cmd.silent:
+                await self.client.push(*fetch_notifications)
 
     ##################################################################
     #
@@ -1308,15 +1305,17 @@ class Authenticated(BaseClientHandler):
             self.unceremonious_bye("Your selected mailbox no longer exists")
             return
 
-        await self.send_pending_notifications()
-
-        # Wait until the mailbox gives us the go-ahead to run the command.
-        #
         with self.mbox:
+
+            await self.send_pending_notifications()
+
+            # Wait until the mailbox gives us the go-ahead to run the command.
+            #
             async with cmd.ready_and_okay(self.mbox):
                 try:
-                    dest_mbox = await self.server.get_mailbox(cmd.mailbox_name)
-                    with dest_mbox:
+                    async with self.server.get_mailbox(
+                        cmd.mailbox_name
+                    ) as dest_mbox:
                         src_uids, dst_uids = await self.mbox.copy(
                             cmd.msg_set,
                             dest_mbox,

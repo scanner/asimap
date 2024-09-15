@@ -268,11 +268,11 @@ async def test_authenticated_client_handler_commands(
     assert client_handler.state == ClientState.SELECTED
     assert client_handler.mbox
     assert client_handler.mbox.name == "inbox"
-    mbox_foo = await server.get_mailbox("foo")
-    assert mbox_foo
+    async with server.get_mailbox("foo") as mbox_foo:
+        assert mbox_foo
 
-    mbox_inbox_copy = await server.get_mailbox("inbox_copy")
-    assert mbox_inbox_copy
+    async with server.get_mailbox("inbox_copy") as mbox_inbox_copy:
+        assert mbox_inbox_copy
 
     # Rename inbox_copy to something else.
     #
@@ -392,8 +392,8 @@ async def test_authenticated_client_subscribe_lsub_unsubscribe(
         await client_handler.command(cmd)
         results = client_push_responses(imap_client)
         assert results == [f"A00{idx} OK SUBSCRIBE command completed"]
-        mbox = await server.get_mailbox(subscribe)
-        assert mbox.subscribed
+        async with server.get_mailbox(subscribe) as mbox:
+            assert mbox.subscribed
 
     cmd = IMAPClientCommand('A001 LSUB "" "*"\r\n')
     cmd.parse()
@@ -414,8 +414,8 @@ async def test_authenticated_client_subscribe_lsub_unsubscribe(
         await client_handler.command(cmd)
         results = client_push_responses(imap_client)
         assert results == [f"A00{idx} OK UNSUBSCRIBE command completed"]
-        mbox = await server.get_mailbox(subscribe)
-        assert mbox.subscribed is False
+        async with server.get_mailbox(subscribe) as mbox:
+            assert mbox.subscribed is False
 
     # and lsub will have no results
     #
@@ -457,34 +457,34 @@ async def test_authenticated_client_append(
 
     # Get the message from the mailbox..
     #
-    mbox = await server.get_mailbox("inbox")
-    appended_msg = await mbox.mailbox.aget_message(21)
-    assert_email_equal(msg, appended_msg, ignore_headers=[UID_HDR])
+    async with server.get_mailbox("inbox") as mbox:
+        appended_msg = await mbox.mailbox.aget_message(21)
+        assert_email_equal(msg, appended_msg, ignore_headers=[UID_HDR])
 
-    # Let us append again, but this time with the mailbox selected. We should
-    # get untagged updates from the mailbox for the new message.
-    #
-    cmd = IMAPClientCommand("A002 SELECT inbox")
-    cmd.parse()
-    await client_handler.command(cmd)
-    results = client_push_responses(imap_client)
-    msg = email_factory()
-    msg_as_string = msg.as_string(policy=SMTP)
+        # Let us append again, but this time with the mailbox selected. We should
+        # get untagged updates from the mailbox for the new message.
+        #
+        cmd = IMAPClientCommand("A002 SELECT inbox")
+        cmd.parse()
+        await client_handler.command(cmd)
+        results = client_push_responses(imap_client)
+        msg = email_factory()
+        msg_as_string = msg.as_string(policy=SMTP)
 
-    cmd = IMAPClientCommand(
-        f'A003 APPEND inbox (\\Flagged) "05-jan-1999 20:55:23 +0000" {{{len(msg_as_string)}+}}\r\n{msg_as_string}'
-    )
-    cmd.parse()
-    await client_handler.command(cmd)
-    results = client_push_responses(imap_client)
-    assert results == [
-        "* 22 EXISTS",
-        "* 22 RECENT",
-        r"* 22 FETCH (FLAGS (\Recent \Flagged \Seen))",
-        "A003 OK [APPENDUID 1 22] APPEND command completed",
-    ]
-    appended_msg = await mbox.mailbox.aget_message(22)
-    assert_email_equal(msg, appended_msg, ignore_headers=[UID_HDR])
+        cmd = IMAPClientCommand(
+            f'A003 APPEND inbox (\\Flagged) "05-jan-1999 20:55:23 +0000" {{{len(msg_as_string)}+}}\r\n{msg_as_string}'
+        )
+        cmd.parse()
+        await client_handler.command(cmd)
+        results = client_push_responses(imap_client)
+        assert results == [
+            "* 22 EXISTS",
+            "* 22 RECENT",
+            r"* 22 FETCH (FLAGS (\Recent \Flagged \Seen))",
+            "A003 OK [APPENDUID 1 22] APPEND command completed",
+        ]
+        appended_msg = await mbox.mailbox.aget_message(22)
+        assert_email_equal(msg, appended_msg, ignore_headers=[UID_HDR])
 
 
 ####################################################################
@@ -534,52 +534,52 @@ async def test_authenticated_client_close(
 
     # Messages that are marked `\Deleted` are removed when the mbox is closed.
     #
-    mbox = await server.get_mailbox("inbox")
-    msg_keys = await mbox.mailbox.akeys()
-    to_delete = sorted(random.sample(msg_keys, 5))
-    await mbox.store(to_delete, StoreAction.ADD_FLAGS, [r"\Deleted"])
+    async with server.get_mailbox("inbox") as mbox:
+        msg_keys = await mbox.mailbox.akeys()
+        to_delete = sorted(random.sample(msg_keys, 5))
+        await mbox.store(to_delete, StoreAction.ADD_FLAGS, [r"\Deleted"])
 
-    # Closing when we had done 'EXAMINE' does not result in messages being
-    # purged.
-    #
-    cmd = IMAPClientCommand("A002 EXAMINE INBOX")
-    cmd.parse()
-    await client_handler.command(cmd)
-    client_push_responses(imap_client)
+        # Closing when we had done 'EXAMINE' does not result in messages being
+        # purged.
+        #
+        cmd = IMAPClientCommand("A002 EXAMINE INBOX")
+        cmd.parse()
+        await client_handler.command(cmd)
+        client_push_responses(imap_client)
 
-    cmd = IMAPClientCommand("A003 CLOSE")
-    cmd.parse()
-    await client_handler.command(cmd)
-    results = client_push_responses(imap_client)
-    assert results == ["A003 OK CLOSE command completed"]
-    assert client_handler.mbox is None
-    assert client_handler.name not in mbox.clients
+        cmd = IMAPClientCommand("A003 CLOSE")
+        cmd.parse()
+        await client_handler.command(cmd)
+        results = client_push_responses(imap_client)
+        assert results == ["A003 OK CLOSE command completed"]
+        assert client_handler.mbox is None
+        assert client_handler.name not in mbox.clients
 
-    # And get the message keys again.. should have no changes from the previous
-    # set.
-    #
-    new_msg_keys = await mbox.mailbox.akeys()
-    assert new_msg_keys == msg_keys
+        # And get the message keys again.. should have no changes from the
+        # previous set.
+        #
+        new_msg_keys = await mbox.mailbox.akeys()
+        assert new_msg_keys == msg_keys
 
-    # Now SELECT the inbox, and then close it.. the messages we had marked
-    # `\Deleted` should be removed from the mbox.
-    #
-    cmd = IMAPClientCommand("A004 SELECT INBOX")
-    cmd.parse()
-    await client_handler.command(cmd)
-    client_push_responses(imap_client)
+        # Now SELECT the inbox, and then close it.. the messages we had marked
+        # `\Deleted` should be removed from the mbox.
+        #
+        cmd = IMAPClientCommand("A004 SELECT INBOX")
+        cmd.parse()
+        await client_handler.command(cmd)
+        client_push_responses(imap_client)
 
-    cmd = IMAPClientCommand("A005 CLOSE")
-    cmd.parse()
-    await client_handler.command(cmd)
-    results = client_push_responses(imap_client)
-    assert results == ["A005 OK CLOSE command completed"]
-    assert client_handler.mbox is None
-    assert client_handler.name not in mbox.clients
+        cmd = IMAPClientCommand("A005 CLOSE")
+        cmd.parse()
+        await client_handler.command(cmd)
+        results = client_push_responses(imap_client)
+        assert results == ["A005 OK CLOSE command completed"]
+        assert client_handler.mbox is None
+        assert client_handler.name not in mbox.clients
 
-    new_msg_keys = await mbox.mailbox.akeys()
-    for msg_key in to_delete:
-        assert msg_key not in new_msg_keys
+        new_msg_keys = await mbox.mailbox.akeys()
+        for msg_key in to_delete:
+            assert msg_key not in new_msg_keys
 
 
 ####################################################################
@@ -600,65 +600,67 @@ async def test_authenticated_client_expunge(
 
     # Messages that are marked `\Deleted` are removed when the mbox is closed.
     #
-    mbox = await server.get_mailbox("inbox")
-    msg_keys = await mbox.mailbox.akeys()
-    to_delete = sorted(random.sample(msg_keys, 5))
-    await mbox.store(to_delete, StoreAction.ADD_FLAGS, [r"\Deleted"])
+    async with server.get_mailbox("inbox") as mbox:
+        msg_keys = await mbox.mailbox.akeys()
+        to_delete = sorted(random.sample(msg_keys, 5))
+        await mbox.store(to_delete, StoreAction.ADD_FLAGS, [r"\Deleted"])
 
-    # Expunging when we had done 'EXAMINE' does not result in messages being
-    # purged.
-    #
-    cmd = IMAPClientCommand("A002 EXAMINE INBOX")
-    cmd.parse()
-    await client_handler.command(cmd)
-    client_push_responses(imap_client)
+        # Expunging when we had done 'EXAMINE' does not result in messages being
+        # purged.
+        #
+        cmd = IMAPClientCommand("A002 EXAMINE INBOX")
+        cmd.parse()
+        await client_handler.command(cmd)
+        client_push_responses(imap_client)
 
-    cmd = IMAPClientCommand("A003 EXPUNGE")
-    cmd.parse()
-    await client_handler.command(cmd)
-    results = client_push_responses(imap_client)
-    assert results == ["A003 OK EXPUNGE command completed"]
-    assert client_handler.mbox == mbox
-    assert client_handler.name in mbox.clients
+        cmd = IMAPClientCommand("A003 EXPUNGE")
+        cmd.parse()
+        await client_handler.command(cmd)
+        results = client_push_responses(imap_client)
+        assert results == ["A003 OK EXPUNGE command completed"]
+        assert client_handler.mbox == mbox
+        assert client_handler.name in mbox.clients
 
-    # And get the message keys again.. should have no changes from the previous
-    # set.
-    #
-    new_msg_keys = await mbox.mailbox.akeys()
-    assert new_msg_keys == msg_keys
+        # And get the message keys again.. should have no changes from the
+        # previous set.
+        #
+        new_msg_keys = await mbox.mailbox.akeys()
+        assert new_msg_keys == msg_keys
 
-    # Now SELECT the inbox, and then close it.. the messages we had marked
-    # `\Deleted` should be removed from the mbox.
-    #
-    cmd = IMAPClientCommand("A004 SELECT INBOX")
-    cmd.parse()
-    await client_handler.command(cmd)
-    client_push_responses(imap_client)
+        # Now SELECT the inbox, and then close it.. the messages we had marked
+        # `\Deleted` should be removed from the mbox.
+        #
+        cmd = IMAPClientCommand("A004 SELECT INBOX")
+        cmd.parse()
+        await client_handler.command(cmd)
+        client_push_responses(imap_client)
 
-    cmd = IMAPClientCommand("A005 EXPUNGE")
-    cmd.parse()
-    await client_handler.command(cmd)
-    results = client_push_responses(imap_client)
-    # The results should have the same message sequence numbers as to_delete,
-    # in reverse.
-    #
-    for msg, msg_seq_num in zip(results[:-1], sorted(to_delete, reverse=True)):
-        assert msg == f"* {msg_seq_num} EXPUNGE"
-    # len(results) - 1 for the "OK"
-    #
-    assert len(results) - 1 == len(to_delete)
-    assert results[-1:] == [
-        "A005 OK EXPUNGE command completed",
-    ]
-    for deleted, result in zip(sorted(to_delete, reverse=True), results):
-        assert f"* {deleted} EXPUNGE" == result
+        cmd = IMAPClientCommand("A005 EXPUNGE")
+        cmd.parse()
+        await client_handler.command(cmd)
+        results = client_push_responses(imap_client)
+        # The results should have the same message sequence numbers as
+        # to_delete, in reverse.
+        #
+        for msg, msg_seq_num in zip(
+            results[:-1], sorted(to_delete, reverse=True)
+        ):
+            assert msg == f"* {msg_seq_num} EXPUNGE"
+        # len(results) - 1 for the "OK"
+        #
+        assert len(results) - 1 == len(to_delete)
+        assert results[-1:] == [
+            "A005 OK EXPUNGE command completed",
+        ]
+        for deleted, result in zip(sorted(to_delete, reverse=True), results):
+            assert f"* {deleted} EXPUNGE" == result
 
-    assert client_handler.mbox == mbox
-    assert client_handler.name in mbox.clients
+        assert client_handler.mbox == mbox
+        assert client_handler.name in mbox.clients
 
-    new_msg_keys = await mbox.mailbox.akeys()
-    for msg_key in to_delete:
-        assert msg_key not in new_msg_keys
+        new_msg_keys = await mbox.mailbox.akeys()
+        for msg_key in to_delete:
+            assert msg_key not in new_msg_keys
 
 
 ####################################################################
@@ -684,8 +686,8 @@ async def test_authenticated_client_search(
     # Every message in the inbox should be unseen.. so our response should have
     # all these message indicies in it.
     #
-    mbox = await server.get_mailbox("inbox")
-    msg_keys = await mbox.mailbox.akeys()
+    async with server.get_mailbox("inbox") as mbox:
+        msg_keys = await mbox.mailbox.akeys()
 
     cmd = IMAPClientCommand("A004 SELECT INBOX")
     cmd.parse()
@@ -731,27 +733,27 @@ async def test_authenticated_client_fetch(
     # Every message in the inbox should be unseen.. so our response should have
     # all these message indicies in it.
     #
-    mbox = await server.get_mailbox("inbox")
+    async with server.get_mailbox("inbox") as mbox:
 
-    cmd = IMAPClientCommand("A004 SELECT INBOX")
-    cmd.parse()
-    await client_handler.command(cmd)
-    client_push_responses(imap_client)
+        cmd = IMAPClientCommand("A004 SELECT INBOX")
+        cmd.parse()
+        await client_handler.command(cmd)
+        client_push_responses(imap_client)
 
-    cmd = IMAPClientCommand(
-        "A001 FETCH 1:5 (BODY[HEADER.FIELDS (FROM SUBJECT)])"
-    )
-    cmd.parse()
-    await client_handler.command(cmd)
-    results = client_push_responses(imap_client)
-    assert results[-1] == "A001 OK FETCH command completed"
-    for idx in range(1, 6):
-        msg = await mbox.mailbox.aget_message(idx)
-        inter = [x.strip() for x in results[idx - 1].split("\r\n")]
-        subj = inter[1]
-        frm = inter[2]
-        assert msg["Subject"] == subj.split(":")[1].strip()
-        assert msg["From"] == frm.split(":")[1].strip()
+        cmd = IMAPClientCommand(
+            "A001 FETCH 1:5 (BODY[HEADER.FIELDS (FROM SUBJECT)])"
+        )
+        cmd.parse()
+        await client_handler.command(cmd)
+        results = client_push_responses(imap_client)
+        assert results[-1] == "A001 OK FETCH command completed"
+        for idx in range(1, 6):
+            msg = await mbox.mailbox.aget_message(idx)
+            inter = [x.strip() for x in results[idx - 1].split("\r\n")]
+            subj = inter[1]
+            frm = inter[2]
+            assert msg["Subject"] == subj.split(":")[1].strip()
+            assert msg["From"] == frm.split(":")[1].strip()
 
 
 ####################################################################
@@ -767,8 +769,8 @@ async def test_authenticated_client_fetch_lotta_fields(
     _ = mailbox_with_bunch_of_email
     client_handler = Authenticated(imap_client, server)
 
-    mbox = await server.get_mailbox("inbox")
-    msg_keys = await mbox.mailbox.akeys()
+    async with server.get_mailbox("inbox") as mbox:
+        msg_keys = await mbox.mailbox.akeys()
 
     cmd = IMAPClientCommand("A004 SELECT INBOX")
     cmd.parse()
@@ -874,8 +876,8 @@ async def test_authenticated_client_copy(
     results = client_push_responses(imap_client)
     assert results == ["A003 OK [COPYUID 2 2:6 1:5] COPY command completed"]
 
-    dst_mbox = await server.get_mailbox("MEETING")
-    msg_keys = await dst_mbox.mailbox.akeys()
+    async with server.get_mailbox("MEETING") as dst_mbox:
+        msg_keys = await dst_mbox.mailbox.akeys()
     assert len(msg_keys) == 5
 
     # Not going to both inspecting the messages.. the `test_mbox` tests should

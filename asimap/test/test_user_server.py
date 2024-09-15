@@ -51,7 +51,9 @@ async def test_expire_inactive_folders(
             if sub_folder in folders:
                 continue
             await Mailbox.create(sub_folder, server)
-            folders.append(sub_folder)
+            async with server.get_mailbox(sub_folder) as sf:
+                assert sf.in_use_count == 1
+                folders.append(sub_folder)
 
     folders = sorted(folders)
 
@@ -64,44 +66,39 @@ async def test_expire_inactive_folders(
     # Get a handle on two mailboxes and increment their in-use count so that
     # they do not get expired.
     #
-    mbox1 = await server.get_mailbox(folders[2])
-    mbox2 = await server.get_mailbox(folders[3])
-    mbox1.in_use_count += 1
-    mbox2.in_use_count += 1
+    async with server.get_mailbox(folders[2]) as mbox1:
+        async with server.get_mailbox(folders[3]) as mbox2:
 
-    # Using the mailbox as a context manager increases the in-use count.
-    #
-    with mbox1:
-        assert mbox1.in_use_count == 2
-        assert mbox2.in_use_count == 1
+            # Using the mailbox as a context manager increases the in-use count.
+            #
+            with mbox1:
+                assert mbox1.in_use_count == 2
+                assert mbox2.in_use_count == 1
 
-    # Select the inbox (so we have one folder with no expiry time at all)
-    #
-    cmd = IMAPClientCommand("A001 SELECT INBOX\r\n")
-    cmd.parse()
-    await client_handler.command(cmd)
+            # Select the inbox (so we have one folder with no expiry time at
+            # all)
+            #
+            cmd = IMAPClientCommand("A001 SELECT INBOX\r\n")
+            cmd.parse()
+            await client_handler.command(cmd)
 
-    # We should have three active mailboxes now (since we forced an expiry
-    # check above)
-    #
-    assert len(server.active_mailboxes) == 3
+            # We should have three active mailboxes now (two protected by async
+            # with clauses and one selected by a client.)
+            #
+            assert len(server.active_mailboxes) == 3
 
-    # The inbox will have no expiry since a client has it selected.
-    #
-    _ = await server.get_mailbox("inbox")
+            await server.expire_inactive_folders()
 
-    await server.expire_inactive_folders()
+            # and after an expiry check again, still 3 active folders.
+            #
+            assert len(server.active_mailboxes) == 3
 
-    # and after an expiry check again, still 3 active folders.
-    #
-    assert len(server.active_mailboxes) == 3
-
-    # Set mbox1's in_use_count to zero so that it will get expired.
-    #
-    mbox1.in_use_count = 0
-    await server.expire_inactive_folders()
-    assert len(server.active_mailboxes) == 2
-    assert mbox1.name not in server.active_mailboxes
+        # We have exited mbox2's async with clause which should make it
+        # available for expiry.
+        #
+        await server.expire_inactive_folders()
+        assert len(server.active_mailboxes) == 2
+        assert mbox2.name not in server.active_mailboxes
 
 
 ####################################################################
@@ -165,7 +162,8 @@ async def test_check_folder(
 async def test_there_is_no_root_folder(imap_user_server):
     server = imap_user_server
     with pytest.raises(NoSuchMailbox):
-        await server.get_mailbox("")
+        async with server.get_mailbox(""):
+            pass
 
 
 ####################################################################
@@ -190,9 +188,12 @@ async def test_check_all_folders(
                 continue
             await Mailbox.create(sub_folder, server)
             folders.append(sub_folder)
-            await server.get_mailbox(sub_folder, expiry=0)
+            async with server.get_mailbox(sub_folder):
+                pass
 
     # Expire all the mailboxes we made so `check_all_folders` will check them.
+    # (Since there are no clients selecting a mailbox, and all the mailboxes we
+    # created above have their in_use_count==0 they should all get expired.)
     #
     await server.expire_inactive_folders()
 
