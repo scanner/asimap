@@ -331,9 +331,18 @@ class BaseClientHandler:
         Arguments:
         - `msg`: The message to send to the client in the BYE.
         """
+        mbox_name = None
         if self.mbox:
+            mbox_name = self.mbox.name
             self.mbox.unselected(self.client.name)
             self.mbox = None
+
+        logger.warning(
+            "%s: Mailbox: '%s', Unceremonious BYE: %s",
+            self.name,
+            mbox_name,
+            msg,
+        )
 
         try:
             await self.client.push(f"* BYE {msg}\r\n")

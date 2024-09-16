@@ -524,8 +524,7 @@ class IMAPUserServer:
         # initial folder check has finished.
         #
         # self.initial_folder_scan = True
-        self.initial_folder_scan = False  # XXX I think we can safely turn this
-        #     off.
+        self.initial_folder_scan = False
         self.last_full_check = 0.0
 
         # To give individual client connections a more easily read name then
@@ -844,7 +843,8 @@ class IMAPUserServer:
         # unselected.
         #
         for mbox in self.active_mailboxes.values():
-            mbox.unselected(client.name)
+            if client.name in mbox.clients:
+                mbox.unselected(client.name)
         del self.clients[task]
 
         # If there are no more clients, then set the IMAPUserServer's expiry

@@ -5,6 +5,7 @@ the Mailbox, basically.
 
 # system imports
 #
+import asyncio
 import random
 from email.policy import SMTP
 
@@ -24,7 +25,6 @@ from ..client import (
 )
 from ..mbox import Mailbox
 from ..parse import IMAPClientCommand, StoreAction
-from ..utils import UID_HDR
 from .conftest import assert_email_equal, client_push_responses
 
 
@@ -258,7 +258,8 @@ async def test_authenticated_client_handler_commands(
     for command, expected in zip(commands, expecteds):
         cmd = IMAPClientCommand(command + "\r\n")
         cmd.parse()
-        await client_handler.command(cmd)
+        async with asyncio.timeout(5):
+            await client_handler.command(cmd)
         results = client_push_responses(imap_client)
         assert results == expected
 
@@ -459,10 +460,10 @@ async def test_authenticated_client_append(
     #
     async with server.get_mailbox("inbox") as mbox:
         appended_msg = await mbox.mailbox.aget_message(21)
-        assert_email_equal(msg, appended_msg, ignore_headers=[UID_HDR])
+        assert_email_equal(msg, appended_msg)
 
-        # Let us append again, but this time with the mailbox selected. We should
-        # get untagged updates from the mailbox for the new message.
+        # Let us append again, but this time with the mailbox selected. We
+        # should get untagged updates from the mailbox for the new message.
         #
         cmd = IMAPClientCommand("A002 SELECT inbox")
         cmd.parse()
@@ -484,7 +485,7 @@ async def test_authenticated_client_append(
             "A003 OK [APPENDUID 1 22] APPEND command completed",
         ]
         appended_msg = await mbox.mailbox.aget_message(22)
-        assert_email_equal(msg, appended_msg, ignore_headers=[UID_HDR])
+        assert_email_equal(msg, appended_msg)
 
 
 ####################################################################

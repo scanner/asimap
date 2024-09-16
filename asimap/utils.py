@@ -526,10 +526,15 @@ def sequence_set_to_list(
         if elt == "*":
             if seq_max == 0 and not uid_cmd:
                 raise Bad(
-                    "Message index '*' is greater than the size of the mailbox"
+                    f"Message index '{elt}' is invalid in empty mailbox when not a uid command"
                 )
             result.append(seq_max)
         elif isinstance(elt, int):
+            if elt < 1:
+                raise Bad(
+                    f"Message index '{elt}' is invalid. Must be at least 1"
+                )
+
             if elt > seq_max and not uid_cmd:
                 raise Bad(
                     f"Message index '{elt}' is greater than the size of the mailbox"
@@ -537,6 +542,11 @@ def sequence_set_to_list(
             result.append(elt)
         elif isinstance(elt, tuple):
             start, end = elt
+            if (start == "*" or end == "*") and seq_max == 0 and not uid_cmd:
+                raise Bad(
+                    f"Message sequence '{elt}' is invalid. Start: {start}, "
+                    f"end: {end}, seq_max: {seq_max}"
+                )
             if start == "*":
                 start = seq_max
             if end == "*":
@@ -544,13 +554,14 @@ def sequence_set_to_list(
             assert isinstance(start, int)  # These are really here for mypy
             assert isinstance(end, int)  # so it knows that they are ints now
             if (
-                start == 0 or end == 0 or start > seq_max or end > seq_max
+                start < 1 or end < 1 or start > seq_max or end > seq_max
             ) and not uid_cmd:
                 raise Bad(
-                    f"Message sequence '{elt}' is greater than the size of "
-                    f"the mailbox, start: {start}, end: {end}, "
-                    f"seq_max: {seq_max}"
+                    f"Message sequence '{elt}' is invalid. Start: {start}, "
+                    f"end: {end}, seq_max: {seq_max}"
                 )
+            # In a range it may be <start>:<end> or <end>:<start>
+            #
             if start > end:
                 result.extend(list(range(end, start + 1)))
             else:
