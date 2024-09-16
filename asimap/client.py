@@ -687,7 +687,7 @@ class Authenticated(BaseClientHandler):
                             self.select_while_selected_count,
                         )
                         self.select_while_selected_count = 0
-                        self.unceremonious_bye(
+                        await self.unceremonious_bye(
                             "You are SELECT'ing the same mailbox too often."
                         )
                         return
@@ -969,7 +969,9 @@ class Authenticated(BaseClientHandler):
         # reconnect and relearn mailbox state.
         #
         if self.mbox is None:
-            self.unceremonious_bye("Your selected mailbox no longer exists")
+            await self.unceremonious_bye(
+                "Your selected mailbox no longer exists"
+            )
             return
 
         with self.mbox:
@@ -1056,7 +1058,9 @@ class Authenticated(BaseClientHandler):
         # reconnect and relearn mailbox state.
         #
         if self.mbox is None:
-            self.unceremonious_bye("Your selected mailbox no longer exists")
+            await self.unceremonious_bye(
+                "Your selected mailbox no longer exists"
+            )
             return
 
         with self.mbox:
@@ -1101,7 +1105,9 @@ class Authenticated(BaseClientHandler):
         # them reconnect and relearn mailbox state.
         #
         if self.mbox is None:
-            self.unceremonious_bye("Your selected mailbox no longer exists")
+            await self.unceremonious_bye(
+                "Your selected mailbox no longer exists"
+            )
             return
 
         with self.mbox:
@@ -1147,7 +1153,9 @@ class Authenticated(BaseClientHandler):
         # reconnect and relearn mailbox state.
         #
         if self.mbox is None:
-            self.unceremonious_bye("Your selected mailbox no longer exists")
+            await self.unceremonious_bye(
+                "Your selected mailbox no longer exists"
+            )
             return
 
         with self.mbox:
@@ -1170,7 +1178,9 @@ class Authenticated(BaseClientHandler):
                     #
                     self.fetch_while_pending_count += 1
                     if self.fetch_while_pending_count > 3:
-                        self.unceremonious_bye("You have pending EXPUNGEs.")
+                        await self.unceremonious_bye(
+                            "You have pending EXPUNGEs."
+                        )
                         return
                     else:
                         raise No("There are pending EXPUNGEs.")
@@ -1230,7 +1240,9 @@ class Authenticated(BaseClientHandler):
         # reconnect and relearn mailbox state.
         #
         if self.mbox is None:
-            self.unceremonious_bye("Your selected mailbox no longer exists")
+            await self.unceremonious_bye(
+                "Your selected mailbox no longer exists"
+            )
             return
 
         with self.mbox:
@@ -1311,7 +1323,9 @@ class Authenticated(BaseClientHandler):
         # reconnect and relearn mailbox state.
         #
         if self.mbox is None:
-            self.unceremonious_bye("Your selected mailbox no longer exists")
+            await self.unceremonious_bye(
+                "Your selected mailbox no longer exists"
+            )
             return
 
         with self.mbox:

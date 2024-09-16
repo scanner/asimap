@@ -47,7 +47,13 @@ from .parse import (
     StoreAction,
 )
 from .search import IMAPSearch, SearchContext
-from .utils import MsgSet, compact_sequence, sequence_set_to_list, utime
+from .utils import (
+    MsgSet,
+    compact_sequence,
+    expand_sequence,
+    sequence_set_to_list,
+    utime,
+)
 
 # Allow circular imports for annotations
 #
@@ -286,7 +292,6 @@ class Mailbox:
         expired while still in use.
         """
         self.in_use_count += 1
-        logger.debug("enter: Mailbox '%s', in use count: %d", self.in_use_count)
 
     ####################################################################
     #
@@ -296,7 +301,6 @@ class Mailbox:
         can be expired and removed from memory)
         """
         self.in_use_count -= 1
-        logger.debug("exit: Mailbox '%s', in use count: %d", self.in_use_count)
 
     ####################################################################
     #
@@ -627,7 +631,9 @@ class Mailbox:
         )
 
         msgs = sequence_set_to_list(msg_set, seq_max, uid_cmd=from_uids)
-        logger.debug("Mailbox: '%s', msg seq nums: %s", self.name, msgs)
+        logger.debug(
+            "Mailbox: '%s', msg seq nums: %s", self.name, compact_sequence(msgs)
+        )
 
         # The msg_set is in UID's and we need to convert that to msg sequence
         # numbers. The list `self.uids` is this mapping. If a UID is NOT in
@@ -649,7 +655,7 @@ class Mailbox:
             logger.debug(
                 "Mailbox: '%s', after converting from uids: msg seq nums: %s",
                 self.name,
-                msgs,
+                compact_sequence(msgs),
             )
 
         return set(msgs)
@@ -815,9 +821,6 @@ class Mailbox:
                 )
                 return
             except asyncio.CancelledError:
-                self.logger.debug(
-                    "mbox: '%s', Management task cancelled", self.name
-                )
                 return
             except Exception as e:
                 # We ignore all other exceptions because otherwise the
@@ -1485,7 +1488,8 @@ class Mailbox:
                         (
                             name,
                             self.id,
-                            ",".join([str(x) for x in sorted(values)]),
+                            # ",".join([str(x) for x in sorted(values)]),
+                            compact_sequence(sorted(values)),
                         ),
                     )
                 await self.server.db.commit()
@@ -1508,10 +1512,13 @@ class Mailbox:
             ) = results
             self.subscribed = bool(self.subscribed)
             self.attributes = set(attributes.split(","))
-            self.uids = [int(x) for x in uids.split(",")] if uids else []
-            self.msg_keys = (
-                [int(x) for x in msg_keys.split(",")] if msg_keys else []
-            )
+            # self.uids = [int(x) for x in uids.split(",")] if uids else []
+            # self.msg_keys = (
+            #     [int(x) for x in msg_keys.split(",")] if msg_keys else []
+            # )
+            self.uids = expand_sequence(uids) if uids else []
+            self.msg_keys = expand_sequence(msg_keys) if msg_keys else []
+
             # To handle the initial migration for when we start storing all the
             # message keys. `msg_keys` in the db will be an empty list, but
             # uids will not be empty. Based on the rule that messages are only
@@ -1534,7 +1541,8 @@ class Mailbox:
                 sequence = sequence.strip()
                 if sequence:
                     self.sequences[name] = set(
-                        int(x) for x in sequence.split(",")
+                        # int(x) for x in sequence.split(",")
+                        expand_sequence(sequence)
                     )
 
         return False
@@ -1553,8 +1561,8 @@ class Mailbox:
             self.mtime,
             self.num_msgs,
             self.num_recent,
-            ",".join([str(x) for x in self.uids]),
-            ",".join([str(x) for x in self.msg_keys]),
+            compact_sequence(self.uids),
+            compact_sequence(self.msg_keys),
             self.last_resync,
             self.subscribed,
             self.id,
@@ -1600,9 +1608,10 @@ class Mailbox:
                 )
                 await self.server.db.commit()
             for name in new_names:
-                sequence = ",".join(
-                    str(x) for x in sorted(self.sequences[name])
-                )
+                # sequence = ",".join(
+                #     str(x) for x in sorted(self.sequences[name])
+                # )
+                sequence = compact_sequence(self.sequences[name])
                 await self.server.db.execute(
                     "INSERT INTO sequences(name,mailbox_id,sequence) "
                     "  VALUES (?,?,?)"
@@ -1757,13 +1766,6 @@ class Mailbox:
             f"* OK [PERMANENTFLAGS ({' '.join(PERMANENT_FLAGS)})]\r\n"
         )
 
-        logger.debug(
-            "Mailbox '%s', in use count: %d, num clients:",
-            self.name,
-            self.in_use_count,
-            len(self.clients),
-        )
-
         return push_data
 
     ##################################################################
@@ -1792,13 +1794,6 @@ class Mailbox:
             return
 
         del self.clients[client_name]
-
-        logger.debug(
-            "Mailbox '%s', in use count: %d, num clients",
-            self.name,
-            self.in_use_count,
-            len(self.clients),
-        )
 
     ##################################################################
     #
@@ -1863,12 +1858,10 @@ class Mailbox:
                 f"message {msg_key}"
             )
         logger.debug(
-            # "Mailbox: '%s', append message: %d, uid: %d, sequences: %s",
             "Mailbox: '%s', append message: %d, uid: %d",
             self.name,
             msg_key,
             uid,
-            # ", ".join(msg.get_sequences()),
         )
         return uid
 
