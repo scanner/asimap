@@ -21,12 +21,15 @@ import sys
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from itertools import count, groupby
 from pathlib import Path
 from queue import SimpleQueue
 from typing import (
     TYPE_CHECKING,
     Any,
     Dict,
+    Iterable,
+    Iterator,
     List,
     Optional,
     Set,
@@ -526,10 +529,15 @@ def sequence_set_to_list(
         if elt == "*":
             if seq_max == 0 and not uid_cmd:
                 raise Bad(
-                    "Message index '*' is greater than the size of the mailbox"
+                    f"Message index '{elt}' is invalid in empty mailbox when not a uid command"
                 )
             result.append(seq_max)
         elif isinstance(elt, int):
+            if elt < 1:
+                raise Bad(
+                    f"Message index '{elt}' is invalid. Must be at least 1"
+                )
+
             if elt > seq_max and not uid_cmd:
                 raise Bad(
                     f"Message index '{elt}' is greater than the size of the mailbox"
@@ -537,6 +545,11 @@ def sequence_set_to_list(
             result.append(elt)
         elif isinstance(elt, tuple):
             start, end = elt
+            if (start == "*" or end == "*") and seq_max == 0 and not uid_cmd:
+                raise Bad(
+                    f"Message sequence '{elt}' is invalid. Start: {start}, "
+                    f"end: {end}, seq_max: {seq_max}"
+                )
             if start == "*":
                 start = seq_max
             if end == "*":
@@ -544,13 +557,14 @@ def sequence_set_to_list(
             assert isinstance(start, int)  # These are really here for mypy
             assert isinstance(end, int)  # so it knows that they are ints now
             if (
-                start == 0 or end == 0 or start > seq_max or end > seq_max
+                start < 1 or end < 1 or start > seq_max or end > seq_max
             ) and not uid_cmd:
                 raise Bad(
-                    f"Message sequence '{elt}' is greater than the size of "
-                    f"the mailbox, start: {start}, end: {end}, "
-                    f"seq_max: {seq_max}"
+                    f"Message sequence '{elt}' is invalid. Start: {start}, "
+                    f"end: {end}, seq_max: {seq_max}"
                 )
+            # In a range it may be <start>:<end> or <end>:<start>
+            #
             if start > end:
                 result.extend(list(range(end, start + 1)))
             else:
@@ -696,21 +710,6 @@ async def update_replace_header_in_binary_file(fname: "StrPath", header: str):
                         line = headerb + line_sep
                 output.write(line)
 
-    # async with aiofiles.open(fname, "rb") as input:
-    #     async with aiofiles.open(new_fname, "wb") as output:
-    #         async for line in input:
-    #             if line_sep is None:
-    #                 line_sep = b"\r\n" if line.endswith(b"\r\n") else b"\n"
-
-    #             if in_header:
-    #                 if len(line.strip()) == 0:
-    #                     in_header = False
-    #                     if not found_header:
-    #                         await output.write(headerb + line_sep)
-    #                 elif line.lower().startswith(header_name):
-    #                     found_header = True
-    #                     line = headerb + b"\n"
-    #             await output.write(line)
     os.chmod(new_fname, stat.S_IMODE(stats.st_mode))
     await utime(new_fname, (stats.st_mtime, stats.st_mtime))
     await aiofiles.os.rename(new_fname, fname)
@@ -718,28 +717,50 @@ async def update_replace_header_in_binary_file(fname: "StrPath", header: str):
 
 ####################################################################
 #
-def compact_sequence(msg_set: List[int]) -> str:
+def compact_sequence(keys: Iterable[int]) -> str:
     """
     Turns a msg set in to a compact string. Contiguous ranges are turned
-    from 1,3,4,5,6 to '1-6'
+    from 1,3,4,5,6 to '1,3-6'
 
     Based on the truncation routine from mailbox.py:set_sequences
     """
-    prev = None
-    completing = False
-    result = []
-    for key in sorted(msg_set):
-        if key - 1 == prev:
-            if not completing:
-                completing = True
-                result.append("-")
-        elif completing:
-            completing = False
-            result.append(f"{prev},{key}")
-        else:
-            result.append(f",{key}")
-        prev = key
-    if completing:
-        result.append(str(prev))
 
-    return "".join(result)
+    def as_range(
+        iterable: Iterator[int],
+    ) -> str:  # not sure how to do this part elegantly
+        grouped_ints = list(iterable)
+        if len(grouped_ints) > 1:
+            return "{0}-{1}".format(grouped_ints[0], grouped_ints[-1])
+        else:
+            return "{0}".format(grouped_ints[0])
+
+    keys = sorted(keys)
+    result = ",".join(
+        as_range(g)
+        for _, g in groupby(keys, key=lambda n, c=count(): n - next(c))
+    )  # '1-3,6-7,10'
+
+    return result
+
+
+####################################################################
+#
+def expand_sequence(contents: str) -> List[int]:
+    """
+    Turns a compacted sequence in to a list of integers.
+    The string '1,3-6' becomes [1,3,4,5,6]
+
+    Based on the expansion routine from mailbox.py:get_sequences
+    """
+    if not contents.strip():
+        return []
+
+    keys = set()
+    for spec in contents.split(","):
+        if spec.isdigit():
+            keys.add(int(spec))
+        else:
+            start, stop = (int(x) for x in spec.split("-"))
+            keys.update(range(start, stop + 1))
+
+    return sorted(keys)

@@ -32,7 +32,7 @@ httpx==0.27.2
     # via hatch
 hyperlink==21.0.0
     # via hatch
-idna==3.8
+idna==3.9
     # via
     #   anyio
     #   httpx
@@ -62,7 +62,7 @@ pathspec==0.12.1
     # via hatchling
 pexpect==4.9.0
     # via hatch
-platformdirs==4.3.1
+platformdirs==4.3.3
     # via
     #   hatch
     #   virtualenv
@@ -74,7 +74,7 @@ pygments==2.18.0
     # via rich
 pyproject-hooks==1.1.0
     # via build
-rich==13.8.0
+rich==13.8.1
     # via hatch
 shellingham==1.5.4
     # via hatch
@@ -86,11 +86,11 @@ tomli-w==1.0.0
     # via hatch
 tomlkit==0.13.2
     # via hatch
-trove-classifiers==2024.7.2
+trove-classifiers==2024.9.12
     # via hatchling
 userpath==1.9.2
     # via hatch
-uv==0.4.7
+uv==0.4.10
     # via hatch
 virtualenv==20.26.4
     # via hatch

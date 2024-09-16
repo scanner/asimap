@@ -28,7 +28,7 @@ filelock==3.16.0
     # via virtualenv
 identify==2.6.0
     # via pre-commit
-importlib-metadata==8.4.0
+importlib-metadata==8.5.0
     # via yapf
 isort==5.13.2
     # via -r lint.in
@@ -48,7 +48,7 @@ pathspec==0.12.1
     # via black
 pip-tools==7.4.1
     # via -r lint.in
-platformdirs==4.3.1
+platformdirs==4.3.3
     # via
     #   black
     #   virtualenv
@@ -63,7 +63,7 @@ pyproject-hooks==1.1.0
     #   pip-tools
 pyyaml==6.0.2
     # via pre-commit
-ruff==0.6.4
+ruff==0.6.5
     # via -r lint.in
 tomli==2.0.1
     # via yapf
@@ -75,11 +75,11 @@ types-cffi==1.16.0.20240331
     # via types-pyopenssl
 types-pyopenssl==24.1.0.20240722
     # via types-redis
-types-pytz==2024.1.0.20240417
+types-pytz==2024.2.0.20240913
     # via -r lint.in
 types-redis==4.6.0.20240903
     # via -r lint.in
-types-requests==2.32.0.20240907
+types-requests==2.32.0.20240914
     # via -r lint.in
 types-setuptools==74.1.0.20240907
     # via
@@ -87,7 +87,7 @@ types-setuptools==74.1.0.20240907
     #   types-cffi
 typing-extensions==4.12.2
     # via mypy
-urllib3==2.2.2
+urllib3==2.2.3
     # via types-requests
 virtualenv==20.26.4
     # via pre-commit
@@ -95,7 +95,7 @@ wheel==0.44.0
     # via pip-tools
 yapf==0.40.2
     # via -r lint.in
-zipp==3.20.1
+zipp==3.20.2
     # via importlib-metadata
 
 # The following packages are considered to be unsafe in a requirements file:

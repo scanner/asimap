@@ -19,6 +19,8 @@ from ..exceptions import Bad
 from ..utils import (
     UID_HDR,
     UpgradeableReadWriteLock,
+    compact_sequence,
+    expand_sequence,
     find_header_in_binary_file,
     get_uidvv_uid,
     sequence_set_to_list,
@@ -632,3 +634,23 @@ async def test_update_replace_header_in_binary_file(
         hdrs = msg.get_all(UID_HDR)
         assert len(hdrs) == 1
         assert hdrs[0] == value
+
+
+####################################################################
+#
+@pytest.mark.parametrize(
+    "data,expected",
+    [
+        ([1, 3, 4, 5, 6], "1,3-6"),
+        ([1, 2, 3, 4, 5, 6], "1-6"),
+        ([1, 2, 9, 12, 13, 14, 15, 20, 21, 23], "1-2,9,12-15,20-21,23"),
+    ],
+)
+def test_compact_expand_sequences(data, expected):
+    """
+    make sure compaction compacts to expected, and when that is expanded it
+    matches the data.
+    """
+    compact = compact_sequence(data)
+    assert compact == expected
+    assert expand_sequence(compact) == data
