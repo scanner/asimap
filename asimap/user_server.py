@@ -899,6 +899,7 @@ class IMAPUserServer:
         try:
             self.do_not_run_expiry_now += 1
             try:
+                start = time.monotonic()
                 mbox = await self._get_mailbox(name)
                 mbox.in_use_count += 1
             finally:
@@ -907,6 +908,13 @@ class IMAPUserServer:
                 #
                 if self.do_not_run_expiry_now < 0:
                     self.do_not_run_expiry_now = 0
+
+            end = time.monotonic()
+            duration = end - start
+            if duration > 0.2:
+                logger.info(
+                    "Done getting for mailbox '%s', took: %.3fs", name, duration
+                )
 
             # Now that we have a mbox, and its use count is positive we can
             # yield it safe in the knowledge that it will not be expired until
@@ -1015,7 +1023,10 @@ class IMAPUserServer:
         # just skip running expiry now.
         #
         if self.do_not_run_expiry_now > 0:
-            logger.info("Skipping due to `do_not_run_expiry_now` being set")
+            logger.info(
+                "Skipping due to `do_not_run_expiry_now` being set, count: %d",
+                self.do_not_run_expiry_now,
+            )
             return
 
         # And finally check all active mailboxes to see if their in-use count

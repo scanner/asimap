@@ -312,7 +312,10 @@ def imap_server(
     # start a mini server.. how cute
     #
     def start_server():
-        asyncio.run(server.run())
+        try:
+            asyncio.run(server.run())
+        except Exception:
+            return
 
     server_thread = threading.Thread(target=start_server, daemon=True)
     server_thread.start()

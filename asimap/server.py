@@ -331,8 +331,9 @@ class IMAPServer:
         try:
             async with self.asyncio_server:
                 await self.asyncio_server.serve_forever()
-        except asyncio.exceptions.CancelledError as exc:
+        except asyncio.CancelledError as exc:
             logger.info("IMAP Server main loop cancelled %s", exc)
+            return
         except Exception as exc:
             logger.exception("IMAP Server exited with exception: %s", exc)
             raise
@@ -563,6 +564,9 @@ class IMAPClient:
             # disconnecrted and we do not really care.
             #
             pass
+        except asyncio.CancelledError as exc:
+            logger.exception("CancelledError in %s: %s", self, exc)
+            raise
         except Exception as exc:
             logger.exception("Exception in %s: %s", self, exc)
         finally:
@@ -586,8 +590,12 @@ class IMAPClient:
             await self.writer.wait_closed()
         except socket.error:
             pass
+        except asyncio.CancelledError as exc:
+            logger.error("Cancelled while closing %s: %s", self, exc)
+            raise
         except Exception as exc:
             logger.error("Exception when closing %s: %s", self, exc)
+            raise
 
 
 ########################################################################
@@ -666,8 +674,12 @@ class IMAPSubprocessInterface:
                 await self.writer.wait_closed()
         except socket.error:
             pass
+        except asyncio.CancelledError as exc:
+            logger.error("Cancelled while closing %s: %s", self, exc)
+            raise
         except Exception as exc:
             logger.error("Exception when closing %s: %s", self, exc)
+            raise
 
     ####################################################################
     #
@@ -758,6 +770,13 @@ class IMAPSubprocessInterface:
                 % (imap_cmd, self.log_string(), str(e))
             )
             return False
+        except asyncio.CancelledError:
+            logger.info(
+                "Cancelled while processing IMAP command '%s' for %s",
+                imap_cmd,
+                self.log_string(),
+            )
+            raise
         except Exception as e:
             m = (
                 f"Error handling IMAP command '{imap_cmd}' for "
@@ -770,6 +789,8 @@ class IMAPSubprocessInterface:
                     f"{imap_cmd}: {e}\r\n"
                 )
                 await self.imap_client.push(m)
+            except asyncio.CancelledError:
+                raise
             except Exception:
                 pass
             return False
@@ -784,6 +805,12 @@ class IMAPSubprocessInterface:
                     await self.get_and_connect_subprocess(
                         self.client_handler.user
                     )
+                except asyncio.CancelledError:
+                    logger.error(
+                        "Cancelled while starting/connection sub process for %s",
+                        self.log_string(),
+                    )
+                    raise
                 except Exception as e:
                     m = (
                         "Exception starting/connecting subprocess for "
@@ -797,6 +824,8 @@ class IMAPSubprocessInterface:
                         logger.exception(m)
                     try:
                         await self.imap_client.push(f"* BAD {e}\r\n")
+                    except asyncio.CancelledError:
+                        raise
                     except Exception:
                         pass
                     if self.writer:
@@ -957,17 +986,22 @@ class IMAPSubprocessInterface:
             asyncio.IncompleteReadError,
             ConnectionResetError,
             socket.error,
-        ):
-            pass
+        ) as e:
+            logger.info("Failed due to %s: %s", e, self.peername)
         except asyncio.LimitOverrunError as exc:
             logger.warning(
                 "Hit limit overrun on reader from user subprocess for sending "
-                "to IMAP Client: %s",
+                "to IMAP Client: %s, %s",
+                self.peername,
                 exc,
             )
+        except asyncio.CancelledError:
+            logger.info("task cancelled %s", self.peername)
+            raise
         except Exception:
             logger.exception(
-                "error either reading or pushing message to imap client"
+                "error either reading or pushing message to imap client: %s",
+                self.peername,
             )
         finally:
             # either the connection to the subprocess was closed or the
