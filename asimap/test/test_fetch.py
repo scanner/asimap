@@ -18,7 +18,7 @@ import pytest
 
 # Project imports
 #
-from ..constants import REVERSE_SYSTEM_FLAG_MAP, SYSTEM_FLAGS
+from ..constants import REV_SYSTEM_FLAG_MAP, SYSTEM_FLAGS
 from ..fetch import STR_TO_FETCH_OP, FetchAtt, FetchOp
 from ..generator import msg_as_string, msg_headers_as_string
 from ..mbox import mbox_msg_path
@@ -279,7 +279,7 @@ async def test_fetch_flags(mailbox_with_bunch_of_email):
             for k in seqs["unseen"]:
                 flags_by_msg[k].append("unseen")
 
-        seqs[REVERSE_SYSTEM_FLAG_MAP[flag]] = msgs_by_flag[flag]
+        seqs[REV_SYSTEM_FLAG_MAP[flag]] = msgs_by_flag[flag]
 
     await mbox.mailbox.aset_sequences(seqs)
 

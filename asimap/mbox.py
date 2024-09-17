@@ -31,10 +31,10 @@ import aiofiles
 #
 from .constants import (
     PERMANENT_FLAGS,
-    REVERSE_SYSTEM_FLAG_MAP,
     SYSTEM_FLAG_MAP,
     SYSTEM_FLAGS,
     flag_to_seq,
+    flags_to_seqs,
     seq_to_flag,
 )
 from .exceptions import Bad, MailboxInconsistency, No
@@ -938,7 +938,8 @@ class Mailbox:
         self.marked(marked)
 
         if modified:
-            await self.mailbox.aset_sequences(seq)
+            async with self.mh_sequences_lock:
+                await self.mailbox.aset_sequences(seq)
         return seq
 
     ####################################################################
@@ -1240,7 +1241,8 @@ class Mailbox:
             # Make the folder's .mh_sequences reflect our current state
             # of the universe.
             #
-            await self.mailbox.aset_sequences(self.sequences)
+            async with self.mh_sequences_lock:
+                await self.mailbox.aset_sequences(self.sequences)
 
             num_recent = len(self.sequences["Recent"])
             num_msgs = len(msg_keys)
@@ -1818,23 +1820,20 @@ class Mailbox:
         # and then add sequences based on the flags passed in.
         #
         msg.set_sequences([])
-        flags = [] if flags is None else flags
+        seqs = flags_to_seqs(flags)
 
-        msg_key = await self.mailbox.aadd(msg)
+        async with self.mh_sequences_lock:
+            msg_key = await self.mailbox.aadd(msg)
 
         # Update the message and internal sequences.
         #
         self.sequences["Recent"].add(msg_key)
-        # msg.add_sequence("Recent")
-        for flag in flags:
-            if flag in REVERSE_SYSTEM_FLAG_MAP:
-                flag = REVERSE_SYSTEM_FLAG_MAP[flag]
-            # msg.add_sequence(flag)
-            self.sequences[flag].add(msg_key)
+        for seq in seqs:
+            self.sequences[seq].add(msg_key)
 
         # Keep the .mh_sequences up to date.
         #
-        async with self.mailbox.lock_folder():
+        async with self.mh_sequences_lock, self.mailbox.lock_folder():
             await self.mailbox.aset_sequences(self.sequences)
 
         # if a date_time was supplied then set the mtime on the file to
@@ -2019,10 +2018,6 @@ class Mailbox:
         The requested data itself is a list of tuples. The first element is the
         name of the data item from 'fetch_ops' and the second is the
         requested data.
-
-        NOTE: You must call this with the Mailbox read lock acquired.  Since
-              FETCH'ing messages can change their flags it may need to acquire
-              the write lock.
 
         NOTE: Upon entering one of the assumptions we have is that the caller
               has completed a `resync` and that self.sequences, self.uids are
