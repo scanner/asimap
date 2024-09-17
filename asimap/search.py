@@ -135,7 +135,8 @@ class SearchContext(object):
         if self._msg:
             return self._msg
 
-        self._msg = await self.mailbox.mailbox.aget_message(self.msg_key)
+        async with self.mailbox.mh_sequences_lock:
+            self._msg = await self.mailbox.mailbox.aget_message(self.msg_key)
         return self._msg
 
     ####################################################################

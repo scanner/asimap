@@ -5,6 +5,8 @@
 """
 Various global constants.
 """
+from typing import List, Optional
+
 # Here we set the list of defined system flags (flags that may be set on a
 # message) and the subset of those flags that may not be set by a  user.
 #
@@ -40,7 +42,17 @@ SYSTEM_FLAG_MAP = {
     "Seen": r"\Seen",
 }
 
-REVERSE_SYSTEM_FLAG_MAP = {v: k for k, v in SYSTEM_FLAG_MAP.items()}
+REV_SYSTEM_FLAG_MAP = {v: k for k, v in SYSTEM_FLAG_MAP.items()}
+
+
+####################################################################
+#
+def flags_to_seqs(flags: Optional[List[str]]) -> List[str]:
+    """
+    Converts an array of IMAP flags to MH sequence names.
+    """
+    flags = [] if flags is None else flags
+    return [flag_to_seq(x) for x in flags]
 
 
 ####################################################################
@@ -53,9 +65,7 @@ def flag_to_seq(flag):
     Arguments:
     - `flag`: The IMAP flag we are going to translate.
     """
-    if flag in REVERSE_SYSTEM_FLAG_MAP:
-        return REVERSE_SYSTEM_FLAG_MAP[flag]
-    return flag
+    return REV_SYSTEM_FLAG_MAP[flag] if flag in REV_SYSTEM_FLAG_MAP else flag
 
 
 ####################################################################
@@ -67,6 +77,4 @@ def seq_to_flag(seq):
     Arguments:
     - `seq`: The MH sequence name
     """
-    if seq in SYSTEM_FLAG_MAP:
-        return SYSTEM_FLAG_MAP[seq]
-    return seq
+    return SYSTEM_FLAG_MAP[seq] if seq in SYSTEM_FLAG_MAP else seq

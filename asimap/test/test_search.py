@@ -18,7 +18,7 @@ from dirty_equals import IsNow
 
 # Project imports
 #
-from ..constants import REVERSE_SYSTEM_FLAG_MAP, SYSTEM_FLAGS
+from ..constants import REV_SYSTEM_FLAG_MAP, SYSTEM_FLAGS
 from ..generator import get_msg_size, msg_as_string
 from ..search import IMAPSearch, SearchContext
 from ..utils import parsedate, utime
@@ -86,7 +86,7 @@ async def test_search_keywords(mailbox_with_bunch_of_email):
             for k in seqs["unseen"]:
                 flags_by_msg[k].append("unseen")
 
-        seqs[REVERSE_SYSTEM_FLAG_MAP[flag]] = sorted(msgs_by_flag[flag])
+        seqs[REV_SYSTEM_FLAG_MAP[flag]] = sorted(msgs_by_flag[flag])
 
     await mbox.mailbox.aset_sequences(seqs)
 
@@ -100,7 +100,7 @@ async def test_search_keywords(mailbox_with_bunch_of_email):
                 matches_by_flag[keyword].append(msg_key)
 
     for flag, msg_keys in matches_by_flag.items():
-        assert seqs[REVERSE_SYSTEM_FLAG_MAP[flag]] == sorted(msg_keys)
+        assert seqs[REV_SYSTEM_FLAG_MAP[flag]] == sorted(msg_keys)
 
 
 ####################################################################
