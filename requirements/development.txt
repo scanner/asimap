@@ -80,7 +80,7 @@ factory-boy==3.3.1
     # via pytest-factoryboy
 faker==28.4.1
     # via factory-boy
-filelock==3.16.0
+filelock==3.16.1
     # via
     #   -r build.txt
     #   -r lint.txt
@@ -107,11 +107,11 @@ hyperlink==21.0.0
     # via
     #   -r build.txt
     #   hatch
-identify==2.6.0
+identify==2.6.1
     # via
     #   -r lint.txt
     #   pre-commit
-idna==3.9
+idna==3.10
     # via
     #   -r build.txt
     #   anyio
@@ -147,7 +147,7 @@ jaraco-functools==4.0.2
     #   keyring
 jedi==0.19.1
     # via ipython
-keyring==25.3.0
+keyring==25.4.0
     # via
     #   -r build.txt
     #   hatch
@@ -203,7 +203,7 @@ pexpect==4.9.0
     #   ipython
 pip-tools==7.4.1
     # via -r lint.txt
-platformdirs==4.3.3
+platformdirs==4.3.6
     # via
     #   -r build.txt
     #   -r lint.txt
@@ -343,7 +343,7 @@ types-redis==4.6.0.20240903
     # via -r lint.txt
 types-requests==2.32.0.20240914
     # via -r lint.txt
-types-setuptools==74.1.0.20240907
+types-setuptools==75.1.0.20240917
     # via
     #   -r lint.txt
     #   types-cffi
@@ -365,11 +365,11 @@ userpath==1.9.2
     # via
     #   -r build.txt
     #   hatch
-uv==0.4.10
+uv==0.4.11
     # via
     #   -r build.txt
     #   hatch
-virtualenv==20.26.4
+virtualenv==20.26.5
     # via
     #   -r build.txt
     #   -r lint.txt

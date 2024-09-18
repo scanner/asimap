@@ -24,9 +24,9 @@ cryptography==43.0.1
     #   types-redis
 distlib==0.3.8
     # via virtualenv
-filelock==3.16.0
+filelock==3.16.1
     # via virtualenv
-identify==2.6.0
+identify==2.6.1
     # via pre-commit
 importlib-metadata==8.5.0
     # via yapf
@@ -48,7 +48,7 @@ pathspec==0.12.1
     # via black
 pip-tools==7.4.1
     # via -r lint.in
-platformdirs==4.3.3
+platformdirs==4.3.6
     # via
     #   black
     #   virtualenv
@@ -81,7 +81,7 @@ types-redis==4.6.0.20240903
     # via -r lint.in
 types-requests==2.32.0.20240914
     # via -r lint.in
-types-setuptools==74.1.0.20240907
+types-setuptools==75.1.0.20240917
     # via
     #   -r lint.in
     #   types-cffi
@@ -89,7 +89,7 @@ typing-extensions==4.12.2
     # via mypy
 urllib3==2.2.3
     # via types-requests
-virtualenv==20.26.4
+virtualenv==20.26.5
     # via pre-commit
 wheel==0.44.0
     # via pip-tools
