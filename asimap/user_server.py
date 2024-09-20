@@ -955,23 +955,28 @@ class IMAPUserServer:
         # outside of the self.active_mailboxes_lock we will activate the
         # mailbox.
         #
-        async with self.active_mailboxes_lock:
-            if name in self.active_mailboxes:
-                if self.active_mailboxes[name].deleted:
-                    raise NoSuchMailbox(f"'{name}' has been deleted.")
-                return self.active_mailboxes[name]
+        # NOTE: We can do the check and return if the mailbox without getting
+        #       the active_mailbox_lock because we are using asyncio. Nothing
+        #       in this loop lets the task swap out so this access to a shared
+        #       resource is safe.
+        if name in self.active_mailboxes:
+            if self.active_mailboxes[name].deleted:
+                raise NoSuchMailbox(f"'{name}' has been deleted.")
+            return self.active_mailboxes[name]
 
         # If multiple tasks are trying to activate a mailbox only *ONE* will
-        # get `creating=True`
+        # get `creating=True`.
+        #
+        # Again, like above, nothing here changes our currently running asyncio
+        # task so we do not need to hold the `activating_mailboxes_lock`
         #
         creating = False
-        async with self.activating_mailboxes_lock:
-            if name in self.activating_mailboxes:
-                event = self.activating_mailboxes[name]
-            else:
-                event = asyncio.Event()
-                self.activating_mailboxes[name] = event
-                creating = True
+        if name in self.activating_mailboxes:
+            event = self.activating_mailboxes[name]
+        else:
+            event = asyncio.Event()
+            self.activating_mailboxes[name] = event
+            creating = True
 
         if not creating:
             inst_start = time.monotonic()
@@ -985,10 +990,9 @@ class IMAPUserServer:
             # Once the wait completes we are guaranteed that
             # `self.active_mailboxes` has the key `name` in it.
             #
-            async with self.active_mailboxes_lock:
-                if self.active_mailboxes[name].deleted:
-                    raise NoSuchMailbox(f"'{name}' has been deleted.")
-                return self.active_mailboxes[name]
+            if self.active_mailboxes[name].deleted:
+                raise NoSuchMailbox(f"'{name}' has been deleted.")
+            return self.active_mailboxes[name]
 
         inst_start = time.monotonic()
         # Instantiate the mailbox. Add it to `active_mailboxes`, signal any
@@ -1001,8 +1005,8 @@ class IMAPUserServer:
         async with self.active_mailboxes_lock:
             self.active_mailboxes[name] = mbox
 
-        event.set()
         async with self.activating_mailboxes_lock:
+            event.set()
             del self.activating_mailboxes[name]
         duration = time.monotonic() - inst_start
         if duration > 3:
@@ -1018,23 +1022,24 @@ class IMAPUserServer:
         Go through the list of active mailboxes and if any of them are around
         past their expiry time, expire them.
         """
-        # We want to make sure that we do not try to expire mailboxes while a
-        # mailbox maybe in a half instantiated state. If that is the case we
-        # just skip running expiry now.
-        #
-        if self.do_not_run_expiry_now > 0:
-            logger.info(
-                "Skipping due to `do_not_run_expiry_now` being set, count: %d",
-                self.do_not_run_expiry_now,
-            )
-            return
-
         # And finally check all active mailboxes to see if their in-use count
         # is 0 and expire them if it is.
         #
         expired = []
         expired_mboxes = []
         async with self.active_mailboxes_lock:
+            # We want to make sure that we do not try to expire mailboxes while
+            # a mailbox maybe in a half instantiated state. If that is the case
+            # we just skip running expiry now.
+            #
+            if self.do_not_run_expiry_now > 0:
+                logger.info(
+                    "Skipping due to `do_not_run_expiry_now` being set, "
+                    "count: %d",
+                    self.do_not_run_expiry_now,
+                )
+                return
+
             for mbox_name, mbox in self.active_mailboxes.items():
                 # If the in-use count is positive or the mbox has clients,
                 # do not expire it.
