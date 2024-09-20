@@ -5,13 +5,24 @@
 """
 Various global constants.
 """
+from enum import StrEnum
 from typing import List, Optional
+
 
 # Here we set the list of defined system flags (flags that may be set on a
 # message) and the subset of those flags that may not be set by a  user.
 #
 # XXX Convert these to StrEnum's.
 #
+class SystemFlags(StrEnum):
+    ANSWERED = r"\Answered"
+    DELETED = r"\Deleted"
+    DRAFT = r"\Draft"
+    FLAGGED = r"\Flagged"
+    RECENT = r"\Recent"
+    SEEN = r"\Seen"
+
+
 SYSTEM_FLAGS = (
     r"\Answered",
     r"\Deleted",

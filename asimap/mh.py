@@ -13,6 +13,7 @@ import mailbox
 import os
 import stat
 import time
+import traceback
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from mailbox import (
@@ -53,13 +54,18 @@ def _validate_sequences(seqs: Sequences, mbox_name: str):
     our sequences file and we need to figure out where that is happening.
     """
     for seq in seqs.keys():
-        try:
-            if seq[0] == "\\":
-                raise ValueError(
-                    "Mailbox '%s', bad sequence name: '%s'", mbox_name, seq
-                )
-        except ValueError as e:
-            logger.exception("Bad sequence: %s", e)
+        if seq[0] == "\\":
+            stack_summary = traceback.extract_stack()
+            tb = []
+            for fs in stack_summary:
+                tb.append(f"{fs.filename}:{fs.name}:{fs.lineno}")
+
+            logger.info(
+                "mailbox: '%s': invalid sequence '%s', stack summary: %s",
+                seq,
+                ", ".join(tb),
+            )
+            break
 
 
 ####################################################################
