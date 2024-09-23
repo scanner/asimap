@@ -18,7 +18,16 @@ from email.policy import SMTP
 from email.utils import format_datetime
 from mailbox import MH, MHMessage
 from pathlib import Path
-from typing import Iterable, List, Optional, Tuple, Union
+from typing import (
+    Callable,
+    Generator,
+    Iterable,
+    List,
+    Optional,
+    Tuple,
+    TypeAlias,
+    Union,
+)
 
 # 3rd party imports
 #
@@ -38,6 +47,8 @@ from ..user_server import (
     set_user_server_program,
 )
 from .factories import UserFactory
+
+EmailFactoryType: TypeAlias = Callable[..., EmailMessage]
 
 REPLACE_LINESEP = {ord("\r"): None, ord("\n"): None}
 
@@ -209,7 +220,7 @@ def password_file_factory(tmp_path):
 ####################################################################
 #
 @pytest.fixture
-def email_factory(faker):
+def email_factory(faker: Generator) -> EmailFactoryType:
     """
     Returns a factory that creates email.message.EmailMessages
 
@@ -220,11 +231,12 @@ def email_factory(faker):
     # TODO: have this factory take kwargs for headers the caller can set in the
     #       generated email.
     #
-    def make_email(**kwargs):
+    def make_email(
+        msg_from: Optional[str] = None,
+        to: Optional[str] = None,
+        subject: Optional[str] = None,
+    ) -> EmailMessage:
         """
-        if kwargs for 'subject', 'from' or 'to' are provided use those in
-        the message instead of faker generated ones.
-
         NOTE: `from` is a reserverd word in python so you need to specify
               `frm`
         """
@@ -233,20 +245,11 @@ def email_factory(faker):
             faker.date_time_between(start_date="-1yr")
         )
         msg["Message-ID"] = faker.uuid4()
-        msg["Subject"] = (
-            faker.sentence() if "subject" not in kwargs else kwargs["subject"]
+        msg["Subject"] = subject if subject else faker.sentence()
+        msg["From"] = (
+            msg_from if msg_from else Address(faker.name(), faker.email())
         )
-        if "msg_from" not in kwargs:
-            username, domain_name = faker.email().split("@")
-            msg["From"] = Address(faker.name(), username, domain_name)
-        else:
-            msg["From"] = kwargs["msg_from"]
-
-        if "to" not in kwargs:
-            username, domain_name = faker.email().split("@")
-            msg["To"] = Address(faker.name(), username, domain_name)
-        else:
-            msg["To"] = kwargs["to"]
+        msg["To"] = to if to else Address(faker.name(), faker.email())
 
         message_content = faker.paragraphs(nb=5)
         msg.set_content("\n".join(message_content))
@@ -369,7 +372,9 @@ def mock_time(mocker):
 ####################################################################
 #
 @pytest.fixture
-def mh_folder(tmp_path):
+def mh_folder(
+    tmp_path: Path,
+) -> Callable[[str, Optional[Path]], Tuple[Path, MH, MH]]:
     """
     Create the Mail dir and the inbox dir inside that mail dir.
     """
@@ -386,7 +391,40 @@ def mh_folder(tmp_path):
 ####################################################################
 #
 @pytest.fixture
-def bunch_of_email_in_folder(email_factory, mh_folder):
+def incr_email(
+    faker: Generator,
+    email_factory: EmailFactoryType,
+    mh_folder: Callable[[str, Optional[Path]], Tuple[Path, MH, MH]],
+    mh_dir: Optional[Path] = None,
+) -> Callable[[Optional[str], Optional[Iterable[str]]], MHMessage]:
+    """
+    Returns a factory function that will add a single email to a specified
+    MH folder. If no folder is specified it defaults to `inbox`. You can
+    specify the sequences to add the message to via the `sequences`
+    parameter. If no sequences are specified, adds the message to the `unseen`
+    sequence.
+    """
+
+    def add_one_mail_to_folder(
+        folder: Optional[str] = None, sequences: Optional[Iterable[str]] = None
+    ) -> MHMessage:
+        folder = folder if folder else "inbox"
+        sequences = sequences if sequences is not None else ["unseen"]
+        _, _, m_folder = mh_folder(folder, mh_dir)
+        msg = MHMessage(email_factory())
+        msg.set_sequences(sequences)
+        m_folder.add(msg)
+        return msg
+
+    return add_one_mail_to_folder
+
+
+####################################################################
+#
+@pytest.fixture
+def bunch_of_email_in_folder(
+    email_factory: EmailFactoryType, mh_folder: MH
+) -> None:
     """
     Create a function that will create a specified number of emails in the
     specified folder. You can also supply a function that generates the keys to

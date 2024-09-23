@@ -1203,3 +1203,36 @@ async def test_msg_set_to_msg_seq_set(
         mbox.msg_keys = list(range(1, num_msgs + 1))
         msg_set_as_set = mbox.msg_set_to_msg_seq_set(sequence_set, uid_cmd)
         assert msg_set_as_set == expected
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_store_set_seen_unseen_properly(
+    mailbox_with_bunch_of_email, incr_email
+) -> None:
+    """
+    When you start out with a mailbox with a bunch of unseen messages, as
+    you mark them `\Seen` the mbox.sequences and .mh_sequences properly
+    update. All messages marked `\Seen` should be in the `Seen` sequence. All
+    the messages that were in the `unseen` sequence that are now marked
+    `\Seen` will be removed from the 'unseen' sequence.
+
+    Also if a message is removed from the `unseen` sequence, it will be added
+    to the `Seen` sequence
+    """
+    mbox = mailbox_with_bunch_of_email
+    sequences = mbox.mailbox.get_sequences()
+    await mbox.store([1], StoreAction.ADD_FLAGS, [r"\Seen"], uid_cmd=False)
+    sequences = mbox.mailbox.get_sequences()
+    print(f"MH folder sequences {sequences}")
+    print(f"Mailbox sequences: {mbox.sequences}")
+
+    # XXX WIP - try to reproduce the commands that cause the `\Seen` flag to
+    # appear
+    #
+    # cmd = IMAPClientCommand("A001 FETCH 1:5 ALL")
+    # async for idx, results in self.mbox.fetch(
+    #         [2],
+    # )
+    assert False
