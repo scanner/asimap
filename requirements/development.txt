@@ -10,7 +10,7 @@ aioretry==5.0.6
     # via -r production.txt
 aiosqlite==0.20.0
     # via -r production.txt
-anyio==4.4.0
+anyio==4.6.0
     # via
     #   -r build.txt
     #   httpx
@@ -78,7 +78,7 @@ executing==2.1.0
     # via stack-data
 factory-boy==3.3.1
     # via pytest-factoryboy
-faker==28.4.1
+faker==29.0.0
     # via factory-boy
 filelock==3.16.1
     # via
@@ -147,7 +147,7 @@ jaraco-functools==4.0.2
     #   keyring
 jedi==0.19.1
     # via ipython
-keyring==25.4.0
+keyring==25.4.1
     # via
     #   -r build.txt
     #   hatch
@@ -282,7 +282,7 @@ rich==13.8.1
     #   -r build.txt
     #   -r development.in
     #   hatch
-ruff==0.6.5
+ruff==0.6.7
     # via -r lint.txt
 sentry-sdk==2.14.0
     # via -r production.txt
@@ -365,7 +365,7 @@ userpath==1.9.2
     # via
     #   -r build.txt
     #   hatch
-uv==0.4.11
+uv==0.4.15
     # via
     #   -r build.txt
     #   hatch
