@@ -36,6 +36,7 @@ from .constants import (
     flag_to_seq,
     flags_to_seqs,
     seq_to_flag,
+    seqs_to_flags,
 )
 from .exceptions import Bad, MailboxInconsistency, No
 from .fetch import FetchAtt, FetchOp
@@ -872,7 +873,7 @@ class Mailbox:
         seqs = []
         for sequence in self.sequences.keys():
             if msg_key in self.sequences[sequence]:
-                seqs.append(seq_to_flag(sequence))
+                seqs.append(sequence)
         return seqs
 
     ####################################################################
@@ -1203,45 +1204,43 @@ class Mailbox:
             # representations)
             #
             self.marked(True)
-            for key in new_msg_keys:
-                msg = await self.mailbox.aget_message(key)
-                self.sequences["Recent"].add(key)
-                # msg.add_sequence("Recent")
-                msg_sequences = msg.get_sequences()
-                msg_sequences.append("Recent")
-                if "unseen" not in msg_sequences:
-                    # If it is _not_ 'unseen', therefore it must be 'Seen'
-                    #
-                    if "Seen" not in msg_sequences:
-                        # msg.add_sequence("Seen")
-                        msg_sequences.append("Seen")
-                else:
-                    # If it is 'unseen' then it must _not_ be 'Seen'
-                    #
-                    if "Seen" in msg_sequences:
-                        # msg.remove_sequence("Seen")
-                        msg_sequences.remove("Seen")
-
-                # If it is 'Seen' then must not be 'unseen'
-                #
-                if "Seen" in msg_sequences and "unseen" in msg_sequences:
-                    # msg.remove_sequence("unseen")
-                    msg_sequences.remove("unseen")
-
-                # For all the sequences this message was in, add it to
-                # those in our `self.sequences` defaultdict(set), and
-                # remove it from sequences that it is not in.
-                #
-                for sequence in msg_sequences:
-                    self.sequences[sequence].add(key)
-                for sequence in self.sequences.keys():
-                    if sequence not in msg_sequences:
-                        self.sequences[sequence].discard(key)
-
-            # Make the folder's .mh_sequences reflect our current state
-            # of the universe.
-            #
             async with self.mh_sequences_lock:
+                for key in new_msg_keys:
+                    msg = await self.mailbox.aget_message(key)
+                    self.sequences["Recent"].add(key)
+                    msg_sequences = msg.get_sequences()
+                    msg_sequences.append("Recent")
+                    if "unseen" not in msg_sequences:
+                        # If it is _not_ 'unseen', therefore it must be 'Seen'
+                        #
+                        if "Seen" not in msg_sequences:
+                            msg_sequences.append("Seen")
+                    else:
+                        # If it is 'unseen' then it must _not_ be 'Seen'
+                        #
+                        if "Seen" in msg_sequences:
+                            msg_sequences.remove("Seen")
+
+                    # If it is 'Seen' then must not be 'unseen'
+                    #
+                    if "Seen" in msg_sequences and "unseen" in msg_sequences:
+                        msg_sequences.remove("unseen")
+
+                    # For all the sequences this message was in, add it to
+                    # those in our `self.sequences` defaultdict(set), and
+                    # remove it from sequences that it is not in.
+                    #
+                    for sequence in msg_sequences:
+                        self.sequences[sequence].add(key)
+                    for sequence in self.sequences.keys():
+                        if sequence not in msg_sequences:
+                            self.sequences[sequence].discard(key)
+
+                    msg.set_sequences(msg_sequences)
+
+                # Make the folder's .mh_sequences reflect our current state
+                # of the universe.
+                #
                 await self.mailbox.aset_sequences(self.sequences)
 
             num_recent = len(self.sequences["Recent"])
@@ -1325,10 +1324,7 @@ class Mailbox:
         msg_key: int  --
         uid_cmd: bool -- (default False)
         """
-        flags = self._msg_sequences(msg_key)
-
-        # for sequence in msg.get_sequences():
-        #     flags.append(seq_to_flag(sequence))
+        flags = seqs_to_flags(self._msg_sequences(msg_key))
         flags_str = " ".join(flags)
         msg_seq_number = self.msg_keys.index(msg_key) + 1
 

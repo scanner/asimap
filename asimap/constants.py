@@ -81,6 +81,16 @@ def flag_to_seq(flag):
 
 ####################################################################
 #
+def seqs_to_flags(seqs: Optional[List[str]]) -> List[str]:
+    """
+    Converts an array of MH sequence names to IMAP flags
+    """
+    seqs = [] if seqs is None else seqs
+    return [seq_to_flag(x) for x in seqs]
+
+
+####################################################################
+#
 def seq_to_flag(seq):
     """
     The reverse of flag to seq - map an MH sequence name to the IMAP flag.
