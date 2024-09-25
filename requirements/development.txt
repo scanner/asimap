@@ -6,7 +6,7 @@
 #
 aiofiles==24.1.0
     # via -r production.txt
-aioretry==5.0.6
+aioretry==5.0.7
     # via -r production.txt
 aiosqlite==0.20.0
     # via -r production.txt
@@ -365,7 +365,7 @@ userpath==1.9.2
     # via
     #   -r build.txt
     #   hatch
-uv==0.4.15
+uv==0.4.16
     # via
     #   -r build.txt
     #   hatch

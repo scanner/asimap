@@ -90,7 +90,7 @@ trove-classifiers==2024.9.12
     # via hatchling
 userpath==1.9.2
     # via hatch
-uv==0.4.15
+uv==0.4.16
     # via hatch
 virtualenv==20.26.5
     # via hatch

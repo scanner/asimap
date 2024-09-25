@@ -6,7 +6,7 @@
 #
 aiofiles==24.1.0
     # via -r production.in
-aioretry==5.0.6
+aioretry==5.0.7
     # via -r production.in
 aiosqlite==0.20.0
     # via -r production.in
