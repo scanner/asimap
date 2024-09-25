@@ -47,23 +47,6 @@ logger = logging.getLogger("asimap.mh")
 
 ####################################################################
 #
-def _validate_sequences(seqs: Sequences, mbox_name: str):
-    r"""
-    A helper function to check our sequences. We have `\Seen` sneaking into
-    our sequences file and we need to figure out where that is happening.
-    """
-    for seq in seqs.keys():
-        try:
-            if seq[0] == "\\":
-                raise ValueError(
-                    "Mailbox '%s', bad sequence name: '%s'", mbox_name, seq
-                )
-        except ValueError as e:
-            logger.exception("Bad sequence: %s", e)
-
-
-####################################################################
-#
 async def awrite_message(message: MHMessage, path: str) -> None:
     """
     A helper that writes a MHMessage to a file asynchronously.
@@ -411,7 +394,6 @@ class MH(mailbox.MH):
                         raise FormatError(
                             f"Invalid sequence specification: {line.rstrip()}"
                         )
-            _validate_sequences(results, self._path)
             return results
 
     ####################################################################
@@ -419,7 +401,6 @@ class MH(mailbox.MH):
     async def aset_sequences(self, sequences: Sequences):
         """Set sequences using the given name-to-key-list dictionary."""
         seq_file = os.path.join(self._path, ".mh_sequences")
-        _validate_sequences(sequences, self._path)
 
         async with self.lock_folder():
             async with aiofiles.open(seq_file, "r+", encoding="ASCII") as f:

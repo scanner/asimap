@@ -25,7 +25,7 @@ from ..constants import flag_to_seq
 from ..exceptions import Bad, No
 from ..fetch import FetchAtt, FetchOp
 from ..mbox import InvalidMailbox, Mailbox, MailboxExists, NoSuchMailbox
-from ..parse import IMAPClientCommand, StoreAction
+from ..parse import IMAPClientCommand, StoreAction, parse_cmd_from_msg
 from ..search import IMAPSearch
 from .conftest import assert_email_equal, client_push_responses
 
@@ -650,6 +650,70 @@ async def test_mailbox_copy(mailbox_with_bunch_of_email):
             assert uid == src_uid
             _, uid = dst_mbox.get_uid_from_msg(dst_msg_key)
             assert uid == dst_uid
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mbox_copy_verify_sequences(
+    mailbox_with_bunch_of_email, incr_email, mailbox_instance
+):
+    """
+    When copying messages to a mailbox make sure that the sequences get
+    copied correctly as well.
+    """
+    mbox = mailbox_with_bunch_of_email
+
+    # Mark some of the messages in the `inbox` as seen.
+    #
+    cmd = parse_cmd_from_msg(r"A005 STORE 1:5 +FLAGS.SILENT (\Seen)")
+    async with cmd.ready_and_okay(mbox):
+        msg_set = sorted(cmd.msg_set_as_set) if cmd.msg_set_as_set else []
+        await mbox.store(
+            msg_set, cmd.store_action, cmd.flag_list, cmd.uid_command
+        )
+
+    # Validate that we only have `unseen` and `Seen` sequences and only
+    # messages 1-5 are in the `Seen` sequence and 6:* are in the `unseen`
+    # sequence.
+    #
+    expected_sequences = {"unseen", "Seen", "Recent"}
+    assert set(mbox.sequences.keys()) == expected_sequences
+    mailbox_sequences = await mbox.mailbox.aget_sequences()
+    assert set(mailbox_sequences.keys()) == expected_sequences
+    expected_seen_sequence = set(range(1, 6))
+    expected_unseen_sequence = set(range(6, mbox.num_msgs + 1))
+    assert mbox.sequences["Seen"] == expected_seen_sequence
+    assert mbox.sequences["unseen"] == expected_unseen_sequence
+    assert mailbox_sequences["Seen"] == expected_seen_sequence
+    assert mailbox_sequences["unseen"] == expected_unseen_sequence
+
+    # Let the server discover this folder and incorporate it.
+    #
+    # `mbox` creates `inbox`. We need a folder to copy messages to.
+    #
+    ARCHIVE = "Archive"
+    archive_mh = mbox.server.mailbox.add_folder(ARCHIVE)
+    await mbox.server.find_all_folders()
+
+    async with mbox.server.get_mailbox(ARCHIVE) as dst_mbox:
+        # Copy messages 1-6.. 1-5 should be `Seen` and 6 should be `unseen`
+        msg_set = list(range(1, 7))
+        src_uids, dst_uids = await mbox.copy(msg_set, dst_mbox)
+        assert len(src_uids) == len(dst_uids)
+        dst_msg_keys = await dst_mbox.mailbox.akeys()
+        assert len(dst_msg_keys) == len(msg_set)
+        assert dst_msg_keys == await archive_mh.akeys()
+
+        # Validate the dest mailbox sequences
+        #
+        assert set(dst_mbox.sequences.keys()) == expected_sequences
+        mailbox_sequences = await dst_mbox.mailbox.aget_sequences()
+        assert set(mailbox_sequences.keys()) == expected_sequences
+        assert dst_mbox.sequences["Seen"] == set(range(1, 6))
+        assert dst_mbox.sequences["unseen"] == {6}
+        assert mailbox_sequences["Seen"] == set(range(1, 6))
+        assert mailbox_sequences["unseen"] == {6}
 
 
 ####################################################################

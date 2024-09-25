@@ -4,7 +4,7 @@
 #
 #    pip-compile --output-file=build.txt --strip-extras build.in
 #
-anyio==4.4.0
+anyio==4.6.0
     # via httpx
 build==1.2.2
     # via -r build.in
@@ -18,7 +18,7 @@ click==8.1.7
     #   userpath
 distlib==0.3.8
     # via virtualenv
-filelock==3.16.0
+filelock==3.16.1
     # via virtualenv
 h11==0.14.0
     # via httpcore
@@ -32,7 +32,7 @@ httpx==0.27.2
     # via hatch
 hyperlink==21.0.0
     # via hatch
-idna==3.9
+idna==3.10
     # via
     #   anyio
     #   httpx
@@ -43,7 +43,7 @@ jaraco-context==6.0.1
     # via keyring
 jaraco-functools==4.0.2
     # via keyring
-keyring==25.3.0
+keyring==25.4.1
     # via hatch
 markdown-it-py==3.0.0
     # via rich
@@ -62,7 +62,7 @@ pathspec==0.12.1
     # via hatchling
 pexpect==4.9.0
     # via hatch
-platformdirs==4.3.3
+platformdirs==4.3.6
     # via
     #   hatch
     #   virtualenv
@@ -90,9 +90,9 @@ trove-classifiers==2024.9.12
     # via hatchling
 userpath==1.9.2
     # via hatch
-uv==0.4.10
+uv==0.4.16
     # via hatch
-virtualenv==20.26.4
+virtualenv==20.26.5
     # via hatch
 zstandard==0.23.0
     # via hatch

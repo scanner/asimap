@@ -5,13 +5,24 @@
 """
 Various global constants.
 """
+from enum import StrEnum
 from typing import List, Optional
+
 
 # Here we set the list of defined system flags (flags that may be set on a
 # message) and the subset of those flags that may not be set by a  user.
 #
 # XXX Convert these to StrEnum's.
 #
+class SystemFlags(StrEnum):
+    ANSWERED = r"\Answered"
+    DELETED = r"\Deleted"
+    DRAFT = r"\Draft"
+    FLAGGED = r"\Flagged"
+    RECENT = r"\Recent"
+    SEEN = r"\Seen"
+
+
 SYSTEM_FLAGS = (
     r"\Answered",
     r"\Deleted",
@@ -66,6 +77,16 @@ def flag_to_seq(flag):
     - `flag`: The IMAP flag we are going to translate.
     """
     return REV_SYSTEM_FLAG_MAP[flag] if flag in REV_SYSTEM_FLAG_MAP else flag
+
+
+####################################################################
+#
+def seqs_to_flags(seqs: Optional[List[str]]) -> List[str]:
+    """
+    Converts an array of MH sequence names to IMAP flags
+    """
+    seqs = [] if seqs is None else seqs
+    return [seq_to_flag(x) for x in seqs]
 
 
 ####################################################################
