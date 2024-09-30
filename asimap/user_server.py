@@ -1044,7 +1044,11 @@ class IMAPUserServer:
                 # If the in-use count is positive or the mbox has clients,
                 # do not expire it.
                 #
-                if mbox.in_use_count > 0 or mbox.clients:
+                if (
+                    mbox.in_use_count > 0
+                    or mbox.clients
+                    or mbox.executing_tasks
+                ):
                     continue
                 expired.append(mbox_name)
                 expired_mboxes.append(mbox)

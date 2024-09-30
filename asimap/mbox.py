@@ -1538,10 +1538,7 @@ class Mailbox:
                 name, sequence = row
                 sequence = sequence.strip()
                 if sequence:
-                    self.sequences[name] = set(
-                        # int(x) for x in sequence.split(",")
-                        expand_sequence(sequence)
-                    )
+                    self.sequences[name] = set(expand_sequence(sequence))
 
         return False
 
@@ -1924,7 +1921,7 @@ class Mailbox:
             for msg_key in to_delete:
                 self.sequences[seq].discard(msg_key)
         self.num_recent = len(self.sequences["Recent"])
-
+        await self.commit_to_db()
         self.optional_resync = False
 
     ##################################################################
@@ -2080,7 +2077,6 @@ class Mailbox:
                         f"{self.num_msgs}"
                     )
                     logger.warning(log_msg)
-                    self.optional_resync = False
                     raise MailboxInconsistency(log_msg, mbox_name=self.name)
 
                 ctx = SearchContext(
