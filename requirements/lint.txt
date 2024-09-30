@@ -57,13 +57,13 @@ pre-commit==3.8.0
     # via -r lint.in
 pycparser==2.22
     # via cffi
-pyproject-hooks==1.1.0
+pyproject-hooks==1.2.0
     # via
     #   build
     #   pip-tools
 pyyaml==6.0.2
     # via pre-commit
-ruff==0.6.7
+ruff==0.6.8
     # via -r lint.in
 tomli==2.0.1
     # via yapf
@@ -89,7 +89,7 @@ typing-extensions==4.12.2
     # via mypy
 urllib3==2.2.3
     # via types-requests
-virtualenv==20.26.5
+virtualenv==20.26.6
     # via pre-commit
 wheel==0.44.0
     # via pip-tools

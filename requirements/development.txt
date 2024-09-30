@@ -78,7 +78,7 @@ executing==2.1.0
     # via stack-data
 factory-boy==3.3.1
     # via pytest-factoryboy
-faker==29.0.0
+faker==30.0.0
     # via factory-boy
 filelock==3.16.1
     # via
@@ -141,7 +141,7 @@ jaraco-context==6.0.1
     # via
     #   -r build.txt
     #   keyring
-jaraco-functools==4.0.2
+jaraco-functools==4.1.0
     # via
     #   -r build.txt
     #   keyring
@@ -218,7 +218,7 @@ pluggy==1.5.0
     #   pytest
 pre-commit==3.8.0
     # via -r lint.txt
-prompt-toolkit==3.0.47
+prompt-toolkit==3.0.48
     # via ipython
 ptyprocess==0.7.0
     # via
@@ -235,7 +235,7 @@ pygments==2.18.0
     #   -r build.txt
     #   ipython
     #   rich
-pyproject-hooks==1.1.0
+pyproject-hooks==1.2.0
     # via
     #   -r build.txt
     #   -r lint.txt
@@ -282,7 +282,7 @@ rich==13.8.1
     #   -r build.txt
     #   -r development.in
     #   hatch
-ruff==0.6.7
+ruff==0.6.8
     # via -r lint.txt
 sentry-sdk==2.14.0
     # via -r production.txt
@@ -365,11 +365,11 @@ userpath==1.9.2
     # via
     #   -r build.txt
     #   hatch
-uv==0.4.16
+uv==0.4.17
     # via
     #   -r build.txt
     #   hatch
-virtualenv==20.26.5
+virtualenv==20.26.6
     # via
     #   -r build.txt
     #   -r lint.txt

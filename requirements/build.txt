@@ -41,7 +41,7 @@ jaraco-classes==3.4.0
     # via keyring
 jaraco-context==6.0.1
     # via keyring
-jaraco-functools==4.0.2
+jaraco-functools==4.1.0
     # via keyring
 keyring==25.4.1
     # via hatch
@@ -72,7 +72,7 @@ ptyprocess==0.7.0
     # via pexpect
 pygments==2.18.0
     # via rich
-pyproject-hooks==1.1.0
+pyproject-hooks==1.2.0
     # via build
 rich==13.8.1
     # via hatch
@@ -90,9 +90,9 @@ trove-classifiers==2024.9.12
     # via hatchling
 userpath==1.9.2
     # via hatch
-uv==0.4.16
+uv==0.4.17
     # via hatch
-virtualenv==20.26.5
+virtualenv==20.26.6
     # via hatch
 zstandard==0.23.0
     # via hatch
