@@ -17,11 +17,18 @@ import time
 from collections import defaultdict
 from copy import copy
 from datetime import datetime
-from mailbox import FormatError, MHMessage, NoSuchMailboxError, NotEmptyError
+from email.message import EmailMessage
+from mailbox import (
+    MH,
+    FormatError,
+    MHMessage,
+    NoSuchMailboxError,
+    NotEmptyError,
+)
 from pathlib import Path
 from statistics import fmean, median, stdev
 from tempfile import TemporaryDirectory
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union, cast
 
 # 3rd party imports
 #
@@ -40,7 +47,7 @@ from .constants import (
 )
 from .exceptions import Bad, MailboxInconsistency, No
 from .fetch import FetchAtt, FetchOp
-from .mh import MH, Sequences, aread_message, awrite_message
+from .mh import Sequences, aread_message, awrite_message
 from .parse import (
     CONFLICTING_COMMANDS,
     IMAPClientCommand,
@@ -899,7 +906,7 @@ class Mailbox:
         .mh_sequences file.
         """
         try:
-            seq = await self.mailbox.aget_sequences()
+            seq = self.get_sequences_from_folder()
         except FormatError as exc:
             logger.exception(
                 "Bad `.mh_sequences` for mailbox %s: %s",
@@ -939,8 +946,7 @@ class Mailbox:
         self.marked(marked)
 
         if modified:
-            async with self.mh_sequences_lock:
-                await self.mailbox.aset_sequences(seq)
+            self.set_sequences_in_folder(seq)
         return seq
 
     ####################################################################
@@ -1174,6 +1180,7 @@ class Mailbox:
             #
             new_msg_keys = sorted(set(msg_keys) - set(self.msg_keys))
             num_new_msgs = len(new_msg_keys)
+            new_msgs = {}
             logger.debug(
                 "Mailbox: '%s': num new messages: %d, new msg keys: %s",
                 self.name,
@@ -1205,30 +1212,26 @@ class Mailbox:
             #
             self.marked(True)
             async with self.mh_sequences_lock:
+                msg_seqs = self.get_sequences_from_folder()
                 for key in new_msg_keys:
-                    msg = await self.mailbox.aget_message(key)
-                    self.sequences["Recent"].add(key)
-                    msg_sequences = msg.get_sequences()
-                    msg_sequences.append("Recent")
-                    if "unseen" not in msg_sequences:
-                        # If it is _not_ 'unseen', therefore it must be 'Seen'
-                        #
-                        if "Seen" not in msg_sequences:
-                            msg_sequences.append("Seen")
-                    else:
-                        # If it is 'unseen' then it must _not_ be 'Seen'
-                        #
-                        if "Seen" in msg_sequences:
-                            msg_sequences.remove("Seen")
+                    msg = self.get_msg(key)
+                    new_msgs[key] = msg
 
-                    # If it is 'Seen' then must not be 'unseen'
+                    msg_sequences = {"Recent"}
+                    for seq in msg_seqs.keys():
+                        if key in msg_seqs[seq]:
+                            msg_sequences.add(seq)
+
+                    # Make sure `unseen` and `Seen` are set properly.
                     #
-                    if "Seen" in msg_sequences and "unseen" in msg_sequences:
-                        msg_sequences.remove("unseen")
+                    if "unseen" in msg_sequences:
+                        msg_sequences.discard("Seen")
+                    else:
+                        msg_sequences.add("Seen")
 
                     # For all the sequences this message was in, add it to
-                    # those in our `self.sequences` defaultdict(set), and
-                    # remove it from sequences that it is not in.
+                    # those in our `self.sequences`, and make sure it is
+                    # removed from sequences that it is not in.
                     #
                     for sequence in msg_sequences:
                         self.sequences[sequence].add(key)
@@ -1236,12 +1239,10 @@ class Mailbox:
                         if sequence not in msg_sequences:
                             self.sequences[sequence].discard(key)
 
-                    msg.set_sequences(msg_sequences)
-
                 # Make the folder's .mh_sequences reflect our current state
                 # of the universe.
                 #
-                await self.mailbox.aset_sequences(self.sequences)
+                self.set_sequences_in_folder(self.sequences)
 
             num_recent = len(self.sequences["Recent"])
             num_msgs = len(msg_keys)
@@ -1273,7 +1274,7 @@ class Mailbox:
             #
             notifications = []
             for key in new_msg_keys:
-                msg = await self.mailbox.aget_message(key)
+                msg = new_msgs[key]
                 fetch, _ = self._generate_fetch_msg_for(key)
                 notifications.append(fetch)
 
@@ -1383,16 +1384,86 @@ class Mailbox:
         #       wish to make sure we do not lose those. So we read the
         #       sequences back in after the pack.
         #
-        await self.mailbox.aset_sequences(self.sequences)
-        await self.mailbox.apack()
-        self.msg_keys = await self.mailbox.akeys()
-        self.sequences = await self.mailbox.aget_sequences()
+        async with self.mh_sequences_lock:
+            self.set_sequences_in_folder(self.sequences)
+            self.mailbox.pack()
+            self.msg_keys = [int(x) for x in self.mailbox.iterkeys()]
+            self.sequences = self.get_sequences_from_folder()
 
         self.mtime = await Mailbox.get_actual_mtime(
             self.server.mailbox, self.name
         )
         await self.commit_to_db()
         return True
+
+    ####################################################################
+    #
+    def get_msg(self, msg_key: int) -> EmailMessage:
+        """
+        Get EmailMessage by its msg key in the underlying MH folder
+        """
+        # We have defined a factory for messages in our MH folders, and that
+        # factory will return an EmailMessage, so it is safe and proper to cast
+        # the return of __getitem__ to be an EmailMessage.
+        #
+        return cast(EmailMessage, self.mailbox[str(msg_key)])
+
+    ####################################################################
+    #
+    def get_msg_by_uid(self, uid: int) -> EmailMessage:
+        """
+        Get EmailMessage by its IMAP UID from the underlying MH folder.
+
+        self.msg_keys is the list of message keys in the folder, and the
+        mapping from message key by index to the uid by index is 1-1. So where
+        the index of where the UID is in the list of UID's is the index of the
+        msg key in the list of msg_keys.
+        """
+        idx = self.uids.index(uid)
+        return self.get_msg(self.msg_keys[idx])
+
+    ####################################################################
+    #
+    def get_msg_by_seq_num(self, seq_num: int) -> EmailMessage:
+        """
+        The IMAP sequence number starts at 1, but otherwise is the ordinal
+        index of the message in the folder.
+        """
+        return self.get_msg(self.msg_keys[seq_num - 1])
+
+    ####################################################################
+    #
+    def get_sequences_from_folder(self) -> Sequences:
+        """
+        Get the sequences from the underlying MH folder and return it as a
+        dict of sets (instead of dict of lists), aka of type Sequences.
+        """
+        # XXX the assertion is while we are testing to make sure we always have
+        #     the lock acquired. This routine is synchronous so it does not
+        #     matter but we want to make sure the upper layer has it acquired
+        #     during any asyncio process where we want to guarantee writership.
+        #
+        assert self.mh_sequences_lock.locked()
+        seqs = self.mailbox.get_sequences()
+        return {k: set(v) for k, v in seqs.items()}
+
+    ####################################################################
+    #
+    def set_sequences_in_folder(self, seqs: Sequences) -> None:
+        """
+        Convert the dict of sets to a dict of lists and set the sequences
+        in the underlying MH folder.
+
+        Keyword Arguments:
+        seqs: Sequences --
+        """
+        # XXX the assertion is while we are testing to make sure we always have
+        #     the lock acquired. This routine is synchronous so it does not
+        #     matter but we want to make sure the upper layer has it acquired
+        #     during any asyncio process where we want to guarantee writership.
+        #
+        assert self.mh_sequences_lock.locked()
+        self.mailbox.set_sequences({k: list(v) for k, v in seqs.items()})
 
     ##################################################################
     #
@@ -1476,7 +1547,7 @@ class Mailbox:
                 # on do smart diffs of sequence changes between mailbox
                 # resyncs.
                 #
-                async with self.mailbox.lock_folder():
+                async with self.mh_sequences_lock:
                     self.sequences = await self._get_sequences_update_seen()
 
                 for name, values in self.sequences.items():
@@ -1883,8 +1954,12 @@ class Mailbox:
         # mostly a nicety making the expunge messages a bit easier to read.
         #
         to_delete = sorted(msg_keys_to_delete, reverse=True)
+        uids_to_delete = [self.uids[self.msg_keys.index(x)] for x in to_delete]
         logger.debug(
-            "Mailbox: '%s', msg keys to delete: %s", self.name, to_delete
+            "Mailbox: '%s', msg keys to delete: %s, uids to delete:",
+            self.name,
+            to_delete,
+            uids_to_delete,
         )
 
         for msg_key in to_delete:
@@ -2045,8 +2120,6 @@ class Mailbox:
         no_longer_unseen_msgs: Set[int] = set()
         no_longer_recent_msgs: Set[int] = set()
 
-        # msgs = await self.mailbox.akeys()
-        # seqs = await self.mailbox.aget_sequences()
         fetch_started = time.time()
         fetch_finished_time = None
         fetch_yield_times = []

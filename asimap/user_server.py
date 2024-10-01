@@ -9,6 +9,7 @@ connections on localhost.
 # system imports
 #
 import asyncio
+import email.policy
 import errno
 import logging
 import os
@@ -22,7 +23,8 @@ from collections import Counter, defaultdict
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
-from mailbox import NoSuchMailboxError
+from email import message_from_binary_file
+from mailbox import MH, NoSuchMailboxError
 from pathlib import Path
 from statistics import fmean, median, stdev
 from typing import TYPE_CHECKING, Dict, List, Optional, Union
@@ -42,7 +44,6 @@ from .client import Authenticated
 from .db import Database
 from .exceptions import MailboxInconsistency
 from .mbox import Mailbox, NoSuchMailbox
-from .mh import MH
 from .parse import BadCommand, IMAPClientCommand
 from .trace import toggle_trace, trace
 
@@ -438,6 +439,9 @@ class IMAPUserServer:
         self.mailbox = MH(
             self.maildir,
             create=True,
+            factory=lambda f: message_from_binary_file(  # type: ignore
+                f, policy=email.policy.default
+            ),
         )
 
         # A global counter for the next available uid_vv is stored in the user

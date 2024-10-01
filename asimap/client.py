@@ -257,13 +257,13 @@ class BaseClientHandler:
                     cmd_duration
                 )
 
-            if cmd_duration > 1.0:
-                logger.debug(
-                    "FINISH: %s, took %.3f seconds: '%s'",
-                    self.client.name,
-                    cmd_duration,
-                    imap_command.qstr(),
-                )
+            # if cmd_duration > 1.0:
+            logger.debug(
+                "FINISH: %s, took %.3f seconds: '%s'",
+                self.client.name,
+                cmd_duration,
+                imap_command.qstr(),
+            )
 
         # If there was no result from running this command then everything went
         # okay and we send back a final 'OK' to the client for processing this
@@ -736,8 +736,9 @@ class Authenticated(BaseClientHandler):
 
         self.select_while_selected_count = 0
         if self.mbox:
-            self.mbox.unselected(self.client.name)
-            self.mbox = None
+            with self.mbox:
+                self.mbox.unselected(self.client.name)
+                self.mbox = None
         self.pending_notifications = []
         self.idling = False
         self.state = ClientState.AUTHENTICATED
