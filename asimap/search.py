@@ -9,12 +9,9 @@ import asyncio
 import logging
 import os.path
 from datetime import datetime, timezone
-from email import message_from_string
 from email.message import EmailMessage
-from email.policy import SMTP
 from enum import StrEnum
-from mailbox import MHMessage
-from typing import TYPE_CHECKING, List, Optional, cast
+from typing import TYPE_CHECKING, List, Optional
 
 # 3rd party imports
 #
@@ -89,8 +86,7 @@ class SearchContext(object):
         # values.
         #
         self._internal_date: Optional[datetime] = None
-        self._msg: Optional[MHMessage] = None
-        self._email_msg: Optional[EmailMessage] = None
+        self._msg: Optional[EmailMessage] = None
         self._msg_size: Optional[int] = None
         self._uid_vv: Optional[int] = None
         self._uid: Optional[int] = None
@@ -122,13 +118,12 @@ class SearchContext(object):
         if self._msg_size:
             return self._msg_size
 
-        msg = await self.email_message()
-        self._msg_size = get_msg_size(msg)
+        self._msg_size = get_msg_size(await self.msg())
         return self._msg_size
 
     ##################################################################
     #
-    async def msg(self) -> MHMessage:
+    async def msg(self) -> EmailMessage:
         """
         The message parsed in to a MHMessage object
         """
@@ -136,28 +131,28 @@ class SearchContext(object):
             return self._msg
 
         async with self.mailbox.mh_sequences_lock:
-            self._msg = await self.mailbox.mailbox.aget_message(self.msg_key)
+            self._msg = self.mailbox.get_msg(self.msg_key)
         return self._msg
 
-    ####################################################################
-    #
-    async def email_message(self) -> EmailMessage:
-        """
-        When operating on the message itself during FETCH operations an
-        EmailMessage is more modern and easier to work with, so this method
-        will re-parse the message into an EmailMessage.
+    # ####################################################################
+    # #
+    # async def email_message(self) -> EmailMessage:
+    #     """
+    #     When operating on the message itself during FETCH operations an
+    #     EmailMessage is more modern and easier to work with, so this method
+    #     will re-parse the message into an EmailMessage.
 
-        NOTE: Why do we have to do this? Because we use the MHMessage's sequence
-              features and that is by force an email.Message.
-        """
-        if self._email_msg:
-            return self._email_msg
+    #     NOTE: Why do we have to do this? Because we use the MHMessage's sequence
+    #           features and that is by force an email.Message.
+    #     """
+    #     if self._email_msg:
+    #         return self._email_msg
 
-        self._email_msg = cast(
-            EmailMessage,
-            message_from_string(msg_as_string(await self.msg()), policy=SMTP),
-        )
-        return self._email_msg
+    #     self._email_msg = cast(
+    #         EmailMessage,
+    #         message_from_string(msg_as_string(await self.msg()), policy=SMTP),
+    #     )
+    #     return self._email_msg
 
     ##################################################################
     #
@@ -192,22 +187,11 @@ class SearchContext(object):
         sequences directly from the mailbox and computing which sequences this
         message is in.
         """
-        # If the message is loaded use its sequence information.
-        #
-        if self._msg:
-            return self._msg.get_sequences()
-
         # Otherwise we populate sequence information from the folder.
         if self._sequences:
             return self._sequences
 
-        # Look at the mailbox sequences and figure out which ones this message
-        # is in, if any.
-        #
-        self._sequences = []
-        for name, key_list in self.mailbox_sequences.items():
-            if self.msg_key in key_list:
-                self._sequences.append(name)
+        self._sequences = self.mailbox._msg_sequences(self.msg_key)
         return self._sequences
 
 
