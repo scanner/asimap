@@ -47,7 +47,7 @@ from .constants import (
 )
 from .exceptions import Bad, MailboxInconsistency, No
 from .fetch import FetchAtt, FetchOp
-from .mh import Sequences, aread_message, awrite_message
+from .mh import Sequences
 from .parse import (
     CONFLICTING_COMMANDS,
     IMAPClientCommand,
@@ -2220,8 +2220,9 @@ class Mailbox:
             #
             if no_longer_unseen_msgs or no_longer_recent_msgs:
                 notifies_for = no_longer_unseen_msgs | no_longer_recent_msgs
-                async with self.mh_sequences_lock, self.mailbox.lock_folder():
-                    seqs = await self.mailbox.aget_sequences()
+                async with self.mh_sequences_lock:
+                    seqs = self.get_sequences_from_folder()
+
                     for msg_key in no_longer_recent_msgs:
                         self.sequences["Recent"].discard(msg_key)
                         seqs["Recent"].discard(msg_key)
@@ -2232,7 +2233,7 @@ class Mailbox:
                             self.sequences["Seen"].add(msg_key)
                             seqs["Seen"].add(msg_key)
 
-                    await self.mailbox.aset_sequences(seqs)
+                    self.set_sequences_in_folder(seqs)
 
                 # XXX Move this into a helper function?
                 #
@@ -2545,12 +2546,13 @@ class Mailbox:
                     mtime = await aiofiles.os.path.getmtime(
                         mbox_msg_path(self.mailbox, msg_key)
                     )
-                    msg = await self.mailbox.aget_message(msg_key)
+                    msg = self.mailbox.get_bytes(str(msg_key))
                     self._maybe_extend_timeout(timeout_cm)
                     msg_path = os.path.join(tmp_dir, str(msg_key))
                     msg_seqs = self._msg_sequences(msg_key)
                     copy_msgs.append((msg_path, msg_seqs, mtime))
-                    await awrite_message(msg, msg_path)
+                    with open(msg_path, "wb") as f:
+                        f.write(msg)
                     uid_vv, uid = self.get_uid_from_msg(msg_key)
                     src_uids.append(uid)
             finally:
@@ -2601,16 +2603,22 @@ class Mailbox:
                     dst_uids = []
                     dst_msg_keys = []
                     msg_copy_time_start = time.monotonic()
-                    for msg_path, sequences, mtime in copy_msgs:
-                        msg = await aread_message(msg_path)
-                        msg.set_sequences(sequences)
-                        msg_key = await dst_mbox.mailbox.aadd(msg)
-                        dst_msg_keys.append(msg_key)
-                        await utime(
-                            mbox_msg_path(dst_mbox.mailbox, msg_key),
-                            (mtime, mtime),
-                        )
-                        self._maybe_extend_timeout(timeout_cm)
+                    async with dst_mbox.mh_sequences_lock:
+                        dest_mbox_seqs = dst_mbox.get_sequences_from_folder()
+                        for msg_path, sequences, mtime in copy_msgs:
+                            with open(msg_path, "rb") as f:
+                                msg = f.read()
+                            msg_key = int(dst_mbox.mailbox.add(msg))
+                            for sequence in sequences:
+                                dest_mbox_seqs[sequence].add(msg_key)
+                            dst_msg_keys.append(msg_key)
+                            await utime(
+                                mbox_msg_path(dst_mbox.mailbox, msg_key),
+                                (mtime, mtime),
+                            )
+                            self._maybe_extend_timeout(timeout_cm)
+
+                        dst_mbox.set_sequences_in_folder(dest_mbox_seqs)
 
                     msg_copy_duration = time.monotonic() - msg_copy_time_start
                     if imap_cmd:
@@ -3150,29 +3158,34 @@ async def _helper_rename_inbox(inbox: Mailbox, new_name: str):
     #
     async with server.get_mailbox(new_name) as new_mbox:
         uids = []
+        new_msg_keys = []
         sequences: Sequences = defaultdict(set)
 
-        for key in await inbox.mailbox.akeys():
+        for key in (int(x) for x in inbox.mailbox.keys()):
             try:
-                msg = await inbox.mailbox.aget_message(key)
-                for seq in inbox.sequences.keys():
-                    if key in inbox.sequences[seq]:
-                        sequences[seq].add(key)
+                msg = inbox.get_msg(key)
             except KeyError:
                 continue
 
             uids.append(new_mbox.next_uid)
             new_mbox.next_uid += 1
-            await new_mbox.mailbox.aadd(msg)
+            new_msg_key = int(new_mbox.mailbox.add(msg))
+            new_msg_keys.append(new_msg_key)
+
+            for seq in inbox.sequences.keys():
+                if key in inbox.sequences[seq]:
+                    sequences[seq].add(new_msg_key)
+
             try:
-                await inbox.mailbox.aremove(key)
+                inbox.mailbox.remove(str(key))
             except KeyError:
                 pass
 
         new_mbox.uids = uids
         new_mbox.sequences = sequences
-        new_mbox.msg_keys = await new_mbox.mailbox.akeys()
+        new_mbox.msg_keys = new_msg_keys
         new_mbox.optional_resync = False
+        new_mbox.set_sequences_in_folder(sequences)
         await new_mbox.commit_to_db()
 
     inbox.optional_resync = False
@@ -3188,5 +3201,5 @@ async def _helper_rename_inbox(inbox: Mailbox, new_name: str):
     inbox.msg_keys = []
     inbox.num_msgs = 0
     inbox.uids = []
-    await inbox.mailbox.aset_sequences(inbox.sequences)
+    inbox.set_sequences_in_folder(inbox.sequences)
     await inbox.commit_to_db()

@@ -160,7 +160,7 @@ class MH(mailbox.MH):
     def lock(self):
         """
         Lock the mailbox. We turn off dotlock'ing because it updates the
-        folder's mtime, which will causes unnecessary resyncs. We still export
+        folder's mtime, which will causes unnecessary resyncs. We still expect
         whatever is dropping mail in to the folder to use dotlocking, but that
         is fine.
         """
