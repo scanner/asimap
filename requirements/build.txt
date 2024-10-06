@@ -6,7 +6,7 @@
 #
 anyio==4.6.0
     # via httpx
-build==1.2.2
+build==1.2.2.post1
     # via -r build.in
 certifi==2024.8.30
     # via
@@ -26,7 +26,7 @@ hatch==1.12.0
     # via -r build.in
 hatchling==1.25.0
     # via hatch
-httpcore==1.0.5
+httpcore==1.0.6
     # via httpx
 httpx==0.27.2
     # via hatch
@@ -74,7 +74,7 @@ pygments==2.18.0
     # via rich
 pyproject-hooks==1.2.0
     # via build
-rich==13.8.1
+rich==13.9.2
     # via hatch
 shellingham==1.5.4
     # via hatch
@@ -90,7 +90,7 @@ trove-classifiers==2024.9.12
     # via hatchling
 userpath==1.9.2
     # via hatch
-uv==0.4.17
+uv==0.4.18
     # via hatch
 virtualenv==20.26.6
     # via hatch

@@ -6,7 +6,7 @@
 #
 aiofiles==24.1.0
     # via -r production.txt
-aioretry==5.0.7
+aioretry==6.0.1
     # via -r production.txt
 aiosqlite==0.20.0
     # via -r production.txt
@@ -18,7 +18,7 @@ asttokens==2.4.1
     # via stack-data
 black==24.8.0
     # via -r lint.txt
-build==1.2.2
+build==1.2.2.post1
     # via
     #   -r build.txt
     #   -r lint.txt
@@ -78,7 +78,7 @@ executing==2.1.0
     # via stack-data
 factory-boy==3.3.1
     # via pytest-factoryboy
-faker==30.0.0
+faker==30.1.0
     # via factory-boy
 filelock==3.16.1
     # via
@@ -95,7 +95,7 @@ hatchling==1.25.0
     # via
     #   -r build.txt
     #   hatch
-httpcore==1.0.5
+httpcore==1.0.6
     # via
     #   -r build.txt
     #   httpx
@@ -129,7 +129,7 @@ inflection==0.5.1
     # via pytest-factoryboy
 iniconfig==2.0.0
     # via pytest
-ipython==8.27.0
+ipython==8.28.0
     # via -r development.in
 isort==5.13.2
     # via -r lint.txt
@@ -216,7 +216,7 @@ pluggy==1.5.0
     #   -r build.txt
     #   hatchling
     #   pytest
-pre-commit==3.8.0
+pre-commit==4.0.0
     # via -r lint.txt
 prompt-toolkit==3.0.48
     # via ipython
@@ -277,14 +277,14 @@ requests==2.32.3
     # via requests-mock
 requests-mock==1.12.1
     # via -r development.in
-rich==13.8.1
+rich==13.9.2
     # via
     #   -r build.txt
     #   -r development.in
     #   hatch
-ruff==0.6.8
+ruff==0.6.9
     # via -r lint.txt
-sentry-sdk==2.14.0
+sentry-sdk==2.15.0
     # via -r production.txt
 shellingham==1.5.4
     # via
@@ -301,9 +301,9 @@ sniffio==1.3.1
     #   httpx
 stack-data==0.6.3
     # via ipython
-termcolor==2.4.0
+termcolor==2.5.0
     # via pytest-sugar
-tomli==2.0.1
+tomli==2.0.2
     # via
     #   -r lint.txt
     #   yapf
@@ -337,9 +337,9 @@ types-pyopenssl==24.1.0.20240722
     # via
     #   -r lint.txt
     #   types-redis
-types-pytz==2024.2.0.20240913
+types-pytz==2024.2.0.20241003
     # via -r lint.txt
-types-redis==4.6.0.20240903
+types-redis==4.6.0.20241004
     # via -r lint.txt
 types-requests==2.32.0.20240914
     # via -r lint.txt
@@ -352,6 +352,7 @@ typing-extensions==4.12.2
     #   -r lint.txt
     #   -r production.txt
     #   aiosqlite
+    #   faker
     #   mypy
     #   pytest-factoryboy
 urllib3==2.2.3
@@ -365,7 +366,7 @@ userpath==1.9.2
     # via
     #   -r build.txt
     #   hatch
-uv==0.4.17
+uv==0.4.18
     # via
     #   -r build.txt
     #   hatch
