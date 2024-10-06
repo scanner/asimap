@@ -788,7 +788,11 @@ class IMAPUserServer:
         last_metrics_dump = time.monotonic()
         try:
             while True:
-                await self.expire_inactive_folders()
+                # XXX For now try skipping resyncs to see if we were missing up
+                #     exiring folders too early (and also see if we can handle
+                #     all mailboxes loaded in to memory always)
+                #
+                # await self.expire_inactive_folders()
 
                 now = time.monotonic()
                 if now - last_metrics_dump > TIME_BETWEEN_METRIC_DUMPS:
