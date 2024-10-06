@@ -7,14 +7,25 @@ commands in other parts of the server.
 # system imports
 #
 import asyncio
+import email.policy
 import logging
-import mailbox
 import os.path
 import re
 from contextlib import asynccontextmanager
 from datetime import date
+from email import message_from_string
+from email.message import EmailMessage
 from enum import Enum, StrEnum
-from typing import TYPE_CHECKING, Callable, List, Optional, Set, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+    cast,
+)
 
 from .fetch import STR_TO_FETCH_OP, FetchAtt, FetchOp
 from .search import IMAPSearch
@@ -379,6 +390,7 @@ class IMAPClientCommand:
         self.command: Optional[str] = None
         self.msg_set: MsgSet = []
         self.fetch_atts: List[FetchAtt] = []
+        self.message: EmailMessage
 
         # If we are doing a `STORE.SILENT` command then `silent` is True
         #
@@ -761,7 +773,13 @@ class IMAPClientCommand:
         # as a message structure right away (I hope this works in all cases,
         # even with draft messages.)
         #
-        self.message = mailbox.MHMessage(self._p_string())
+        self.message = cast(
+            EmailMessage,
+            message_from_string(self._p_string(), policy=email.policy.default),
+        )
+        # XXX Remove this after we are sure our MHMessage -> EmailMessage
+        #     conversion.
+        # self.message = mailbox.MHMessage(self._p_string())
         return
 
     #######################################################################

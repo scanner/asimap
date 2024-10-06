@@ -18,13 +18,7 @@ from collections import defaultdict
 from copy import copy
 from datetime import datetime
 from email.message import EmailMessage
-from mailbox import (
-    MH,
-    FormatError,
-    MHMessage,
-    NoSuchMailboxError,
-    NotEmptyError,
-)
+from mailbox import MH, FormatError, NoSuchMailboxError, NotEmptyError
 from pathlib import Path
 from statistics import fmean, median, stdev
 from tempfile import TemporaryDirectory
@@ -1865,7 +1859,7 @@ class Mailbox:
     #
     async def append(
         self,
-        msg: MHMessage,
+        msg: EmailMessage,
         flags: Optional[List[str]] = None,
         date_time: Optional[datetime] = None,
     ) -> int:
@@ -1880,14 +1874,12 @@ class Mailbox:
         - `flags`: A list of flags to set on this message
         - `date_time`: The internal date on this message
         """
-        # Whatever sequences the message we are passed has, clear them.
-        # and then add sequences based on the flags passed in.
+        # Make sure we convert the IMAP flags to the accepted mh sequences.
         #
-        msg.set_sequences([])
         seqs = flags_to_seqs(flags)
 
         async with self.mh_sequences_lock:
-            msg_key = await self.mailbox.aadd(msg)
+            msg_key = int(self.mailbox.add(msg))
 
         # Update the message and internal sequences.
         #
@@ -1898,7 +1890,7 @@ class Mailbox:
         # Keep the .mh_sequences up to date.
         #
         async with self.mh_sequences_lock, self.mailbox.lock_folder():
-            await self.mailbox.aset_sequences(self.sequences)
+            self.set_sequences_in_folder(self.sequences)
 
         # if a date_time was supplied then set the mtime on the file to
         # that. We use mtime as our 'internal date' on messages.
