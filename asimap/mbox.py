@@ -18,7 +18,7 @@ from collections import defaultdict
 from copy import copy
 from datetime import datetime
 from email.message import EmailMessage
-from mailbox import MH, FormatError, NoSuchMailboxError, NotEmptyError
+from mailbox import FormatError, NoSuchMailboxError, NotEmptyError
 from pathlib import Path
 from random import randrange
 from statistics import fmean, median, stdev
@@ -42,7 +42,7 @@ from .constants import (
 )
 from .exceptions import Bad, MailboxInconsistency, No
 from .fetch import FetchAtt, FetchOp
-from .mh import Sequences
+from .mh import MH, Sequences
 from .parse import (
     CONFLICTING_COMMANDS,
     IMAPClientCommand,
@@ -1104,7 +1104,7 @@ class Mailbox:
             #       What is more we only care about sequences that any new
             #       messages were added to.
             #
-            msg_keys = await self.mailbox.akeys()
+            msg_keys = [int(x) for x in self.mailbox.keys()]
 
             # If the list of new_msg_keys matches the existing list of
             # message keys then there have been no changes to the folder
@@ -1288,7 +1288,7 @@ class Mailbox:
             self.mtime = await Mailbox.get_actual_mtime(
                 self.server.mailbox, self.name
             )
-            await self.check_set_haschildren_attr()
+            self.check_set_haschildren_attr()
             await self.commit_to_db()
 
         end_time = time.monotonic()
@@ -1517,7 +1517,7 @@ class Mailbox:
                 # Create the entry in the db reflects what is on the disk as
                 # far as we know.
                 #
-                await self.check_set_haschildren_attr()
+                self.check_set_haschildren_attr()
                 self.mtime = await Mailbox.get_actual_mtime(
                     self.server.mailbox, self.name
                 )
@@ -1597,7 +1597,7 @@ class Mailbox:
             # uid's.
             #
             if not self.msg_keys and self.uids:
-                msg_keys = await self.mailbox.akeys()
+                msg_keys = [int(x) for x in self.mailbox.keys()]
                 self.msg_keys = msg_keys[: len(self.uids)]
                 self.num_msgs = len(self.msg_keys)
 
@@ -1698,7 +1698,7 @@ class Mailbox:
 
     ##################################################################
     #
-    async def check_set_haschildren_attr(self):
+    def check_set_haschildren_attr(self):
         """
         In order to support RFC3348 we need to know if a given folder has
         children folders or not.
@@ -1713,7 +1713,7 @@ class Mailbox:
         XXX The biggest downside is that we use MH.list_folders() and I
             have a feeling that this can be slow at times.
         """
-        if len(await self.mailbox.alist_folders()) > 0:
+        if len(self.mailbox.list_folders()) > 0:
             self.attributes.add(r"\HasChildren")
             if r"\HasNoChildren" in self.attributes:
                 self.attributes.remove(r"\HasNoChildren")
@@ -2408,8 +2408,8 @@ class Mailbox:
 
         notifications: List[str] = []
         response: List[str] = []
-        for key in msg_keys:
-            async with self.mh_sequences_lock:
+        async with self.mh_sequences_lock, self.mailbox.lock_folder():
+            for key in msg_keys:
                 match action:
                     case StoreAction.ADD_FLAGS | StoreAction.REMOVE_FLAGS:
                         for flag in flags:
@@ -2421,21 +2421,21 @@ class Mailbox:
                     case StoreAction.REPLACE_FLAGS:
                         self._help_replace_flags(key, flags)
 
-            fetch, fetch_uid = self._generate_fetch_msg_for(
-                key, publish_uid=uid_cmd
-            )
-            notifications.append(fetch)
-            if uid_cmd:
-                response.append(fetch_uid)
-            else:
-                response.append(fetch)
+                fetch, fetch_uid = self._generate_fetch_msg_for(
+                    key, publish_uid=uid_cmd
+                )
+                notifications.append(fetch)
+                if uid_cmd:
+                    response.append(fetch_uid)
+                else:
+                    response.append(fetch)
 
-        async with self.mailbox.lock_folder():
             # XXX hm.. we should do what append does.. get a local copy of the
             #     sequences under lock folder, and update that in parallel with
             #     the above code.
             #
-            await self.mailbox.aset_sequences(copy(self.sequences))
+            self.set_sequences_in_folder(copy(self.sequences))
+        await asyncio.sleep(0)
 
         await self._dispatch_or_pend_notifications(
             notifications, dont_notify=dont_notify
@@ -2807,7 +2807,7 @@ class Mailbox:
         async with server.get_mailbox(name) as mbox:
             do_delete = False
 
-            inferior_mailboxes = await mbox.mailbox.alist_folders()
+            inferior_mailboxes = mbox.mailbox.list_folders()
 
             # You can not delete a mailbox that has the '\Noselect' attribute
             # and has inferior mailboxes.
@@ -2901,7 +2901,7 @@ class Mailbox:
         #
         if do_delete:
             try:
-                await server.mailbox.aremove_folder(name)
+                server.mailbox.remove_folder(name)
             except NotEmptyError as e:
                 logger.warning("mailbox %s 'not empty', %s", name, str(e))
                 path = mbox_msg_path(server.mailbox, name)
