@@ -20,6 +20,7 @@ from datetime import datetime
 from email.message import EmailMessage
 from mailbox import MH, FormatError, NoSuchMailboxError, NotEmptyError
 from pathlib import Path
+from random import randrange
 from statistics import fmean, median, stdev
 from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union, cast
@@ -735,13 +736,19 @@ class Mailbox:
         while True:
             try:
                 # Block until we have an IMAP Command that wants to run on this
-                # mailbox
+                # mailbox. Since many different management tasks likely start
+                # at the same time we choose a timeout between 10s and 20s to
+                # distribute when they check the underlying folder for changes.
                 #
                 try:
-                    async with asyncio.timeout(10):
+                    async with asyncio.timeout(randrange(10, 20)):
                         imap_cmd = await self.task_queue.get()
                 except asyncio.TimeoutError:
                     self._cleanup_executing_tasks()
+                    # If there are no currently executing tasks then check for
+                    # new messages. If there were no new messages see if we
+                    # need to pack this folder.
+                    #
                     if not self.executing_tasks:
                         async with self.mailbox.lock_folder():
                             changed = await self.check_new_msgs_and_flags()
@@ -3010,6 +3017,11 @@ class Mailbox:
 
         # NOTE: We do not present to the IMAP client any folders that
         #       have the flag 'ignored' set on them.
+        #
+        # XXX Maybe we should loop through mailboxes that are in-memory and get
+        #     the stats from the in-memory mailbox before we go through the db.
+        #     Alternately we should make sure that when a mailbox's attributes
+        #     are changed it is commited to the db soon after.
         #
         subscribed = "AND subscribed=1" if lsub else ""
         query = (
