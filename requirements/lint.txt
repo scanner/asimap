@@ -4,7 +4,7 @@
 #
 #    pip-compile --output-file=lint.txt --strip-extras lint.in
 #
-black==24.8.0
+black==24.10.0
     # via -r lint.in
 build==1.2.2.post1
     # via pip-tools
@@ -53,7 +53,7 @@ platformdirs==4.3.6
     #   black
     #   virtualenv
     #   yapf
-pre-commit==4.0.0
+pre-commit==4.0.1
     # via -r lint.in
 pycparser==2.22
     # via cffi

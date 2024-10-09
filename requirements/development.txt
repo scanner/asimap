@@ -16,7 +16,7 @@ anyio==4.6.0
     #   httpx
 asttokens==2.4.1
     # via stack-data
-black==24.8.0
+black==24.10.0
     # via -r lint.txt
 build==1.2.2.post1
     # via
@@ -78,7 +78,7 @@ executing==2.1.0
     # via stack-data
 factory-boy==3.3.1
     # via pytest-factoryboy
-faker==30.1.0
+faker==30.3.0
     # via factory-boy
 filelock==3.16.1
     # via
@@ -216,7 +216,7 @@ pluggy==1.5.0
     #   -r build.txt
     #   hatchling
     #   pytest
-pre-commit==4.0.0
+pre-commit==4.0.1
     # via -r lint.txt
 prompt-toolkit==3.0.48
     # via ipython
@@ -284,7 +284,7 @@ rich==13.9.2
     #   hatch
 ruff==0.6.9
     # via -r lint.txt
-sentry-sdk==2.15.0
+sentry-sdk==2.16.0
     # via -r production.txt
 shellingham==1.5.4
     # via
@@ -307,7 +307,7 @@ tomli==2.0.2
     # via
     #   -r lint.txt
     #   yapf
-tomli-w==1.0.0
+tomli-w==1.1.0
     # via
     #   -r build.txt
     #   hatch
@@ -323,7 +323,7 @@ trove-classifiers==2024.9.12
     # via
     #   -r build.txt
     #   hatchling
-trustme==1.1.0
+trustme==1.2.0
     # via -r development.in
 types-aiofiles==24.1.0.20240626
     # via -r lint.txt
@@ -366,7 +366,7 @@ userpath==1.9.2
     # via
     #   -r build.txt
     #   hatch
-uv==0.4.18
+uv==0.4.20
     # via
     #   -r build.txt
     #   hatch
