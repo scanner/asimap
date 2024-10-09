@@ -13,7 +13,7 @@ import stat
 from contextlib import asynccontextmanager
 from mailbox import NoSuchMailboxError, _lock_file
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, Set, TypeAlias, Union
+from typing import TYPE_CHECKING, Union
 
 # 3rd party imports
 #
@@ -24,8 +24,6 @@ import aiofiles.os
 
 if TYPE_CHECKING:
     from _typeshed import StrPath
-
-Sequences: TypeAlias = Dict[str, Set[int]]
 
 LINESEP = str(mailbox.linesep, "ascii")
 

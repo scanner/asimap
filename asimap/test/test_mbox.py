@@ -93,14 +93,15 @@ async def test_mailbox_init_with_messages(mailbox_with_bunch_of_email):
     assert r"\Marked" in mbox.attributes
     assert r"\HasNoChildren" in mbox.attributes
 
-    msg_keys = set(await mbox.mailbox.akeys())
+    msg_keys = set([int(x) for x in mbox.mailbox.keys()])
     assert len(msg_keys) > 0
     mtimes = []
     for msg_key in sorted(msg_keys):
         path = os.path.join(mbox.mailbox._path, str(msg_key))
         mtimes.append(await aiofiles.os.path.getmtime(path))
 
-    seqs = await mbox.mailbox.aget_sequences()
+    async with mbox.mh_sequences_lock:
+        seqs = mbox.get_sequences_from_folder()
 
     # NOTE: By default `bunch_of_email_in_folder` inserts all messages it
     # creates in to the `unseen` sequence.
@@ -112,7 +113,6 @@ async def test_mailbox_init_with_messages(mailbox_with_bunch_of_email):
     assert len(mbox.sequences["Seen"]) == 0
     assert mbox.sequences["Recent"] == msg_keys
     assert len(mbox.msg_keys) == len(mbox.uids)
-    # await assert_uids_match_msgs(sorted(msg_keys), mbox)
 
     # The messages mtimes should not have changed.
     #
@@ -145,7 +145,7 @@ async def test_mailbox_gets_new_message(
         # Now add one message to the folder.
         #
         bunch_of_email_in_folder(folder=NAME, num_emails=1)
-        msg_keys = await mbox.mailbox.akeys()
+        msg_keys = set([int(x) for x in mbox.mailbox.keys()])
 
         await mbox.check_new_msgs_and_flags()
         assert r"\Marked" in mbox.attributes
@@ -196,7 +196,7 @@ async def test_mbox_selected_unselected(
     bunch_of_email_in_folder()
     server, imap_client_proxy = imap_user_server_and_client
     mbox = await Mailbox.new(NAME, server)
-    msg_keys = await mbox.mailbox.akeys()
+    msg_keys = [int(x) for x in mbox.mailbox.keys()]
     num_msgs = len(msg_keys)
 
     results = await mbox.selected(imap_client_proxy.cmd_processor)
@@ -229,27 +229,27 @@ async def test_mbox_append(imap_user_server, email_factory):
     NAME = "inbox"
     mbox = await Mailbox.new(NAME, server)
 
-    msg = MHMessage(email_factory())
+    msg = email_factory()
 
     uid = await mbox.append(
         msg, flags=[r"\Flagged", "unseen"], date_time=datetime.now()
     )
 
-    msg_keys = await mbox.mailbox.akeys()
+    msg_keys = [int(x) for x in mbox.mailbox.keys()]
+
     assert len(msg_keys) == 1
     msg_key = msg_keys[0]
-    mhmsg = await mbox.mailbox.aget_message(msg_key)
+    folder_msg = mbox.mailbox.get_message(str(msg_key))
     uid_vv, msg_uid = mbox.get_uid_from_msg(msg_key)
-    assert sorted(mhmsg.get_sequences()) == sorted(
-        ["flagged", "unseen", "Recent"]
-    )
+    msg_seqs = mbox._msg_sequences(msg_key)
+    assert sorted(msg_seqs) == sorted(["flagged", "unseen", "Recent"])
     assert mbox.sequences == {"flagged": {1}, "unseen": {1}, "Recent": {1}}
     assert msg_uid == uid
     assert uid_vv == mbox.uid_vv
 
     # Make sure the messages match.
     #
-    assert_email_equal(msg, mhmsg)
+    assert_email_equal(msg, folder_msg)
 
 
 ####################################################################
@@ -267,12 +267,13 @@ async def test_mbox_expunge_with_client(
 
         # Mark messages for expunge.
         #
-        msg_keys = await mbox.mailbox.akeys()
+        msg_keys = [int(x) for x in mbox.mailbox.keys()]
         num_msgs = len(msg_keys)
         for i in range(1, num_msgs_to_delete + 1):
             mbox.sequences["Deleted"].add(msg_keys[i])
 
-        await mbox.mailbox.aset_sequences(mbox.sequences)
+        async with mbox.mh_sequences_lock:
+            mbox.set_sequences_in_folder(mbox.sequences)
 
         imap_client.cmd_processor.idling = True
         await mbox.expunge()
@@ -303,10 +304,11 @@ async def test_mbox_expunge_with_client(
             19,
             20,
         ]
-        msg_keys = await mbox.mailbox.akeys()
+        msg_keys = [int(x) for x in mbox.mailbox.keys()]
         assert len(msg_keys) == num_msgs - num_msgs_to_delete
         assert len(mbox.uids) == len(msg_keys)
-        seqs = await mbox.mailbox.aget_sequences()
+        async with mbox.mh_sequences_lock:
+            seqs = mbox.get_sequences_from_folder()
         assert "Deleted" not in seqs
         assert not mbox.sequences["Deleted"]
 
@@ -320,7 +322,7 @@ async def test_mailbox_search(mailbox_with_bunch_of_email):
     search.
     """
     mbox = mailbox_with_bunch_of_email
-    msg_keys = await mbox.mailbox.akeys()
+    msg_keys = [int(x) for x in mbox.mailbox.keys()]
     search_op = IMAPSearch("all")
 
     # new mailbox, msg_keys have the same values is imap message sequences
@@ -345,7 +347,7 @@ async def test_mailbox_fetch(mailbox_with_bunch_of_email):
     # We know this mailbox has messages numbered from 1 to 20.
     #
     mbox = mailbox_with_bunch_of_email
-    msg_keys = await mbox.mailbox.akeys()
+    msg_keys = [int(x) for x in mbox.mailbox.keys()]
     msg_set = [2, 3, 4]
 
     # New mailbox.. all messages are unseen. FETCH BODY without PEEK marks them

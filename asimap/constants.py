@@ -5,8 +5,11 @@
 """
 Various global constants.
 """
+from collections import defaultdict
 from enum import StrEnum
-from typing import List, Optional
+from typing import List, Optional, Set, TypeAlias
+
+Sequences: TypeAlias = defaultdict[str, Set[int]]
 
 
 # Here we set the list of defined system flags (flags that may be set on a
