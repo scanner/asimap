@@ -35,6 +35,7 @@ from .constants import (
     PERMANENT_FLAGS,
     SYSTEM_FLAG_MAP,
     SYSTEM_FLAGS,
+    Sequences,
     flag_to_seq,
     flags_to_seqs,
     seq_to_flag,
@@ -42,7 +43,7 @@ from .constants import (
 )
 from .exceptions import Bad, MailboxInconsistency, No
 from .fetch import FetchAtt, FetchOp
-from .mh import MH, Sequences
+from .mh import MH
 from .parse import (
     CONFLICTING_COMMANDS,
     IMAPClientCommand,
@@ -736,12 +737,17 @@ class Mailbox:
         while True:
             try:
                 # Block until we have an IMAP Command that wants to run on this
-                # mailbox. Since many different management tasks likely start
-                # at the same time we choose a timeout between 10s and 20s to
-                # distribute when they check the underlying folder for changes.
+                # mailbox.
                 #
+                # We will timeout giving the management task some time to check
+                # for new messages in this folder. How long we wait until we
+                # timeout depends on whether or not any clients have this
+                # mailbox selected. 1s to 5s if their are any
+                # clients. Otherwise 50s-70s if there are no clients.
+                #
+                timeout = randrange(1, 5) if self.clients else randrange(10, 20)
                 try:
-                    async with asyncio.timeout(randrange(10, 20)):
+                    async with asyncio.timeout(timeout):
                         imap_cmd = await self.task_queue.get()
                 except asyncio.TimeoutError:
                     self._cleanup_executing_tasks()
@@ -1105,6 +1111,7 @@ class Mailbox:
             #       messages were added to.
             #
             msg_keys = [int(x) for x in self.mailbox.keys()]
+            await asyncio.sleep(0)
 
             # If the list of new_msg_keys matches the existing list of
             # message keys then there have been no changes to the folder
@@ -1239,6 +1246,7 @@ class Mailbox:
                     for sequence in self.sequences.keys():
                         if sequence not in msg_sequences:
                             self.sequences[sequence].discard(key)
+                    await asyncio.sleep(0)
 
                 # Make the folder's .mh_sequences reflect our current state
                 # of the universe.
@@ -1446,7 +1454,10 @@ class Mailbox:
         #
         assert self.mh_sequences_lock.locked()
         seqs = self.mailbox.get_sequences()
-        return {k: set(v) for k, v in seqs.items()}
+        res = defaultdict(set)
+        for k, v in seqs.items():
+            res[k] = set(v)
+        return res
 
     ####################################################################
     #
@@ -2251,6 +2262,7 @@ class Mailbox:
                         f"* {msg_seq_number} FETCH "
                         f"(FLAGS ({flags_str}))\r\n"
                     )
+                await self.commit_to_db()
                 await self._dispatch_or_pend_notifications(notifies)
 
         finally:
@@ -2311,17 +2323,14 @@ class Mailbox:
         Helper function for the logic to add a message to a sequence. Updating
         both the sequences associated with the MHMessage and the sequences dict.
         """
-        # msg.add_sequence(flag)
         self.sequences[flag].add(key)
 
         # Make sure that the Seen and unseen sequences are updated properly.
         #
         match flag:
             case "Seen":
-                # msg.remove_sequence("unseen")
                 self.sequences["unseen"].discard(key)
             case "unseen":
-                # msg.remove_sequence("Seen")
                 self.sequences["Seen"].discard(key)
 
     ####################################################################
@@ -2332,17 +2341,14 @@ class Mailbox:
         sequence. Updating both the sequences associated with the MHMessage and
         the sequences dict.
         """
-        # msg.remove_sequence(flag)
         self.sequences[flag].discard(key)
 
         # Make sure that the Seen and unseen sequences are updated properly.
         #
         match flag:
             case "Seen":
-                # msg.add_sequence("unseen")
                 self.sequences["unseen"].add(key)
             case "unseen":
-                # msg.add_sequence("Seen")
                 self.sequences["Seen"].add(key)
 
     ####################################################################
@@ -2435,8 +2441,8 @@ class Mailbox:
             #     the above code.
             #
             self.set_sequences_in_folder(copy(self.sequences))
-        await asyncio.sleep(0)
 
+        await self.commit_to_db()
         await self._dispatch_or_pend_notifications(
             notifications, dont_notify=dont_notify
         )

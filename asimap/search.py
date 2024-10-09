@@ -19,12 +19,12 @@ import aiofiles
 
 # asimap imports
 #
-from .constants import flag_to_seq
+from .constants import Sequences, flag_to_seq
 from .generator import get_msg_size, msg_as_string
 from .utils import parsedate
 
 if TYPE_CHECKING:
-    from .mbox import Mailbox, Sequences
+    from .mbox import Mailbox
 
 logger = logging.getLogger("asimap.search")
 

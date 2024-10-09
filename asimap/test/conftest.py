@@ -19,6 +19,7 @@ from email.utils import format_datetime
 from mailbox import MH, MHMessage
 from pathlib import Path
 from typing import (
+    Any,
     Callable,
     Generator,
     Iterable,
@@ -220,7 +221,7 @@ def password_file_factory(tmp_path):
 ####################################################################
 #
 @pytest.fixture
-def email_factory(faker: Generator) -> EmailFactoryType:
+def email_factory(faker: Any) -> EmailFactoryType:
     """
     Returns a factory that creates email.message.EmailMessages
 
