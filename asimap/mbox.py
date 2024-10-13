@@ -2187,7 +2187,7 @@ class Mailbox:
                     else fetch_ops + [FetchAtt(FetchOp.UID)]
                 )
                 for elt in fo:
-                    iter_results.append(await elt.fetch(ctx))
+                    iter_results.append(elt.fetch(ctx))
                     # If one of the FETCH ops gets the FLAGS we want to
                     # know and likewise if one of the FETCH ops gets the
                     # BODY (but NOT BODY.PEEK) we want to know. Both of
@@ -2198,6 +2198,11 @@ class Mailbox:
                         fetched_body_seen = True
                     if elt.attribute == "flags":
                         fetched_flags = True
+
+                    # Since each fetch op is asyncio blocking, release some
+                    # time to other tasks between each fetch.
+                    #
+                    await asyncio.sleep(0)
 
                 # If we did a FETCH FLAGS and the message was in the
                 # 'Recent' sequence then remove it from the 'Recent'

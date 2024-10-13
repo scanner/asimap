@@ -160,7 +160,7 @@ class FetchAtt:
 
     #######################################################################
     #
-    async def fetch(self, ctx) -> str:
+    def fetch(self, ctx) -> str:
         r"""
         This method applies fetch criteria that this object represents
         to the message and message entry being passed in.
@@ -198,7 +198,7 @@ class FetchAtt:
                 flags = " ".join([seq_to_flag(x) for x in self.ctx.sequences])
                 result = f"({flags})"
             case FetchOp.INTERNALDATE:
-                int_date = await self.ctx.internal_date()
+                int_date = self.ctx.internal_date()
                 internal_date = email.utils.format_datetime(int_date)
                 result = f'"{internal_date}"'
             case FetchOp.UID:

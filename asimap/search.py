@@ -11,11 +11,8 @@ import os.path
 from datetime import datetime, timezone
 from email.message import EmailMessage
 from enum import StrEnum
+from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional
-
-# 3rd party imports
-#
-import aiofiles
 
 # asimap imports
 #
@@ -76,7 +73,7 @@ class SearchContext(object):
         self.seq_max = seq_max
         self.uid_max = uid_max
         self.msg_number = msg_number
-        self.path = os.path.join(mailbox.mailbox._path, str(msg_key))
+        self.path = Path(os.path.join(mailbox.mailbox._path, str(msg_key)))
 
         # msg & uid are looked up and set ONLY if the search actually reaches
         # in to the message. We use read only attributes to fill in these
@@ -100,11 +97,13 @@ class SearchContext(object):
 
     ####################################################################
     #
-    async def internal_date(self) -> datetime:
+    def internal_date(self) -> datetime:
         if self._internal_date:
             return self._internal_date
         internal_date = datetime.fromtimestamp(
-            await aiofiles.os.path.getmtime(self.path), timezone.utc
+            # await aiofiles.os.path.getmtime(self.path), timezone.utc
+            self.path.stat().st_mtime,
+            timezone.utc,
         )
         self._internal_date = internal_date
         return self._internal_date
@@ -407,7 +406,7 @@ class IMAPSearch(object):
         Messages whose internal date is earlier than the specified
         date.
         """
-        internal_date = (await self.ctx.internal_date()).date()
+        internal_date = (self.ctx.internal_date()).date()
         return internal_date < self.args["date"]
 
     #########################################################################
@@ -483,7 +482,7 @@ class IMAPSearch(object):
         vague about this and just says what is listed above 'within
         the specific date')
         """
-        internal_date = (await self.ctx.internal_date()).date()
+        internal_date = (self.ctx.internal_date()).date()
         return internal_date == self.args["date"]
 
     #########################################################################
@@ -532,7 +531,7 @@ class IMAPSearch(object):
         Messages whose internal date is within or later than the
         specified date.
         """
-        internal_date = (await self.ctx.internal_date()).date()
+        internal_date = (self.ctx.internal_date()).date()
         return internal_date >= self.args["date"]
 
     #########################################################################

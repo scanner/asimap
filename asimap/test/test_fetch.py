@@ -92,7 +92,7 @@ async def test_fetch_body(mailbox_with_mimekit_email):
         msg = ctx.msg()
         msg_size = ctx.msg_size()
         fetch = FetchAtt(FetchOp.BODY)
-        result = await fetch.fetch(ctx)
+        result = fetch.fetch(ctx)
 
         assert result.startswith("BODY {")
         m = _lit_ref_re.search(result)
@@ -103,70 +103,158 @@ async def test_fetch_body(mailbox_with_mimekit_email):
         msg_start_idx = result.find("}\r\n") + 3
         data = result[msg_start_idx : msg_start_idx + result_msg_size]
         result_msg = cast(
-            EmailMessage, message_from_string((data), policy=SMTP)
+            EmailMessage,
+            message_from_string((data), policy=SMTP),
         )
         assert_email_equal(msg, result_msg)
 
 
+BODYSTRUCTURE_BY_MSG_KEY = [
+    pytest.param(
+        1,
+        '("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 24 1 NIL NIL NIL NIL)',
+        id="1",
+    ),
+    pytest.param(
+        2,
+        '("TEXT" "HTML" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 43 1 NIL NIL NIL NIL)',
+        id="2",
+    ),
+    pytest.param(
+        3,
+        '(("TEXT" "HTML" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 43 1 NIL NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 24 1 NIL NIL NIL NIL) "ALTERNATIVE" ("BOUNDARY" "Next_Alternative") NIL NIL NIL)',
+        id="3",
+    ),
+    pytest.param(
+        4,
+        '(("TEXT" "HTML" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 43 1 NIL NIL NIL NIL)("IMAGE" "GIF" ("NAME" "empty.gif") NIL NIL "7BIT" 2 NIL ("INLINE" ("FILENAME" "empty.gif")) NIL NIL)("IMAGE" "JPEG" ("NAME" "empty.jpg") NIL NIL "7BIT" 2 NIL ("INLINE" ("FILENAME" "empty.jpg")) NIL NIL) "RELATED" ("BOUNDARY" "Next_Related") NIL NIL NIL)',
+        id="4",
+    ),
+    pytest.param(
+        5,
+        '((("TEXT" "HTML" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 43 1 NIL NIL NIL NIL)("IMAGE" "GIF" ("NAME" "empty.gif") NIL NIL "7BIT" 2 NIL ("INLINE" ("FILENAME" "empty.gif")) NIL NIL)("IMAGE" "JPEG" ("NAME" "empty.jpg") NIL NIL "7BIT" 2 NIL ("INLINE" ("FILENAME" "empty.jpg")) NIL NIL) "RELATED" ("BOUNDARY" "Next_Related") NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 24 1 NIL NIL NIL NIL) "ALTERNATIVE" ("BOUNDARY" "Next_Alternative") NIL NIL NIL)',
+        id="5",
+    ),
+    pytest.param(
+        6,
+        '(((("TEXT" "HTML" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 43 1 NIL NIL NIL NIL)("IMAGE" "GIF" ("NAME" "empty.gif") NIL NIL "7BIT" 2 NIL ("INLINE" ("FILENAME" "empty.gif")) NIL NIL)("IMAGE" "JPEG" ("NAME" "empty.jpg") NIL NIL "7BIT" 2 NIL ("INLINE" ("FILENAME" "empty.jpg")) NIL NIL) "RELATED" ("BOUNDARY" "Next_Related") NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 24 1 NIL NIL NIL NIL) "ALTERNATIVE" ("BOUNDARY" "Next_Alternative") NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII" "NAME" "document.txt") NIL NIL "7BIT" 31 1 NIL ("ATTACHMENT" ("FILENAME" "document.txt")) NIL NIL) "MIXED" ("BOUNDARY" "Next_Mixed") NIL NIL NIL)',
+        id="6",
+    ),
+    pytest.param(
+        7,
+        '(((("TEXT" "HTML" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 43 1 NIL NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 24 1 NIL NIL NIL NIL) "ALTERNATIVE" ("BOUNDARY" "Next_Alternative") NIL NIL NIL)("IMAGE" "GIF" ("NAME" "empty.gif") NIL NIL "7BIT" 2 NIL ("INLINE" ("FILENAME" "empty.gif")) NIL NIL)("IMAGE" "JPEG" ("NAME" "empty.jpg") NIL NIL "7BIT" 2 NIL ("INLINE" ("FILENAME" "empty.jpg")) NIL NIL) "RELATED" ("BOUNDARY" "Next_Related") NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII" "NAME" "document.txt") NIL NIL "7BIT" 31 1 NIL ("ATTACHMENT" ("FILENAME" "document.txt")) NIL NIL) "MIXED" ("BOUNDARY" "Next_Mixed") NIL NIL NIL)',
+        id="7",
+    ),
+    pytest.param(
+        8,
+        '(("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 24 1 NIL NIL NIL NIL)("TEXT" "HTML" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 65 1 NIL NIL NIL NIL)("APPLICATION" "OCTET-STREAM" ("NAME" "attachment.dat") NIL NIL "7BIT" 2 NIL ("ATTACHMENT" ("FILENAME" "attachment.dat")) NIL NIL) "MIXED" ("BOUNDARY" "Next_Mixed") NIL NIL NIL)',
+        id="8",
+    ),
+    pytest.param(
+        9,
+        '(("TEXT" "HTML" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 43 1 NIL NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 46 1 NIL NIL NIL NIL)("APPLICATION" "OCTET-STREAM" ("NAME" "attachment.dat") NIL NIL "7BIT" 2 NIL ("ATTACHMENT" ("FILENAME" "attachment.dat")) NIL NIL) "MIXED" ("BOUNDARY" "Next_Mixed") NIL NIL NIL)',
+        id="9",
+    ),
+    pytest.param(
+        10,
+        #        """(("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL "Notification" "base64" 1868 24 NIL NIL NIL NIL)(("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "base64" 2 1 NIL NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 2 1 NIL NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 2 1 NIL NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 724 12 NIL NIL NIL NIL) "DELIVERY-STATUS" ("CHARSET" "US-ASCII") NIL NIL NIL)("MESSAGE" "RFC822" ("CHARSET" "US-ASCII") NIL "Undelivered Message" "7BIT" 17961 ("Wed, 26 Jan 2022 09:06:45 +0000" "FILE-SRV | FILE-SRV | Ellern Mede | eventlog | Security - Microsoft-Windows-Security-Auditing | Code: '4625' - Type: 'Critical, Error, Warning, , Information, Verbose' - Desc: '' {44565655}" (("Netec RMM" NIL "helpdesk" "netecgc.com")) (("Netec RMM" NIL "helpdesk" "netecgc.com")) ((NIL NIL "helpdesk" "netecgc.com")) ((NIL NIL "netec.test" "netecgc.com")) NIL NIL NIL "<44565655.JitbitHelpdesk.13439.691a0afc-a0a0-457c-8208-f20b7c4a4cb1@jitbit.com>") (("TEXT" "PLAIN" ("CHARSET" "UTF-8") NIL NIL "base64" 5452 88 NIL NIL NIL NIL)("TEXT" "HTML" ("CHARSET" "UTF-8") NIL NIL "base64" 11254 145 NIL NIL NIL NIL) "ALTERNATIVE" ("BOUNDARY" "=-JG9iIL0Fmro08hOsLcfbiQ==") NIL NIL NIL) 266 NIL NIL NIL NIL) "REPORT" ("REPORT-TYPE" "delivery-status" "BOUNDARY" "630A242E63.1643188008/hmail.jitbit.com") NIL NIL NIL)""",
+        """(("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL "Notification" "base64" 1868 24 NIL NIL NIL NIL)(("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "base64" 2 1 NIL NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 2 1 NIL NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 724 12 NIL NIL NIL NIL) "DELIVERY-STATUS" ("CHARSET" "US-ASCII") NIL NIL NIL)("MESSAGE" "RFC822" ("CHARSET" "US-ASCII") NIL "Undelivered Message" "7BIT" 17961 ("Wed, 26 Jan 2022 09:06:45 +0000" "FILE-SRV | FILE-SRV | Ellern Mede | eventlog | Security - Microsoft-Windows-Security-Auditing | Code: '4625' - Type: 'Critical, Error, Warning, , Information, Verbose' - Desc: '' {44565655}" (("Netec RMM" NIL "helpdesk" "netecgc.com")) (("Netec RMM" NIL "helpdesk" "netecgc.com")) ((NIL NIL "helpdesk" "netecgc.com")) ((NIL NIL "netec.test" "netecgc.com")) NIL NIL NIL "<44565655.JitbitHelpdesk.13439.691a0afc-a0a0-457c-8208-f20b7c4a4cb1@jitbit.com>") (("TEXT" "PLAIN" ("CHARSET" "UTF-8") NIL NIL "base64" 5452 88 NIL NIL NIL NIL)("TEXT" "HTML" ("CHARSET" "UTF-8") NIL NIL "base64" 11254 145 NIL NIL NIL NIL) "ALTERNATIVE" ("BOUNDARY" "=-JG9iIL0Fmro08hOsLcfbiQ==") NIL NIL NIL) 266 NIL NIL NIL NIL) "REPORT" ("REPORT-TYPE" "delivery-status" "BOUNDARY" "630A242E63.1643188008/hmail.jitbit.com") NIL NIL NIL)""",
+        id="10",
+    ),
+    pytest.param(
+        11,
+        """((("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 2 1 NIL NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 2 1 NIL NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 2 1 NIL NIL NIL NIL) "DELIVERY-STATUS" ("CHARSET" "US-ASCII") NIL NIL NIL)("MESSAGE" "RFC822" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 840 ("Mon, 29 Jul 1996 02:04:52 -0700" "unsubscribe" (("Jamie Zawinski" NIL "jwz" "netscape.com")) ((NIL NIL "jwz" "netscape.com")) (("Jamie Zawinski" NIL "jwz" "netscape.com")) ((NIL NIL "newsletter-request" "imusic.com")) NIL NIL NIL "<31FC7EB4.41C6@netscape.com>") ("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7bit" 13 1 NIL NIL NIL NIL) 19 NIL NIL NIL NIL) "REPORT" ("REPORT-TYPE" "delivery-status" "BOUNDARY" "A41C7.838631588=_/mm1") NIL NIL NIL)""",
+        id="11",
+    ),
+    pytest.param(
+        12,
+        """((("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 2 1 NIL NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 2 1 NIL NIL NIL NIL) "DELIVERY-STATUS" ("CHARSET" "US-ASCII") NIL NIL NIL)("MESSAGE" "RFC822" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 840 ("Mon, 29 Jul 1996 02:04:52 -0700" "unsubscribe" (("Jamie Zawinski" NIL "jwz" "netscape.com")) ((NIL NIL "jwz" "netscape.com")) (("Jamie Zawinski" NIL "jwz" "netscape.com")) ((NIL NIL "newsletter-request" "imusic.com")) NIL NIL NIL "<31FC7EB4.41C6@netscape.com>") ("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7bit" 13 1 NIL NIL NIL NIL) 19 NIL NIL NIL NIL) "REPORT" ("REPORT-TYPE" "delivery-status" "BOUNDARY" "A41C7.838631588=_/mm1") NIL NIL NIL)""",
+        id="12",
+    ),
+    pytest.param(
+        13,
+        """(("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 230 4 NIL NIL NIL NIL)(("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 2 1 NIL NIL NIL NIL) "DISPOSITION-NOTIFICATION" ("CHARSET" "US-ASCII") NIL NIL NIL)("MESSAGE" "RFC822" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 358 ("Tue, 19 Sep 1995 13:30:00 -0000" "First draft of report" (("Jane Sender" NIL "Jane_Sender" "example.com")) (("Jane Sender" NIL "Jane_Sender" "example.com")) (("Jane Sender" NIL "Jane_Sender" "example.com")) (("Joe Recipient" NIL "Joe_Recipient" "example.com")) NIL NIL NIL "<199509192301.23456@example.org>") ("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 96 5 NIL NIL NIL NIL) 13 NIL NIL NIL NIL) "REPORT" ("REPORT-TYPE" "disposition-notification" "BOUNDARY" "RAA14128.773615765/example.com") NIL NIL NIL)""",
+        id="13",
+    ),
+    pytest.param(
+        14,
+        '(("MULTIPART" "ALTERNATIVE" ("BOUNDARY" "----=_NextPart_001_0040_01CE98CE.6E826F90") NIL NIL "7BIT" 4 NIL NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 85 1 NIL NIL NIL NIL) "MIXED" ("BOUNDARY" "----=_NextPart_000_003F_01CE98CE.6E826F90") NIL NIL NIL)',
+        id="14",
+    ),
+    pytest.param(
+        15,
+        '(("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 89 3 NIL NIL NIL NIL)("APPLICATION" "POSTSCRIPT" NIL NIL NIL "base64" 2 NIL NIL NIL NIL) "MIXED" ("BOUNDARY" "NutNews,-a-nntpmtsonsguinrcfas,-boundary") NIL NIL NIL)',
+        id="15",
+    ),
+    pytest.param(
+        16,
+        '(("TEXT" "PLAIN" ("CHARSET" "ISO-8859-1") NIL NIL "quoted-printable" 16 2 NIL NIL NIL NIL)("TEXT" "HTML" ("CHARSET" "ISO-8859-1") NIL NIL "quoted-printable" 494 12 NIL NIL NIL NIL) "ALTERNATIVE" ("BOUNDARY" "----=_NextPart_000_0031_01D36222.8A648550") NIL ("en-US" "it-IT") NIL)',
+        id="16",
+    ),
+    pytest.param(
+        17,
+        '("TEXT" "PLAIN" ("CHARSET" "ISO-2022-JP") NIL NIL "7bit" 117 6 NIL NIL NIL NIL)',
+        id="17",
+    ),
+    pytest.param(
+        18,
+        '("TEXT" "PLAIN" ("CHARSET" "US-ASCII" "NAME" "document.xml.gz") NIL NIL "7BIT" 16 1 NIL NIL NIL NIL)',
+        id="18",
+    ),
+    pytest.param(
+        19,
+        '("MESSAGE" "RFC822" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 354 ("Sun, 12 Aug 2012 12:34:56 +0300" "submsg" ((NIL NIL "sub" "domain.org")) ((NIL NIL "sub" "domain.org")) ((NIL NIL "sub" "domain.org")) NIL NIL NIL NIL NIL) (("MESSAGE" "RFC822" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 46 (NIL "m1" ((NIL NIL "m1" "example.com")) ((NIL NIL "m1" "example.com")) ((NIL NIL "m1" "example.com")) NIL NIL NIL NIL NIL) ("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 9 1 NIL NIL NIL NIL) 4 NIL NIL NIL NIL)("MESSAGE" "RFC822" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 46 (NIL "m2" ((NIL NIL "m2" "example.com")) ((NIL NIL "m2" "example.com")) ((NIL NIL "m2" "example.com")) NIL NIL NIL NIL NIL) ("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 9 1 NIL NIL NIL NIL) 4 NIL NIL NIL NIL) "DIGEST" ("BOUNDARY" "foo") NIL NIL NIL) 27 NIL NIL NIL NIL)',
+        id="19",
+    ),
+    pytest.param(
+        20,
+        '(("IMAGE" "PNG" NIL NIL NIL "base64" 1220 NIL NIL NIL "image1")("TEXT" "HTML" ("CHARSET" "UTF-8") NIL NIL "quoted-printable" 930 13 NIL NIL NIL NIL) "RELATED" ("TYPE" "text/html" "BOUNDARY" "----=_NextPart_115e1404-dbbc-4611-b4ce-d08a4b021c45") NIL NIL NIL)',
+        id="20",
+    ),
+    pytest.param(
+        21,
+        '(("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 34 1 NIL NIL NIL NIL)("APPLICATION" "OCTET-STREAM" NIL NIL NIL "7BIT" 34 NIL NIL NIL NIL)("MESSAGE" "RFC822" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 320 (NIL "This part specifier should be: 3" ((NIL NIL "me" "myself.com")) ((NIL NIL "me" "myself.com")) ((NIL NIL "me" "myself.com")) ((NIL NIL "me" "myself.com")) NIL NIL NIL NIL) (("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 36 1 NIL NIL NIL NIL)("APPLICATION" "OCTET-STREAM" NIL NIL NIL "7BIT" 36 NIL NIL NIL NIL) "MIXED" ("BOUNDARY" "3.x") NIL NIL NIL) 17 NIL NIL NIL NIL)(("IMAGE" "GIF" NIL NIL NIL "7BIT" 36 NIL NIL NIL NIL)("MESSAGE" "RFC822" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 491 (NIL "This part specifier should be: 4.2" ((NIL NIL "me" "myself.com")) ((NIL NIL "me" "myself.com")) ((NIL NIL "me" "myself.com")) ((NIL NIL "me" "myself.com")) NIL NIL NIL NIL) (("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 38 1 NIL NIL NIL NIL)(("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 40 1 NIL NIL NIL NIL)("TEXT" "RICHTEXT" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 40 1 NIL NIL NIL NIL) "ALTERNATIVE" ("BOUNDARY" "4.2.2.x") NIL NIL NIL) "MIXED" ("BOUNDARY" "4.2.x") NIL NIL NIL) 27 NIL NIL NIL NIL) "MIXED" ("BOUNDARY" "4.x") NIL NIL NIL) "MIXED" ("BOUNDARY" "x") NIL NIL NIL)',
+        id="21",
+    ),
+    pytest.param(
+        22,
+        '("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 16 2 NIL NIL NIL NIL)',
+        id="22",
+    ),
+]
+
+
 ####################################################################
 #
-@pytest.mark.asyncio
-async def test_fetch_bodystructure(mailbox_with_mimekit_email):
+@pytest.mark.parametrize(
+    "msg_key,expected_bodystructure", BODYSTRUCTURE_BY_MSG_KEY
+)
+def test_fetch_bodystructure(
+    msg_key, expected_bodystructure, mailbox_with_mimekit_email
+):
     mbox = mailbox_with_mimekit_email
-    msg_keys = await mbox.mailbox.akeys()
-    seq_max = len(msg_keys)
-    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
+    seq_max = mbox.num_msgs
+    uid_vv, uid_max = mbox.get_uid_from_msg(mbox.msg_keys[-1])
     assert uid_max
 
-    # XXX Yeah.. should move these in data files and have it come out with the
-    #     "mimiekit_email" fixtures..
+    # The message keys in our fixture folder range from `1` to `22`, so in this
+    # case the msg key is the same as the IMAP msg sequence number.
     #
-    expecteds = [
-        '("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 24 1 NIL NIL NIL NIL)',
-        '("TEXT" "HTML" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 43 1 NIL NIL NIL NIL)',
-        '(("TEXT" "HTML" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 43 1 NIL NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 24 1 NIL NIL NIL NIL) "ALTERNATIVE" ("BOUNDARY" "Next_Alternative") NIL NIL NIL)',
-        '(("TEXT" "HTML" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 43 1 NIL NIL NIL NIL)("IMAGE" "GIF" ("NAME" "empty.gif") NIL NIL "7BIT" 2 NIL ("INLINE" ("FILENAME" "empty.gif")) NIL NIL)("IMAGE" "JPEG" ("NAME" "empty.jpg") NIL NIL "7BIT" 2 NIL ("INLINE" ("FILENAME" "empty.jpg")) NIL NIL) "RELATED" ("BOUNDARY" "Next_Related") NIL NIL NIL)',
-        '((("TEXT" "HTML" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 43 1 NIL NIL NIL NIL)("IMAGE" "GIF" ("NAME" "empty.gif") NIL NIL "7BIT" 2 NIL ("INLINE" ("FILENAME" "empty.gif")) NIL NIL)("IMAGE" "JPEG" ("NAME" "empty.jpg") NIL NIL "7BIT" 2 NIL ("INLINE" ("FILENAME" "empty.jpg")) NIL NIL) "RELATED" ("BOUNDARY" "Next_Related") NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 24 1 NIL NIL NIL NIL) "ALTERNATIVE" ("BOUNDARY" "Next_Alternative") NIL NIL NIL)',
-        '(((("TEXT" "HTML" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 43 1 NIL NIL NIL NIL)("IMAGE" "GIF" ("NAME" "empty.gif") NIL NIL "7BIT" 2 NIL ("INLINE" ("FILENAME" "empty.gif")) NIL NIL)("IMAGE" "JPEG" ("NAME" "empty.jpg") NIL NIL "7BIT" 2 NIL ("INLINE" ("FILENAME" "empty.jpg")) NIL NIL) "RELATED" ("BOUNDARY" "Next_Related") NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 24 1 NIL NIL NIL NIL) "ALTERNATIVE" ("BOUNDARY" "Next_Alternative") NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII" "NAME" "document.txt") NIL NIL "7BIT" 31 1 NIL ("ATTACHMENT" ("FILENAME" "document.txt")) NIL NIL) "MIXED" ("BOUNDARY" "Next_Mixed") NIL NIL NIL)',
-        '(((("TEXT" "HTML" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 43 1 NIL NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 24 1 NIL NIL NIL NIL) "ALTERNATIVE" ("BOUNDARY" "Next_Alternative") NIL NIL NIL)("IMAGE" "GIF" ("NAME" "empty.gif") NIL NIL "7BIT" 2 NIL ("INLINE" ("FILENAME" "empty.gif")) NIL NIL)("IMAGE" "JPEG" ("NAME" "empty.jpg") NIL NIL "7BIT" 2 NIL ("INLINE" ("FILENAME" "empty.jpg")) NIL NIL) "RELATED" ("BOUNDARY" "Next_Related") NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII" "NAME" "document.txt") NIL NIL "7BIT" 31 1 NIL ("ATTACHMENT" ("FILENAME" "document.txt")) NIL NIL) "MIXED" ("BOUNDARY" "Next_Mixed") NIL NIL NIL)',
-        '(("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 24 1 NIL NIL NIL NIL)("TEXT" "HTML" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 65 1 NIL NIL NIL NIL)("APPLICATION" "OCTET-STREAM" ("NAME" "attachment.dat") NIL NIL "7BIT" 2 NIL ("ATTACHMENT" ("FILENAME" "attachment.dat")) NIL NIL) "MIXED" ("BOUNDARY" "Next_Mixed") NIL NIL NIL)',
-        '(("TEXT" "HTML" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 43 1 NIL NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 46 1 NIL NIL NIL NIL)("APPLICATION" "OCTET-STREAM" ("NAME" "attachment.dat") NIL NIL "7BIT" 2 NIL ("ATTACHMENT" ("FILENAME" "attachment.dat")) NIL NIL) "MIXED" ("BOUNDARY" "Next_Mixed") NIL NIL NIL)',
-        """(("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL "Notification" "base64" 1868 24 NIL NIL NIL NIL)(("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "base64" 2 1 NIL NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 2 1 NIL NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 2 1 NIL NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 724 12 NIL NIL NIL NIL) "DELIVERY-STATUS" ("CHARSET" "US-ASCII") NIL NIL NIL)("MESSAGE" "RFC822" ("CHARSET" "US-ASCII") NIL "Undelivered Message" "7BIT" 17961 ("Wed, 26 Jan 2022 09:06:45 +0000" "FILE-SRV | FILE-SRV | Ellern Mede | eventlog | Security - Microsoft-Windows-Security-Auditing | Code: '4625' - Type: 'Critical, Error, Warning, , Information, Verbose' - Desc: '' {44565655}" (("Netec RMM" NIL "helpdesk" "netecgc.com")) (("Netec RMM" NIL "helpdesk" "netecgc.com")) ((NIL NIL "helpdesk" "netecgc.com")) ((NIL NIL "netec.test" "netecgc.com")) NIL NIL NIL "<44565655.JitbitHelpdesk.13439.691a0afc-a0a0-457c-8208-f20b7c4a4cb1@jitbit.com>") (("TEXT" "PLAIN" ("CHARSET" "UTF-8") NIL NIL "base64" 5452 88 NIL NIL NIL NIL)("TEXT" "HTML" ("CHARSET" "UTF-8") NIL NIL "base64" 11254 145 NIL NIL NIL NIL) "ALTERNATIVE" ("BOUNDARY" "=-JG9iIL0Fmro08hOsLcfbiQ==") NIL NIL NIL) 266 NIL NIL NIL NIL) "REPORT" ("REPORT-TYPE" "delivery-status" "BOUNDARY" "630A242E63.1643188008/hmail.jitbit.com") NIL NIL NIL)""",
-        """((("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 2 1 NIL NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 2 1 NIL NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 2 1 NIL NIL NIL NIL) "DELIVERY-STATUS" ("CHARSET" "US-ASCII") NIL NIL NIL)("MESSAGE" "RFC822" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 840 ("Mon, 29 Jul 1996 02:04:52 -0700" "unsubscribe" (("Jamie Zawinski" NIL "jwz" "netscape.com")) ((NIL NIL "jwz" "netscape.com")) (("Jamie Zawinski" NIL "jwz" "netscape.com")) ((NIL NIL "newsletter-request" "imusic.com")) NIL NIL NIL "<31FC7EB4.41C6@netscape.com>") ("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7bit" 13 1 NIL NIL NIL NIL) 19 NIL NIL NIL NIL) "REPORT" ("REPORT-TYPE" "delivery-status" "BOUNDARY" "A41C7.838631588=_/mm1") NIL NIL NIL)""",
-        """((("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 2 1 NIL NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 2 1 NIL NIL NIL NIL) "DELIVERY-STATUS" ("CHARSET" "US-ASCII") NIL NIL NIL)("MESSAGE" "RFC822" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 840 ("Mon, 29 Jul 1996 02:04:52 -0700" "unsubscribe" (("Jamie Zawinski" NIL "jwz" "netscape.com")) ((NIL NIL "jwz" "netscape.com")) (("Jamie Zawinski" NIL "jwz" "netscape.com")) ((NIL NIL "newsletter-request" "imusic.com")) NIL NIL NIL "<31FC7EB4.41C6@netscape.com>") ("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7bit" 13 1 NIL NIL NIL NIL) 19 NIL NIL NIL NIL) "REPORT" ("REPORT-TYPE" "delivery-status" "BOUNDARY" "A41C7.838631588=_/mm1") NIL NIL NIL)""",
-        """(("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 230 4 NIL NIL NIL NIL)(("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 2 1 NIL NIL NIL NIL) "DISPOSITION-NOTIFICATION" ("CHARSET" "US-ASCII") NIL NIL NIL)("MESSAGE" "RFC822" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 358 ("Tue, 19 Sep 1995 13:30:00 -0000" "First draft of report" (("Jane Sender" NIL "Jane_Sender" "example.com")) (("Jane Sender" NIL "Jane_Sender" "example.com")) (("Jane Sender" NIL "Jane_Sender" "example.com")) (("Joe Recipient" NIL "Joe_Recipient" "example.com")) NIL NIL NIL "<199509192301.23456@example.org>") ("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 96 5 NIL NIL NIL NIL) 13 NIL NIL NIL NIL) "REPORT" ("REPORT-TYPE" "disposition-notification" "BOUNDARY" "RAA14128.773615765/example.com") NIL NIL NIL)""",
-        '(("MULTIPART" "ALTERNATIVE" ("BOUNDARY" "----=_NextPart_001_0040_01CE98CE.6E826F90") NIL NIL "7BIT" 4 NIL NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 85 1 NIL NIL NIL NIL) "MIXED" ("BOUNDARY" "----=_NextPart_000_003F_01CE98CE.6E826F90") NIL NIL NIL)',
-        # '(("MULTIPART" "ALTERNATIVE" ("BOUNDARY" "----=_NextPart_001_0040_01CE98CE.6E826F90") NIL NIL "7BIT" 5)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 85 1) "MIXED" ("BOUNDARY" "----=_NextPart_000_003F_01CE98CE.6E826F90") NIL NIL NIL)',
-        '(("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 89 3 NIL NIL NIL NIL)("APPLICATION" "POSTSCRIPT" NIL NIL NIL "base64" 2 NIL NIL NIL NIL) "MIXED" ("BOUNDARY" "NutNews,-a-nntpmtsonsguinrcfas,-boundary") NIL NIL NIL)',
-        '(("TEXT" "PLAIN" ("CHARSET" "ISO-8859-1") NIL NIL "quoted-printable" 16 2 NIL NIL NIL NIL)("TEXT" "HTML" ("CHARSET" "ISO-8859-1") NIL NIL "quoted-printable" 494 12 NIL NIL NIL NIL) "ALTERNATIVE" ("BOUNDARY" "----=_NextPart_000_0031_01D36222.8A648550") NIL ("en-US" "it-IT") NIL)',
-        '("TEXT" "PLAIN" ("CHARSET" "ISO-2022-JP") NIL NIL "7bit" 117 6 NIL NIL NIL NIL)',
-        '("TEXT" "PLAIN" ("CHARSET" "US-ASCII" "NAME" "document.xml.gz") NIL NIL "7BIT" 16 1 NIL NIL NIL NIL)',
-        '("MESSAGE" "RFC822" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 354 ("Sun, 12 Aug 2012 12:34:56 +0300" "submsg" ((NIL NIL "sub" "domain.org")) ((NIL NIL "sub" "domain.org")) ((NIL NIL "sub" "domain.org")) NIL NIL NIL NIL NIL) (("MESSAGE" "RFC822" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 46 (NIL "m1" ((NIL NIL "m1" "example.com")) ((NIL NIL "m1" "example.com")) ((NIL NIL "m1" "example.com")) NIL NIL NIL NIL NIL) ("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 9 1 NIL NIL NIL NIL) 4 NIL NIL NIL NIL)("MESSAGE" "RFC822" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 46 (NIL "m2" ((NIL NIL "m2" "example.com")) ((NIL NIL "m2" "example.com")) ((NIL NIL "m2" "example.com")) NIL NIL NIL NIL NIL) ("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 9 1 NIL NIL NIL NIL) 4 NIL NIL NIL NIL) "DIGEST" ("BOUNDARY" "foo") NIL NIL NIL) 27 NIL NIL NIL NIL)',
-        '(("IMAGE" "PNG" NIL NIL NIL "base64" 1220 NIL NIL NIL "image1")("TEXT" "HTML" ("CHARSET" "UTF-8") NIL NIL "quoted-printable" 930 13 NIL NIL NIL NIL) "RELATED" ("TYPE" "text/html" "BOUNDARY" "----=_NextPart_115e1404-dbbc-4611-b4ce-d08a4b021c45") NIL NIL NIL)',
-        '(("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 34 1 NIL NIL NIL NIL)("APPLICATION" "OCTET-STREAM" NIL NIL NIL "7BIT" 34 NIL NIL NIL NIL)("MESSAGE" "RFC822" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 320 (NIL "This part specifier should be: 3" ((NIL NIL "me" "myself.com")) ((NIL NIL "me" "myself.com")) ((NIL NIL "me" "myself.com")) ((NIL NIL "me" "myself.com")) NIL NIL NIL NIL) (("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 36 1 NIL NIL NIL NIL)("APPLICATION" "OCTET-STREAM" NIL NIL NIL "7BIT" 36 NIL NIL NIL NIL) "MIXED" ("BOUNDARY" "3.x") NIL NIL NIL) 17 NIL NIL NIL NIL)(("IMAGE" "GIF" NIL NIL NIL "7BIT" 36 NIL NIL NIL NIL)("MESSAGE" "RFC822" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 491 (NIL "This part specifier should be: 4.2" ((NIL NIL "me" "myself.com")) ((NIL NIL "me" "myself.com")) ((NIL NIL "me" "myself.com")) ((NIL NIL "me" "myself.com")) NIL NIL NIL NIL) (("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 38 1 NIL NIL NIL NIL)(("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 40 1 NIL NIL NIL NIL)("TEXT" "RICHTEXT" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 40 1 NIL NIL NIL NIL) "ALTERNATIVE" ("BOUNDARY" "4.2.2.x") NIL NIL NIL) "MIXED" ("BOUNDARY" "4.2.x") NIL NIL NIL) 27 NIL NIL NIL NIL) "MIXED" ("BOUNDARY" "4.x") NIL NIL NIL) "MIXED" ("BOUNDARY" "x") NIL NIL NIL)',
-        '("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 16 2 NIL NIL NIL NIL)',
-    ]
-    # for an unpacked folder with one message in it the message key and the
-    # message index are the same value.
-    #
-    for msg_idx, (msg_key, expected) in enumerate(zip(msg_keys, expecteds)):
-        msg_idx += 1
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
-        fetch = FetchAtt(FetchOp.BODYSTRUCTURE)
-        result = await fetch.fetch(ctx)
+    msg_seq_num = msg_key
+    ctx = SearchContext(mbox, msg_key, msg_seq_num, seq_max, uid_max)
+    fetch = FetchAtt(FetchOp.BODYSTRUCTURE)
+    result = fetch.fetch(ctx)
 
-        assert result.startswith("BODYSTRUCTURE ")
-        if result[14:] != expected:
-            pytest.fail(
-                f"Message {msg_key} failed fetch: result {result[14:]} != expected {expected}"
-            )
-        # assert result[14:] == expected
+    assert result.startswith("BODYSTRUCTURE ")
+    if result[14:] != expected_bodystructure:
+        pytest.fail(
+            f"Message {msg_key} failed fetch: result '{result[14:]}' != expected '{expected_bodystructure}'"
+        )
 
 
 ####################################################################
 #
-@pytest.mark.asyncio
-async def test_fetch_envelope(mailbox_with_mimekit_email):
+def test_fetch_envelope(mailbox_with_mimekit_email):
     mbox = mailbox_with_mimekit_email
     msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
@@ -201,7 +289,7 @@ async def test_fetch_envelope(mailbox_with_mimekit_email):
         msg_idx += 1
         ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         fetch = FetchAtt(FetchOp.ENVELOPE)
-        result = await fetch.fetch(ctx)
+        result = fetch.fetch(ctx)
 
         assert result.startswith("ENVELOPE ")
         assert result[9:] == expected
@@ -246,7 +334,7 @@ async def test_fetch_rfc822_size(mailbox_with_mimekit_email):
         msg_idx += 1
         ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         fetch = FetchAtt(FetchOp.RFC822_SIZE)
-        result = await fetch.fetch(ctx)
+        result = fetch.fetch(ctx)
 
         assert result.startswith("RFC822.SIZE ")
         assert int(result[12:]) == expected
@@ -259,7 +347,7 @@ async def test_fetch_flags(mailbox_with_bunch_of_email):
     mbox = mailbox_with_bunch_of_email
     msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    seqs = await mbox.mailbox.aget_sequences()
+    seqs = mbox.sequences
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
@@ -277,13 +365,11 @@ async def test_fetch_flags(mailbox_with_bunch_of_email):
 
         seqs[REV_SYSTEM_FLAG_MAP[flag]] = msgs_by_flag[flag]
 
-    await mbox.mailbox.aset_sequences(seqs)
-
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
         ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         fetch = FetchAtt(FetchOp.FLAGS)
-        result = await fetch.fetch(ctx)
+        result = fetch.fetch(ctx)
 
         assert result.startswith("FLAGS ")
         flags = result[6:]
@@ -314,7 +400,7 @@ async def test_fetch_internaldate(mailbox_with_bunch_of_email):
         msg_idx += 1
         ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         fetch = FetchAtt(FetchOp.INTERNALDATE)
-        result = await fetch.fetch(ctx)
+        result = fetch.fetch(ctx)
 
         assert result.startswith("INTERNALDATE ")
         assert result[13] == '"' and result[-1] == '"'
@@ -341,7 +427,7 @@ async def test_fetch_uid(mailbox_with_bunch_of_email):
         msg_idx += 1
         ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         fetch = FetchAtt(FetchOp.UID)
-        result = await fetch.fetch(ctx)
+        result = fetch.fetch(ctx)
 
         assert result.startswith("UID ")
         assert int(result[4:]) == uid_by_msg[msg_key]
@@ -365,7 +451,7 @@ async def test_fetch_body_section_text(mailbox_with_mimekit_email):
 
     ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
     fetch = FetchAtt(FetchOp.BODY, section=["TEXT"])
-    result = await fetch.fetch(ctx)
+    result = fetch.fetch(ctx)
     email_msg = ctx.msg()
 
     assert result.startswith("BODY[TEXT] {")
@@ -383,7 +469,7 @@ async def test_fetch_body_section_text(mailbox_with_mimekit_email):
     #
     ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
     fetch = FetchAtt(FetchOp.BODY, section=[1, "TEXT"])
-    result = await fetch.fetch(ctx)
+    result = fetch.fetch(ctx)
 
     assert result.startswith("BODY[1.TEXT] {")
     body_start = result.find("}") + 3
@@ -400,7 +486,7 @@ async def test_fetch_body_section_text(mailbox_with_mimekit_email):
     #
     ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
     fetch = FetchAtt(FetchOp.BODY, section=[2, 4, "TEXT"])
-    result = await fetch.fetch(ctx)
+    result = fetch.fetch(ctx)
 
     assert result.startswith("BODY[2.4.TEXT] {")
     body_start = result.find("}") + 3
@@ -432,7 +518,7 @@ async def test_fetch_body_section_header(mailbox_with_mimekit_email):
 
     ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
     fetch = FetchAtt(FetchOp.BODY, peek=True, section=["HEADER"])
-    result = await fetch.fetch(ctx)
+    result = fetch.fetch(ctx)
     email_msg = ctx.msg()
 
     assert result.startswith("BODY[HEADER] {")
@@ -451,7 +537,7 @@ async def test_fetch_body_section_header(mailbox_with_mimekit_email):
     #
     ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
     fetch = FetchAtt(FetchOp.BODY, section=["HEADER"])
-    result = await fetch.fetch(ctx)
+    result = fetch.fetch(ctx)
 
     # And also make sure headers are the same
     #
@@ -462,7 +548,7 @@ async def test_fetch_body_section_header(mailbox_with_mimekit_email):
     #
     ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
     fetch = FetchAtt(FetchOp.BODY, section=[1, "HEADER"])
-    result = await fetch.fetch(ctx)
+    result = fetch.fetch(ctx)
 
     result_headers = result[headers_start:]
     assert result.startswith("BODY[1.HEADER] {")
@@ -480,7 +566,7 @@ async def test_fetch_body_section_header(mailbox_with_mimekit_email):
     #
     ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
     fetch = FetchAtt(FetchOp.BODY, section=[2, 4, "HEADER"])
-    result = await fetch.fetch(ctx)
+    result = fetch.fetch(ctx)
 
     result_headers = result[headers_start:]
     assert result.startswith("BODY[2.4.HEADER] {")
@@ -513,7 +599,7 @@ async def test_fetch_body_section_header_fields(mailbox_with_mimekit_email):
     headers = ["date", "subject", "from", "to", "cc", "message-id"]
     ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
     fetch = FetchAtt(FetchOp.BODY, section=[["HEADER.FIELDS", headers]])
-    result = await fetch.fetch(ctx)
+    result = fetch.fetch(ctx)
     email_msg = ctx.msg()
 
     assert result.startswith(f"BODY[HEADER.FIELDS ({' '.join(headers)})] {{")
@@ -534,7 +620,7 @@ async def test_fetch_body_section_header_fields(mailbox_with_mimekit_email):
     #
     ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
     fetch = FetchAtt(FetchOp.BODY, section=[["HEADER.FIELDS.NOT", headers]])
-    result = await fetch.fetch(ctx)
+    result = fetch.fetch(ctx)
     email_msg = ctx.msg()
 
     assert result.startswith(
@@ -573,9 +659,9 @@ async def test_fetch_body_text_with_partials(mailbox_with_mimekit_email):
     mid = int(size / 2)
 
     fetch = FetchAtt(FetchOp.BODY, section=["TEXT"], partial=(0, mid))
-    result1 = await fetch.fetch(ctx)
+    result1 = fetch.fetch(ctx)
     fetch = FetchAtt(FetchOp.BODY, section=["TEXT"], partial=(mid, size))
-    result2 = await fetch.fetch(ctx)
+    result2 = fetch.fetch(ctx)
 
     assert result1.startswith(f"BODY[TEXT]<0.{mid}> {{")
 
@@ -614,10 +700,10 @@ async def test_fetch_body_braces(mailbox_with_bunch_of_email):
         size = len(msg_body)
         mid = int(size / 2)
         fetch = FetchAtt(FetchOp.BODY, section=[], partial=(0, mid))
-        result1 = await fetch.fetch(ctx)
+        result1 = fetch.fetch(ctx)
 
         fetch = FetchAtt(FetchOp.BODY, section=[], partial=(mid, size))
-        result2 = await fetch.fetch(ctx)
+        result2 = fetch.fetch(ctx)
 
         assert result1.startswith(f"BODY[]<0.{mid}> {{")
 
