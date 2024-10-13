@@ -59,6 +59,39 @@ async def test_search_context(mailbox_instance):
 ####################################################################
 #
 @pytest.mark.asyncio
+async def test_search_context_with_mimekit_email(mailbox_with_mimekit_email):
+    """
+    A fairly boring test.. just making sure the SearchContext works as
+    expected without any failures.
+    """
+    mbox = mailbox_with_mimekit_email
+
+    msg_keys = mbox.msg_keys
+    seq_max = mbox.num_msgs
+    uid_vv, uid_max = mbox.get_uid_from_msg(mbox.msg_keys[-1])
+    assert uid_max
+
+    for idx, msg_key in enumerate(msg_keys):
+        ctx = SearchContext(mbox, msg_key, idx + 1, seq_max, uid_max)
+        msg = mbox.get_msg(msg_key)
+        uid_vv, uid = mbox.get_uid_from_msg(msg_key)
+        assert uid == ctx.uid()
+        ctx._uid = None
+        assert ctx.internal_date() == IsNow(tz=timezone.utc)
+        assert ctx.msg_key == msg_key
+        assert ctx.seq_max == seq_max
+        assert ctx.uid_max == uid_max
+        assert ctx.msg_number == idx + 1
+        assert ctx.sequences == mbox._msg_sequences(msg_key)
+        assert_email_equal(msg, ctx.msg())
+        assert uid == ctx.uid()
+        assert uid_vv == ctx.uid_vv()
+        assert get_msg_size(msg) == ctx.msg_size()
+
+
+####################################################################
+#
+@pytest.mark.asyncio
 async def test_search_keywords(mailbox_with_bunch_of_email):
     """
     Test search on keywords.

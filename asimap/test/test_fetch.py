@@ -384,49 +384,52 @@ def test_fetch_envelope(msg_key, expected_envelope, mailbox_with_mimekit_email):
     assert result[9:] == expected_envelope
 
 
+MSG_SIZE_BY_MSG_KEY = [
+    pytest.param(1, 253, id="1"),
+    pytest.param(2, 271, id="2"),
+    pytest.param(3, 453, id="3"),
+    pytest.param(4, 594, id="4"),
+    pytest.param(5, 778, id="5"),
+    pytest.param(6, 1018, id="6"),
+    pytest.param(7, 1018, id="7"),
+    pytest.param(8, 586, id="8"),
+    pytest.param(9, 586, id="9"),
+    pytest.param(10, 28202, id="10"),
+    pytest.param(11, 2440, id="11"),
+    pytest.param(12, 2438, id="12"),
+    pytest.param(13, 1441, id="13"),
+    pytest.param(14, 717, id="14"),
+    pytest.param(15, 1221, id="15"),
+    pytest.param(16, 9395, id="16"),
+    pytest.param(17, 584, id="17"),
+    pytest.param(18, 264, id="18"),
+    pytest.param(19, 467, id="19"),
+    pytest.param(20, 2686, id="20"),
+    pytest.param(21, 1353, id="21"),
+    pytest.param(22, 138409, id="22"),
+]
+
+
 ####################################################################
 #
-@pytest.mark.asyncio
-async def test_fetch_rfc822_size(mailbox_with_mimekit_email):
+@pytest.mark.parametrize("msg_key,expected_size", MSG_SIZE_BY_MSG_KEY)
+def test_fetch_rfc822_size(msg_key, expected_size, mailbox_with_mimekit_email):
     mbox = mailbox_with_mimekit_email
-    msg_keys = mbox.mailbox.keys()
-    seq_max = len(msg_keys)
-    uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
+    seq_max = mbox.num_msgs
+    uid_vv, uid_max = mbox.get_uid_from_msg(mbox.msg_keys[-1])
     assert uid_max
 
-    expecteds = [
-        253,
-        271,
-        453,
-        594,
-        778,
-        1018,
-        1018,
-        586,
-        586,
-        28204,
-        2441,
-        2439,
-        1441,
-        719,
-        1221,
-        9396,
-        585,
-        264,
-        467,
-        2686,
-        1353,
-        138409,
-    ]
+    msg_seq_num = msg_key
 
-    for msg_idx, (msg_key, expected) in enumerate(zip(msg_keys, expecteds)):
-        msg_idx += 1
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
-        fetch = FetchAtt(FetchOp.RFC822_SIZE)
-        result = fetch.fetch(ctx)
+    ctx = SearchContext(mbox, msg_key, msg_seq_num, seq_max, uid_max)
+    fetch = FetchAtt(FetchOp.RFC822_SIZE)
+    result = fetch.fetch(ctx)
 
-        assert result.startswith("RFC822.SIZE ")
-        assert int(result[12:]) == expected
+    print("Message as string:")
+    print(repr(msg_as_string(ctx.msg())))
+
+    assert result.startswith("RFC822.SIZE ")
+    assert int(result[12:]) == expected_size
 
 
 ####################################################################
