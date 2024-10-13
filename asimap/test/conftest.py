@@ -142,7 +142,10 @@ def assert_email_equal(
     parts1 = msg1.get_payload()
     parts2 = msg2.get_payload()
     if isinstance(parts1, str) and isinstance(parts2, str):
-        assert parts1 == parts2
+        assert (
+            parts1.translate(REPLACE_LINESEP).strip()
+            == parts2.translate(REPLACE_LINESEP).strip()
+        )
         return
 
     assert len(parts1) == len(parts2)

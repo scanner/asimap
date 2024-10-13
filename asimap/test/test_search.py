@@ -44,7 +44,7 @@ async def test_search_context(mailbox_instance):
             uid_vv, uid = mbox.get_uid_from_msg(msg_key)
             assert uid == ctx.uid()
             ctx._uid = None
-            assert await ctx.internal_date() == IsNow(tz=timezone.utc)
+            assert ctx.internal_date() == IsNow(tz=timezone.utc)
             assert ctx.msg_key == msg_key
             assert ctx.seq_max == seq_max
             assert ctx.uid_max == uid_max
