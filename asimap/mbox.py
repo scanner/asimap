@@ -1950,6 +1950,14 @@ class Mailbox:
         For clients that have this mailbox selected but are NOT idling, we will
         put the EXPUNGE messages on the notifications list for delivery to
         those clients when possible.
+
+        XXX We need to handle two more cases here either with this expunge
+            method or having several methods that use a common core.
+            1) The normal expunge case: expunge all messages in `Deleted`
+            2) UID expunge: expunge all messages that are both in `Deleted`
+               and in a passed in message set.
+            3) expunge the given set of messages, regardless of whether or
+               not they are in the `Deleted` sequence (this is ussed by `move`)
         """
         # If there are no messages in the 'Deleted' sequence then we have
         # nothing to do.
@@ -2065,7 +2073,7 @@ class Mailbox:
                 # The UID SEARCH command returns uid's of messages
                 #
                 if uid_cmd:
-                    uid = await ctx.uid()
+                    uid = ctx.uid()
                     assert uid
                     results.append(uid)
                 else:

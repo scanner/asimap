@@ -184,7 +184,7 @@ class FetchAtt:
                 | FetchOp.ENVELOPE
                 | FetchOp.RFC822_SIZE
             ):
-                msg = await self.ctx.email_message()
+                msg = self.ctx.msg()
                 match self.attribute:
                     case FetchOp.BODY:
                         result = self.body(msg, self.section)
@@ -193,7 +193,7 @@ class FetchAtt:
                     case FetchOp.ENVELOPE:
                         result = self.envelope(msg)
                     case FetchOp.RFC822_SIZE:
-                        result = await ctx.msg_size()
+                        result = ctx.msg_size()
             case FetchOp.FLAGS:
                 flags = " ".join([seq_to_flag(x) for x in self.ctx.sequences])
                 result = f"({flags})"
@@ -202,7 +202,7 @@ class FetchAtt:
                 internal_date = email.utils.format_datetime(int_date)
                 result = f'"{internal_date}"'
             case FetchOp.UID:
-                result = await self.ctx.uid()
+                result = self.ctx.uid()
             case _:
                 raise NotImplementedError
 

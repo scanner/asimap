@@ -625,6 +625,12 @@ class IMAPClientCommand:
         match command:
             # These commands require no further parsing.
             #
+            # XXX We need to add a `case` guard for expunge, if this is a uid
+            #     command, then expunge has a message set, otherwise it does
+            #     not so we need to handle both cases as their own `case`
+            #     clause instead of lumping EXPUNGE into a command that has no
+            #     other arguments.
+            #
             case (
                 IMAPCommand.CAPABILITY
                 | IMAPCommand.NOOP
@@ -633,7 +639,7 @@ class IMAPClientCommand:
                 | IMAPCommand.LOGOUT
                 | IMAPCommand.CHECK
                 | IMAPCommand.CLOSE
-                | IMAPCommand.EXPUNGE
+                | IMAPCommand.EXPUNGE  # XXX UIDPLUS EXPUNGE has a msg set
                 | IMAPCommand.UNSELECT
             ):
                 pass

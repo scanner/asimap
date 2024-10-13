@@ -114,24 +114,23 @@ class SearchContext(object):
 
     ##################################################################
     #
-    async def msg_size(self) -> int:
+    def msg_size(self) -> int:
         if self._msg_size:
             return self._msg_size
 
-        self._msg_size = get_msg_size(await self.msg())
+        self._msg_size = get_msg_size(self.msg())
         return self._msg_size
 
     ##################################################################
     #
-    async def msg(self) -> EmailMessage:
+    def msg(self) -> EmailMessage:
         """
         The message parsed in to a MHMessage object
         """
         if self._msg:
             return self._msg
 
-        async with self.mailbox.mh_sequences_lock:
-            self._msg = self.mailbox.get_msg(self.msg_key)
+        self._msg = self.mailbox.get_msg(self.msg_key)
         return self._msg
 
     # ####################################################################
@@ -156,7 +155,7 @@ class SearchContext(object):
 
     ##################################################################
     #
-    async def uid(self) -> Optional[int]:
+    def uid(self) -> Optional[int]:
         """
         The IMAP UID of the message
         """
@@ -168,7 +167,7 @@ class SearchContext(object):
 
     ##################################################################
     #
-    async def uid_vv(self) -> Optional[int]:
+    def uid_vv(self) -> Optional[int]:
         """
         The IMAP UID Validity Value for the mailbox
         """
@@ -352,7 +351,7 @@ class IMAPSearch(object):
         in the [RFC-822] field-body.
         """
         header = self.args["header"]
-        msg = await self.ctx.msg()
+        msg = self.ctx.msg()
         return (
             header in msg
             and msg[header].lower().find(self.args["string"]) != -1
@@ -422,7 +421,7 @@ class IMAPSearch(object):
         message.
         """
         text = self.args["string"]
-        msg = await self.ctx.msg()
+        msg = self.ctx.msg()
         for msg_part in msg.walk():
             if msg_part.is_multipart():
                 continue
@@ -437,7 +436,7 @@ class IMAPSearch(object):
         Messages with an [RFC-822] size larger than the specified
         number of octets.
         """
-        size = await self.ctx.msg_size()
+        size = self.ctx.msg_size()
         return size > self.args["n"]
 
     #########################################################################
@@ -497,7 +496,7 @@ class IMAPSearch(object):
         Messages whose [RFC-822] Date: header is earlier than the
         specified date.
         """
-        msg = await self.ctx.msg()
+        msg = self.ctx.msg()
         if "date" not in msg:
             return False
         msg_date = parsedate(msg["date"]).date()
@@ -510,7 +509,7 @@ class IMAPSearch(object):
         Messages whose [RFC-822] Date: header is within the specified
         date.
         """
-        msg = await self.ctx.msg()
+        msg = self.ctx.msg()
         if "date" not in msg:
             return False
         msg_date = parsedate(msg["date"]).date()
@@ -523,7 +522,7 @@ class IMAPSearch(object):
         Messages whose [RFC-822] Date: header is later than the
         specified date.
         """
-        msg = await self.ctx.msg()
+        msg = self.ctx.msg()
         if "date" not in msg:
             return False
         msg_date = parsedate(msg["date"]).date()
@@ -546,7 +545,7 @@ class IMAPSearch(object):
         Messages with an [RFC-822] size larger than the specified
         number of octets.
         """
-        size = await self.ctx.msg_size()
+        size = self.ctx.msg_size()
         return size < self.args["n"]
 
     #########################################################################
@@ -566,7 +565,7 @@ class IMAPSearch(object):
         # in the body.
         #
         text = self.args["string"]
-        msg = await self.ctx.msg()
+        msg = self.ctx.msg()
         msg_text = msg_as_string(msg, headers=True).lower()
         if text in msg_text:
             return True
@@ -579,7 +578,7 @@ class IMAPSearch(object):
         Messages with unique identifiers corresponding to the
         specified unique identifier set.
         """
-        uid = await self.ctx.uid()
+        uid = self.ctx.uid()
         for elt in self.args["msg_set"]:
             if isinstance(elt, str) and elt == "*":
                 if uid == self.ctx.uid_max:
