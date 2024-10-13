@@ -35,15 +35,11 @@ async def test_search_context(mailbox_instance):
     async with mailbox_instance() as mbox:
         msg_keys = mbox.mailbox.keys()
         seq_max = len(msg_keys)
-        async with mbox.mh_sequences_lock:
-            sequences = mbox.get_sequences_from_folder()
         uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
         assert uid_max
 
         for idx, msg_key in enumerate(msg_keys):
-            ctx = SearchContext(
-                mbox, msg_key, idx + 1, seq_max, uid_max, sequences
-            )
+            ctx = SearchContext(mbox, msg_key, idx + 1, seq_max, uid_max)
             msg = mbox.get_msg(msg_key)
             uid_vv, uid = mbox.get_uid_from_msg(msg_key)
             assert uid == ctx.uid()
@@ -106,7 +102,7 @@ async def test_search_keywords(mailbox_with_bunch_of_email):
         search_op = IMAPSearch("keyword", keyword=keyword)
         for msg_idx, msg_key in enumerate(msg_keys):
             msg_idx += 1
-            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
             print(f"Search context: {ctx}, sequences:")
             pprint(ctx.sequences)
             if await search_op.match(ctx):
@@ -123,15 +119,13 @@ async def test_search_all(mailbox_with_bunch_of_email):
     mbox = mailbox_with_bunch_of_email
     msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    async with mbox.mh_sequences_lock:
-        seqs = mbox.get_sequences_from_folder()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
     matched: List[int] = []
     search_op = IMAPSearch("all")
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         if await search_op.match(ctx):
             matched.append(msg_key)
 
@@ -145,8 +139,6 @@ async def test_search_headers(mailbox_with_bunch_of_email):
     mbox = mailbox_with_bunch_of_email
     msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    async with mbox.mh_sequences_lock:
-        seqs = mbox.get_sequences_from_folder()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
@@ -155,7 +147,7 @@ async def test_search_headers(mailbox_with_bunch_of_email):
     search_op = IMAPSearch("header", header="subject", string="")
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         if not await search_op.match(ctx):
             assert False
 
@@ -173,7 +165,7 @@ async def test_search_headers(mailbox_with_bunch_of_email):
         search_op = IMAPSearch("header", header="subject", string=word)
         for msg_idx, msg_key in enumerate(msg_keys):
             msg_idx += 1
-            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
             if await search_op.match(ctx):
                 msg_keys_by_word[word].append(msg_key)
 
@@ -196,8 +188,6 @@ async def test_search_sent_before_since_on(mailbox_with_bunch_of_email):
     mbox = mailbox_with_bunch_of_email
     msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    async with mbox.mh_sequences_lock:
-        seqs = mbox.get_sequences_from_folder()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
@@ -219,7 +209,7 @@ async def test_search_sent_before_since_on(mailbox_with_bunch_of_email):
     search_op = IMAPSearch("sentbefore", date=check_date)
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         if await search_op.match(ctx):
             assert msg_key in before_date
         else:
@@ -228,7 +218,7 @@ async def test_search_sent_before_since_on(mailbox_with_bunch_of_email):
     search_op = IMAPSearch("sentsince", date=check_date)
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         if await search_op.match(ctx):
             assert msg_key in after_date
         else:
@@ -237,7 +227,7 @@ async def test_search_sent_before_since_on(mailbox_with_bunch_of_email):
     search_op = IMAPSearch("senton", date=check_date)
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         if await search_op.match(ctx):
             assert msg_key == on_date
         else:
@@ -251,8 +241,6 @@ async def test_search_before_since_on(mailbox_with_bunch_of_email):
     mbox = mailbox_with_bunch_of_email
     msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    async with mbox.mh_sequences_lock:
-        seqs = mbox.get_sequences_from_folder()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
@@ -282,7 +270,7 @@ async def test_search_before_since_on(mailbox_with_bunch_of_email):
     search_op = IMAPSearch("before", date=check_date)
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         if await search_op.match(ctx):
             assert msg_key in before_date
         else:
@@ -291,7 +279,7 @@ async def test_search_before_since_on(mailbox_with_bunch_of_email):
     search_op = IMAPSearch("since", date=check_date)
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         if await search_op.match(ctx):
             assert msg_key in after_date
         else:
@@ -300,7 +288,7 @@ async def test_search_before_since_on(mailbox_with_bunch_of_email):
     search_op = IMAPSearch("on", date=check_date)
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         if await search_op.match(ctx):
             assert msg_key == on_date
         else:
@@ -314,8 +302,6 @@ async def test_search_body(mailbox_with_bunch_of_email):
     mbox = mailbox_with_bunch_of_email
     msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    async with mbox.mh_sequences_lock:
-        seqs = mbox.get_sequences_from_folder()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
@@ -324,7 +310,7 @@ async def test_search_body(mailbox_with_bunch_of_email):
     search_op = IMAPSearch("body", string="")
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         if not await search_op.match(ctx):
             assert False
 
@@ -348,7 +334,7 @@ async def test_search_body(mailbox_with_bunch_of_email):
         search_op = IMAPSearch("body", string=word.lower())
         for msg_idx, msg_key in enumerate(msg_keys):
             msg_idx += 1
-            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
             if await search_op.match(ctx):
                 msg_keys_by_word[word].append(msg_key)
 
@@ -373,8 +359,6 @@ async def test_search_text(mailbox_with_bunch_of_email):
     mbox = mailbox_with_bunch_of_email
     msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    async with mbox.mh_sequences_lock:
-        seqs = mbox.get_sequences_from_folder()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
@@ -383,7 +367,7 @@ async def test_search_text(mailbox_with_bunch_of_email):
     search_op = IMAPSearch("text", string="")
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         if not await search_op.match(ctx):
             assert False
 
@@ -406,7 +390,7 @@ async def test_search_text(mailbox_with_bunch_of_email):
         search_op = IMAPSearch("text", string=word)
         for msg_idx, msg_key in enumerate(msg_keys):
             msg_idx += 1
-            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+            ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
             if await search_op.match(ctx):
                 msg_keys_by_word[word].append(msg_key)
 
@@ -430,8 +414,6 @@ async def test_search_larger_smaller(mailbox_with_bunch_of_email):
     mbox = mailbox_with_bunch_of_email
     msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    async with mbox.mh_sequences_lock:
-        seqs = mbox.get_sequences_from_folder()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
@@ -452,7 +434,7 @@ async def test_search_larger_smaller(mailbox_with_bunch_of_email):
     search_op = IMAPSearch("smaller", n=mid_size)
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         if await search_op.match(ctx):
             assert msg_key in smaller
         else:
@@ -461,7 +443,7 @@ async def test_search_larger_smaller(mailbox_with_bunch_of_email):
     search_op = IMAPSearch("larger", n=mid_size)
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         if await search_op.match(ctx):
             assert msg_key in larger
         else:
@@ -475,8 +457,6 @@ async def test_search_message_set_and_not(mailbox_with_bunch_of_email):
     mbox = mailbox_with_bunch_of_email
     msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    async with mbox.mh_sequences_lock:
-        seqs = mbox.get_sequences_from_folder()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
@@ -488,7 +468,7 @@ async def test_search_message_set_and_not(mailbox_with_bunch_of_email):
     search_op = IMAPSearch("message_set", msg_set=msg_set)
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         if await search_op.match(ctx):
             assert msg_key in expected
         else:
@@ -499,7 +479,7 @@ async def test_search_message_set_and_not(mailbox_with_bunch_of_email):
     search_op = IMAPSearch("not", search_key=search_op)
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         if await search_op.match(ctx):
             assert msg_key not in expected
         else:
@@ -513,8 +493,6 @@ async def test_search_uid(mailbox_with_bunch_of_email):
     mbox = mailbox_with_bunch_of_email
     msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    async with mbox.mh_sequences_lock:
-        seqs = mbox.get_sequences_from_folder()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
@@ -527,7 +505,7 @@ async def test_search_uid(mailbox_with_bunch_of_email):
     search_op = IMAPSearch("uid", msg_set=msg_set)
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         if await search_op.match(ctx):
             assert msg_key in expected
         else:
@@ -541,8 +519,6 @@ async def test_search_and_or(mailbox_with_bunch_of_email):
     mbox = mailbox_with_bunch_of_email
     msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    async with mbox.mh_sequences_lock:
-        seqs = mbox.get_sequences_from_folder()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
@@ -561,7 +537,7 @@ async def test_search_and_or(mailbox_with_bunch_of_email):
     search_op = IMAPSearch("and", search_key=[search_op1, search_op2])
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         if await search_op.match(ctx):
             assert msg_key in expected_1
         else:
@@ -570,7 +546,7 @@ async def test_search_and_or(mailbox_with_bunch_of_email):
     search_op = IMAPSearch("or", search_key=[search_op1, search_op2])
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         if await search_op.match(ctx):
             assert msg_key in expected_2
         else:

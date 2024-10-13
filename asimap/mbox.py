@@ -2066,9 +2066,7 @@ class Mailbox:
             # IMAP messages are numbered starting from 1.
             #
             msg_seq_num = idx + 1
-            ctx = SearchContext(
-                self, msg_key, msg_seq_num, seq_max, uid_max, self.sequences
-            )
+            ctx = SearchContext(self, msg_key, msg_seq_num, seq_max, uid_max)
             if await search.match(ctx):
                 # The UID SEARCH command returns uid's of messages
                 #
@@ -2171,7 +2169,7 @@ class Mailbox:
                     raise MailboxInconsistency(log_msg, mbox_name=self.name)
 
                 ctx = SearchContext(
-                    self, msg_key, msg_seq_num, seq_max, uid_max, self.sequences
+                    self, msg_key, msg_seq_num, seq_max, uid_max
                 )
                 fetched_flags = False
                 fetched_body_seen = False

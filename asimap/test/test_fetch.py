@@ -81,17 +81,16 @@ def test_fetch_create_and_str():
 @pytest.mark.asyncio
 async def test_fetch_body(mailbox_with_mimekit_email):
     mbox = mailbox_with_mimekit_email
-    msg_keys = await mbox.mailbox.akeys()
+    msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    seqs = await mbox.mailbox.aget_sequences()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
-        msg = await ctx.email_message()
-        msg_size = await ctx.msg_size()
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
+        msg = ctx.msg()
+        msg_size = ctx.msg_size()
         fetch = FetchAtt(FetchOp.BODY)
         result = await fetch.fetch(ctx)
 
@@ -116,7 +115,6 @@ async def test_fetch_bodystructure(mailbox_with_mimekit_email):
     mbox = mailbox_with_mimekit_email
     msg_keys = await mbox.mailbox.akeys()
     seq_max = len(msg_keys)
-    seqs = await mbox.mailbox.aget_sequences()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
@@ -153,7 +151,7 @@ async def test_fetch_bodystructure(mailbox_with_mimekit_email):
     #
     for msg_idx, (msg_key, expected) in enumerate(zip(msg_keys, expecteds)):
         msg_idx += 1
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         fetch = FetchAtt(FetchOp.BODYSTRUCTURE)
         result = await fetch.fetch(ctx)
 
@@ -170,9 +168,8 @@ async def test_fetch_bodystructure(mailbox_with_mimekit_email):
 @pytest.mark.asyncio
 async def test_fetch_envelope(mailbox_with_mimekit_email):
     mbox = mailbox_with_mimekit_email
-    msg_keys = await mbox.mailbox.akeys()
+    msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    seqs = await mbox.mailbox.aget_sequences()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
@@ -202,7 +199,7 @@ async def test_fetch_envelope(mailbox_with_mimekit_email):
     ]
     for msg_idx, (msg_key, expected) in enumerate(zip(msg_keys, expecteds)):
         msg_idx += 1
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         fetch = FetchAtt(FetchOp.ENVELOPE)
         result = await fetch.fetch(ctx)
 
@@ -215,9 +212,8 @@ async def test_fetch_envelope(mailbox_with_mimekit_email):
 @pytest.mark.asyncio
 async def test_fetch_rfc822_size(mailbox_with_mimekit_email):
     mbox = mailbox_with_mimekit_email
-    msg_keys = await mbox.mailbox.akeys()
+    msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    seqs = await mbox.mailbox.aget_sequences()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
@@ -248,7 +244,7 @@ async def test_fetch_rfc822_size(mailbox_with_mimekit_email):
 
     for msg_idx, (msg_key, expected) in enumerate(zip(msg_keys, expecteds)):
         msg_idx += 1
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         fetch = FetchAtt(FetchOp.RFC822_SIZE)
         result = await fetch.fetch(ctx)
 
@@ -261,7 +257,7 @@ async def test_fetch_rfc822_size(mailbox_with_mimekit_email):
 @pytest.mark.asyncio
 async def test_fetch_flags(mailbox_with_bunch_of_email):
     mbox = mailbox_with_bunch_of_email
-    msg_keys = await mbox.mailbox.akeys()
+    msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
     seqs = await mbox.mailbox.aget_sequences()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
@@ -285,7 +281,7 @@ async def test_fetch_flags(mailbox_with_bunch_of_email):
 
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         fetch = FetchAtt(FetchOp.FLAGS)
         result = await fetch.fetch(ctx)
 
@@ -300,9 +296,8 @@ async def test_fetch_flags(mailbox_with_bunch_of_email):
 @pytest.mark.asyncio
 async def test_fetch_internaldate(mailbox_with_bunch_of_email):
     mbox = mailbox_with_bunch_of_email
-    msg_keys = await mbox.mailbox.akeys()
+    msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    seqs = await mbox.mailbox.aget_sequences()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
@@ -317,7 +312,7 @@ async def test_fetch_internaldate(mailbox_with_bunch_of_email):
         )
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         fetch = FetchAtt(FetchOp.INTERNALDATE)
         result = await fetch.fetch(ctx)
 
@@ -332,9 +327,8 @@ async def test_fetch_internaldate(mailbox_with_bunch_of_email):
 @pytest.mark.asyncio
 async def test_fetch_uid(mailbox_with_bunch_of_email):
     mbox = mailbox_with_bunch_of_email
-    msg_keys = await mbox.mailbox.akeys()
+    msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    seqs = await mbox.mailbox.aget_sequences()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
@@ -345,7 +339,7 @@ async def test_fetch_uid(mailbox_with_bunch_of_email):
 
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         fetch = FetchAtt(FetchOp.UID)
         result = await fetch.fetch(ctx)
 
@@ -361,19 +355,18 @@ async def test_fetch_body_section_text(mailbox_with_mimekit_email):
     We only need to test one message, with lots of headers.
     """
     mbox = mailbox_with_mimekit_email
-    msg_keys = await mbox.mailbox.akeys()
+    msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    seqs = await mbox.mailbox.aget_sequences()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     msg_key = 10
     msg_idx = 10
 
-    ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+    ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
     fetch = FetchAtt(FetchOp.BODY, section=["TEXT"])
     result = await fetch.fetch(ctx)
-    email_msg = await ctx.email_message()
+    email_msg = ctx.msg()
 
     assert result.startswith("BODY[TEXT] {")
     body_start = result.find("}") + 3
@@ -388,7 +381,7 @@ async def test_fetch_body_section_text(mailbox_with_mimekit_email):
 
     # section 1 TEXT
     #
-    ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+    ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
     fetch = FetchAtt(FetchOp.BODY, section=[1, "TEXT"])
     result = await fetch.fetch(ctx)
 
@@ -405,7 +398,7 @@ async def test_fetch_body_section_text(mailbox_with_mimekit_email):
 
     # section 2.1.TEXT
     #
-    ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+    ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
     fetch = FetchAtt(FetchOp.BODY, section=[2, 4, "TEXT"])
     result = await fetch.fetch(ctx)
 
@@ -429,19 +422,18 @@ async def test_fetch_body_section_header(mailbox_with_mimekit_email):
     We only need to test one message, with lots of headers.
     """
     mbox = mailbox_with_mimekit_email
-    msg_keys = await mbox.mailbox.akeys()
+    msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    seqs = await mbox.mailbox.aget_sequences()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     msg_key = 10
     msg_idx = 10
 
-    ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+    ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
     fetch = FetchAtt(FetchOp.BODY, peek=True, section=["HEADER"])
     result = await fetch.fetch(ctx)
-    email_msg = await ctx.email_message()
+    email_msg = ctx.msg()
 
     assert result.startswith("BODY[HEADER] {")
     headers_start = result.find("}") + 3
@@ -457,7 +449,7 @@ async def test_fetch_body_section_header(mailbox_with_mimekit_email):
 
     # With or without peek the response is the same.
     #
-    ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+    ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
     fetch = FetchAtt(FetchOp.BODY, section=["HEADER"])
     result = await fetch.fetch(ctx)
 
@@ -468,7 +460,7 @@ async def test_fetch_body_section_header(mailbox_with_mimekit_email):
 
     # headers of sub-parts - 1.HEADER
     #
-    ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+    ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
     fetch = FetchAtt(FetchOp.BODY, section=[1, "HEADER"])
     result = await fetch.fetch(ctx)
 
@@ -486,7 +478,7 @@ async def test_fetch_body_section_header(mailbox_with_mimekit_email):
 
     # headers of sub-parts - 2.4.HEADER
     #
-    ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+    ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
     fetch = FetchAtt(FetchOp.BODY, section=[2, 4, "HEADER"])
     result = await fetch.fetch(ctx)
 
@@ -510,9 +502,8 @@ async def test_fetch_body_section_header(mailbox_with_mimekit_email):
 @pytest.mark.asyncio
 async def test_fetch_body_section_header_fields(mailbox_with_mimekit_email):
     mbox = mailbox_with_mimekit_email
-    msg_keys = await mbox.mailbox.akeys()
+    msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    seqs = await mbox.mailbox.aget_sequences()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
@@ -520,10 +511,10 @@ async def test_fetch_body_section_header_fields(mailbox_with_mimekit_email):
     msg_idx = 10
 
     headers = ["date", "subject", "from", "to", "cc", "message-id"]
-    ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+    ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
     fetch = FetchAtt(FetchOp.BODY, section=[["HEADER.FIELDS", headers]])
     result = await fetch.fetch(ctx)
-    email_msg = await ctx.email_message()
+    email_msg = ctx.msg()
 
     assert result.startswith(f"BODY[HEADER.FIELDS ({' '.join(headers)})] {{")
     headers_start = result.find("}") + 3
@@ -541,10 +532,10 @@ async def test_fetch_body_section_header_fields(mailbox_with_mimekit_email):
 
     # HEADER.FIELDS.NOT...
     #
-    ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+    ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
     fetch = FetchAtt(FetchOp.BODY, section=[["HEADER.FIELDS.NOT", headers]])
     result = await fetch.fetch(ctx)
-    email_msg = await ctx.email_message()
+    email_msg = ctx.msg()
 
     assert result.startswith(
         f"BODY[HEADER.FIELDS.NOT ({' '.join(headers)})] {{"
@@ -568,16 +559,15 @@ async def test_fetch_body_section_header_fields(mailbox_with_mimekit_email):
 @pytest.mark.asyncio
 async def test_fetch_body_text_with_partials(mailbox_with_mimekit_email):
     mbox = mailbox_with_mimekit_email
-    msg_keys = await mbox.mailbox.akeys()
+    msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    seqs = await mbox.mailbox.aget_sequences()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     msg_key = 10
     msg_idx = 10
-    ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
-    email_msg = await ctx.email_message()
+    ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
+    email_msg = ctx.msg()
     msg_body = msg_as_string(email_msg, headers=False)
     size = len(msg_body)
     mid = int(size / 2)
@@ -611,16 +601,15 @@ async def test_fetch_body_text_with_partials(mailbox_with_mimekit_email):
 @pytest.mark.asyncio
 async def test_fetch_body_braces(mailbox_with_bunch_of_email):
     mbox = mailbox_with_bunch_of_email
-    msg_keys = await mbox.mailbox.akeys()
+    msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    seqs = await mbox.mailbox.aget_sequences()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
-        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
-        email_msg = await ctx.email_message()
+        ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
+        email_msg = ctx.msg()
         msg_body = msg_as_string(email_msg)
         size = len(msg_body)
         mid = int(size / 2)
