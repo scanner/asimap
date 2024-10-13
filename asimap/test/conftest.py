@@ -424,7 +424,8 @@ def incr_email(
 #
 @pytest.fixture
 def bunch_of_email_in_folder(
-    email_factory: EmailFactoryType, mh_folder: MH
+    email_factory: EmailFactoryType,
+    mh_folder: Callable[[str, Optional[Path]], Tuple[Path, MH, MH]],
 ) -> None:
     """
     Create a function that will create a specified number of emails in the

@@ -8,7 +8,6 @@ import os
 import random
 from collections import Counter, defaultdict
 from datetime import date, timezone
-from email.message import EmailMessage
 from typing import Dict, List, Tuple
 
 # 3rd party imports
@@ -34,9 +33,10 @@ async def test_search_context(mailbox_instance):
     expected without any failures.
     """
     async with mailbox_instance() as mbox:
-        msg_keys = await mbox.mailbox.akeys()
+        msg_keys = mbox.mailbox.keys()
         seq_max = len(msg_keys)
-        sequences = await mbox.mailbox.aget_sequences()
+        async with mbox.mh_sequences_lock:
+            sequences = mbox.get_sequences_from_folder()
         uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
         assert uid_max
 
@@ -44,37 +44,42 @@ async def test_search_context(mailbox_instance):
             ctx = SearchContext(
                 mbox, msg_key, idx + 1, seq_max, uid_max, sequences
             )
-            mhmsg = await mbox.mailbox.aget_message(msg_key)
+            msg = mbox.get_msg(msg_key)
             uid_vv, uid = mbox.get_uid_from_msg(msg_key)
-            assert uid == await ctx.uid()
+            assert uid == ctx.uid()
             ctx._uid = None
             assert await ctx.internal_date() == IsNow(tz=timezone.utc)
             assert ctx.msg_key == msg_key
             assert ctx.seq_max == seq_max
             assert ctx.uid_max == uid_max
             assert ctx.msg_number == idx + 1
-            assert ctx.sequences == mhmsg.get_sequences()
-            assert_email_equal(mhmsg, await ctx.msg())
-            assert uid == await ctx.uid()
-            assert uid_vv == await ctx.uid_vv()
-            assert get_msg_size(mhmsg) == await ctx.msg_size()
-            email_msg = await ctx.email_message()
-            assert isinstance(email_msg, EmailMessage)
-            assert_email_equal(mhmsg, email_msg)
+            assert ctx.sequences == mbox._msg_sequences(msg_key)
+            assert_email_equal(msg, ctx.msg())
+            assert uid == ctx.uid()
+            assert uid_vv == ctx.uid_vv()
+            assert get_msg_size(msg) == ctx.msg_size()
 
 
 ####################################################################
 #
 @pytest.mark.asyncio
 async def test_search_keywords(mailbox_with_bunch_of_email):
+    """
+    Test search on keywords.
+    We create a mailbox with a bunch of email in it.
+    We set a some flags on some of these messages.
+    We do an IMAP Search for these flags
+    Validate that the search results match the messages we set those flags on.
+    """
     mbox = mailbox_with_bunch_of_email
-    msg_keys = await mbox.mailbox.akeys()
+    msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    seqs = await mbox.mailbox.aget_sequences()
+    seqs = mbox.sequences
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     # Set some flags on the messages
+    #
     msgs_by_flag: Dict[str, List[int]] = {}
     flags_by_msg: Dict[int, List[str]] = defaultdict(list)
     for flag in SYSTEM_FLAGS:
@@ -88,7 +93,13 @@ async def test_search_keywords(mailbox_with_bunch_of_email):
 
         seqs[REV_SYSTEM_FLAG_MAP[flag]] = sorted(msgs_by_flag[flag])
 
-    await mbox.mailbox.aset_sequences(seqs)
+    async with mbox.mh_sequences_lock:
+        mbox.set_sequences_in_folder(seqs)
+
+    from pprint import pprint
+
+    print("Sequences set in folder:")
+    pprint(seqs)
 
     matches_by_flag: Dict[str, List[int]] = defaultdict(list)
     for keyword in SYSTEM_FLAGS:
@@ -96,6 +107,8 @@ async def test_search_keywords(mailbox_with_bunch_of_email):
         for msg_idx, msg_key in enumerate(msg_keys):
             msg_idx += 1
             ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max, seqs)
+            print(f"Search context: {ctx}, sequences:")
+            pprint(ctx.sequences)
             if await search_op.match(ctx):
                 matches_by_flag[keyword].append(msg_key)
 
@@ -108,9 +121,10 @@ async def test_search_keywords(mailbox_with_bunch_of_email):
 @pytest.mark.asyncio
 async def test_search_all(mailbox_with_bunch_of_email):
     mbox = mailbox_with_bunch_of_email
-    msg_keys = await mbox.mailbox.akeys()
+    msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    seqs = await mbox.mailbox.aget_sequences()
+    async with mbox.mh_sequences_lock:
+        seqs = mbox.get_sequences_from_folder()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
     matched: List[int] = []
@@ -129,9 +143,10 @@ async def test_search_all(mailbox_with_bunch_of_email):
 @pytest.mark.asyncio
 async def test_search_headers(mailbox_with_bunch_of_email):
     mbox = mailbox_with_bunch_of_email
-    msg_keys = await mbox.mailbox.akeys()
+    msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    seqs = await mbox.mailbox.aget_sequences()
+    async with mbox.mh_sequences_lock:
+        seqs = mbox.get_sequences_from_folder()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
@@ -149,7 +164,7 @@ async def test_search_headers(mailbox_with_bunch_of_email):
     #
     words: Counter[str] = Counter()
     for msg_key in msg_keys:
-        msg = await mbox.mailbox.aget_message(msg_key)
+        msg = mbox.get_msg(msg_key)
         for word in msg["Subject"].split():
             words[word.lower()] += 1
 
@@ -167,7 +182,7 @@ async def test_search_headers(mailbox_with_bunch_of_email):
     #
     for word, matched_keys in msg_keys_by_word.items():
         for msg_key in msg_keys:
-            msg = await mbox.mailbox.aget_message(msg_key)
+            msg = mbox.get_msg(msg_key)
             if msg_key in matched_keys:
                 assert word in msg["Subject"].lower()
             else:
@@ -179,9 +194,10 @@ async def test_search_headers(mailbox_with_bunch_of_email):
 @pytest.mark.asyncio
 async def test_search_sent_before_since_on(mailbox_with_bunch_of_email):
     mbox = mailbox_with_bunch_of_email
-    msg_keys = await mbox.mailbox.akeys()
+    msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    seqs = await mbox.mailbox.aget_sequences()
+    async with mbox.mh_sequences_lock:
+        seqs = mbox.get_sequences_from_folder()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
@@ -189,7 +205,7 @@ async def test_search_sent_before_since_on(mailbox_with_bunch_of_email):
     #
     dates: List[Tuple[date, int]] = []
     for msg_key in msg_keys:
-        msg = await mbox.mailbox.aget_message(msg_key)
+        msg = mbox.get_msg(msg_key)
         dt = parsedate(msg["Date"]).date()
         dates.append((dt, msg_key))
 
@@ -233,9 +249,10 @@ async def test_search_sent_before_since_on(mailbox_with_bunch_of_email):
 @pytest.mark.asyncio
 async def test_search_before_since_on(mailbox_with_bunch_of_email):
     mbox = mailbox_with_bunch_of_email
-    msg_keys = await mbox.mailbox.akeys()
+    msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    seqs = await mbox.mailbox.aget_sequences()
+    async with mbox.mh_sequences_lock:
+        seqs = mbox.get_sequences_from_folder()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
@@ -246,7 +263,7 @@ async def test_search_before_since_on(mailbox_with_bunch_of_email):
     #
     dates: List[Tuple[date, int]] = []
     for msg_key in msg_keys:
-        msg = await mbox.mailbox.aget_message(msg_key)
+        msg = mbox.get_msg(msg_key)
         dt = parsedate(msg["Date"])
         dt_ts = dt.timestamp()
         msg_path = os.path.join(mbox.mailbox._path, str(msg_key))
@@ -295,9 +312,10 @@ async def test_search_before_since_on(mailbox_with_bunch_of_email):
 @pytest.mark.asyncio
 async def test_search_body(mailbox_with_bunch_of_email):
     mbox = mailbox_with_bunch_of_email
-    msg_keys = await mbox.mailbox.akeys()
+    msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    seqs = await mbox.mailbox.aget_sequences()
+    async with mbox.mh_sequences_lock:
+        seqs = mbox.get_sequences_from_folder()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
@@ -315,7 +333,7 @@ async def test_search_body(mailbox_with_bunch_of_email):
     #
     words: Counter[str] = Counter()
     for msg_key in msg_keys:
-        msg = await mbox.mailbox.aget_message(msg_key)
+        msg = mbox.get_msg(msg_key)
         parts = msg.get_payload()
         body = msg_as_string(parts[0], headers=False).lower()
         for line in body.splitlines():
@@ -339,7 +357,7 @@ async def test_search_body(mailbox_with_bunch_of_email):
     #
     for word, matched_keys in msg_keys_by_word.items():
         for msg_key in msg_keys:
-            msg = await mbox.mailbox.aget_message(msg_key)
+            msg = mbox.get_msg(msg_key)
             parts = msg.get_payload()
             body = msg_as_string(parts[0], headers=False).lower()
             if msg_key in matched_keys:
@@ -353,9 +371,10 @@ async def test_search_body(mailbox_with_bunch_of_email):
 @pytest.mark.asyncio
 async def test_search_text(mailbox_with_bunch_of_email):
     mbox = mailbox_with_bunch_of_email
-    msg_keys = await mbox.mailbox.akeys()
+    msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    seqs = await mbox.mailbox.aget_sequences()
+    async with mbox.mh_sequences_lock:
+        seqs = mbox.get_sequences_from_folder()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
@@ -373,7 +392,7 @@ async def test_search_text(mailbox_with_bunch_of_email):
     #
     words: Counter[str] = Counter()
     for msg_key in msg_keys:
-        msg = await mbox.mailbox.aget_message(msg_key)
+        msg = mbox.get_msg(msg_key)
         body = msg_as_string(msg, headers=True).lower()
         for line in body.splitlines():
             for word in line.split():
@@ -396,7 +415,7 @@ async def test_search_text(mailbox_with_bunch_of_email):
     #
     for word, matched_keys in msg_keys_by_word.items():
         for msg_key in msg_keys:
-            msg = await mbox.mailbox.aget_message(msg_key)
+            msg = mbox.get_msg(msg_key)
             body = msg_as_string(msg, headers=True).lower()
             if msg_key in matched_keys:
                 assert word in body.lower()
@@ -409,9 +428,10 @@ async def test_search_text(mailbox_with_bunch_of_email):
 @pytest.mark.asyncio
 async def test_search_larger_smaller(mailbox_with_bunch_of_email):
     mbox = mailbox_with_bunch_of_email
-    msg_keys = await mbox.mailbox.akeys()
+    msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    seqs = await mbox.mailbox.aget_sequences()
+    async with mbox.mh_sequences_lock:
+        seqs = mbox.get_sequences_from_folder()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
@@ -419,7 +439,7 @@ async def test_search_larger_smaller(mailbox_with_bunch_of_email):
     #
     sizes: List[Tuple[int, int]] = []
     for msg_key in msg_keys:
-        msg = await mbox.mailbox.aget_message(msg_key)
+        msg = mbox.get_msg(msg_key)
         msg_size = get_msg_size(msg)
         sizes.append((msg_size, msg_key))
 
@@ -453,9 +473,10 @@ async def test_search_larger_smaller(mailbox_with_bunch_of_email):
 @pytest.mark.asyncio
 async def test_search_message_set_and_not(mailbox_with_bunch_of_email):
     mbox = mailbox_with_bunch_of_email
-    msg_keys = await mbox.mailbox.akeys()
+    msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    seqs = await mbox.mailbox.aget_sequences()
+    async with mbox.mh_sequences_lock:
+        seqs = mbox.get_sequences_from_folder()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
@@ -490,9 +511,10 @@ async def test_search_message_set_and_not(mailbox_with_bunch_of_email):
 @pytest.mark.asyncio
 async def test_search_uid(mailbox_with_bunch_of_email):
     mbox = mailbox_with_bunch_of_email
-    msg_keys = await mbox.mailbox.akeys()
+    msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    seqs = await mbox.mailbox.aget_sequences()
+    async with mbox.mh_sequences_lock:
+        seqs = mbox.get_sequences_from_folder()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
@@ -517,9 +539,10 @@ async def test_search_uid(mailbox_with_bunch_of_email):
 @pytest.mark.asyncio
 async def test_search_and_or(mailbox_with_bunch_of_email):
     mbox = mailbox_with_bunch_of_email
-    msg_keys = await mbox.mailbox.akeys()
+    msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
-    seqs = await mbox.mailbox.aget_sequences()
+    async with mbox.mh_sequences_lock:
+        seqs = mbox.get_sequences_from_folder()
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
