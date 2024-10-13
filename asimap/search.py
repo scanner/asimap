@@ -19,7 +19,7 @@ import aiofiles
 
 # asimap imports
 #
-from .constants import Sequences, flag_to_seq
+from .constants import flag_to_seq
 from .generator import get_msg_size, msg_as_string
 from .utils import parsedate
 
@@ -58,7 +58,6 @@ class SearchContext(object):
         msg_number: int,
         seq_max: int,
         uid_max: int,
-        sequences: "Sequences",
     ):
         """
         A container to hold the contextual information an IMAPSearch
@@ -71,14 +70,12 @@ class SearchContext(object):
         - `seq_max`: The largest message sequence number in this mailbox
         - `uid_max`: The largest assigned uid, or next_uid if there
           are no messages in this mailbox
-        - `sequences`: The sequences for the mailbox.
         """
         self.mailbox = mailbox
         self.msg_key = msg_key
         self.seq_max = seq_max
         self.uid_max = uid_max
         self.msg_number = msg_number
-        self.mailbox_sequences = sequences
         self.path = os.path.join(mailbox.mailbox._path, str(msg_key))
 
         # msg & uid are looked up and set ONLY if the search actually reaches
