@@ -49,7 +49,7 @@ async def test_search_context(mailbox_instance):
             assert ctx.seq_max == seq_max
             assert ctx.uid_max == uid_max
             assert ctx.msg_number == idx + 1
-            assert ctx.sequences == mbox._msg_sequences(msg_key)
+            assert ctx.sequences == mbox.msg_sequences(msg_key)
             assert_email_equal(msg, ctx.msg())
             assert uid == ctx.uid()
             assert uid_vv == ctx.uid_vv()
@@ -82,7 +82,7 @@ async def test_search_context_with_mimekit_email(mailbox_with_mimekit_email):
         assert ctx.seq_max == seq_max
         assert ctx.uid_max == uid_max
         assert ctx.msg_number == idx + 1
-        assert ctx.sequences == mbox._msg_sequences(msg_key)
+        assert ctx.sequences == mbox.msg_sequences(msg_key)
         assert_email_equal(msg, ctx.msg())
         assert uid == ctx.uid()
         assert uid_vv == ctx.uid_vv()
