@@ -536,7 +536,7 @@ async def test_authenticated_client_close(
     # Messages that are marked `\Deleted` are removed when the mbox is closed.
     #
     async with server.get_mailbox("inbox") as mbox:
-        msg_keys = await mbox.mailbox.akeys()
+        msg_keys = mbox.mailbox.keys()
         to_delete = sorted(random.sample(msg_keys, 5))
         await mbox.store(to_delete, StoreAction.ADD_FLAGS, [r"\Deleted"])
 
@@ -559,7 +559,7 @@ async def test_authenticated_client_close(
         # And get the message keys again.. should have no changes from the
         # previous set.
         #
-        new_msg_keys = await mbox.mailbox.akeys()
+        new_msg_keys = mbox.mailbox.keys()
         assert new_msg_keys == msg_keys
 
         # Now SELECT the inbox, and then close it.. the messages we had marked
@@ -578,7 +578,7 @@ async def test_authenticated_client_close(
         assert client_handler.mbox is None
         assert client_handler.name not in mbox.clients
 
-        new_msg_keys = await mbox.mailbox.akeys()
+        new_msg_keys = mbox.mailbox.keys()
         for msg_key in to_delete:
             assert msg_key not in new_msg_keys
 
