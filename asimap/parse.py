@@ -379,6 +379,10 @@ class IMAPClientCommand:
 
     #######################################################################
     #
+    # XXX the IMAP messages should be in bytes, so we should accept a ByteStr,
+    #     and if it is a string encode it to bytes (no reason to use anything
+    #     besides utf-8?)
+    #
     def __init__(self, imap_command: str):
         """
         Create the IMAPClientCommand object. This does NOT parse the string we
@@ -781,7 +785,7 @@ class IMAPClientCommand:
         #
         self.message = cast(
             EmailMessage,
-            message_from_string(self._p_string(), policy=email.policy.default),
+            message_from_string(self._p_string(), policy=email.policy.SMTP),
         )
         # XXX Remove this after we are sure our MHMessage -> EmailMessage
         #     conversion.

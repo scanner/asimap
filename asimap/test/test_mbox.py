@@ -239,9 +239,9 @@ async def test_mbox_append(imap_user_server, email_factory):
 
     assert len(msg_keys) == 1
     msg_key = msg_keys[0]
-    folder_msg = mbox.mailbox.get_message(str(msg_key))
+    folder_msg = mbox.get_msg(msg_key)
     uid_vv, msg_uid = mbox.get_uid_from_msg(msg_key)
-    msg_seqs = mbox._msg_sequences(msg_key)
+    msg_seqs = mbox.msg_sequences(msg_key)
     assert sorted(msg_seqs) == sorted(["flagged", "unseen", "Recent"])
     assert mbox.sequences == {"flagged": {1}, "unseen": {1}, "Recent": {1}}
     assert msg_uid == uid
@@ -365,7 +365,7 @@ async def test_mailbox_fetch(mailbox_with_bunch_of_email):
     expected_keys = (2, 3, 4)
     msgs: Dict[int, MHMessage] = {}
     for msg_key in expected_keys:
-        msgs[msg_key] = await mbox.mailbox.aget_message(msg_key)
+        msgs[msg_key] = mbox.get_msg(msg_key)
     fetch_ops = [
         FetchAtt(FetchOp.FLAGS),
         FetchAtt(
@@ -418,9 +418,9 @@ async def test_mailbox_fetch(mailbox_with_bunch_of_email):
         assert msg_key in mbox.sequences[seen]
         assert msg_key not in mbox.sequences[unseen]
 
-        msg = await mbox.mailbox.aget_message(msg_key)
-        assert seen in msg.get_sequences()
-        assert unseen not in msg.get_sequences()
+        msg_sequences = mbox.msg_sequences(msg_key)
+        assert seen in msg_sequences
+        assert unseen not in msg_sequences
 
 
 ####################################################################
@@ -452,7 +452,7 @@ async def test_mailbox_db_commit_sequence_changes(
     mailbox.
     """
     mbox = mailbox_with_bunch_of_email
-    msg_keys = await mbox.mailbox.akeys()
+    msg_keys = mbox.msg_keys
 
     # Create new sequences
     #
@@ -488,17 +488,7 @@ async def test_mailbox_fetch_after_new_messages(
     # Now add one message to the folder.
     #
     bunch_of_email_in_folder(folder=mbox.name, num_emails=1)
-    msg_keys = await mbox.mailbox.akeys()
-
-    # # Set a random uid to the new message, handling the case where it was moved
-    # # here from another folder.
-    # #
-    # new_msg = msg_keys[-1]
-    # msg = await mbox.mailbox.aget_message(new_msg)
-    # uid_vv = faker.pyint()
-    # uid = faker.pyint()
-    # msg[UID_HDR] = f"{uid_vv:010d}.{uid:010d}"
-    # await mbox.mailbox.asetitem(new_msg, msg)
+    msg_keys = mbox.mailbox.keys()
 
     await mbox.check_new_msgs_and_flags(optional=False)
     assert len(msg_keys) == mbox.num_msgs
@@ -544,8 +534,7 @@ async def test_mailbox_store(mailbox_with_bunch_of_email):
     # uid's are the same for each message (ie: 1 == 1 == 1)
     #
     mbox = mailbox_with_bunch_of_email
-    msg_keys = await mbox.mailbox.akeys()
-    msg_set = sorted(list(random.sample(msg_keys, 5)))
+    msg_set = sorted(list(random.sample(mbox.msg_keys, 5)))
 
     # can not touch `\Recent`
     #
@@ -559,29 +548,24 @@ async def test_mailbox_store(mailbox_with_bunch_of_email):
     # By setting `\Seen` they will all lose `unseen` (and gain `\Seen`)
     #
     await mbox.store(msg_set, StoreAction.ADD_FLAGS, [r"\Seen"])
-    seqs = await mbox.mailbox.aget_sequences()
     for msg_key in msg_set:
-        assert msg_key in seqs[flag_to_seq(r"\Seen")]
-        assert msg_key not in seqs[flag_to_seq("unseen")]
+        assert msg_key in mbox.sequences[flag_to_seq(r"\Seen")]
+        assert msg_key not in mbox.sequences[flag_to_seq("unseen")]
 
-        msg = await mbox.mailbox.aget_message(msg_key)
-        msg_seq = msg.get_sequences()
+        msg_seq = mbox.msg_sequences(msg_key)
         assert flag_to_seq(r"\Seen") in msg_seq
         assert flag_to_seq("unseen") not in msg_seq
 
     await mbox.store(msg_set, StoreAction.REMOVE_FLAGS, [r"\Seen"])
-    seqs = await mbox.mailbox.aget_sequences()
     for msg_key in msg_set:
-        assert msg_key not in seqs[flag_to_seq(r"\Seen")]
-        assert msg_key in seqs[flag_to_seq("unseen")]
+        assert msg_key not in mbox.sequences[flag_to_seq(r"\Seen")]
+        assert msg_key in mbox.sequences[flag_to_seq("unseen")]
 
-        msg = await mbox.mailbox.aget_message(msg_key)
-        msg_seq = msg.get_sequences()
+        msg_seq = mbox.msg_sequences(msg_key)
         assert flag_to_seq(r"\Seen") not in msg_seq
         assert flag_to_seq("unseen") in msg_seq
 
     await mbox.store(msg_set, StoreAction.REPLACE_FLAGS, [r"\Answered"])
-    # seqs = await mbox.mailbox.aget_sequences()
     for msg_key in msg_set:
         assert msg_key in mbox.sequences[flag_to_seq(r"\Answered")]
         assert msg_key not in mbox.sequences[flag_to_seq(r"\Seen")]
@@ -590,14 +574,12 @@ async def test_mailbox_store(mailbox_with_bunch_of_email):
     await mbox.store(
         msg_set, StoreAction.REPLACE_FLAGS, [r"\Seen", r"\Answered"]
     )
-    seqs = await mbox.mailbox.aget_sequences()
     for msg_key in msg_set:
-        assert msg_key in seqs[flag_to_seq(r"\Answered")]
-        assert msg_key in seqs[flag_to_seq(r"\Seen")]
-        assert msg_key not in seqs[flag_to_seq("unseen")]
+        assert msg_key in mbox.sequences[flag_to_seq(r"\Answered")]
+        assert msg_key in mbox.sequences[flag_to_seq(r"\Seen")]
+        assert msg_key not in mbox.sequences[flag_to_seq("unseen")]
 
-        msg = await mbox.mailbox.aget_message(msg_key)
-        msg_seq = msg.get_sequences()
+        msg_seq = mbox.msg_sequences(msg_key)
         assert flag_to_seq(r"\Answered") in msg_seq
         assert flag_to_seq(r"\Seen") in msg_seq
         assert flag_to_seq("unseen") not in msg_seq
@@ -623,14 +605,14 @@ async def test_mailbox_copy(mailbox_with_bunch_of_email):
     await mbox.server.find_all_folders()
     async with mbox.server.get_mailbox(ARCHIVE) as dst_mbox:
 
-        msg_keys = await mbox.mailbox.akeys()
+        msg_keys = mbox.msg_keys
         msg_set = sorted(list(random.sample(msg_keys, 15)))
 
         src_uids, dst_uids = await mbox.copy(msg_set, dst_mbox)
         assert len(src_uids) == len(dst_uids)
-        dst_msg_keys = await dst_mbox.mailbox.akeys()
+        dst_msg_keys = dst_mbox.msg_keys
         assert len(dst_msg_keys) == len(msg_set)
-        assert dst_msg_keys == await archive_mh.akeys()
+        assert dst_msg_keys == archive_mh.keys()
 
         # in the source mailbox the message keys, message indices, and uid's are
         # all the same values for the same messages (because this is the initial
@@ -643,8 +625,8 @@ async def test_mailbox_copy(mailbox_with_bunch_of_email):
         for src_msg_key, src_uid, dst_msg_key, dst_uid in zip(
             msg_set, src_uids, dst_msg_keys, dst_uids
         ):
-            src_msg = await mbox.mailbox.aget_message(src_msg_key)
-            dst_msg = await dst_mbox.mailbox.aget_message(dst_msg_key)
+            src_msg = mbox.get_msg(src_msg_key)
+            dst_msg = dst_mbox.get_msg(dst_msg_key)
 
             assert_email_equal(src_msg, dst_msg)
 
@@ -681,7 +663,7 @@ async def test_mbox_copy_verify_sequences(
     #
     expected_sequences = {"unseen", "Seen", "Recent"}
     assert set(mbox.sequences.keys()) == expected_sequences
-    mailbox_sequences = await mbox.mailbox.aget_sequences()
+    mailbox_sequences = mbox.sequences
     assert set(mailbox_sequences.keys()) == expected_sequences
     expected_seen_sequence = set(range(1, 6))
     expected_unseen_sequence = set(range(6, mbox.num_msgs + 1))
@@ -703,14 +685,14 @@ async def test_mbox_copy_verify_sequences(
         msg_set = list(range(1, 7))
         src_uids, dst_uids = await mbox.copy(msg_set, dst_mbox)
         assert len(src_uids) == len(dst_uids)
-        dst_msg_keys = await dst_mbox.mailbox.akeys()
+        dst_msg_keys = dst_mbox.msg_keys
         assert len(dst_msg_keys) == len(msg_set)
-        assert dst_msg_keys == await archive_mh.akeys()
+        assert dst_msg_keys == archive_mh.keys()
 
         # Validate the dest mailbox sequences
         #
         assert set(dst_mbox.sequences.keys()) == expected_sequences
-        mailbox_sequences = await dst_mbox.mailbox.aget_sequences()
+        mailbox_sequences = dst_mbox.sequences
         assert set(mailbox_sequences.keys()) == expected_sequences
         assert dst_mbox.sequences["Seen"] == set(range(1, 6))
         assert dst_mbox.sequences["unseen"] == {6}
@@ -777,10 +759,10 @@ async def test_mailbox_create_delete(
         # and we will copy some messages into the Archive mailbox just to make
         # sure we can actually do stuff with it.
         #
-        msg_keys = await mbox.mailbox.akeys()
+        msg_keys = mbox.msg_keys
         msg_set = sorted(list(random.sample(msg_keys, 5)))
         src_uids, dst_uids = await mbox.copy(msg_set, archive)
-        archive_msg_keys = await archive.mailbox.akeys()
+        archive_msg_keys = archive.msg_keys
         assert len(dst_uids) == len(archive_msg_keys)
         assert archive.uids == dst_uids
 
@@ -804,17 +786,17 @@ async def test_mailbox_rename(
     # If you rename the inbox, you get a new mailbox with the contents of the
     # inbox moved to it.
     #
-    msg_keys = await inbox.mailbox.akeys()
+    msg_keys = inbox.msg_keys
     saved_msg_keys = msg_keys[:]
     await Mailbox.rename("inbox", NEW_MBOX_NAME, server)
 
     async with server.get_mailbox(NEW_MBOX_NAME) as new_mbox:
-        new_msg_keys = await new_mbox.mailbox.akeys()
+        new_msg_keys = new_mbox.msg_keys
 
         assert new_msg_keys == msg_keys
         assert new_mbox.uids == new_msg_keys
 
-        msg_keys = await inbox.mailbox.akeys()
+        msg_keys = inbox.msg_keys
         assert not msg_keys
         assert not inbox.uids
         assert not inbox.sequences
@@ -829,8 +811,8 @@ async def test_mailbox_rename(
         NEW_NEW_NAME = "newnew_mbox"
         await Mailbox.rename(NEW_MBOX_NAME, NEW_NEW_NAME, server)
 
-        folders = await server.mailbox.alist_folders()
-        assert folders == ["inbox", "newnew_mbox", "nope"]
+        folders = server.mailbox.list_folders()
+        assert sorted(folders) == sorted(["inbox", "newnew_mbox", "nope"])
 
         with pytest.raises(NoSuchMailbox):
             async with server.get_mailbox(NEW_MBOX_NAME):
@@ -842,7 +824,7 @@ async def test_mailbox_rename(
         #
         async with server.get_mailbox("newnew_mbox") as new_new_mbox:
             assert new_mbox == new_new_mbox
-            nnmsg_keys = await new_new_mbox.mailbox.akeys()
+            nnmsg_keys = new_new_mbox.msg_keys
             assert nnmsg_keys == saved_msg_keys
             assert nnmsg_keys == new_new_mbox.uids
 

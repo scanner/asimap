@@ -437,6 +437,10 @@ class IMAPUserServer:
             "%s.%s" % (__name__, self.__class__.__name__)
         )
 
+        # We expect all of the raw email sitting in storage to use `\n` for
+        # line breaks so we use `email.policy.default`. All messages are read
+        # in binary mode and use this factory.
+        #
         self.mailbox = MH(
             self.maildir,
             create=True,

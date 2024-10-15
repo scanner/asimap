@@ -829,6 +829,8 @@ class Mailbox:
                 )
                 return
             except RuntimeError as e:
+                if "Event loop is closed" in str(e):
+                    return
                 self.logger.exception(
                     "mbox: '%s', exception in management task: %s",
                     self.name,
@@ -880,7 +882,7 @@ class Mailbox:
 
     ####################################################################
     #
-    def _msg_sequences(self, msg_key: int) -> List[str]:
+    def msg_sequences(self, msg_key: int) -> List[str]:
         """
         Returns a list of all the sequences that the msg key is in.
         """
@@ -1334,7 +1336,7 @@ class Mailbox:
         msg_key: int  --
         uid_cmd: bool -- (default False)
         """
-        flags = seqs_to_flags(self._msg_sequences(msg_key))
+        flags = seqs_to_flags(self.msg_sequences(msg_key))
         flags_str = " ".join(flags)
         msg_seq_number = self.msg_keys.index(msg_key) + 1
 
@@ -1460,6 +1462,14 @@ class Mailbox:
         return res
 
     ####################################################################
+    #
+    # XXX we should have flag that forces a total overwrite of the
+    #     sequences. Otherwise it only overwrite for the message keys that are
+    #     in-memory. ie: message keys that are in the .mh_sequences folder, but
+    #     are not in the in-memory version do not get overwritten (so I guess
+    #     we need to retrieve msg keys)
+    #
+    # Need to better define when we should lock the folder, too.
     #
     def set_sequences_in_folder(self, seqs: Sequences) -> None:
         """
@@ -2370,7 +2380,7 @@ class Mailbox:
         The flag `\Recent` if present is not affected.
         The flag `unseen` if present is not affected unless `\Seen` is in flags.
         """
-        cur_msg_seqs = set(self._msg_sequences(key))
+        cur_msg_seqs = set(self.msg_sequences(key))
         new_msg_seqs = set(flags)
         if "Seen" not in new_msg_seqs:
             new_msg_seqs.add("unseen")
@@ -2565,7 +2575,7 @@ class Mailbox:
                     msg = self.mailbox.get_bytes(str(msg_key))
                     self._maybe_extend_timeout(timeout_cm)
                     msg_path = os.path.join(tmp_dir, str(msg_key))
-                    msg_seqs = self._msg_sequences(msg_key)
+                    msg_seqs = self.msg_sequences(msg_key)
                     copy_msgs.append((msg_path, msg_seqs, mtime))
                     with open(msg_path, "wb") as f:
                         f.write(msg)
@@ -2759,7 +2769,7 @@ class Mailbox:
                 #
                 if r"\Noselect" in mbox.attributes:
                     mbox.attributes.remove(r"\Noselect")
-                    await mbox.check_set_haschildren_attr()
+                    mbox.check_set_haschildren_attr()
                     await mbox.commit_to_db()
                     async with mbox.mailbox.lock_folder():
                         await mbox.check_new_msgs_and_flags(optional=False)
@@ -2786,7 +2796,7 @@ class Mailbox:
             mbox_name = "/".join(mbox_chain)
             MH(server.maildir / mbox_name)
             async with server.get_mailbox(mbox_name) as mbox:
-                await mbox.check_set_haschildren_attr()
+                mbox.check_set_haschildren_attr()
                 await mbox.commit_to_db()
 
     ####################################################################
@@ -2911,7 +2921,7 @@ class Mailbox:
         parent_name = os.path.dirname(name)
         if parent_name:
             async with server.get_mailbox(parent_name) as parent_mbox:
-                await parent_mbox.check_set_haschildren_attr()
+                parent_mbox.check_set_haschildren_attr()
                 await parent_mbox.commit_to_db()
 
         # And remove the mailbox from the filesystem.
@@ -3141,7 +3151,7 @@ async def _helper_rename_folder(mbox: Mailbox, new_name: str):
     old_p_name = os.path.dirname(old_name)
     if old_p_name != "":
         async with srvr.get_mailbox(old_p_name) as m:
-            await m.check_set_haschildren_attr()
+            m.check_set_haschildren_attr()
             await m.commit_to_db()
 
     # See if the mailbox under its new name has a parent and if it does update
@@ -3150,7 +3160,7 @@ async def _helper_rename_folder(mbox: Mailbox, new_name: str):
     new_p_name = os.path.dirname(new_name)
     if new_p_name != "":
         async with srvr.get_mailbox(new_p_name) as m:
-            await m.check_set_haschildren_attr()
+            m.check_set_haschildren_attr()
             await m.commit_to_db()
 
 
@@ -3202,12 +3212,13 @@ async def _helper_rename_inbox(inbox: Mailbox, new_name: str):
             except KeyError:
                 pass
 
-        new_mbox.uids = uids
-        new_mbox.sequences = sequences
-        new_mbox.msg_keys = new_msg_keys
-        new_mbox.optional_resync = False
-        new_mbox.set_sequences_in_folder(sequences)
-        await new_mbox.commit_to_db()
+        async with new_mbox.mh_sequences_lock:
+            new_mbox.uids = uids
+            new_mbox.sequences = sequences
+            new_mbox.msg_keys = new_msg_keys
+            new_mbox.optional_resync = False
+            new_mbox.set_sequences_in_folder(sequences)
+            await new_mbox.commit_to_db()
 
     inbox.optional_resync = False
 
@@ -3218,9 +3229,10 @@ async def _helper_rename_inbox(inbox: Mailbox, new_name: str):
         notifications.append(f"* {msg_seq_num} EXPUNGE\r\n")
     await inbox._dispatch_or_pend_notifications(notifications)
 
-    inbox.sequences = defaultdict(set)
-    inbox.msg_keys = []
-    inbox.num_msgs = 0
-    inbox.uids = []
-    inbox.set_sequences_in_folder(inbox.sequences)
-    await inbox.commit_to_db()
+    async with inbox.mh_sequences_lock:
+        inbox.sequences = defaultdict(set)
+        inbox.msg_keys = []
+        inbox.num_msgs = 0
+        inbox.uids = []
+        inbox.set_sequences_in_folder(inbox.sequences)
+        await inbox.commit_to_db()

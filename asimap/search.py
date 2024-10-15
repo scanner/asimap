@@ -186,7 +186,7 @@ class SearchContext(object):
         if self._sequences:
             return self._sequences
 
-        self._sequences = self.mailbox._msg_sequences(self.msg_key)
+        self._sequences = self.mailbox.msg_sequences(self.msg_key)
         return self._sequences
 
 
