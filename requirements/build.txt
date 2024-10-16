@@ -4,7 +4,7 @@
 #
 #    pip-compile --output-file=build.txt --strip-extras build.in
 #
-anyio==4.6.0
+anyio==4.6.2.post1
     # via httpx
 build==1.2.2.post1
     # via -r build.in
@@ -16,13 +16,13 @@ click==8.1.7
     # via
     #   hatch
     #   userpath
-distlib==0.3.8
+distlib==0.3.9
     # via virtualenv
 filelock==3.16.1
     # via virtualenv
 h11==0.14.0
     # via httpcore
-hatch==1.12.0
+hatch==1.13.0
     # via -r build.in
 hatchling==1.25.0
     # via hatch
@@ -86,11 +86,11 @@ tomli-w==1.1.0
     # via hatch
 tomlkit==0.13.2
     # via hatch
-trove-classifiers==2024.9.12
+trove-classifiers==2024.10.13
     # via hatchling
 userpath==1.9.2
     # via hatch
-uv==0.4.20
+uv==0.4.22
     # via hatch
 virtualenv==20.26.6
     # via hatch

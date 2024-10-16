@@ -16,13 +16,13 @@ click==8.1.7
     # via
     #   black
     #   pip-tools
-coverage==7.6.1
+coverage==7.6.3
     # via -r lint.in
 cryptography==43.0.1
     # via
     #   types-pyopenssl
     #   types-redis
-distlib==0.3.8
+distlib==0.3.9
     # via virtualenv
 filelock==3.16.1
     # via virtualenv
@@ -32,7 +32,7 @@ importlib-metadata==8.5.0
     # via yapf
 isort==5.13.2
     # via -r lint.in
-mypy==1.11.2
+mypy==1.12.0
     # via -r lint.in
 mypy-extensions==1.0.0
     # via
@@ -81,7 +81,7 @@ types-redis==4.6.0.20241004
     # via -r lint.in
 types-requests==2.32.0.20240914
     # via -r lint.in
-types-setuptools==75.1.0.20240917
+types-setuptools==75.1.0.20241014
     # via
     #   -r lint.in
     #   types-cffi
