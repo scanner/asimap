@@ -12,7 +12,7 @@ aiosqlite==0.20.0
     # via -r production.in
 certifi==2024.8.30
     # via sentry-sdk
-charset-normalizer==3.3.2
+charset-normalizer==3.4.0
     # via -r production.in
 docopt==0.6.2
     # via -r production.in

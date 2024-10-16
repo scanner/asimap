@@ -10,7 +10,7 @@ aioretry==6.0.1
     # via -r production.txt
 aiosqlite==0.20.0
     # via -r production.txt
-anyio==4.6.0
+anyio==4.6.2.post1
     # via
     #   -r build.txt
     #   httpx
@@ -39,7 +39,7 @@ cfgv==3.4.0
     # via
     #   -r lint.txt
     #   pre-commit
-charset-normalizer==3.3.2
+charset-normalizer==3.4.0
     # via
     #   -r production.txt
     #   requests
@@ -53,7 +53,7 @@ click==8.1.7
     #   userpath
 codetiming==1.4.0
     # via -r development.in
-coverage==7.6.1
+coverage==7.6.3
     # via
     #   -r lint.txt
     #   pytest-cov
@@ -67,7 +67,7 @@ decorator==5.1.1
     # via ipython
 dirty-equals==0.8.0
     # via -r development.in
-distlib==0.3.8
+distlib==0.3.9
     # via
     #   -r build.txt
     #   -r lint.txt
@@ -78,7 +78,7 @@ executing==2.1.0
     # via stack-data
 factory-boy==3.3.1
     # via pytest-factoryboy
-faker==30.3.0
+faker==30.4.0
     # via factory-boy
 filelock==3.16.1
     # via
@@ -89,7 +89,7 @@ h11==0.14.0
     # via
     #   -r build.txt
     #   httpcore
-hatch==1.12.0
+hatch==1.13.0
     # via -r build.txt
 hatchling==1.25.0
     # via
@@ -166,7 +166,7 @@ more-itertools==10.5.0
     #   -r build.txt
     #   jaraco-classes
     #   jaraco-functools
-mypy==1.11.2
+mypy==1.12.0
     # via -r lint.txt
 mypy-extensions==1.0.0
     # via
@@ -319,7 +319,7 @@ traitlets==5.14.3
     # via
     #   ipython
     #   matplotlib-inline
-trove-classifiers==2024.9.12
+trove-classifiers==2024.10.13
     # via
     #   -r build.txt
     #   hatchling
@@ -343,7 +343,7 @@ types-redis==4.6.0.20241004
     # via -r lint.txt
 types-requests==2.32.0.20240914
     # via -r lint.txt
-types-setuptools==75.1.0.20240917
+types-setuptools==75.1.0.20241014
     # via
     #   -r lint.txt
     #   types-cffi
@@ -366,7 +366,7 @@ userpath==1.9.2
     # via
     #   -r build.txt
     #   hatch
-uv==0.4.20
+uv==0.4.22
     # via
     #   -r build.txt
     #   hatch
