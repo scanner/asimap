@@ -459,7 +459,7 @@ async def test_authenticated_client_append(
     # Get the message from the mailbox..
     #
     async with server.get_mailbox("inbox") as mbox:
-        appended_msg = await mbox.mailbox.aget_message(21)
+        appended_msg = mbox.get_msg(21)
         assert_email_equal(msg, appended_msg)
 
         # Let us append again, but this time with the mailbox selected. We
@@ -484,7 +484,7 @@ async def test_authenticated_client_append(
             r"* 22 FETCH (FLAGS (\Recent \Flagged \Seen))",
             "A003 OK [APPENDUID 1 22] APPEND command completed",
         ]
-        appended_msg = await mbox.mailbox.aget_message(22)
+        appended_msg = mbox.get_msg(22)
         assert_email_equal(msg, appended_msg)
 
 
@@ -602,7 +602,7 @@ async def test_authenticated_client_expunge(
     # Messages that are marked `\Deleted` are removed when the mbox is closed.
     #
     async with server.get_mailbox("inbox") as mbox:
-        msg_keys = await mbox.mailbox.akeys()
+        msg_keys = mbox.mailbox.keys()
         to_delete = sorted(random.sample(msg_keys, 5))
         await mbox.store(to_delete, StoreAction.ADD_FLAGS, [r"\Deleted"])
 
@@ -625,7 +625,7 @@ async def test_authenticated_client_expunge(
         # And get the message keys again.. should have no changes from the
         # previous set.
         #
-        new_msg_keys = await mbox.mailbox.akeys()
+        new_msg_keys = mbox.mailbox.keys()
         assert new_msg_keys == msg_keys
 
         # Now SELECT the inbox, and then close it.. the messages we had marked
@@ -659,7 +659,7 @@ async def test_authenticated_client_expunge(
         assert client_handler.mbox == mbox
         assert client_handler.name in mbox.clients
 
-        new_msg_keys = await mbox.mailbox.akeys()
+        new_msg_keys = mbox.mailbox.keys()
         for msg_key in to_delete:
             assert msg_key not in new_msg_keys
 
@@ -688,7 +688,7 @@ async def test_authenticated_client_search(
     # all these message indicies in it.
     #
     async with server.get_mailbox("inbox") as mbox:
-        msg_keys = await mbox.mailbox.akeys()
+        msg_keys = mbox.mailbox.keys()
 
     cmd = IMAPClientCommand("A004 SELECT INBOX")
     cmd.parse()
@@ -749,7 +749,7 @@ async def test_authenticated_client_fetch(
         results = client_push_responses(imap_client)
         assert results[-1] == "A001 OK FETCH command completed"
         for idx in range(1, 6):
-            msg = await mbox.mailbox.aget_message(idx)
+            msg = mbox.get_msg(idx)
             inter = [x.strip() for x in results[idx - 1].split("\r\n")]
             subj = inter[1]
             frm = inter[2]
@@ -771,7 +771,7 @@ async def test_authenticated_client_fetch_lotta_fields(
     client_handler = Authenticated(imap_client, server)
 
     async with server.get_mailbox("inbox") as mbox:
-        msg_keys = await mbox.mailbox.akeys()
+        msg_keys = mbox.mailbox.keys()
 
     cmd = IMAPClientCommand("A004 SELECT INBOX")
     cmd.parse()
@@ -878,7 +878,7 @@ async def test_authenticated_client_copy(
     assert results == ["A003 OK [COPYUID 2 2:6 1:5] COPY command completed"]
 
     async with server.get_mailbox("MEETING") as dst_mbox:
-        msg_keys = await dst_mbox.mailbox.akeys()
+        msg_keys = dst_mbox.mailbox.keys()
     assert len(msg_keys) == 5
 
     # Not going to both inspecting the messages.. the `test_mbox` tests should
