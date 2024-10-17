@@ -86,11 +86,11 @@ tomli-w==1.1.0
     # via hatch
 tomlkit==0.13.2
     # via hatch
-trove-classifiers==2024.10.13
+trove-classifiers==2024.10.16
     # via hatchling
 userpath==1.9.2
     # via hatch
-uv==0.4.22
+uv==0.4.23
     # via hatch
 virtualenv==20.26.6
     # via hatch
