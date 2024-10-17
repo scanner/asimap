@@ -6,7 +6,7 @@
 #
 aiofiles==24.1.0
     # via -r production.txt
-aioretry==6.0.1
+aioretry==6.1.1
     # via -r production.txt
 aiosqlite==0.20.0
     # via -r production.txt
@@ -78,7 +78,7 @@ executing==2.1.0
     # via stack-data
 factory-boy==3.3.1
     # via pytest-factoryboy
-faker==30.4.0
+faker==30.6.0
     # via factory-boy
 filelock==3.16.1
     # via
@@ -282,9 +282,9 @@ rich==13.9.2
     #   -r build.txt
     #   -r development.in
     #   hatch
-ruff==0.6.9
+ruff==0.7.0
     # via -r lint.txt
-sentry-sdk==2.16.0
+sentry-sdk==2.17.0
     # via -r production.txt
 shellingham==1.5.4
     # via
@@ -319,7 +319,7 @@ traitlets==5.14.3
     # via
     #   ipython
     #   matplotlib-inline
-trove-classifiers==2024.10.13
+trove-classifiers==2024.10.16
     # via
     #   -r build.txt
     #   hatchling
@@ -341,7 +341,7 @@ types-pytz==2024.2.0.20241003
     # via -r lint.txt
 types-redis==4.6.0.20241004
     # via -r lint.txt
-types-requests==2.32.0.20240914
+types-requests==2.32.0.20241016
     # via -r lint.txt
 types-setuptools==75.1.0.20241014
     # via
@@ -366,7 +366,7 @@ userpath==1.9.2
     # via
     #   -r build.txt
     #   hatch
-uv==0.4.22
+uv==0.4.23
     # via
     #   -r build.txt
     #   hatch
