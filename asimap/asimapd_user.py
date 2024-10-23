@@ -61,6 +61,7 @@ XXX We communicate with the server via localhost TCP sockets. We REALLY should
 # system imports
 #
 import asyncio
+import codecs
 import logging
 import sys
 from pathlib import Path
@@ -75,7 +76,11 @@ from dotenv import load_dotenv
 import asimap.trace
 from asimap import __version__ as VERSION
 from asimap.user_server import IMAPUserServer
-from asimap.utils import setup_asyncio_logging, setup_logging
+from asimap.utils import (
+    encoding_search_fn,
+    setup_asyncio_logging,
+    setup_logging,
+)
 
 logger = logging.getLogger("asimap.asimapd_user")
 
@@ -101,6 +106,10 @@ def main():
     debug = args["--debug"]
     log_config = args["--log-config"]
     username = args["<username>"]
+
+    # Register the additional codec translations we support.
+    #
+    codecs.register(encoding_search_fn)
 
     # After we setup our logging handlers and formatters set up for asyncio
     # logging so that logging calls do not block the asyncio event loop.

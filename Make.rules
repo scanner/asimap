@@ -2,7 +2,8 @@
 
 ACTIVATE := source $(ROOT_DIR)/venv/bin/activate &&
 PYTHON ?= python3.12
-VERSION := $(shell PYTHONPATH=`pwd` python -c 'import asimap ; print(asimap.__version__)')
+# VERSION := $(shell PYTHONPATH=`pwd` python -c 'import asimap ; print(asimap.__version__)')
+VERSION := $(shell python -c 'import asimap ; print(asimap.__version__)')
 
 .git/hooks/pre-commit .git/hooks/pre-push: venv
 	@$(ACTIVATE) pre-commit install

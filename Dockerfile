@@ -36,7 +36,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ARG APP_HOME=/app
 
 WORKDIR ${APP_HOME}
-ENV PYTHONPATH=${APP_HOME}
+# ENV PYTHONPATH=${APP_HOME}
 
 COPY README.md LICENSE Makefile Make.rules pyproject.toml /app/
 COPY requirements/development.txt /app/requirements/development.txt

@@ -74,7 +74,7 @@ pygments==2.18.0
     # via rich
 pyproject-hooks==1.2.0
     # via build
-rich==13.9.2
+rich==13.9.3
     # via hatch
 shellingham==1.5.4
     # via hatch
@@ -86,13 +86,13 @@ tomli-w==1.1.0
     # via hatch
 tomlkit==0.13.2
     # via hatch
-trove-classifiers==2024.10.16
+trove-classifiers==2024.10.21.16
     # via hatchling
 userpath==1.9.2
     # via hatch
-uv==0.4.23
+uv==0.4.25
     # via hatch
-virtualenv==20.26.6
+virtualenv==20.27.0
     # via hatch
 zstandard==0.23.0
     # via hatch

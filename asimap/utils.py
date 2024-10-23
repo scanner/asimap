@@ -9,6 +9,7 @@ may move over in to a module dedicated for that.
 #
 import asyncio
 import atexit
+import codecs
 import email.utils
 import json
 import logging
@@ -83,6 +84,22 @@ LOGGED_IN_USER: Optional[str] = None
 # Provide os.utime as an asyncio function via aiosfiles `wrap` async decorator
 #
 utime = aiofiles_wrap(os.utime)
+
+
+####################################################################
+#
+def encoding_search_fn(encoding: str) -> Optional[codecs.CodecInfo]:
+    """
+    Handle some of the weird encodings we run into with all the email we
+    have gotten from different eras of the internet.
+    """
+    match encoding:
+        case "ansi_x3.110_1983":
+            return codecs.lookup("ascii")
+        case "unknown_8bit":
+            return codecs.lookup("latin-1")
+        case _:
+            return None
 
 
 ##################################################################
