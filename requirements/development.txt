@@ -53,11 +53,11 @@ click==8.1.7
     #   userpath
 codetiming==1.4.0
     # via -r development.in
-coverage==7.6.3
+coverage==7.6.4
     # via
     #   -r lint.txt
     #   pytest-cov
-cryptography==43.0.1
+cryptography==43.0.3
     # via
     #   -r lint.txt
     #   trustme
@@ -78,7 +78,7 @@ executing==2.1.0
     # via stack-data
 factory-boy==3.3.1
     # via pytest-factoryboy
-faker==30.6.0
+faker==30.8.0
     # via factory-boy
 filelock==3.16.1
     # via
@@ -166,7 +166,7 @@ more-itertools==10.5.0
     #   -r build.txt
     #   jaraco-classes
     #   jaraco-functools
-mypy==1.12.0
+mypy==1.13.0
     # via -r lint.txt
 mypy-extensions==1.0.0
     # via
@@ -277,7 +277,7 @@ requests==2.32.3
     # via requests-mock
 requests-mock==1.12.1
     # via -r development.in
-rich==13.9.2
+rich==13.9.3
     # via
     #   -r build.txt
     #   -r development.in
@@ -319,7 +319,7 @@ traitlets==5.14.3
     # via
     #   ipython
     #   matplotlib-inline
-trove-classifiers==2024.10.16
+trove-classifiers==2024.10.21.16
     # via
     #   -r build.txt
     #   hatchling
@@ -343,7 +343,7 @@ types-redis==4.6.0.20241004
     # via -r lint.txt
 types-requests==2.32.0.20241016
     # via -r lint.txt
-types-setuptools==75.1.0.20241014
+types-setuptools==75.2.0.20241019
     # via
     #   -r lint.txt
     #   types-cffi
@@ -366,11 +366,11 @@ userpath==1.9.2
     # via
     #   -r build.txt
     #   hatch
-uv==0.4.23
+uv==0.4.25
     # via
     #   -r build.txt
     #   hatch
-virtualenv==20.26.6
+virtualenv==20.27.0
     # via
     #   -r build.txt
     #   -r lint.txt

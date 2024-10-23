@@ -12,7 +12,7 @@ test-units: venv
 	PYTHONPATH=`pwd` $(ACTIVATE) pytest -m "not integration"
 
 test: venv
-	PYTHONPATH=`pwd` $(ACTIVATE) pytest
+	$(ACTIVATE) pytest
 
 coverage: venv
 	PYTHONPATH=`pwd` $(ACTIVATE) coverage run -m pytest
