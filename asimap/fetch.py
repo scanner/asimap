@@ -601,7 +601,9 @@ class FetchAtt:
            (("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 1152 23)
             ("TEXT" "PLAIN" ("CHARSET" "US-ASCII" "NAME" "cc.diff")
             "<960723163407.20117h@cac.washington.edu>" "Compiler diff"
-            "BASE64" 4554 73) "MIXED")
+            "BASE64" 4554 73)
+            "MIXED"
+           )
 
         Extension data follows the multipart subtype.  Extension data is never
         returned with the BODY fetch, but can be returned with a BODYSTRUCTURE

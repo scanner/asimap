@@ -577,16 +577,16 @@ async def test_fetch_body_section_text(mailbox_with_mimekit_email):
     # section 2.1.TEXT
     #
     ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
-    fetch = FetchAtt(FetchOp.BODY, section=[2, 4, "TEXT"])
+    fetch = FetchAtt(FetchOp.BODY, section=[2, 1, "TEXT"])
     result = fetch.fetch(ctx)
 
-    assert result.startswith("BODY[2.4.TEXT] {")
+    assert result.startswith("BODY[2.1.TEXT] {")
     body_start = result.find("}") + 3
     res_length = int(result[result.find("{") + 1 : result.find("}")])
     result_body = result[body_start:]
     assert len(result_body) == res_length
     sub_parts = msg_parts[1].get_payload()
-    msg_body = msg_as_string(sub_parts[3], headers=False)
+    msg_body = msg_as_string(sub_parts[0], headers=False)
 
     assert res_length == len(msg_body)
     assert msg_body == result_body
@@ -654,22 +654,22 @@ async def test_fetch_body_section_header(mailbox_with_mimekit_email):
     assert res_length == len(msg_headers)
     assert msg_headers == result_body
 
-    # headers of sub-parts - 2.4.HEADER
+    # headers of sub-parts - 2.1.HEADER
     #
     ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
-    fetch = FetchAtt(FetchOp.BODY, section=[2, 4, "HEADER"])
+    fetch = FetchAtt(FetchOp.BODY, section=[2, 1, "HEADER"])
     result = fetch.fetch(ctx)
 
     result_headers = result[headers_start:]
-    assert result.startswith("BODY[2.4.HEADER] {")
+    assert result.startswith("BODY[2.1.HEADER] {")
     body_start = result.find("}") + 3
     res_length = int(result[result.find("{") + 1 : result.find("}")])
     result_body = result[body_start:]
     assert len(result_body) == res_length
-    # NOTE: zero-based array vs 1-based section list so 2.4 is index 1, index 3
+    # NOTE: zero-based array vs 1-based section list so 2.1 is index 1, index 0
     #
     sub_parts = msg_parts[1].get_payload()
-    msg_headers = msg_headers_as_string(sub_parts[3])
+    msg_headers = msg_headers_as_string(sub_parts[0])
 
     assert res_length == len(msg_headers)
     assert msg_headers == result_body
