@@ -261,3 +261,5 @@ def test_generator_problematic_email(problematic_email_factory):
         msg = MHMessage(msg_str)
         msg_text = msg_as_string(msg)
         assert msg_text
+        msg_hdrs = msg_headers_as_string(msg)
+        assert msg_hdrs

@@ -1417,7 +1417,26 @@ class Mailbox:
         # factory will return an EmailMessage, so it is safe and proper to cast
         # the return of __getitem__ to be an EmailMessage.
         #
-        return cast(EmailMessage, self.mailbox[str(msg_key)])
+        # return cast(EmailMessage, self.mailbox[str(msg_key)])
+        msg = cast(EmailMessage, self.mailbox[str(msg_key)])
+
+        # To handle the attempt to decode the header if it is 8bit-unknown with
+        # a 7 bit encoding, capture that case and deal with it by re-writing
+        # the subject.
+        #
+        if msg["content-transfer-encoding"] == "unknown-8bit":
+            # Make sure that we can encode the subject as a 7bit string
+            #
+            subj = msg["subject"]
+            try:
+                if "subject" in msg:
+                    subj.encode("ascii", "surrogateescape")
+            except UnicodeEncodeError:
+                subjb = subj.encode("ascii", "xmlcharrefreplace")
+                del msg["subject"]
+                msg["subject"] = subjb.decode("ascii")
+
+        return msg
 
     ####################################################################
     #
