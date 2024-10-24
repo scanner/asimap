@@ -366,7 +366,7 @@ userpath==1.9.2
     # via
     #   -r build.txt
     #   hatch
-uv==0.4.25
+uv==0.4.26
     # via
     #   -r build.txt
     #   hatch

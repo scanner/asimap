@@ -129,26 +129,6 @@ class SearchContext(object):
         self._msg = self.mailbox.get_msg(self.msg_key)
         return self._msg
 
-    # ####################################################################
-    # #
-    # async def email_message(self) -> EmailMessage:
-    #     """
-    #     When operating on the message itself during FETCH operations an
-    #     EmailMessage is more modern and easier to work with, so this method
-    #     will re-parse the message into an EmailMessage.
-
-    #     NOTE: Why do we have to do this? Because we use the MHMessage's sequence
-    #           features and that is by force an email.Message.
-    #     """
-    #     if self._email_msg:
-    #         return self._email_msg
-
-    #     self._email_msg = cast(
-    #         EmailMessage,
-    #         message_from_string(msg_as_string(await self.msg()), policy=SMTP),
-    #     )
-    #     return self._email_msg
-
     ##################################################################
     #
     def uid(self) -> Optional[int]:
