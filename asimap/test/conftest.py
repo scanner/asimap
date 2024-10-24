@@ -34,7 +34,6 @@ from typing import (
 import pytest
 import pytest_asyncio
 import trustme
-from charset_normalizer import from_path
 
 # project imports
 #
@@ -602,17 +601,17 @@ def static_email_factory():
 ####################################################################
 #
 @pytest.fixture
-def problematic_email_factory() -> Tuple[str]:
+def problematic_email_factory() -> Generator[bytes, None, None]:
     """
     in our time on the internet we have seen lots of problematic email with
     various issues.We need to make sure that we handle these reasonably well
     """
     dir = Path(__file__).parent / "fixtures" / "mhdir" / "problems"
-    return (
-        str(from_path(msg_file).best()) for msg_file in sorted(dir.iterdir())
-    )
+    # return (
+    #     str(from_path(msg_file).best()) for msg_file in sorted(dir.iterdir())
+    # )
 
-    # return (msg_file.read_bytes() for msg_file in sorted(dir.iterdir()))
+    return (msg_file.read_bytes() for msg_file in sorted(dir.iterdir()))
     # return (msg_file.read_text() for msg_file in sorted(dir.iterdir()))
 
 
