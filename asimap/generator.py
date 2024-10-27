@@ -286,7 +286,7 @@ def get_msg_size(msg: Message, headers: bool = True) -> int:
 #
 def msg_headers_as_string(
     msg: Message,
-    headers: Optional[Tuple[str]] = None,
+    headers: Optional[Tuple[str, ...]] = None,
     skip: bool = True,
 ) -> str:
     """

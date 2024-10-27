@@ -10,10 +10,11 @@ import ssl
 import threading
 import time
 from contextlib import asynccontextmanager
+from email import message_from_bytes
 from email.header import decode_header
 from email.headerregistry import Address
 from email.message import EmailMessage, Message
-from email.policy import SMTP
+from email.policy import SMTP, default
 from email.utils import format_datetime
 from mailbox import MH, MHMessage
 from pathlib import Path
@@ -50,6 +51,15 @@ from .factories import UserFactory
 EmailFactoryType: TypeAlias = Callable[..., EmailMessage]
 
 REPLACE_LINESEP = {ord("\r"): None, ord("\n"): None}
+
+TESTS_PATH = Path(__file__).parent
+PROBLEMATIC_EMAIL_FIXTURE_DIR = TESTS_PATH / "fixtures" / "mhdir" / "problems"
+STATIC_EMAIL_FIXTURE_DIR = TESTS_PATH / "fixtures" / "mhdir" / "one"
+STATIC_EMAIL_MSG_KEYS = sorted(
+    int(str(x.name))
+    for x in STATIC_EMAIL_FIXTURE_DIR.iterdir()
+    if not x.is_dir()
+)
 
 
 ####################################################################
@@ -586,39 +596,42 @@ def mailbox_instance(bunch_of_email_in_folder, imap_user_server):
 ####################################################################
 #
 @pytest.fixture
-def static_email_factory():
+def static_email_factory_bytes() -> Callable[[int], bytes]:
     """
     `email_factory` is good for a number of things but we want some tests
     with fixed inputs that have a richer variety of input.
 
     We have a bunch of pre-generated emails from MimeKit. This fixture will
-    yield those messages as strings.
+    yield those messages as bytes.
     """
-    dir = Path(__file__).parent / "fixtures" / "mhdir" / "one"
-    return (msg_file.read_text() for msg_file in sorted(dir.iterdir()))
+
+    def _factory(msg_key: int) -> bytes:
+        msg_file = STATIC_EMAIL_FIXTURE_DIR / str(msg_key)
+        return msg_file.read_bytes()
+
+    return _factory
 
 
 ####################################################################
 #
 @pytest.fixture
-def problematic_email_factory() -> Generator[bytes, None, None]:
+def problematic_email_factory_bytes() -> Callable[[int], bytes]:
     """
     in our time on the internet we have seen lots of problematic email with
     various issues.We need to make sure that we handle these reasonably well
     """
-    dir = Path(__file__).parent / "fixtures" / "mhdir" / "problems"
-    # return (
-    #     str(from_path(msg_file).best()) for msg_file in sorted(dir.iterdir())
-    # )
 
-    return (msg_file.read_bytes() for msg_file in sorted(dir.iterdir()))
-    # return (msg_file.read_text() for msg_file in sorted(dir.iterdir()))
+    def _factory(msg_key: int) -> bytes:
+        msg_file = PROBLEMATIC_EMAIL_FIXTURE_DIR / str(msg_key)
+        return msg_file.read_bytes()
+
+    return _factory
 
 
 ####################################################################
 #
 @pytest.fixture
-def lots_of_headers_email():
+def lots_of_headers_email() -> str:
     """
     Just get one email with lots of headers.
     """
@@ -629,20 +642,19 @@ def lots_of_headers_email():
 ####################################################################
 #
 @pytest.fixture
-def big_static_email():
+def big_static_email_bytes(static_email_factory_bytes) -> bytes:
     """
     A message with lots of parts with encodings. Mainly so we can test more
     complicated `FETCH` commands.
     """
-    msg_file = Path(__file__).parent / "fixtures" / "mhdir" / "one" / "10"
-    return msg_file.read_text()
+    return static_email_factory_bytes(10)
 
 
 ####################################################################
 #
 @pytest_asyncio.fixture
 async def mailbox_with_big_static_email(
-    mh_folder, big_static_email, imap_user_server
+    mh_folder, big_static_email_bytes, imap_user_server
 ):
     """
     Fixture for making `FETCH` tests a little easier.
@@ -652,9 +664,11 @@ async def mailbox_with_big_static_email(
     NAME = "inbox"
     server = imap_user_server
     (mh_dir, _, m_folder) = mh_folder(NAME)
-    msg = MHMessage(big_static_email)
-    msg.add_sequence("unseen")
-    m_folder.add(msg)
+    msg = message_from_bytes(big_static_email_bytes, policy=default)
+    msg_key = m_folder.add(msg)
+    seqs = m_folder.get_sequences()
+    seqs["unseen"] = [msg_key]
+    m_folder.set_sequences(seqs)
     async with server.get_mailbox(NAME) as mbox:
         yield mbox
 
@@ -663,7 +677,7 @@ async def mailbox_with_big_static_email(
 #
 @pytest_asyncio.fixture
 async def mailbox_with_mimekit_email(
-    mh_folder, static_email_factory, imap_user_server
+    mh_folder, static_email_factory_bytes, imap_user_server
 ):
     """
     Create a mailbox filled with all of our static email fixtures
@@ -672,31 +686,14 @@ async def mailbox_with_mimekit_email(
     NAME = "inbox"
     server = imap_user_server
     (mh_dir, _, m_folder) = mh_folder(NAME)
-    for msg_text in static_email_factory:
-        msg = MHMessage(msg_text)
-        msg.add_sequence("unseen")
+    for msg_key in STATIC_EMAIL_MSG_KEYS:
+        msg = message_from_bytes(
+            static_email_factory_bytes(msg_key), policy=default
+        )
         m_folder.add(msg)
-    async with server.get_mailbox(NAME) as mbox:
-        yield mbox
-
-
-####################################################################
-#
-@pytest_asyncio.fixture
-async def mailbox_with_problematic_email(
-    mh_folder, problematic_email_factory, imap_user_server
-):
-    """
-    Create a mailbox filled with all of our static email fixtures
-    (originally all from the MimeKit fixture test data)
-    """
-    NAME = "inbox"
-    server = imap_user_server
-    (mh_dir, _, m_folder) = mh_folder(NAME)
-    for msg_text in problematic_email_factory:
-        msg = MHMessage(msg_text)
-        msg.add_sequence("unseen")
-        m_folder.add(msg)
+    seqs = m_folder.get_sequences()
+    seqs["unseen"] = STATIC_EMAIL_MSG_KEYS
+    m_folder.set_sequences(seqs)
     async with server.get_mailbox(NAME) as mbox:
         yield mbox
 
