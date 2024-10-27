@@ -1,0 +1,595 @@
+Delivery-Date: Wed, 19 Mar 2014 16:00:19 -0700
+Received: from mta903.em.ea.com (mta903.em.ea.com [63.211.90.187])
+	by kamidake.apricot.com (8.14.7/8.14.2) with ESMTP id s2JN0CmC044845
+	for <scanner@apricot.com>; Wed, 19 Mar 2014 16:00:18 -0700 (PDT)
+	(envelope-from bo-b61wr9rbgwqzxhauych5kqcep98ecy@b.email.swtor.com)
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=email.swtor.com;
+	s=20111006; t=1395270011; x=1411167611;
+	bh=/NY3rOP40hlKmPCF1A9NvZM0OXvZi33OpSQJHlwqqlw=; h=From:Reply-To;
+	b=smgERNL5O4ERCz0QWKda0FkhgiHipjWgAw7twRToFhjnq8oI372Yh9xT8ykrNqPDd
+	 tvtQVP6HZvZlG408zcFbh1SEgcUP4Xj/7c6BfSGnARUs2MbHA0Sf+U5QEo2VR7tDNy
+	 962PPcOTBdHTEhGKWJS4tKJS+tIDAkIrP6z6S1kI=
+DomainKey-Signature: a=rsa-sha1; q=dns; c=nofws;
+  s=200505; d=email.swtor.com;
+  b=oDyab2EYbhFIFwNcpx2Octaka+DpFE72eBTOGTJ4BoR7KUjB67IMW/pd0BAMiclORZ9f3QZjnibX8uDcTtN4xzv1Z8CkPMCYaMxcMRNAFresyKZvyFbq9lxRdCFlTufR21b1JvienzrSSHRPT/I7A/VqquEsRdDZeauNq4D8lak=;
+ h=Date:Message-ID:List-Unsubscribe:From:To:Subject:MIME-Version:Reply-To:Content-type;
+Date: Wed, 19 Mar 2014 23:00:11 -0000
+Message-ID: <b61wr9rbgwqzxhauych5kqcep98ecy.14707351835.1313@mta903.email.swtor.com>
+List-Unsubscribe: <mailto:rm-0b61wr9rbgwqzxhauych5kqcep98ecy@email.swtor.com>
+From: "STAR WARS: The Old Republic" <swtor@email.swtor.com>
+To: scanner@apricot.com
+Subject: Announcing Star Wars™: The Old Republic™ Digital Expansion, Galactic Strongholds
+MIME-Version: 1.0
+Reply-To: "STAR WARS: The Old Republic" <support-b61wr9rbgwqzxhauych5kqcep98ecy@email.swtor.com>
+Content-type: multipart/alternative; boundary="=b61wr9rbgwqzxhauych5kqcep98ecy"
+
+
+--=b61wr9rbgwqzxhauych5kqcep98ecy
+Content-Type: text/plain; charset="utf-8"
+Content-transfer-encoding: 8bit
+
+STAR WARS
+
+Announcing Star Wars™: The Old Republic™ Digital Expansion, Galactic Strongholds
+Announcing Galactic Strongholds*
+Customize your personal stronghold!
+
+Acquire Customizable Strongholds
+Live on Multiple Planets
+Launch Your Guild Flagship
+Invite Your Friends
+Get Legacy Stronghold Storage
+And much more!
+
+GET EARLY ACCESS JUNE 10TH!**
+Be a subscriber by May 11th to get EARLY ACCESS to a Nar Shaddaa Sky Palace with three rooms already unlocked - value of 1,500,000 Credits!
+
+SPECIAL LIMITED TIME OFFER**
+Be a Subscriber by April 2nd to receive 500 Bonus Cartel Coins.
+Be a Subscriber by May 4th to receive 1,000 Bonus Cartel Coins.
+
+GET EARLY ACCESS! http://email.swtor.com/a/tBTKiF5B7uvlmB846iLNsoGEbEa/a11
+
+
+*********************************************************************
+To unsubscribe or otherwise manage your email preferences, visit CLICK HERE http://email.swtor.com/a/tBTKiF5B7uvlmB846iLNsoGEbEa/a13?TOKEN=pweznAmIZNAUX8eXWow7VrbThGjBWtdCkvt1MJT1vG8AAAAAAC7t7Q==
+* Not all features will be available during the Early Access period. Guild Flagships and Legacy Stronghold Storage will be available to players as part of the official launch of Galactic Strongholds.
+**Terms and Conditions Apply. See www.swtor.com/galactic-strongholds for details.
+
+LucasArts, the LucasArts logo, STAR WARS and related properties are trademarks in the United States and/or in other countries of Lucasfilm Ltd. and/or its affiliates. © 2014 Lucasfilm Entertainment Company Ltd. or Lucasfilm Ltd. All rights reserved. BioWare and the BioWare logo are trademarks of EA International (Studio and Publishing) Ltd. EA and the EA logo are trademarks of Electronic Arts Inc. All other trademarks are the property of their respective owners.
+
+Electronic Arts Inc. 209 Redwood Shores Parkway, Redwood City, CA 94065
+
+Terms of Service: http://email.swtor.com/a/tBTKiF5B7uvlmB846iLNsoGEbEa/a3
+Privacy Policy: http://email.swtor.com/a/tBTKiF5B7uvlmB846iLNsoGEbEa/a2
+
+--=b61wr9rbgwqzxhauych5kqcep98ecy
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN"><html><head><=
+title></title><meta name=3D"description" content=3D"SWTOR GalGiving FOR"/>
+	<meta http-equiv=3D"Content-Type" content=3D"text/html; charset=3Dutf-8"/>
+=09
+<style>
+img {
+	display:block;
+}
+a {
+	text-decoration:underline;
+}
+br {
+	clear:both;
+}
+.ReadMsgBody {
+	width: 100%;
+}
+.ExternalClass {
+	width: 100%;
+}
+.ExternalClass * {
+	line-height: 100%;
+}
+div, p, a, li, td {=20
+	-webkit-text-size-adjust:none;=20
+}
+
+</style></head><body onload=3D'' bgcolor=3D"#ffffff" leftmargin=3D"0" topma=
+rgin=3D"0" marginwidth=3D"0" marginheight=3D"0" align=3D"center">
+=09
+=09
+=09
+
+=09
+
+		<table align=3D"center" id=3D"Table_01" border=3D"0" width=3D"640"   cell=
+padding=3D"0" cellspacing=3D"0" >
+			<!-- Beginning of header -->
+			<tr><td width=3D"640" align=3D"center" valign=3D"top">
+
+				<table align=3D"center" width=3D"640" border=3D"0" cellpadding=3D"0" ce=
+llspacing=3D"0">
+					<tbody>
+						<tr>
+							<td width=3D"640" align=3D"left">
+=09=09=09
+								<table align=3D"center" width=3D"640" border=3D"0" cellpadding=3D"0=
+" cellspacing=3D"0" bgcolor=3D"#ffffff">
+									<tbody>
+=09=09=09=09=09=09=09=09=09=09
+                                        <tr>
+                                            <td>
+                                                <table width=3D"449" align=
+=3D"center" valign=3D"top" border=3D"0" cellpadding=3D"0" cellspacing=3D"0"=
+ bgcolor=3D"#ffffff">
+                                                    <tbody>
+                                                        <tr>
+                                                            <td width=3D"7"=
+></td>
+                                                            <td width=3D"44=
+9" align=3D"left" bgcolor=3D"#ffffff">
+<font style=3D"mso-line-height-rule:exactly;font-size:10px;font-family:Aria=
+l,sans-serif;color:#202020;display:block;">
+Announcing <em>Star Wars=E2=84=A2:</em> The Old Republic=E2=84=A2 Digital E=
+xpansion, Galactic Strongholds<br>
+</font>
+
+<font style=3D"mso-line-height-rule:exactly;font-size:9px;font-family:Arial=
+,sans-serif;color:#202020;display:block;">
+                        If you are having trouble viewing this email,&nbsp;=
+please <a target=3D"_blank" href=3D"http://email.swtor.com/a/hBTKiF5B7uvlmB=
+846iLNsoGEbEa/a1?t_params=3DTOKEN%3DpweznAmIZNAUX8eXWow7VrbThGjBWtdCkvt1MJT=
+1vG8AAAAAAC7t7Q%253D%253D" style=3D"color:#202020;text-decoration:underline=
+">click here.</a>
+                        </font>
+
+                                                            </td>
+=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=
+=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=
+=20=20=20=20=20=20=20=20
+                                                      </tr>
+                                                     </tbody>
+                                                  </table>
+                                             </td>
+                                             <td><a href=3D"http://email.sw=
+tor.com/a/hBTKiF5B7uvlmB846iLNsoGEbEa/a9"><img src=3D"http://f.em.ea.com/s/=
+9/2075765679/P4F_SWTOR_MarchInsider_03_LEC_hg.jpg" width=3D"36" height=3D"3=
+8" style=3D"display:block"></a></td>
+                                              <td width=3D"63" height=3D"38=
+" align=3D"right" bgcolor=3D"#202020">
+                                                            	<font style=3D=
+"mso-line-height-rule:exactly;font-size:10px;font-family:Arial,sans-serif;c=
+olor:#ffffff;"><strong>Follow us:&nbsp;</strong></font>
+                                                            </td>
+                                             <td><a href=3D"http://email.sw=
+tor.com/a/hBTKiF5B7uvlmB846iLNsoGEbEa/a7"><img src=3D"http://f.em.ea.com/s/=
+9/2075765679/P4F_SWTOR_MarchInsider_03_LEC_fb.jpg" alt=3D"Facebook" width=
+=3D"29" height=3D"38" style=3D"display:block"></a></td>
+                                             <td><a href=3D"http://email.sw=
+tor.com/a/hBTKiF5B7uvlmB846iLNsoGEbEa/a14"><img src=3D"http://f.em.ea.com/s=
+/9/2075765679/P4F_SWTOR_MarchInsider_03_LEC_tw.jpg" alt=3D"Twitter" width=
+=3D"29" height=3D"38" style=3D"display:block"></a></td>
+                                             <td><a href=3D"http://email.sw=
+tor.com/a/hBTKiF5B7uvlmB846iLNsoGEbEa/a12"><img src=3D"http://f.em.ea.com/s=
+/9/2075765679/P4F_SWTOR_MarchInsider_03_LEC_yt.jpg" alt=3D"Youtube" width=
+=3D"34" height=3D"38" style=3D"display:block"></a></td>
+                                         </tr>
+									</tbody>
+								</table>
+							</td>
+						</tr>
+					</tbody>
+				</table>
+				<!-- End of header -->
+
+				<!--Beginning of body -->
+				<table align=3D"center" width=3D"640" border=3D"0" cellpadding=3D"0" ce=
+llspacing=3D"0" bgcolor=3D"#ffffff">
+					<tbody>
+=09=09=09=09=09=09
+						<tr>
+							<td><a href=3D"http://email.swtor.com/a/hBTKiF5B7uvlmB846iLNsoGEbEa/=
+a11"><img src=3D"http://f.chtah.com/s/4/2075851110/P4F_SWTOR_GalStrong_F2P_=
+banner.jpg" width=3D"640" height=3D"485" alt=3D"STAR WARS" style=3D"display=
+:block"></a></td>
+						</tr>
+						<tr>
+							<td><img src=3D"http://f.chtah.com/s/4/2075851110/P4F_SWTOR_GalStron=
+g_F2P_head_en.jpg" width=3D"640" height=3D"75" style=3D"display:block"></td>
+						</tr>
+=09=09=09=09=09=09
+
+						<tr>
+							<td>
+								<table align=3D"center" width=3D"640" border=3D"0" cellpadding=3D"0=
+" cellspacing=3D"0" bgcolor=3D"#232323">
+									<tbody>
+										<tr>
+                                        	<td width=3D"20" height=3D"195"></=
+td>
+
+
+=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=
+=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=09
+										  	<td width=3D"306" height=3D"195" align=3D"left" valign=3D"top">
+										  		<table>
+										  			<tr>
+										  				<td align=3D"left" valign=3D"top" width=3D"16">
+														    <font style=3D"mso-line-height-rule:exactly;font-size:16p=
+x;font-family:Arial,sans-serif;color:#ffffff;">
+														    <strong>=C2=B7 </strong>
+														    </font>
+														</td>
+														<td width=3D"290">
+=09=09=09=09=09=09=09=09=09=09=20=20=09=09=09
+										  					<font style=3D"mso-line-height-rule:exactly;font-size:16px=
+;font-family:Arial,sans-serif;color:#ffffff;">
+    														Acquire Customizable Strongholds
+    														</font>
+
+										  				</td>
+										  			</tr>
+
+										  			<tr>
+										  				<td align=3D"left" valign=3D"top" width=3D"16">
+														    <font style=3D"mso-line-height-rule:exactly;font-size:16p=
+x;font-family:Arial,sans-serif;color:#ffffff;">
+														    <strong>=C2=B7 </strong>
+														    </font>
+														</td>
+														<td width=3D"290">
+=09=09=09=09=09=09=09=09=09=09=20=20=09=09=09
+										  					<font style=3D"mso-line-height-rule:exactly;font-size:16px=
+;font-family:Arial,sans-serif;color:#ffffff;">
+    														Live on Multiple Planets
+    														</font>
+										  				</td>
+										  			</tr>
+
+										  			<tr>
+										  				<td align=3D"left" valign=3D"top" width=3D"16">
+														    <font style=3D"mso-line-height-rule:exactly;font-size:16p=
+x;font-family:Arial,sans-serif;color:#ffffff;">
+														    <strong>=C2=B7 </strong>
+														    </font>
+														</td>
+														<td width=3D"290">
+=09=09=09=09=09=09=09=09=09=09=20=20=09=09=09
+										  					<font style=3D"mso-line-height-rule:exactly;font-size:16px=
+;font-family:Arial,sans-serif;color:#ffffff;">
+    														Launch Your Guild Flagship
+    														</font>
+										  				</td>
+										  			</tr>
+
+										  			<tr>
+										  				<td align=3D"left" valign=3D"top" width=3D"16">
+														    <font style=3D"mso-line-height-rule:exactly;font-size:16p=
+x;font-family:Arial,sans-serif;color:#ffffff;">
+														    <strong>=C2=B7 </strong>
+														    </font>
+														</td>
+														<td width=3D"290">
+=09=09=09=09=09=09=09=09=09=09=20=20=09=09=09
+										  					<font style=3D"mso-line-height-rule:exactly;font-size:16px=
+;font-family:Arial,sans-serif;color:#ffffff;">
+    														Invite Your Friends=20
+    														</font>
+										  				</td>
+										  			</tr>
+
+										  			<tr>
+										  				<td align=3D"left" valign=3D"top" width=3D"16">
+														    <font style=3D"mso-line-height-rule:exactly;font-size:16p=
+x;font-family:Arial,sans-serif;color:#ffffff;">
+														    <strong>=C2=B7 </strong>
+														    </font>
+														</td>
+														<td width=3D"290">
+=09=09=09=09=09=09=09=09=09=09=20=20=09=09=09
+										  					<font style=3D"mso-line-height-rule:exactly;font-size:16px=
+;font-family:Arial,sans-serif;color:#ffffff;">
+    														Get Legacy Stronghold Storage
+    														</font>
+										  				</td>
+										  			</tr>
+
+
+										  			<tr>
+										  				<td align=3D"left" valign=3D"top" width=3D"16">
+														    <font style=3D"mso-line-height-rule:exactly;font-size:16p=
+x;font-family:Arial,sans-serif;color:#ffffff;">
+														    <strong>=C2=B7 </strong>
+														    </font>
+														</td>
+														<td width=3D"290">
+=09=09=09=09=09=09=09=09=09=09=20=20=09=09=09
+										  					<font style=3D"mso-line-height-rule:exactly;font-size:16px=
+;font-family:Arial,sans-serif;color:#ffffff;">
+    														And much more!
+    														</font>
+										  				</td>
+										  			</tr>
+
+=09=09=09=09=09=09=09=09=09=09=20=20=09=09=09
+
+=20=20=20=20=09=09=09=09=09=09=09=09=09=09
+												</table>
+											</td>
+											<td><img src=3D"http://f.chtah.com/s/4/2075851110/P4F_SWTOR_GalS=
+trong_F2P_pic1.jpg" width=3D"314" height=3D"195" style=3D"display:block"></=
+td>
+										</tr>
+									</tbody>
+								</table>
+							</td>
+						</tr>
+
+						<tr>
+							<td><a href=3D"http://email.swtor.com/a/hBTKiF5B7uvlmB846iLNsoGEbEa/=
+a11">
+								<img src=3D"http://f.chtah.com/s/4/2075851110/P4F_SWTOR_GalStrong_F=
+2P_galactic_en.jpg" width=3D"640" height=3D"120" style=3D"display:block">
+							</a></td>
+						</tr>
+
+						<tr>
+							<td><img src=3D"http://f.chtah.com/s/4/2075851110/P4F_SWTOR_GalStron=
+g_F2P_offer_en.jpg" width=3D"640" height=3D"67" style=3D"display:block"></t=
+d>
+						</tr>
+
+						<tr>
+							<td>
+								<table align=3D"center" width=3D"640" border=3D"0" cellpadding=3D"0=
+" cellspacing=3D"0" bgcolor=3D"#212121">
+									<tbody>
+										<tr>
+                                        	<td><img src=3D"http://f.chtah.com=
+/s/4/2075851110/P4F_SWTOR_GalStrong_F2P_gap2.jpg" width=3D"377" height=3D"4=
+9" style=3D"display:block"></td>
+                                        	<td width=3D"263" height=3D"49" al=
+ign=3D"left" valign=3D"top">
+                                        		<font style=3D"mso-line-height-ru=
+le:exactly;font-size:16px;font-family:Arial,sans-serif;color:#ffffff;">
+                                        		Be a Subscriber by <strong>April =
+2nd</strong> to receive 500 Bonus Cartel Coins.=20
+                                        		</font>
+                                        	</td>
+                                        </tr>
+									</tbody>
+								</table>
+							</td>
+						</tr>
+
+						<tr>
+							<td>
+								<table align=3D"center" width=3D"640" border=3D"0" cellpadding=3D"0=
+" cellspacing=3D"0" bgcolor=3D"#232323">
+									<tbody>
+										<tr>
+                                        	<td><img src=3D"http://f.chtah.com=
+/s/4/2075851110/P4F_SWTOR_GalStrong_F2P_gap3.jpg" width=3D"377" height=3D"6=
+0" style=3D"display:block"></td>
+                                        	<td width=3D"263" height=3D"60" al=
+ign=3D"left" valign=3D"top">
+                                        		<font style=3D"mso-line-height-ru=
+le:exactly;font-size:16px;font-family:Arial,sans-serif;color:#ffffff;">
+                                        		Be a Subscriber by <strong>May 4t=
+h</strong> to receive 1,000 Bonus Cartel Coins.=20
+                                        		</font>
+                                        	</td>
+                                        </tr>
+									</tbody>
+								</table>
+							</td>
+						</tr>
+
+						<tr>
+							<td>
+								<table align=3D"center" width=3D"640" border=3D"0" cellpadding=3D"0=
+" cellspacing=3D"0" bgcolor=3D"#232323">
+									<tbody>
+										<tr>
+                                        	<td><img src=3D"http://f.chtah.com=
+/s/4/2075851110/P4F_SWTOR_GalStrong_F2P_gap4.jpg" width=3D"339" height=3D"3=
+7" style=3D"display:block"></td>
+                                        	<td width=3D"301" height=3D"37" al=
+ign=3D"left">
+                                        		<a target=3D"_blank" href=3D"http=
+://email.swtor.com/a/hBTKiF5B7uvlmB846iLNsoGEbEa/a11" style=3D"mso-line-hei=
+ght-rule:exactly;font-size:18px;font-family:Arial,sans-serif;color:#ebce63;=
+">
+                                        		GET BONUS CARTEL COINS!
+                                        		</a>
+                                        	</td>
+                                        </tr>
+									</tbody>
+								</table>
+							</td>
+						</tr>
+
+						<tr>
+							<td><img src=3D"http://f.chtah.com/s/4/2075851110/P4F_SWTOR_GalStron=
+g_F2P_gap5.jpg" width=3D"640" height=3D"41" style=3D"display:block"></td>
+						</tr>
+
+						<tr>
+							<td><img src=3D"http://f.chtah.com/s/4/2075851110/P4F_SWTOR_GalStron=
+g_F2P_access_en.jpg" width=3D"640" height=3D"67" style=3D"display:block"></=
+td>
+						</tr>
+
+						<tr>
+							<td>
+								<table align=3D"center" width=3D"640" border=3D"0" cellpadding=3D"0=
+" cellspacing=3D"0" bgcolor=3D"#191919">
+									<tbody>
+										<tr>
+                                        	<td><img src=3D"http://f.chtah.com=
+/s/4/2075851110/P4F_SWTOR_GalStrong_F2P_gap6.jpg" width=3D"31" height=3D"16=
+3" style=3D"display:block"></td>
+                                        	<td width=3D"289" height=3D"163" a=
+lign=3D"left" valign=3D"top">
+                                        		<font style=3D"mso-line-height-ru=
+le:exactly;font-size:16px;font-family:Arial,sans-serif;color:#ffffff;">
+                                        		Be a subscriber by <strong>May 11=
+th</strong> to get <strong>EARLY ACCESS</strong> to a Nar Shaddaa Sky Palac=
+e with three rooms already unlocked - value of 1,500,000 Credits!
+                                        		</font>
+                                        		<table><tr><td height=3D"10"></td=
+></tr></table>
+                                        		<a target=3D"_blank" href=3D"http=
+://email.swtor.com/a/hBTKiF5B7uvlmB846iLNsoGEbEa/a11" style=3D"mso-line-hei=
+ght-rule:exactly;font-size:18px;font-family:Arial,sans-serif;color:#ebce63;=
+">
+                                        		GET EARLY ACCESS!
+                                        		</a>
+                                        	</td>
+                                        	<td><img src=3D"http://f.chtah.com=
+/s/4/2075851110/P4F_SWTOR_GalStrong_F2P_gap7.jpg" width=3D"320" height=3D"1=
+63" style=3D"display:block"></td>
+                                        </tr>
+									</tbody>
+								</table>
+							</td>
+						</tr>
+						<tr>
+							<td><img src=3D"http://f.chtah.com/s/4/2075851110/P4F_SWTOR_GalStron=
+g_F2P_gap8.jpg" width=3D"640" height=3D"47" style=3D"display:block"></td>
+						</tr>
+					</tbody>
+				</table>
+
+
+
+
+
+
+=09=09=09=09=09=09
+
+				<!--End of body -->
+
+				<!-- Beginning of footer -->
+				<table align=3D"center" width=3D"640" border=3D"0" cellpadding=3D"0" ce=
+llspacing=3D"0" bgcolor=3D"#080808">
+					<tbody>=09
+					<tr><td height=3D"30"></td></tr>=09=09=09
+					<tr>
+						<td width=3D"640">
+							<table align=3D"center" width=3D"640" cellspacing=3D"0" cellpadding=
+=3D"0" border=3D"0">
+
+								<tbody>
+									<tr>
+                                    	<td width=3D"30"></td>
+										<td><a href=3D"http://email.swtor.com/a/hBTKiF5B7uvlmB846iLNsoGEb=
+Ea/a8"><img src=3D"http://f.em.ea.com/s/9/2075765679/P4F_SWTOR_lucasarts_lo=
+go.jpg" width=3D"115" height=3D"65" style=3D"display:block"></a></td>
+                                        <td><a href=3D"http://email.swtor.c=
+om/a/hBTKiF5B7uvlmB846iLNsoGEbEa/a4"><img src=3D"http://f.em.ea.com/s/9/207=
+5765679/P4F_SWTOR_Bioware_logo.jpg" width=3D"165" height=3D"65" style=3D"di=
+splay:block"></a></td>
+                                        <td><a href=3D"http://email.swtor.c=
+om/a/hBTKiF5B7uvlmB846iLNsoGEbEa/a5"><img src=3D"http://f.em.ea.com/s/9/207=
+5765679/P4F_SWTOR_ea_logo.jpg" width=3D"70" height=3D"65" style=3D"display:=
+block"></a></td>
+                                        <td width=3D"40"></td>
+                                        <td><a href=3D"http://email.swtor.c=
+om/a/hBTKiF5B7uvlmB846iLNsoGEbEa/a6"><img src=3D"http://f.em.ea.com/s/9/207=
+5765679/P4F_SWTOR_esrb_logo.jpg" width=3D"136" height=3D"65" style=3D"displ=
+ay:block"></a></td>
+                                        <td width=3D"40"></td>
+									</tr>
+								</tbody>
+							</table>
+						</td>
+					</tr>
+
+					<tr><td height=3D"20"></td></tr>
+
+					<tr>
+                    	<td>
+                            <table width=3D"640" align=3D"center" valign=3D=
+"top" border=3D"0" cellpadding=3D"0" cellspacing=3D"0" bgcolor=3D"#080808">
+                                 <tbody>
+                                      <tr>
+                                      	 <td width=3D"20"></td>
+                                         <td width=3D"600" align=3D"left" >
+
+                                         	  <font style=3D"mso-line-height-=
+rule:exactly;font-size:9px;font-family:Verdana,sans-serif;color:#ffffff;">
+                                                * Not all features will be =
+available during the Early Access period. Guild Flagships and Legacy Strong=
+hold Storage will be available to players as part of the official launch of=
+ Galactic Strongholds.</font><br>
+                                              <font style=3D"mso-line-heigh=
+t-rule:exactly;font-size:9px;font-family:Verdana,sans-serif;color:#ffffff;">
+                                                **Terms and Conditions Appl=
+y.  See <a href=3D"http://email.swtor.com/a/hBTKiF5B7uvlmB846iLNsoGEbEa/a10=
+" style=3D"mso-line-height-rule:exactly;font-size:9px;font-family:Verdana,s=
+ans-serif;color:#ffffff;">www.swtor.com/galactic-strongholds</a> for detail=
+s. </font><br>
+                                              <table>
+                                              <tr><td height=3D"10"></td></=
+tr></table>
+
+                                              <font style=3D"mso-line-heigh=
+t-rule:exactly;font-size:9px;font-family:Verdana,sans-serif;color:#ffffff;">
+                                              To unsubscribe or otherwise m=
+anage your email preferences, visit <a href=3D"http://email.swtor.com/a/hBT=
+KiF5B7uvlmB846iLNsoGEbEa/a13?TOKEN=3DpweznAmIZNAUX8eXWow7VrbThGjBWtdCkvt1MJ=
+T1vG8AAAAAAC7t7Q=3D=3D" style=3D"mso-line-height-rule:exactly;font-size:9px=
+;font-family:Verdana,sans-serif;color:#ffffff;">CLICK HERE</a>.</font><font=
+ style=3D"mso-line-height-rule:exactly;font-size:9px;font-family:Verdana,sa=
+ns-serif;color:#ffffff;"><br><br>
+                                                LucasArts, the LucasArts lo=
+go, <em>STAR WARS</em> and related properties are trademarks in the United =
+States and/or in other countries of Lucasfilm Ltd. and/or its affiliates. =
+=C2=A9 2014 Lucasfilm Entertainment Company Ltd. or Lucasfilm Ltd. All righ=
+ts reserved. BioWare and the BioWare logo are trademarks of EA Internationa=
+l (Studio and Publishing) Ltd. EA and the EA logo are trademarks of Electro=
+nic Arts Inc. All other trademarks are the property of their respective own=
+ers. </font>
+                                              <font style=3D"mso-line-heigh=
+t-rule:exactly;font-size:9px;font-family:Verdana,sans-serif;color:#ffffff;">
+                                              <table>
+                                              <tr><td height=3D"10"></td></=
+tr></table>
+                                              Electronic Arts Inc. 209 Redw=
+ood Shores Parkway, Redwood City, CA 94065
+=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=
+=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20
+                                              <table><tr><td height=3D"10">=
+</td></tr></table>
+                                              <a href=3D"http://email.swtor=
+.com/a/hBTKiF5B7uvlmB846iLNsoGEbEa/a3" style=3D"mso-line-height-rule:exactl=
+y;font-size:9px;font-family:Verdana,sans-serif;color:#ffffff;">Terms of Ser=
+vice</a> | <a href=3D"http://email.swtor.com/a/hBTKiF5B7uvlmB846iLNsoGEbEa/=
+a2" style=3D"mso-line-height-rule:exactly;font-size:9px;font-family:Verdana=
+,sans-serif;color:#ffffff;">Privacy Policy</a></font>
+                                        </td>
+                                        <td width=3D"20"></td>
+                                      </tr>
+                                  </tbody>
+                              </table>
+                          </td>
+                     </tr>
+=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=
+=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20=20
+=09=09=09=09=09
+					<tr><td height=3D"30"></td></tr>
+
+                    <tr><td height=3D"50"></td></tr>
+			    	</tbody>
+				</table>
+			<!-- End of footer -->
+			</td></tr>
+		</table>
+=09
+<img src=3D"http://email.swtor.com/a/hBTKiF5B7uvlmB846iLNsoGEbEa/spacer.gif=
+">
+</body></html>=
+
+
+--=b61wr9rbgwqzxhauych5kqcep98ecy--
