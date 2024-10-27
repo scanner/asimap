@@ -2,7 +2,7 @@
 #
 # Builder stage
 #
-FROM python:3.12 AS builder
+FROM python:3.13 AS builder
 
 ARG APP_HOME=/app
 WORKDIR ${APP_HOME}
@@ -61,7 +61,7 @@ CMD ["python", "/app/asimap/asimapd.py"]
 #
 # `app` - The docker image for the django app web service
 #
-FROM python:3.12-slim AS prod
+FROM python:3.13-slim AS prod
 
 LABEL org.opencontainers.image.source=https://github.com/scanner/asimap
 LABEL org.opencontainers.image.description="Apricot Systematic IMAP Demon"
