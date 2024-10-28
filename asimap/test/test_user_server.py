@@ -13,7 +13,7 @@ import pytest
 # Project imports
 #
 from ..client import Authenticated
-from ..mbox import Mailbox, NoSuchMailbox
+from ..mbox import Mailbox
 from ..parse import IMAPClientCommand
 from ..user_server import IMAPUserServer
 
@@ -159,11 +159,11 @@ async def test_check_folder(
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_there_is_no_root_folder(imap_user_server):
+async def test_there_is_a_root_folder(imap_user_server):
     server = imap_user_server
-    with pytest.raises(NoSuchMailbox):
-        async with server.get_mailbox(""):
-            pass
+    # with pytest.raises(NoSuchMailbox):
+    async with server.get_mailbox(""):
+        pass
 
 
 ####################################################################

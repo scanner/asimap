@@ -961,7 +961,8 @@ class IMAPUserServer:
         if name.lower() == "inbox":
             name = "inbox"
 
-        if not name.strip() or not self.folder_exists(name):
+        # if not name.strip() or not self.folder_exists(name):
+        if not self.folder_exists(name):
             raise NoSuchMailbox(f"No such mailbox: '{name}'")
 
         # If the mailbox is active we can return it immediately. If not then,
