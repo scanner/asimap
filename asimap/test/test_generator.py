@@ -17,7 +17,7 @@ import pytest
 # Project imports
 #
 from ..generator import msg_as_string, msg_headers_as_string
-from .conftest import PROBLEMATIC_EMAIL_FIXTURE_DIR, STATIC_EMAIL_MSG_KEYS
+from .conftest import PROBLEMATIC_EMAIL_MSG_KEYS, STATIC_EMAIL_MSG_KEYS
 
 
 ####################################################################
@@ -247,14 +247,7 @@ X-Mailer: Microsoft Outlook Express 6.00.2900.5931\r\n\r\n"""
 
 ####################################################################
 #
-@pytest.mark.parametrize(
-    "msg_key",
-    sorted(
-        int(str(x.name))
-        for x in PROBLEMATIC_EMAIL_FIXTURE_DIR.iterdir()
-        if not x.is_dir()
-    ),
-)
+@pytest.mark.parametrize("msg_key", PROBLEMATIC_EMAIL_MSG_KEYS)
 def test_generator_problematic_email(msg_key, problematic_email_factory_bytes):
     """
     Not all emails can be flattened out of the box without some jiggery
