@@ -743,7 +743,7 @@ class Mailbox:
                 # for new messages in this folder. How long we wait until we
                 # timeout depends on whether or not any clients have this
                 # mailbox selected. 1s to 5s if their are any
-                # clients. Otherwise 50s-70s if there are no clients.
+                # clients. Otherwise 10s-20s if there are no clients.
                 #
                 timeout = randrange(1, 5) if self.clients else randrange(10, 20)
                 try:

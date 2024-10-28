@@ -62,6 +62,7 @@ RE_LITERAL_STRING_START = re.compile(rb"\{(\d+)(\+)?\}$")
 
 TIME_BETWEEN_FULL_FOLDER_SCANS = 120
 TIME_BETWEEN_METRIC_DUMPS = 60
+TIME_BETWEEN_FOLDER_SCANS = 90
 
 
 ####################################################################
@@ -788,6 +789,53 @@ class IMAPUserServer:
 
     ####################################################################
     #
+    def user_server_management_task(self) -> None:
+        """
+        The user_server has a task to do certain things are regular
+        intervals. Right now these things are:
+        - Every TIME_BETWEEN_METRIC_DUMPS, dump metrics
+        - See if the user server has an expiry time, and no clients, and if so,
+          shut down the user server.
+        - Every <n> seconds, check for new folders and load them.
+        """
+        logger.debug("User Server Management Task starting")
+
+        # Scan all the folders and load them in to memory.
+        #
+        # XXX Once we get the migration to loading all folders in to memory on
+        #     startup working, we can remove the `initial_folder_scan` and
+        #     rename 'check_all_folders' to be load_and_scan_all_folders()
+        #     since all folders will be in memory at all times we do not need
+        #     to scan them at regular intervals anymore. That will be done by
+        #     each folder's management task.
+        #
+        self.initial_folder_scan = True
+        await self.check_all_folders()
+        self.initial_folder_scan = False
+        last_metrics_dump = time.monotonic()
+        last_folder_scan = time.monotonic()
+        try:
+            while True:
+                # XXX For now try skipping resyncs to see if we were missing up
+                #     exiring folders too early (and also see if we can handle
+                #     all mailboxes loaded in to memory always)
+                #
+                # await self.expire_inactive_folders()
+
+                now = time.monotonic()
+
+                if now - last_metrics_dump > TIME_BETWEEN_METRIC_DUMPS:
+                    self.dump_metrics()
+                    last_metrics_dump = now
+
+                if now - last_folder_scan > TIME_BETWEEN_FOLDER_SCANS:
+                    await self.find_all_folders()
+                    last_folder_scan = time.monotonic()
+        except Exception:
+            raise
+
+    ####################################################################
+    #
     async def folder_scan(self):
         """
         at regular intervals we need to scan all the inactive folders to
@@ -1117,16 +1165,20 @@ class IMAPUserServer:
             extant_mboxes[name] = mtime
 
         maildir_root_len = len(str(self.maildir)) + 1
+        found_folders = 0
         async with asyncio.TaskGroup() as tg:
             for root, dirs, files in self.maildir.walk(follow_symlinks=True):
                 for dir in dirs:
                     dirname = str(root / dir)[maildir_root_len:]
                     if dirname not in extant_mboxes:
+                        found_folders += 1
                         tg.create_task(self._get_and_release_mbox(dirname))
                         await asyncio.sleep(0)
 
         logger.info(
-            "Finished. Took %.3f seconds", time.monotonic() - start_time
+            "Finished. Found %d new folders, Took %.3f seconds",
+            found_folders,
+            time.monotonic() - start_time,
         )
 
     ##################################################################
