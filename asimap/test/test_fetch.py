@@ -335,7 +335,8 @@ ENVELOPE_BY_MSG_KEY = [
     ),
     pytest.param(
         17,
-        """("Wed, 22 Jul 2015 01:02:29 +0900" "日本語メールテスト (testing Japanese emails)" (("Atsushi Eno" NIL "x" "x.com")) (("Atsushi Eno" NIL "x" "x.com")) (("Atsushi Eno" NIL "x" "x.com")) (("Jeffrey Stedfast" NIL "x" "x.com")) NIL NIL NIL "<55AE6D15.4010805@veritas-vos-liberabit.com>")""",
+        # """("Wed, 22 Jul 2015 01:02:29 +0900" "日本語メールテスト (testing Japanese emails)" (("Atsushi Eno" NIL "x" "x.com")) (("Atsushi Eno" NIL "x" "x.com")) (("Atsushi Eno" NIL "x" "x.com")) (("Jeffrey Stedfast" NIL "x" "x.com")) NIL NIL NIL "<55AE6D15.4010805@veritas-vos-liberabit.com>")""",
+        """("Wed, 22 Jul 2015 01:02:29 +0900" "&#26085;&#26412;&#35486;&#12513;&#12540;&#12523;&#12486;&#12473;&#12488; (testing Japanese emails)" (("Atsushi Eno" NIL "x" "x.com")) (("Atsushi Eno" NIL "x" "x.com")) (("Atsushi Eno" NIL "x" "x.com")) (("Jeffrey Stedfast" NIL "x" "x.com")) NIL NIL NIL "<55AE6D15.4010805@veritas-vos-liberabit.com>")""",
         id="17",
     ),
     pytest.param(
@@ -401,7 +402,8 @@ MSG_SIZE_BY_MSG_KEY = [
     pytest.param(14, 717, id="14"),
     pytest.param(15, 1221, id="15"),
     pytest.param(16, 9395, id="16"),
-    pytest.param(17, 584, id="17"),
+    # pytest.param(17, 584, id="17"),
+    pytest.param(17, 579, id="17"),
     pytest.param(18, 264, id="18"),
     pytest.param(19, 467, id="19"),
     pytest.param(20, 2686, id="20"),
@@ -415,6 +417,40 @@ MSG_SIZE_BY_MSG_KEY = [
 @pytest.mark.parametrize("msg_key,expected_size", MSG_SIZE_BY_MSG_KEY)
 def test_fetch_rfc822_size(msg_key, expected_size, mailbox_with_mimekit_email):
     mbox = mailbox_with_mimekit_email
+    seq_max = mbox.num_msgs
+    uid_vv, uid_max = mbox.get_uid_from_msg(mbox.msg_keys[-1])
+    assert uid_max
+
+    msg_seq_num = msg_key
+
+    ctx = SearchContext(mbox, msg_key, msg_seq_num, seq_max, uid_max)
+    fetch = FetchAtt(FetchOp.RFC822_SIZE)
+    result = fetch.fetch(ctx)
+
+    assert result.startswith("RFC822.SIZE ")
+    assert int(result[12:]) == expected_size
+
+
+PROBLEMATIC_MSG_SIZE_BY_MSG_KEY = [
+    pytest.param(1, 1164, id="1"),
+    # pytest.param(2, 4392, id="2"),
+    pytest.param(2, 4335, id="2"),
+    # pytest.param(3, 26777, id="3"),
+    pytest.param(3, 26737, id="3"),
+    # pytest.param(4, 9631, id="4"),
+    pytest.param(4, 9606, id="4"),
+]
+
+
+####################################################################
+#
+@pytest.mark.parametrize(
+    "msg_key,expected_size", PROBLEMATIC_MSG_SIZE_BY_MSG_KEY
+)
+def test_fetch_problematic_rfc822_size(
+    msg_key, expected_size, mailbox_with_problematic_email
+):
+    mbox = mailbox_with_problematic_email
     seq_max = mbox.num_msgs
     uid_vv, uid_max = mbox.get_uid_from_msg(mbox.msg_keys[-1])
     assert uid_max

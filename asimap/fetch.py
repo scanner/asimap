@@ -185,15 +185,24 @@ class FetchAtt:
                 | FetchOp.RFC822_SIZE
             ):
                 msg = self.ctx.msg()
-                match self.attribute:
-                    case FetchOp.BODY:
-                        result = self.body(msg, self.section)
-                    case FetchOp.BODYSTRUCTURE:
-                        result = self.bodystructure(msg)
-                    case FetchOp.ENVELOPE:
-                        result = self.envelope(msg)
-                    case FetchOp.RFC822_SIZE:
-                        result = ctx.msg_size()
+                try:
+                    match self.attribute:
+                        case FetchOp.BODY:
+                            result = self.body(msg, self.section)
+                        case FetchOp.BODYSTRUCTURE:
+                            result = self.bodystructure(msg)
+                        case FetchOp.ENVELOPE:
+                            result = self.envelope(msg)
+                        case FetchOp.RFC822_SIZE:
+                            result = ctx.msg_size()
+                except UnicodeEncodeError as e:
+                    logger.error(
+                        "Unable to perform fetch %s, failed on message %s, exception: %r",
+                        self.attribute,
+                        self.ctx,
+                        e,
+                    )
+                    raise
             case FetchOp.FLAGS:
                 flags = " ".join([seq_to_flag(x) for x in self.ctx.sequences])
                 result = f"({flags})"

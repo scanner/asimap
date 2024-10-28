@@ -54,6 +54,11 @@ REPLACE_LINESEP = {ord("\r"): None, ord("\n"): None}
 
 TESTS_PATH = Path(__file__).parent
 PROBLEMATIC_EMAIL_FIXTURE_DIR = TESTS_PATH / "fixtures" / "mhdir" / "problems"
+PROBLEMATIC_EMAIL_MSG_KEYS = sorted(
+    int(str(x.name))
+    for x in PROBLEMATIC_EMAIL_FIXTURE_DIR.iterdir()
+    if not x.is_dir()
+)
 STATIC_EMAIL_FIXTURE_DIR = TESTS_PATH / "fixtures" / "mhdir" / "one"
 STATIC_EMAIL_MSG_KEYS = sorted(
     int(str(x.name))
@@ -689,6 +694,31 @@ async def mailbox_with_mimekit_email(
     for msg_key in STATIC_EMAIL_MSG_KEYS:
         msg = message_from_bytes(
             static_email_factory_bytes(msg_key), policy=default
+        )
+        m_folder.add(msg)
+    seqs = m_folder.get_sequences()
+    seqs["unseen"] = STATIC_EMAIL_MSG_KEYS
+    m_folder.set_sequences(seqs)
+    async with server.get_mailbox(NAME) as mbox:
+        yield mbox
+
+
+####################################################################
+#
+@pytest_asyncio.fixture
+async def mailbox_with_problematic_email(
+    mh_folder, problematic_email_factory_bytes, imap_user_server
+):
+    """
+    Create a mailbox filled with all of our static email fixtures
+    (originally all from the MimeKit fixture test data)
+    """
+    NAME = "inbox"
+    server = imap_user_server
+    (mh_dir, _, m_folder) = mh_folder(NAME)
+    for msg_key in PROBLEMATIC_EMAIL_MSG_KEYS:
+        msg = message_from_bytes(
+            problematic_email_factory_bytes(msg_key), policy=default
         )
         m_folder.add(msg)
     seqs = m_folder.get_sequences()

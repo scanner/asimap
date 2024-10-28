@@ -1424,17 +1424,19 @@ class Mailbox:
         # a 7 bit encoding, capture that case and deal with it by re-writing
         # the subject.
         #
-        if msg["content-transfer-encoding"] == "unknown-8bit":
-            # Make sure that we can encode the subject as a 7bit string
-            #
-            subj = msg["subject"]
-            try:
-                if "subject" in msg:
-                    subj.encode("ascii", "surrogateescape")
-            except UnicodeEncodeError:
-                subjb = subj.encode("ascii", "xmlcharrefreplace")
-                del msg["subject"]
-                msg["subject"] = subjb.decode("ascii")
+
+        # if msg["content-transfer-encoding"] == "unknown-8bit":
+
+        # Make sure that we can encode the subject as a 7bit string
+        #
+        subj = msg["subject"]
+        try:
+            if "subject" in msg:
+                subj.encode("ascii", "surrogateescape")
+        except UnicodeEncodeError:
+            subjb = subj.encode("ascii", "xmlcharrefreplace")
+            del msg["subject"]
+            msg["subject"] = subjb.decode("ascii")
 
         return msg
 
