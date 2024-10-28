@@ -354,12 +354,12 @@ class IMAPClientProxy:
         """
         for d in data:
             try:
-                d = bytes(d, "latin-1") if isinstance(d, str) else d
+                d = d.encode("latin-1") if isinstance(d, str) else d
             except UnicodeEncodeError:
                 # Mnugh.. you think latin-1 would work, but sometimes we just
                 # need to go with UTF-8.
                 #
-                d = bytes(d, "utf-8") if isinstance(d, str) else d
+                d.encode("utf-8", "replace") if isinstance(d, str) else d
             try:
                 self.writer.write(d)
             except asyncio.CancelledError:
