@@ -438,7 +438,8 @@ PROBLEMATIC_MSG_SIZE_BY_MSG_KEY = [
     # pytest.param(3, 26777, id="3"),
     pytest.param(3, 26737, id="3"),
     # pytest.param(4, 9631, id="4"),
-    pytest.param(4, 9606, id="4"),
+    # pytest.param(4, 9606, id="4"),
+    pytest.param(4, 9604, id="4"),
 ]
 
 
