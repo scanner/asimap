@@ -20,12 +20,11 @@ import socket
 import sys
 import time
 from collections import Counter, defaultdict
-from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from email import message_from_binary_file
 from mailbox import NoSuchMailboxError
 from pathlib import Path
+from random import randrange
 from statistics import fmean, median, stdev
 from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
@@ -789,7 +788,7 @@ class IMAPUserServer:
 
     ####################################################################
     #
-    def user_server_management_task(self) -> None:
+    async def user_server_management_task(self) -> None:
         """
         The user_server has a task to do certain things are regular
         intervals. Right now these things are:
@@ -831,8 +830,28 @@ class IMAPUserServer:
                 if now - last_folder_scan > TIME_BETWEEN_FOLDER_SCANS:
                     await self.find_all_folders()
                     last_folder_scan = time.monotonic()
-        except Exception:
+
+                # At the end of loop see if we have hit our lifetime expiry.
+                # This will be None as long as there are active
+                # clients. Otherwise it is a time after which the server should
+                # exit.
+                #
+                if self.expiry and self.expiry < now:
+                    self.asyncio_server.close()
+                    await self.asyncio_server.wait_closed()
+                    return
+
+                # And sleep before we do another folder scan
+                #
+                sleep_duration = randrange(9, 15)
+                await asyncio.sleep(sleep_duration)
+        except asyncio.exceptions.CancelledError:
+            logger.info("folder_scan task has been cancelled")
             raise
+        finally:
+            if self.asyncio_server.is_serving():
+                self.asyncio_server.close()
+                await self.asyncio_server.wait_closed()
 
     ####################################################################
     #
@@ -947,48 +966,7 @@ class IMAPUserServer:
 
     ##################################################################
     #
-    @asynccontextmanager
-    async def get_mailbox(self, name: str) -> AsyncGenerator[Mailbox]:
-        """
-        To insure that the mailbox's use count is always positive when we
-        get it and that it can not expired due to a race condition between when
-        the mailbox is fetched and when it is being used we provide a context
-        manager that can guarantee that the mailbox's in-use is always
-        positive.
-        """
-        mbox = None
-        try:
-            self.do_not_run_expiry_now += 1
-            try:
-                start = time.monotonic()
-                mbox = await self._get_mailbox(name)
-                mbox.in_use_count += 1
-            finally:
-                self.do_not_run_expiry_now -= 1
-                # XXX This should never happen.. but just in case it does.
-                #
-                if self.do_not_run_expiry_now < 0:
-                    self.do_not_run_expiry_now = 0
-
-            end = time.monotonic()
-            duration = end - start
-            if duration > 0.2:
-                logger.info(
-                    "Done getting for mailbox '%s', took: %.3fs", name, duration
-                )
-
-            # Now that we have a mbox, and its use count is positive we can
-            # yield it safe in the knowledge that it will not be expired until
-            # after this yield returns manager exits.
-            #
-            yield mbox
-        finally:
-            if mbox:
-                mbox.in_use_count -= 1
-
-    ##################################################################
-    #
-    async def _get_mailbox(self, name: str) -> Mailbox:
+    async def get_mailbox(self, name: str) -> Mailbox:
         """
         A factory of sorts.. if we have an active mailbox with the given name
         return it.
@@ -1013,21 +991,20 @@ class IMAPUserServer:
         if not self.folder_exists(name):
             raise NoSuchMailbox(f"No such mailbox: '{name}'")
 
-        # If the mailbox is active we can return it immediately. If not then,
-        # outside of the self.active_mailboxes_lock we will activate the
-        # mailbox.
+        # If the mailbox is active we can return it immediately.
         #
         # NOTE: We can do the check and return if the mailbox without getting
         #       the active_mailbox_lock because we are using asyncio. Nothing
         #       in this loop lets the task swap out so this access to a shared
         #       resource is safe.
+        #
         if name in self.active_mailboxes:
             if self.active_mailboxes[name].deleted:
                 raise NoSuchMailbox(f"'{name}' has been deleted.")
             return self.active_mailboxes[name]
 
-        # If multiple tasks are trying to activate a mailbox only *ONE* will
-        # get `creating=True`.
+        # If multiple tasks are trying to activate the same mailbox only *ONE*
+        # will get `creating=True`.
         #
         # Again, like above, nothing here changes our currently running asyncio
         # task so we do not need to hold the `activating_mailboxes_lock`
@@ -1079,75 +1056,6 @@ class IMAPUserServer:
 
     ##################################################################
     #
-    async def expire_inactive_folders(self):
-        """
-        Go through the list of active mailboxes and if any of them are around
-        past their expiry time, expire them.
-        """
-        # And finally check all active mailboxes to see if their in-use count
-        # is 0 and expire them if it is.
-        #
-        expired = []
-        expired_mboxes = []
-        async with self.active_mailboxes_lock:
-            # We want to make sure that we do not try to expire mailboxes while
-            # a mailbox maybe in a half instantiated state. If that is the case
-            # we just skip running expiry now.
-            #
-            if self.do_not_run_expiry_now > 0:
-                logger.info(
-                    "Skipping due to `do_not_run_expiry_now` being set, "
-                    "count: %d",
-                    self.do_not_run_expiry_now,
-                )
-                return
-
-            for mbox_name, mbox in self.active_mailboxes.items():
-                # If the in-use count is positive or the mbox has clients,
-                # do not expire it.
-                #
-                if (
-                    mbox.in_use_count > 0
-                    or mbox.clients
-                    or mbox.executing_tasks
-                ):
-                    continue
-                expired.append(mbox_name)
-                expired_mboxes.append(mbox)
-
-            # Remove the to-be expired mailboxees from active_mailboxes.
-            #
-            for mbox_name in expired:
-                del self.active_mailboxes[mbox_name]
-
-        # Go through the mbox's we deleted from `active_mailboxes` and shut
-        # them down.
-        #
-        if expired_mboxes:
-            async with asyncio.TaskGroup() as tg:
-                for mbox in expired_mboxes:
-                    tg.create_task(mbox.shutdown())
-
-            logger.debug(
-                "Expiring active %d mailboxes",
-                len(expired_mboxes),
-            )
-
-    ##################################################################
-    #
-    async def _get_and_release_mbox(self, mbox_name: str) -> None:
-        """
-        a helper for `find_all_folders` to use the context manager for
-        managing the in_use_count of a mailbox.
-
-        Basically we need to make sure that the in_use_count is properly reset
-        when this function exits.
-        """
-        async with self.get_mailbox(mbox_name):
-            pass
-
-    ##################################################################
-    #
     async def find_all_folders(self):
         """
         compare the list of folders on disk with the list of known folders in
@@ -1172,7 +1080,7 @@ class IMAPUserServer:
                     dirname = str(root / dir)[maildir_root_len:]
                     if dirname not in extant_mboxes:
                         found_folders += 1
-                        tg.create_task(self._get_and_release_mbox(dirname))
+                        tg.create_task(self.get_mailbox(dirname))
                         await asyncio.sleep(0)
 
         logger.info(
@@ -1214,8 +1122,7 @@ class IMAPUserServer:
                 # expired the next time the `expired_inactive_folders()` method
                 # runs (and the mailbox is not resyncing)
                 #
-                async with self.get_mailbox(mbox_name):
-                    pass
+                await self.get_mailbox(mbox_name)
 
         except MailboxInconsistency as e:
             # If hit one of these exceptions they are usually

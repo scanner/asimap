@@ -39,49 +39,49 @@ async def test_mailbox_init(imap_user_server):
     """
     server = imap_user_server
     NAME = "inbox"
-    async with server.get_mailbox(NAME) as mbox:
-        assert mbox
-        assert mbox.id
-        assert mbox.last_resync == IsNow(unix_number=True)
+    mbox = await server.get_mailbox(NAME)
+    assert mbox
+    assert mbox.id
+    assert mbox.last_resync == IsNow(unix_number=True)
 
-        results = await server.db.fetchone(
-            "select id, uid_vv,attributes,mtime,next_uid,num_msgs,"
-            "num_recent,uids,last_resync,subscribed from mailboxes "
-            "where name=?",
-            (NAME,),
-        )
-        (
-            id,
-            uid_vv,
-            attributes,
-            mtime,
-            next_uid,
-            num_msgs,
-            num_recent,
-            uids,
-            last_resync,
-            subscribed,
-        ) = results
-        assert id == mbox.id
-        assert uid_vv == 1  # 1 because first mailbox in server
-        assert mbox.uid_vv == uid_vv
-        assert sorted(attributes.split(",")) == [
-            r"\HasNoChildren",
-            r"\Unmarked",
-        ]
-        assert mbox.mtime == mtime
-        assert mtime == IsNow(unix_number=True)
-        assert next_uid == 1
-        assert mbox.next_uid == next_uid
-        assert num_msgs == 0
-        assert mbox.num_msgs == num_msgs
-        assert num_recent == 0
-        assert mbox.num_recent == num_recent
-        assert uids == ""
-        assert len(mbox.uids) == 0
-        assert mbox.last_resync == last_resync
-        assert bool(subscribed) is False
-        assert mbox.subscribed == bool(subscribed)
+    results = await server.db.fetchone(
+        "select id, uid_vv,attributes,mtime,next_uid,num_msgs,"
+        "num_recent,uids,last_resync,subscribed from mailboxes "
+        "where name=?",
+        (NAME,),
+    )
+    (
+        id,
+        uid_vv,
+        attributes,
+        mtime,
+        next_uid,
+        num_msgs,
+        num_recent,
+        uids,
+        last_resync,
+        subscribed,
+    ) = results
+    assert id == mbox.id
+    assert uid_vv == 1  # 1 because first mailbox in server
+    assert mbox.uid_vv == uid_vv
+    assert sorted(attributes.split(",")) == [
+        r"\HasNoChildren",
+        r"\Unmarked",
+    ]
+    assert mbox.mtime == mtime
+    assert mtime == IsNow(unix_number=True)
+    assert next_uid == 1
+    assert mbox.next_uid == next_uid
+    assert num_msgs == 0
+    assert mbox.num_msgs == num_msgs
+    assert num_recent == 0
+    assert mbox.num_recent == num_recent
+    assert uids == ""
+    assert len(mbox.uids) == 0
+    assert mbox.last_resync == last_resync
+    assert bool(subscribed) is False
+    assert mbox.subscribed == bool(subscribed)
 
 
 ####################################################################
@@ -134,28 +134,28 @@ async def test_mailbox_gets_new_message(
     NAME = "inbox"
     bunch_of_email_in_folder(folder=NAME)
     server = imap_user_server
-    async with server.get_mailbox(NAME) as mbox:
-        last_resync = mbox.last_resync
+    mbox = await server.get_mailbox(NAME)
+    last_resync = mbox.last_resync
 
-        # We need to sleep at least one second for mbox.last_resync to change
-        # (we only consider seconds)
-        #
-        await asyncio.sleep(1)
+    # We need to sleep at least one second for mbox.last_resync to change
+    # (we only consider seconds)
+    #
+    await asyncio.sleep(1)
 
-        # Now add one message to the folder.
-        #
-        bunch_of_email_in_folder(folder=NAME, num_emails=1)
-        msg_keys = set([int(x) for x in mbox.mailbox.keys()])
+    # Now add one message to the folder.
+    #
+    bunch_of_email_in_folder(folder=NAME, num_emails=1)
+    msg_keys = set([int(x) for x in mbox.mailbox.keys()])
 
-        await mbox.check_new_msgs_and_flags()
-        assert r"\Marked" in mbox.attributes
-        assert mbox.last_resync > last_resync
-        assert mbox.num_msgs == len(msg_keys)
-        assert len(mbox.sequences["unseen"]) == len(msg_keys)
-        assert mbox.sequences["unseen"] == set(msg_keys)
-        assert mbox.sequences["Recent"] == set(msg_keys)
-        assert len(mbox.sequences["Seen"]) == 0
-        assert len(mbox.msg_keys) == len(mbox.uids)
+    await mbox.check_new_msgs_and_flags()
+    assert r"\Marked" in mbox.attributes
+    assert mbox.last_resync > last_resync
+    assert mbox.num_msgs == len(msg_keys)
+    assert len(mbox.sequences["unseen"]) == len(msg_keys)
+    assert mbox.sequences["unseen"] == set(msg_keys)
+    assert mbox.sequences["Recent"] == set(msg_keys)
+    assert len(mbox.sequences["Seen"]) == 0
+    assert len(mbox.msg_keys) == len(mbox.uids)
 
 
 ####################################################################
@@ -262,55 +262,55 @@ async def test_mbox_expunge_with_client(
     NAME = "inbox"
     bunch_of_email_in_folder(folder=NAME)
     server, imap_client = imap_user_server_and_client
-    async with server.get_mailbox(NAME) as mbox:
-        mbox.clients[imap_client.cmd_processor.name] = imap_client.cmd_processor
+    mbox = await server.get_mailbox(NAME)
+    mbox.clients[imap_client.cmd_processor.name] = imap_client.cmd_processor
 
-        # Mark messages for expunge.
-        #
-        msg_keys = [int(x) for x in mbox.mailbox.keys()]
-        num_msgs = len(msg_keys)
-        for i in range(1, num_msgs_to_delete + 1):
-            mbox.sequences["Deleted"].add(msg_keys[i])
+    # Mark messages for expunge.
+    #
+    msg_keys = [int(x) for x in mbox.mailbox.keys()]
+    num_msgs = len(msg_keys)
+    for i in range(1, num_msgs_to_delete + 1):
+        mbox.sequences["Deleted"].add(msg_keys[i])
 
-        async with mbox.mh_sequences_lock:
-            mbox.set_sequences_in_folder(mbox.sequences)
+    async with mbox.mh_sequences_lock:
+        mbox.set_sequences_in_folder(mbox.sequences)
 
-        imap_client.cmd_processor.idling = True
-        await mbox.expunge()
-        imap_client.cmd_processor.idling = False
+    imap_client.cmd_processor.idling = True
+    await mbox.expunge()
+    imap_client.cmd_processor.idling = False
 
-        results = client_push_responses(imap_client)
-        assert results == [
-            "* 5 EXPUNGE",
-            "* 4 EXPUNGE",
-            "* 3 EXPUNGE",
-            "* 2 EXPUNGE",
-        ]
-        assert mbox.uids == [
-            1,
-            6,
-            7,
-            8,
-            9,
-            10,
-            11,
-            12,
-            13,
-            14,
-            15,
-            16,
-            17,
-            18,
-            19,
-            20,
-        ]
-        msg_keys = [int(x) for x in mbox.mailbox.keys()]
-        assert len(msg_keys) == num_msgs - num_msgs_to_delete
-        assert len(mbox.uids) == len(msg_keys)
-        async with mbox.mh_sequences_lock:
-            seqs = mbox.get_sequences_from_folder()
-        assert "Deleted" not in seqs
-        assert not mbox.sequences["Deleted"]
+    results = client_push_responses(imap_client)
+    assert results == [
+        "* 5 EXPUNGE",
+        "* 4 EXPUNGE",
+        "* 3 EXPUNGE",
+        "* 2 EXPUNGE",
+    ]
+    assert mbox.uids == [
+        1,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+    ]
+    msg_keys = [int(x) for x in mbox.mailbox.keys()]
+    assert len(msg_keys) == num_msgs - num_msgs_to_delete
+    assert len(mbox.uids) == len(msg_keys)
+    async with mbox.mh_sequences_lock:
+        seqs = mbox.get_sequences_from_folder()
+    assert "Deleted" not in seqs
+    assert not mbox.sequences["Deleted"]
 
 
 ####################################################################
@@ -603,37 +603,37 @@ async def test_mailbox_copy(mailbox_with_bunch_of_email):
     # Let the server discover this folder and incorporate it.
     #
     await mbox.server.find_all_folders()
-    async with mbox.server.get_mailbox(ARCHIVE) as dst_mbox:
+    dst_mbox = await mbox.server.get_mailbox(ARCHIVE)
 
-        msg_keys = mbox.msg_keys
-        msg_set = sorted(list(random.sample(msg_keys, 15)))
+    msg_keys = mbox.msg_keys
+    msg_set = sorted(list(random.sample(msg_keys, 15)))
 
-        src_uids, dst_uids = await mbox.copy(msg_set, dst_mbox)
-        assert len(src_uids) == len(dst_uids)
-        dst_msg_keys = dst_mbox.msg_keys
-        assert len(dst_msg_keys) == len(msg_set)
-        assert dst_msg_keys == archive_mh.keys()
+    src_uids, dst_uids = await mbox.copy(msg_set, dst_mbox)
+    assert len(src_uids) == len(dst_uids)
+    dst_msg_keys = dst_mbox.msg_keys
+    assert len(dst_msg_keys) == len(msg_set)
+    assert dst_msg_keys == archive_mh.keys()
 
-        # in the source mailbox the message keys, message indices, and uid's are
-        # all the same values for the same messages (because this is the initial
-        # population of the mailbox it turns out this way).
-        #
-        assert src_uids == msg_set
+    # in the source mailbox the message keys, message indices, and uid's are
+    # all the same values for the same messages (because this is the initial
+    # population of the mailbox it turns out this way).
+    #
+    assert src_uids == msg_set
 
-        # Compare the messages.
-        #
-        for src_msg_key, src_uid, dst_msg_key, dst_uid in zip(
-            msg_set, src_uids, dst_msg_keys, dst_uids
-        ):
-            src_msg = mbox.get_msg(src_msg_key)
-            dst_msg = dst_mbox.get_msg(dst_msg_key)
+    # Compare the messages.
+    #
+    for src_msg_key, src_uid, dst_msg_key, dst_uid in zip(
+        msg_set, src_uids, dst_msg_keys, dst_uids
+    ):
+        src_msg = mbox.get_msg(src_msg_key)
+        dst_msg = dst_mbox.get_msg(dst_msg_key)
 
-            assert_email_equal(src_msg, dst_msg)
+        assert_email_equal(src_msg, dst_msg)
 
-            _, uid = mbox.get_uid_from_msg(src_msg_key)
-            assert uid == src_uid
-            _, uid = dst_mbox.get_uid_from_msg(dst_msg_key)
-            assert uid == dst_uid
+        _, uid = mbox.get_uid_from_msg(src_msg_key)
+        assert uid == src_uid
+        _, uid = dst_mbox.get_uid_from_msg(dst_msg_key)
+        assert uid == dst_uid
 
 
 ####################################################################
@@ -680,24 +680,25 @@ async def test_mbox_copy_verify_sequences(
     archive_mh = mbox.server.mailbox.add_folder(ARCHIVE)
     await mbox.server.find_all_folders()
 
-    async with mbox.server.get_mailbox(ARCHIVE) as dst_mbox:
-        # Copy messages 1-6.. 1-5 should be `Seen` and 6 should be `unseen`
-        msg_set = list(range(1, 7))
-        src_uids, dst_uids = await mbox.copy(msg_set, dst_mbox)
-        assert len(src_uids) == len(dst_uids)
-        dst_msg_keys = dst_mbox.msg_keys
-        assert len(dst_msg_keys) == len(msg_set)
-        assert dst_msg_keys == archive_mh.keys()
+    dst_mbox = await mbox.server.get_mailbox(ARCHIVE)
 
-        # Validate the dest mailbox sequences
-        #
-        assert set(dst_mbox.sequences.keys()) == expected_sequences
-        mailbox_sequences = dst_mbox.sequences
-        assert set(mailbox_sequences.keys()) == expected_sequences
-        assert dst_mbox.sequences["Seen"] == set(range(1, 6))
-        assert dst_mbox.sequences["unseen"] == {6}
-        assert mailbox_sequences["Seen"] == set(range(1, 6))
-        assert mailbox_sequences["unseen"] == {6}
+    # Copy messages 1-6.. 1-5 should be `Seen` and 6 should be `unseen`
+    msg_set = list(range(1, 7))
+    src_uids, dst_uids = await mbox.copy(msg_set, dst_mbox)
+    assert len(src_uids) == len(dst_uids)
+    dst_msg_keys = dst_mbox.msg_keys
+    assert len(dst_msg_keys) == len(msg_set)
+    assert dst_msg_keys == archive_mh.keys()
+
+    # Validate the dest mailbox sequences
+    #
+    assert set(dst_mbox.sequences.keys()) == expected_sequences
+    mailbox_sequences = dst_mbox.sequences
+    assert set(mailbox_sequences.keys()) == expected_sequences
+    assert dst_mbox.sequences["Seen"] == set(range(1, 6))
+    assert dst_mbox.sequences["unseen"] == {6}
+    assert mailbox_sequences["Seen"] == set(range(1, 6))
+    assert mailbox_sequences["unseen"] == {6}
 
 
 ####################################################################
@@ -723,48 +724,48 @@ async def test_mailbox_create_delete(
         await Mailbox.create("1234", server)
 
     await Mailbox.create(ARCHIVE, server)
-    async with server.get_mailbox(ARCHIVE) as archive:
+    archive = await server.get_mailbox(ARCHIVE)
 
-        # You can not create a mailbox if it already exists.
-        #
-        with pytest.raises(MailboxExists):
-            await Mailbox.create(ARCHIVE, server)
-
-        # Create a mailbox in a mailbox..
-        #
-        await Mailbox.create(SUB_FOLDER, server)
-
-        # You can delete a mailbox that has children (it gets the `\Noselect`
-        # attribute)
-        #
-        await Mailbox.delete(ARCHIVE, server)
-        assert r"\Noselect" in archive.attributes
-
-        # If you try to delete a mailbox with `\Noselect` and it has children
-        # mailboxes, this also fails.
-        #
-        with pytest.raises(InvalidMailbox):
-            await Mailbox.delete(ARCHIVE, server)
-
-        # You can not select a `\Noselect` mailbox
-        #
-        with pytest.raises(No):
-            await archive.selected(imap_client_proxy.cmd_processor)
-
-        # Trying to create it will remove the `\Noselect` attribute..
-        #
+    # You can not create a mailbox if it already exists.
+    #
+    with pytest.raises(MailboxExists):
         await Mailbox.create(ARCHIVE, server)
-        assert r"\Noselect" not in archive.attributes
 
-        # and we will copy some messages into the Archive mailbox just to make
-        # sure we can actually do stuff with it.
-        #
-        msg_keys = mbox.msg_keys
-        msg_set = sorted(list(random.sample(msg_keys, 5)))
-        src_uids, dst_uids = await mbox.copy(msg_set, archive)
-        archive_msg_keys = archive.msg_keys
-        assert len(dst_uids) == len(archive_msg_keys)
-        assert archive.uids == dst_uids
+    # Create a mailbox in a mailbox..
+    #
+    await Mailbox.create(SUB_FOLDER, server)
+
+    # You can delete a mailbox that has children (it gets the `\Noselect`
+    # attribute)
+    #
+    await Mailbox.delete(ARCHIVE, server)
+    assert r"\Noselect" in archive.attributes
+
+    # If you try to delete a mailbox with `\Noselect` and it has children
+    # mailboxes, this also fails.
+    #
+    with pytest.raises(InvalidMailbox):
+        await Mailbox.delete(ARCHIVE, server)
+
+    # You can not select a `\Noselect` mailbox
+    #
+    with pytest.raises(No):
+        await archive.selected(imap_client_proxy.cmd_processor)
+
+    # Trying to create it will remove the `\Noselect` attribute..
+    #
+    await Mailbox.create(ARCHIVE, server)
+    assert r"\Noselect" not in archive.attributes
+
+    # and we will copy some messages into the Archive mailbox just to make
+    # sure we can actually do stuff with it.
+    #
+    msg_keys = mbox.msg_keys
+    msg_set = sorted(list(random.sample(msg_keys, 5)))
+    src_uids, dst_uids = await mbox.copy(msg_set, archive)
+    archive_msg_keys = archive.msg_keys
+    assert len(dst_uids) == len(archive_msg_keys)
+    assert archive.uids == dst_uids
 
 
 ####################################################################
@@ -790,43 +791,42 @@ async def test_mailbox_rename(
     saved_msg_keys = msg_keys[:]
     await Mailbox.rename("inbox", NEW_MBOX_NAME, server)
 
-    async with server.get_mailbox(NEW_MBOX_NAME) as new_mbox:
-        new_msg_keys = new_mbox.msg_keys
+    new_mbox = await server.get_mailbox(NEW_MBOX_NAME)
+    new_msg_keys = new_mbox.msg_keys
 
-        assert new_msg_keys == msg_keys
-        assert new_mbox.uids == new_msg_keys
+    assert new_msg_keys == msg_keys
+    assert new_mbox.uids == new_msg_keys
 
-        msg_keys = inbox.msg_keys
-        assert not msg_keys
-        assert not inbox.uids
-        assert not inbox.sequences
+    msg_keys = inbox.msg_keys
+    assert not msg_keys
+    assert not inbox.uids
+    assert not inbox.sequences
 
-        # Create a new subordinate folder for `new_mbox` so we can make sure
-        # the subfolders are treated right when the mailbox is renamed.
-        #
-        await Mailbox.create(NEW_MBOX_NAME + "/subfolder", server)
+    # Create a new subordinate folder for `new_mbox` so we can make sure
+    # the subfolders are treated right when the mailbox is renamed.
+    #
+    await Mailbox.create(NEW_MBOX_NAME + "/subfolder", server)
 
-        # And now rename our `new_mbox`
-        #
-        NEW_NEW_NAME = "newnew_mbox"
-        await Mailbox.rename(NEW_MBOX_NAME, NEW_NEW_NAME, server)
+    # And now rename our `new_mbox`
+    #
+    NEW_NEW_NAME = "newnew_mbox"
+    await Mailbox.rename(NEW_MBOX_NAME, NEW_NEW_NAME, server)
 
-        folders = server.mailbox.list_folders()
-        assert sorted(folders) == sorted(["inbox", "newnew_mbox", "nope"])
+    folders = server.mailbox.list_folders()
+    assert sorted(folders) == sorted(["inbox", "newnew_mbox", "nope"])
 
-        with pytest.raises(NoSuchMailbox):
-            async with server.get_mailbox(NEW_MBOX_NAME):
-                pass
+    with pytest.raises(NoSuchMailbox):
+        _ = await server.get_mailbox(NEW_MBOX_NAME)
 
-        # When we rename a mailbox it changes the name on the mailbox. the
-        # object remains the same. It should have messages equivalent to the
-        # origina inbox list.
-        #
-        async with server.get_mailbox("newnew_mbox") as new_new_mbox:
-            assert new_mbox == new_new_mbox
-            nnmsg_keys = new_new_mbox.msg_keys
-            assert nnmsg_keys == saved_msg_keys
-            assert nnmsg_keys == new_new_mbox.uids
+    # When we rename a mailbox it changes the name on the mailbox. the
+    # object remains the same. It should have messages equivalent to the
+    # origina inbox list.
+    #
+    new_new_mbox = await server.get_mailbox("newnew_mbox")
+    assert new_mbox == new_new_mbox
+    nnmsg_keys = new_new_mbox.msg_keys
+    assert nnmsg_keys == saved_msg_keys
+    assert nnmsg_keys == new_new_mbox.uids
 
 
 ####################################################################
@@ -1242,12 +1242,13 @@ async def test_msg_set_to_msg_seq_set(
     """
     NAME = "inbox"
     server = imap_user_server
-    async with server.get_mailbox(NAME) as mbox:
-        # For this test we only need to set 'num_msgs', 'msg_keys', and 'uids'
-        # on the mailbox.
-        #
-        mbox.num_msgs = num_msgs
-        mbox.uids = list(range(1, num_msgs + 1))
-        mbox.msg_keys = list(range(1, num_msgs + 1))
-        msg_set_as_set = mbox.msg_set_to_msg_seq_set(sequence_set, uid_cmd)
-        assert msg_set_as_set == expected
+    mbox = await server.get_mailbox(NAME)
+
+    # For this test we only need to set 'num_msgs', 'msg_keys', and 'uids'
+    # on the mailbox.
+    #
+    mbox.num_msgs = num_msgs
+    mbox.uids = list(range(1, num_msgs + 1))
+    mbox.msg_keys = list(range(1, num_msgs + 1))
+    msg_set_as_set = mbox.msg_set_to_msg_seq_set(sequence_set, uid_cmd)
+    assert msg_set_as_set == expected
