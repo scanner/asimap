@@ -330,6 +330,7 @@ async def test_authenticated_client_list(
     cmd.parse()
     await client_handler.command(cmd)
     results = client_push_responses(imap_client)
+
     assert len(results) == len(folders) + 1
     assert results[-1] == "A001 OK LIST command completed"
     for result, folder in zip(results[:-1], folders):
@@ -782,10 +783,6 @@ async def test_authenticated_client_fetch_lotta_fields(
     await client_handler.command(cmd)
     results = client_push_responses(imap_client, strip=False)
     assert results[-1] == "A001 OK FETCH command completed\r\n"
-    for msg_key in msg_keys:
-        res = [x for x in results[msg_key - 1].split("\r\n")]
-        for r in res:
-            print(f"    result: {r}")
 
 
 ####################################################################

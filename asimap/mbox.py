@@ -1752,8 +1752,6 @@ class Mailbox:
         instance and it will check to see if this folder has any children and
         update the attributes as appropriate.
 
-        XXX The biggest downside is that we use MH.list_folders() and I
-            have a feeling that this can be slow at times.
         """
         if len(self.mailbox.list_folders()) > 0:
             self.attributes.add(r"\HasChildren")
@@ -2811,11 +2809,19 @@ class Mailbox:
         #       is annoying. I will just create the intermediary directories.
         #
         mbox_chain: List[str] = []
+        mbox_names: List[str] = []
         for chain_name in name.split("/"):
             mbox_chain.append(chain_name)
             mbox_name = "/".join(mbox_chain)
             MH(server.maildir / mbox_name)
-            mbox = await server.get_mailbox(name)
+            mbox_names.append(mbox_name)
+
+        # Now that we have created all the folders we need to go through them
+        # again from the top to the bottom and see if they have any children.
+        #
+        mbox_names.reverse()
+        for mbox_name in mbox_names:
+            mbox = await server.get_mailbox(mbox_name)
             mbox.check_set_haschildren_attr()
             await mbox.commit_to_db()
 

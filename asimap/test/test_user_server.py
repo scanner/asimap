@@ -112,20 +112,20 @@ async def test_check_all_folders(
     for _ in range(5):
         folder_name = faker.word()
         await Mailbox.create(folder_name, server)
+        # Make sure folder exists and is active
+        #
+        await server.get_mailbox(folder_name)
         folders.append(folder_name)
+
         for _ in range(3):
             sub_folder = f"{folder_name}/{faker.word()}"
             if sub_folder in folders:
                 continue
             await Mailbox.create(sub_folder, server)
+            # Make sure folder exists and is active
+            #
+            await server.get_mailbox(sub_folder)
             folders.append(sub_folder)
-            _ = await server.get_mailbox(sub_folder)
-
-    # Expire all the mailboxes we made so `check_all_folders` will check them.
-    # (Since there are no clients selecting a mailbox, and all the mailboxes we
-    # created above have their in_use_count==0 they should all get expired.)
-    #
-    await server.expire_inactive_folders()
 
     # select and idle on the inbox
     #

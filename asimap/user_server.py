@@ -482,14 +482,6 @@ class IMAPUserServer:
         self.activating_mailboxes_lock = asyncio.Lock()
         self.activating_mailboxes: Dict[str, asyncio.Event] = {}
 
-        # In order to avoid a race condition when instantiating a mailbox from
-        # being expired before it is ever marked in use we use this boolean to
-        # tell the `expire_inactive_folders` function to skip doing an expiry
-        # check. If this is a positive integer then we should skip folder
-        # expiry.
-        #
-        self.do_not_run_expiry_now = 0
-
         # A dict of the active IMAP clients that are talking to us.
         #
         # The key is the port number of the attached client.
