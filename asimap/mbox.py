@@ -232,12 +232,6 @@ class Mailbox:
         #
         self.attributes: set[str] = {r"\Unmarked"}
 
-        # How many things have this mailbox in use. When it is 0 the mailbox
-        # may be expired. When this count is zero and the mailbox is not
-        # selected by any client it may be expired.
-        #
-        self.in_use_count = 0
-
         # The dict of clients that currently have this mailbox selected.
         # This includes clients that used 'EXAMINE' instead of 'SELECT'
         #
@@ -287,24 +281,6 @@ class Mailbox:
 
         if self.name in self.server.active_mailboxes:
             del self.server.active_mailboxes[self.name]
-
-    ####################################################################
-    #
-    def __enter__(self):
-        """
-        This context manager is used to control the mailbox from being
-        expired while still in use.
-        """
-        self.in_use_count += 1
-
-    ####################################################################
-    #
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """
-        Decrements the in-use count for this mailbox (when it goes to 0 it
-        can be expired and removed from memory)
-        """
-        self.in_use_count -= 1
 
     ####################################################################
     #
@@ -726,9 +702,8 @@ class Mailbox:
         """
         # Opportunistically pack before we start processing IMAP Commands.
         #
-        with self:
-            async with self.mailbox.lock_folder():
-                await self._pack_if_necessary()
+        async with self.mailbox.lock_folder():
+            await self._pack_if_necessary()
 
         # List of tasks currently acting on this mailbox.
         # (will only be one for conflicting commands)
@@ -1059,89 +1034,117 @@ class Mailbox:
         start_time = time.monotonic()
         self.last_resync = time.time()
 
-        # Make sure that the mailbox can not be expired while we are doing a
-        # resync.
+        # We do NOT resync mailboxes marked '\Noselect'. These mailboxes
+        # essentially do not exist as far as any IMAP client can really
+        # tell.
         #
-        with self:
-
-            # We do NOT resync mailboxes marked '\Noselect'. These mailboxes
-            # essentially do not exist as far as any IMAP client can really
-            # tell.
-            #
-            if r"\Noselect" in self.attributes:
-                self.mtime = await self.get_actual_mtime(
-                    self.server.mailbox, self.name
-                )
-                await self.commit_to_db()
-                return False
-
-            # Get the mtime of the folder at the start so when we need to check
-            # to
-            #
-            start_mtime = await self.get_actual_mtime(
+        if r"\Noselect" in self.attributes:
+            self.mtime = await self.get_actual_mtime(
                 self.server.mailbox, self.name
             )
+            await self.commit_to_db()
+            return False
 
-            # If the mtime we got from the folder/.mh_sequences is older the
-            # stored mtime for the mailbox then we can assume nothing has
-            # touched it and return immediately.
-            #
-            # However if optional is False, then we will do our scan regardless
-            # of the mtime.
-            #
-            if start_mtime <= self.mtime and self.optional_resync and optional:
-                await self.commit_to_db()
-                return False
+        # Get the mtime of the folder at the start so when we need to check
+        # to
+        #
+        start_mtime = await self.get_actual_mtime(
+            self.server.mailbox, self.name
+        )
 
-            # We always reset `optional_resync` once we begin a non-optional
-            # resync
-            #
-            self.optional_resync = True
+        # If the mtime we got from the folder/.mh_sequences is older the
+        # stored mtime for the mailbox then we can assume nothing has
+        # touched it and return immediately.
+        #
+        # However if optional is False, then we will do our scan regardless
+        # of the mtime.
+        #
+        if start_mtime <= self.mtime and self.optional_resync and optional:
+            await self.commit_to_db()
+            return False
 
-            # The heart of the resync is to see if there are new messages in
-            # the folder. If there are, then those messages are the ones we
-            # care about.
-            #
-            # NOTE: This is all based on the logic that the only thing that
-            #       will happen to a mailbox between checks is if an external
-            #       services added messages to it.
-            #
-            #       The mailbox will not be re-packed, re-ordered, or have
-            #       messages removed from it outside of the control of asimap.
-            #
-            #       What is more we only care about sequences that any new
-            #       messages were added to.
-            #
-            msg_keys = [int(x) for x in self.mailbox.keys()]
-            await asyncio.sleep(0)
+        # We always reset `optional_resync` once we begin a non-optional
+        # resync
+        #
+        self.optional_resync = True
 
-            # If the list of new_msg_keys matches the existing list of
-            # message keys then there have been no changes to the folder
-            # and this resync is done.
-            #
-            if msg_keys == self.msg_keys and len(self.uids) == self.num_msgs:
-                self.mtime = start_mtime
-                marked = (
-                    True
-                    if self.sequences["unseen"] or self.sequences["Recent"]
-                    else False
-                )
-                self.marked(marked)
-                await self.commit_to_db()
-                return False
+        # The heart of the resync is to see if there are new messages in
+        # the folder. If there are, then those messages are the ones we
+        # care about.
+        #
+        # NOTE: This is all based on the logic that the only thing that
+        #       will happen to a mailbox between checks is if an external
+        #       services added messages to it.
+        #
+        #       The mailbox will not be re-packed, re-ordered, or have
+        #       messages removed from it outside of the control of asimap.
+        #
+        #       What is more we only care about sequences that any new
+        #       messages were added to.
+        #
+        msg_keys = [int(x) for x in self.mailbox.keys()]
+        await asyncio.sleep(0)
 
-            # If the number of messages in the mailbox is less than the last
-            # recorded number of messages then we treat this as a new
-            # mailbox. NOTE: Outside of EXPUNGE a mailbox can only grow, so if
-            # the number of messages is fewer than the previous number of
-            # messages it shrunk.
+        # If the list of new_msg_keys matches the existing list of
+        # message keys then there have been no changes to the folder
+        # and this resync is done.
+        #
+        if msg_keys == self.msg_keys and len(self.uids) == self.num_msgs:
+            self.mtime = start_mtime
+            marked = (
+                True
+                if self.sequences["unseen"] or self.sequences["Recent"]
+                else False
+            )
+            self.marked(marked)
+            await self.commit_to_db()
+            return False
+
+        # If the number of messages in the mailbox is less than the last
+        # recorded number of messages then we treat this as a new
+        # mailbox. NOTE: Outside of EXPUNGE a mailbox can only grow, so if
+        # the number of messages is fewer than the previous number of
+        # messages it shrunk.
+        #
+        if len(msg_keys) < self.num_msgs:
+            logger.warning(
+                "Mailbox: '%s' has shrunk, from %d messages to %d. "
+                "Treating it as a new mailbox.",
+                self.name,
+                self.num_msgs,
+                len(msg_keys),
+            )
+            self.msg_keys = []
+            self.uids = []
+            self.num_msgs = 0
+            self.num_recent = 0
+            self.sequences = defaultdict(set)
+            self.mtime = start_mtime
+
+        elif len(self.msg_keys) != len(self.uids):
+            # XXX There was something broken in the past where we grew the
+            #     uid list by its whole set instead of just the amount
+            #     being added. So, check if the length of the uid's does
+            #     not match the length of the stored message keys then
+            #     something weird happened. Declare the folder invalid and
+            #     rest its stored info.
             #
-            if len(msg_keys) < self.num_msgs:
+            if len(self.uids) > len(self.msg_keys):
                 logger.warning(
-                    "Mailbox: '%s' has shrunk, from %d messages to %d. "
-                    "Treating it as a new mailbox.",
+                    "Mailbox: '%s', there are more uid's than msg_keys. "
+                    "num msgs: %d, num uids: %d. Truncating start of uids",
                     self.name,
-                    self.num_msgs,
+                    len(self.msg_keys),
+                    len(self.uids),
+                )
+                self.uids = self.uids[-len(self.msg_keys) :]
+            else:
+                logger.warning(
+                    "Mailbox: '%s' number of uids does not match the "
+                    "number of mesage keys, num uids: %d, num messages: %d."
+                    " Treating as new mailbox",
+                    self.name,
+                    len(self.uids),
                     len(msg_keys),
                 )
                 self.msg_keys = []
@@ -1151,155 +1154,122 @@ class Mailbox:
                 self.sequences = defaultdict(set)
                 self.mtime = start_mtime
 
-            elif len(self.msg_keys) != len(self.uids):
-                # XXX There was something broken in the past where we grew the
-                #     uid list by its whole set instead of just the amount
-                #     being added. So, check if the length of the uid's does
-                #     not match the length of the stored message keys then
-                #     something weird happened. Declare the folder invalid and
-                #     rest its stored info.
-                #
-                if len(self.uids) > len(self.msg_keys):
-                    logger.warning(
-                        "Mailbox: '%s', there are more uid's than msg_keys. "
-                        "num msgs: %d, num uids: %d. Truncating start of uids",
-                        self.name,
-                        len(self.msg_keys),
-                        len(self.uids),
-                    )
-                    self.uids = self.uids[-len(self.msg_keys) :]
-                else:
-                    logger.warning(
-                        "Mailbox: '%s' number of uids does not match the "
-                        "number of mesage keys, num uids: %d, num messages: %d."
-                        " Treating as new mailbox",
-                        self.name,
-                        len(self.uids),
-                        len(msg_keys),
-                    )
-                    self.msg_keys = []
-                    self.uids = []
-                    self.num_msgs = 0
-                    self.num_recent = 0
-                    self.sequences = defaultdict(set)
-                    self.mtime = start_mtime
+        # If we reach here we know that we have new messages. Find out
+        # the lowest numbered new message and consider that message and
+        # everything after it a new message.
+        #
+        new_msg_keys = sorted(set(msg_keys) - set(self.msg_keys))
+        num_new_msgs = len(new_msg_keys)
+        new_msgs = {}
+        logger.debug(
+            "Mailbox: '%s': num new messages: %d, new msg keys: %s",
+            self.name,
+            num_new_msgs,
+            new_msg_keys,
+        )
 
-            # If we reach here we know that we have new messages. Find out
-            # the lowest numbered new message and consider that message and
-            # everything after it a new message.
-            #
-            new_msg_keys = sorted(set(msg_keys) - set(self.msg_keys))
-            num_new_msgs = len(new_msg_keys)
-            new_msgs = {}
-            logger.debug(
-                "Mailbox: '%s': num new messages: %d, new msg keys: %s",
+        self.msg_keys.extend(new_msg_keys)
+        new_uids = list(range(self.next_uid, self.next_uid + num_new_msgs))
+        logger.debug(
+            "Mailbox: %s, num new uids: %d, new uid's: %s",
+            self.name,
+            len(new_uids),
+            new_uids,
+        )
+        self.uids.extend(new_uids)
+        if self.uids:
+            self.next_uid = self.uids[-1] + 1
+
+        if len(self.uids) != len(self.msg_keys):
+            logger.warning(
+                "Mailbox '%s', after append of new uid's the counts are off.",
                 self.name,
-                num_new_msgs,
-                new_msg_keys,
             )
 
-            self.msg_keys.extend(new_msg_keys)
-            new_uids = list(range(self.next_uid, self.next_uid + num_new_msgs))
-            logger.debug(
-                "Mailbox: %s, num new uids: %d, new uid's: %s",
-                self.name,
-                len(new_uids),
-                new_uids,
-            )
-            self.uids.extend(new_uids)
-            if self.uids:
-                self.next_uid = self.uids[-1] + 1
-
-            if len(self.uids) != len(self.msg_keys):
-                logger.warning(
-                    "Mailbox '%s', after append of new uid's the counts are off.",
-                    self.name,
-                )
-
-            # Determine the sequences for the new messages so we know what
-            # FETCH messages to send (and to upate our internal sequences
-            # representations)
-            #
-            self.marked(True)
-            async with self.mh_sequences_lock:
-                msg_seqs = self.get_sequences_from_folder()
-                for key in new_msg_keys:
-                    msg = self.get_msg(key)
-                    new_msgs[key] = msg
-
-                    msg_sequences = {"Recent"}
-                    for seq in msg_seqs.keys():
-                        if key in msg_seqs[seq]:
-                            msg_sequences.add(seq)
-
-                    # Make sure `unseen` and `Seen` are set properly.
-                    #
-                    if "unseen" in msg_sequences:
-                        msg_sequences.discard("Seen")
-                    else:
-                        msg_sequences.add("Seen")
-
-                    # For all the sequences this message was in, add it to
-                    # those in our `self.sequences`, and make sure it is
-                    # removed from sequences that it is not in.
-                    #
-                    for sequence in msg_sequences:
-                        self.sequences[sequence].add(key)
-                    for sequence in self.sequences.keys():
-                        if sequence not in msg_sequences:
-                            self.sequences[sequence].discard(key)
-                    await asyncio.sleep(0)
-
-                # Make the folder's .mh_sequences reflect our current state
-                # of the universe.
-                #
-                self.set_sequences_in_folder(self.sequences)
-
-            num_recent = len(self.sequences["Recent"])
-            num_msgs = len(msg_keys)
-            logger.info(
-                "Mailbox: '%s', num msgs: %d, num new msgs: %d, "
-                "first new msg: %d, last new msg: %d",
-                self.name,
-                self.num_msgs,
-                len(new_msg_keys),
-                new_msg_keys[0] if new_msg_keys else 0,
-                new_msg_keys[-1] if new_msg_keys else 0,
-            )
-
-            # RECENT and EXISTS are sent as the rest of a SELECT or EXAMINE
-            # request _AND_ if the size of the mailbox changes. These can be
-            # sent to any client, idling, executing a command, or otherwise.
-            #
-            notifications = []
-            notifications.append(f"* {num_msgs} EXISTS\r\n")
-            notifications.append(f"* {num_recent} RECENT\r\n")
-            for c in self.clients.values():
-                await c.client.push(*notifications)
-
-            self.num_msgs = num_msgs
-            self.num_recent = num_recent
-
-            # For all of our new messages we need to issue untagged FETCH FLAG
-            # mesages to all of our active clients.
-            #
-            notifications = []
+        # Determine the sequences for the new messages so we know what
+        # FETCH messages to send (and to upate our internal sequences
+        # representations)
+        #
+        self.marked(True)
+        async with self.mh_sequences_lock:
+            msg_seqs = self.get_sequences_from_folder()
             for key in new_msg_keys:
-                msg = new_msgs[key]
-                fetch, _ = self._generate_fetch_msg_for(key)
-                notifications.append(fetch)
+                msg = self.get_msg(key)
+                new_msgs[key] = msg
 
-            await self._dispatch_or_pend_notifications(
-                notifications, dont_notify=dont_notify
-            )
+                msg_sequences = {"Recent"}
+                for seq in msg_seqs.keys():
+                    if key in msg_seqs[seq]:
+                        msg_sequences.add(seq)
 
-            # Update counts and commit state of the mailbox to the db.
+                # Make sure `unseen` and `Seen` are set properly.
+                #
+                if "unseen" in msg_sequences:
+                    msg_sequences.discard("Seen")
+                else:
+                    msg_sequences.add("Seen")
+
+                # For all the sequences this message was in, add it to
+                # those in our `self.sequences`, and make sure it is
+                # removed from sequences that it is not in.
+                #
+                for sequence in msg_sequences:
+                    self.sequences[sequence].add(key)
+                for sequence in self.sequences.keys():
+                    if sequence not in msg_sequences:
+                        self.sequences[sequence].discard(key)
+                await asyncio.sleep(0)
+
+            # Make the folder's .mh_sequences reflect our current state
+            # of the universe.
             #
-            self.mtime = await Mailbox.get_actual_mtime(
-                self.server.mailbox, self.name
-            )
-            self.check_set_haschildren_attr()
-            await self.commit_to_db()
+            self.set_sequences_in_folder(self.sequences)
+
+        num_recent = len(self.sequences["Recent"])
+        num_msgs = len(msg_keys)
+        logger.info(
+            "Mailbox: '%s', num msgs: %d, num new msgs: %d, "
+            "first new msg: %d, last new msg: %d",
+            self.name,
+            self.num_msgs,
+            len(new_msg_keys),
+            new_msg_keys[0] if new_msg_keys else 0,
+            new_msg_keys[-1] if new_msg_keys else 0,
+        )
+
+        # RECENT and EXISTS are sent as the rest of a SELECT or EXAMINE
+        # request _AND_ if the size of the mailbox changes. These can be
+        # sent to any client, idling, executing a command, or otherwise.
+        #
+        notifications = []
+        notifications.append(f"* {num_msgs} EXISTS\r\n")
+        notifications.append(f"* {num_recent} RECENT\r\n")
+        for c in self.clients.values():
+            await c.client.push(*notifications)
+
+        self.num_msgs = num_msgs
+        self.num_recent = num_recent
+
+        # For all of our new messages we need to issue untagged FETCH FLAG
+        # mesages to all of our active clients.
+        #
+        notifications = []
+        for key in new_msg_keys:
+            msg = new_msgs[key]
+            fetch, _ = self._generate_fetch_msg_for(key)
+            notifications.append(fetch)
+
+        await self._dispatch_or_pend_notifications(
+            notifications, dont_notify=dont_notify
+        )
+
+        # Update counts and commit state of the mailbox to the db.
+        #
+        self.mtime = await Mailbox.get_actual_mtime(
+            self.server.mailbox, self.name
+        )
+        self.check_set_haschildren_attr()
+        await self.commit_to_db()
 
         end_time = time.monotonic()
         duration = end_time - start_time
@@ -2923,7 +2893,6 @@ class Mailbox:
             # commands to proceed. They will check the mbox.deleted flag
             # and exit immediately.
             #
-            mbox.in_use_count = 0
             await mbox.shutdown(commit_db=False)
 
             # Delete all traces of the mailbox from our db.
