@@ -9,7 +9,6 @@ import imaplib
 import ssl
 import threading
 import time
-from contextlib import asynccontextmanager
 from email import message_from_bytes
 from email.header import decode_header
 from email.headerregistry import Address
@@ -588,12 +587,11 @@ def mailbox_instance(bunch_of_email_in_folder, imap_user_server):
     create a Mailbox which has email in it.
     """
 
-    @asynccontextmanager
     async def create_mailbox(name: str = "inbox", with_messages: bool = False):
         bunch_of_email_in_folder(folder=name)
         server = imap_user_server
-        async with server.get_mailbox(name) as mbox:
-            yield mbox
+        mbox = await server.get_mailbox(name)
+        return mbox
 
     return create_mailbox
 
@@ -674,8 +672,8 @@ async def mailbox_with_big_static_email(
     seqs = m_folder.get_sequences()
     seqs["unseen"] = [msg_key]
     m_folder.set_sequences(seqs)
-    async with server.get_mailbox(NAME) as mbox:
-        yield mbox
+    mbox = await server.get_mailbox(NAME)
+    return mbox
 
 
 ####################################################################
@@ -699,8 +697,8 @@ async def mailbox_with_mimekit_email(
     seqs = m_folder.get_sequences()
     seqs["unseen"] = STATIC_EMAIL_MSG_KEYS
     m_folder.set_sequences(seqs)
-    async with server.get_mailbox(NAME) as mbox:
-        yield mbox
+    mbox = await server.get_mailbox(NAME)
+    return mbox
 
 
 ####################################################################
@@ -724,8 +722,8 @@ async def mailbox_with_problematic_email(
     seqs = m_folder.get_sequences()
     seqs["unseen"] = STATIC_EMAIL_MSG_KEYS
     m_folder.set_sequences(seqs)
-    async with server.get_mailbox(NAME) as mbox:
-        yield mbox
+    mbox = await server.get_mailbox(NAME)
+    return mbox
 
 
 ####################################################################
@@ -741,5 +739,5 @@ async def mailbox_with_bunch_of_email(
     NAME = "inbox"
     bunch_of_email_in_folder(folder=NAME)
     server = imap_user_server
-    async with server.get_mailbox(NAME) as mbox:
-        yield mbox
+    mbox = await server.get_mailbox(NAME)
+    return mbox
