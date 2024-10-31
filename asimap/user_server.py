@@ -498,7 +498,7 @@ class IMAPUserServer:
         #
         self.db: Database
 
-        self.folder_scan_task: Optional[asyncio.Task] = None
+        self.management_task: Optional[asyncio.Task] = None
 
         # Statistics for the `check_all_folders` function
         # key is mbox name, value is a time duration in seconds.
@@ -578,9 +578,9 @@ class IMAPUserServer:
         """
         Close various things when the server is shutting down.
         """
-        if self.folder_scan_task and not self.folder_scan_task.done():
-            self.folder_scan_task.cancel()
-            await self.folder_scan_task
+        if self.management_task and not self.management_task.done():
+            self.management_task.cancel()
+            await self.management_task
 
         # Close all client connections
         #
@@ -657,7 +657,10 @@ class IMAPUserServer:
 
             # Start the task that checks all folders
             #
-            self.folder_scan_task = asyncio.create_task(self.folder_scan())
+            self.management_task = asyncio.create_task(
+                self.user_server_management_task(),
+                name="user_server_management_task",
+            )
 
             # Let the initial folder scan begin before we accept any clients to
             # give it a head start.
@@ -807,12 +810,6 @@ class IMAPUserServer:
         last_folder_scan = time.monotonic()
         try:
             while True:
-                # XXX For now try skipping resyncs to see if we were missing up
-                #     exiring folders too early (and also see if we can handle
-                #     all mailboxes loaded in to memory always)
-                #
-                # await self.expire_inactive_folders()
-
                 now = time.monotonic()
 
                 if now - last_metrics_dump > TIME_BETWEEN_METRIC_DUMPS:
@@ -837,59 +834,6 @@ class IMAPUserServer:
                 #
                 sleep_duration = randrange(9, 15)
                 await asyncio.sleep(sleep_duration)
-        except asyncio.exceptions.CancelledError:
-            logger.info("folder_scan task has been cancelled")
-            raise
-        finally:
-            if self.asyncio_server.is_serving():
-                self.asyncio_server.close()
-                await self.asyncio_server.wait_closed()
-
-    ####################################################################
-    #
-    async def folder_scan(self):
-        """
-        at regular intervals we need to scan all the inactive folders to
-        see if any new mail has arrived.
-        """
-        logger.debug("Folder scan task is starting")
-        last_metrics_dump = time.monotonic()
-        try:
-            while True:
-                # XXX For now try skipping resyncs to see if we were missing up
-                #     exiring folders too early (and also see if we can handle
-                #     all mailboxes loaded in to memory always)
-                #
-                # await self.expire_inactive_folders()
-
-                now = time.monotonic()
-                if now - last_metrics_dump > TIME_BETWEEN_METRIC_DUMPS:
-                    self.dump_metrics()
-                    last_metrics_dump = now
-
-                # If it has been more than <n> seconds since a full scan, then
-                # do a full scan.
-                #
-                if now - self.last_full_check > TIME_BETWEEN_FULL_FOLDER_SCANS:
-                    await self.check_all_folders()
-                    if self.initial_folder_scan:
-                        logger.info("Finished initial scan of all folders")
-                        self.initial_folder_scan = False
-                    self.last_full_check = time.monotonic()
-
-                # At the end of loop see if we have hit our lifetime expiry.
-                # This will be None as long as there are active
-                # clients. Otherwise it is a time after which the server should
-                # exit.
-                #
-                if self.expiry and self.expiry < now:
-                    self.asyncio_server.close()
-                    await self.asyncio_server.wait_closed()
-                    return
-
-                # And sleep before we do another folder scan
-                #
-                await asyncio.sleep(10)
         except asyncio.exceptions.CancelledError:
             logger.info("folder_scan task has been cancelled")
             raise
