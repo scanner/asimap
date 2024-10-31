@@ -90,9 +90,9 @@ trove-classifiers==2024.10.21.16
     # via hatchling
 userpath==1.9.2
     # via hatch
-uv==0.4.27
+uv==0.4.29
     # via hatch
-virtualenv==20.27.0
+virtualenv==20.27.1
     # via hatch
 zstandard==0.23.0
     # via hatch

@@ -6,7 +6,7 @@
 #
 aiofiles==24.1.0
     # via -r /Users/scanner/src/asimap/requirements/production.txt
-aioretry==6.1.1
+aioretry==6.2.0
     # via -r /Users/scanner/src/asimap/requirements/production.txt
 aiosqlite==0.20.0
     # via -r /Users/scanner/src/asimap/requirements/production.txt
@@ -251,7 +251,7 @@ pytest==8.3.3
     #   pytest-sugar
 pytest-asyncio==0.24.0
     # via -r development.in
-pytest-cov==5.0.0
+pytest-cov==6.0.0
     # via pytest-cover
 pytest-cover==3.0.0
     # via pytest-coverage
@@ -366,11 +366,11 @@ userpath==1.9.2
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   hatch
-uv==0.4.27
+uv==0.4.29
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   hatch
-virtualenv==20.27.0
+virtualenv==20.27.1
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   -r /Users/scanner/src/asimap/requirements/lint.txt

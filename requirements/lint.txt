@@ -89,7 +89,7 @@ typing-extensions==4.12.2
     # via mypy
 urllib3==2.2.3
     # via types-requests
-virtualenv==20.27.0
+virtualenv==20.27.1
     # via pre-commit
 wheel==0.44.0
     # via pip-tools
