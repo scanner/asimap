@@ -796,13 +796,6 @@ class IMAPUserServer:
 
         # Scan all the folders and load them in to memory.
         #
-        # XXX Once we get the migration to loading all folders in to memory on
-        #     startup working, we can remove the `initial_folder_scan` and
-        #     rename 'check_all_folders' to be load_and_scan_all_folders()
-        #     since all folders will be in memory at all times we do not need
-        #     to scan them at regular intervals anymore. That will be done by
-        #     each folder's management task.
-        #
         self.initial_folder_scan = True
         await self.check_all_folders()
         self.initial_folder_scan = False
