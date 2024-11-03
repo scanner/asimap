@@ -767,6 +767,25 @@ async def test_mailbox_create_delete(
     assert len(dst_uids) == len(archive_msg_keys)
     assert archive.uids == dst_uids
 
+    # And finally we will delete the subfolder and then the archive folder and
+    # make sure that neither folder exists after the deletes.
+    #
+    await Mailbox.delete(SUB_FOLDER, server)
+    with pytest.raises(NoSuchMailbox):
+        await server.get_mailbox(SUB_FOLDER)
+    await Mailbox.delete(ARCHIVE, server)
+    with pytest.raises(NoSuchMailbox):
+        await server.get_mailbox(ARCHIVE)
+
+    # Also if we get the list of folders, neither ARCHIVE nor SUB_FOLDER should
+    # existn.
+    #
+    mbox_names = []
+    async for mbox_name, _ in Mailbox.list("", "*", server):
+        mbox_names.append(mbox_name)
+    assert ARCHIVE not in mbox_names
+    assert SUB_FOLDER not in mbox_names
+
 
 ####################################################################
 #

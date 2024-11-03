@@ -867,7 +867,7 @@ class Authenticated(BaseClientHandler):
             cmd.mailbox_name, cmd.list_mailbox, self.server, lsub
         ):
             mbox_name = "INBOX" if mbox_name.lower() == "inbox" else mbox_name
-            msg = f'* {res} ({" ".join(attributes)}) "/" "{mbox_name}"\r\n'
+            msg = f'* {res} ({" ".join(sorted(attributes))}) "/" "{mbox_name}"\r\n'
             await self.client.push(msg)
 
     ####################################################################

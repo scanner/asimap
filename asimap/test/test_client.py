@@ -877,3 +877,91 @@ async def test_authenticated_client_copy(
 
     # Not going to both inspecting the messages.. the `test_mbox` tests should
     # be good enough for that.
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_authenticated_client_create_delete_folder(
+    mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    """
+    Search is tested mostly `test_search`.. so we only need a very simple
+    search.
+    """
+    FOLDER = "__imapclient"
+    SUBFOLDER = "__imapclient/foobar"
+    server, imap_client = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+    client_handler = Authenticated(imap_client, server)
+
+    cmd = IMAPClientCommand(f"A001 CREATE {FOLDER}")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == ["A001 OK CREATE command completed"]
+
+    cmd = IMAPClientCommand(f'BFCO24 LIST "" "{FOLDER}"')
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == [
+        r'* LIST (\HasNoChildren \Unmarked) "/" "__imapclient"',
+        "BFCO24 OK LIST command completed",
+    ]
+
+    cmd = IMAPClientCommand(f'BFCO27 LIST "" "{SUBFOLDER}"')
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == [
+        "BFCO27 OK LIST command completed",
+    ]
+
+    cmd = IMAPClientCommand(f"A002 CREATE {SUBFOLDER}")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == ["A002 OK CREATE command completed"]
+
+    cmd = IMAPClientCommand(f'BFCO28 LIST "" "{SUBFOLDER}"')
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == [
+        r'* LIST (\HasNoChildren \Unmarked) "/" "__imapclient/foobar"',
+        "BFCO28 OK LIST command completed",
+    ]
+
+    cmd = IMAPClientCommand(f'BFCO29 LIST "{FOLDER}" "*"')
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == [
+        r'* LIST (\HasChildren \Unmarked) "/" "__imapclient"',
+        r'* LIST (\HasNoChildren \Unmarked) "/" "__imapclient/foobar"',
+        "BFCO29 OK LIST command completed",
+    ]
+
+    cmd = IMAPClientCommand(f"A003 DELETE {SUBFOLDER}")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == ["A003 OK DELETE command completed"]
+
+    cmd = IMAPClientCommand(f'BFCO30 LIST "" "{SUBFOLDER}"')
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == [
+        "BFCO30 OK LIST command completed",
+    ]
+
+    cmd = IMAPClientCommand(f'BFCO31 LIST "{FOLDER}" "*"')
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == [
+        r'* LIST (\HasNoChildren \Unmarked) "/" "__imapclient"',
+        "BFCO31 OK LIST command completed",
+    ]

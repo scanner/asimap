@@ -135,7 +135,8 @@ class MH(mailbox.MH):
     async def aclear(self):
         for key in [int(x) for x in self.keys()]:
             try:
-                await self.aremove(key)
+                self.remove(str(key))
+                await asyncio.sleep(0)
             except KeyError:
                 pass
 
