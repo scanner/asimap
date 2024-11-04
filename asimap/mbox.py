@@ -1947,7 +1947,7 @@ class Mailbox:
 
     ##################################################################
     #
-    async def expunge(self):
+    async def expunge(self, uid_msg_set: Optional[List[int]] = None) -> None:
         """
         Perform an expunge. All messages in the 'Deleted' sequence are removed.
 
@@ -1980,6 +1980,22 @@ class Mailbox:
         #
         to_delete = sorted(msg_keys_to_delete, reverse=True)
         uids_to_delete = [self.uids[self.msg_keys.index(x)] for x in to_delete]
+
+        # NOTE: If a `uid_msg_set` was passed in this is a restriction on the
+        #       possible list of messages to delete. We do not delete all of
+        #       the ones flagged \Delete, only the ones that are flagged and
+        #       whose uid is in the list `uid_msg_set`.
+        if uid_msg_set:
+            new_to_delete = []
+            new_uids_to_delete = []
+            for uid in uid_msg_set:
+                if uid in uids_to_delete:
+                    new_uids_to_delete.append(uid)
+                    pos = uids_to_delete.index(uid)
+                    new_to_delete.append(to_delete[pos])
+            to_delete = sorted(new_to_delete, reverse=True)
+            uids_to_delete = sorted(new_uids_to_delete, reverse=True)
+
         logger.debug(
             "Mailbox: '%s', msg keys to delete: %s, uids to delete: %s",
             self.name,

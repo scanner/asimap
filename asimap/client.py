@@ -1082,7 +1082,12 @@ class Authenticated(BaseClientHandler):
                 # Do an EXPUNGE if there are any messages marked 'Delete'
                 #
                 if self.mbox.sequences.get("Deleted", []):
-                    await self.mbox.expunge()
+                    uid_msg_set = (
+                        list(cmd.msg_set_as_set)
+                        if cmd.uid_command and cmd.msg_set_as_set
+                        else None
+                    )
+                    await self.mbox.expunge(uid_msg_set=uid_msg_set)
         finally:
             self.idling = idling
 

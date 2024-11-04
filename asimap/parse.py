@@ -504,7 +504,6 @@ class IMAPClientCommand:
                     | IMAPCommand.CAPABILITY
                     | IMAPCommand.CHECK
                     | IMAPCommand.CLOSE
-                    | IMAPCommand.EXPUNGE
                     | IMAPCommand.IDLE
                     | IMAPCommand.LOGOUT
                     | IMAPCommand.NAMESPACE
@@ -513,6 +512,9 @@ class IMAPClientCommand:
                 ):
                     # These command have no parameters
                     pass
+                case IMAPCommand.EXPUNGE:
+                    if self.uid_command:
+                        result.append(msg_set_to_str(self.msg_set))
                 case IMAPCommand.COPY:
                     result.append(msg_set_to_str(self.msg_set))
                     result.append(self.mailbox_name)
@@ -629,12 +631,6 @@ class IMAPClientCommand:
         match command:
             # These commands require no further parsing.
             #
-            # XXX We need to add a `case` guard for expunge, if this is a uid
-            #     command, then expunge has a message set, otherwise it does
-            #     not so we need to handle both cases as their own `case`
-            #     clause instead of lumping EXPUNGE into a command that has no
-            #     other arguments.
-            #
             case (
                 IMAPCommand.CAPABILITY
                 | IMAPCommand.NOOP
@@ -643,10 +639,13 @@ class IMAPClientCommand:
                 | IMAPCommand.LOGOUT
                 | IMAPCommand.CHECK
                 | IMAPCommand.CLOSE
-                | IMAPCommand.EXPUNGE  # XXX UIDPLUS EXPUNGE has a msg set
                 | IMAPCommand.UNSELECT
             ):
                 pass
+            case IMAPCommand.EXPUNGE:
+                if self.uid_command:
+                    self._p_simple_string(" ")
+                    self.msg_set = self._p_msg_set()
             case IMAPCommand.AUTHENTICATE:
                 self._p_simple_string(" ")
                 self.auth_mechanism_name = self._p_re(_atom_re)
