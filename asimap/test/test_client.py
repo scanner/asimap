@@ -965,3 +965,17 @@ async def test_authenticated_client_create_delete_folder(
         r'* LIST (\HasNoChildren \Unmarked) "/" "__imapclient"',
         "BFCO31 OK LIST command completed",
     ]
+
+    cmd = IMAPClientCommand(f"A004 DELETE {FOLDER}")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == ["A004 OK DELETE command completed"]
+
+    cmd = IMAPClientCommand(f'BFCO31 LIST "{FOLDER}" "*"')
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == [
+        "BFCO31 OK LIST command completed",
+    ]

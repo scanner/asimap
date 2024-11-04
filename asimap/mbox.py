@@ -1898,6 +1898,11 @@ class Mailbox:
         #
         seqs = flags_to_seqs(flags)
 
+        # If `Seen` is *NOT* in the sequences, then we need to add `unseen`
+        #
+        if "Seen" not in seqs:
+            seqs.append("unseen")
+
         async with self.mh_sequences_lock:
             msg_key = int(self.mailbox.add(msg))
 
@@ -2745,6 +2750,11 @@ class Mailbox:
                 "Due to MH restrictions you can not create a "
                 f"mailbox that is just digits: '{name}'"
             )
+        if not name.strip():
+            raise InvalidMailbox(
+                "Due to MH restrictions you can not create a "
+                f"root or mailbox that is just white space: '{name}'"
+            )
 
         # If the mailbox already exists than it can not be created. One
         # exception is if the mailbox exists but with the "\Noselect"
@@ -2752,6 +2762,7 @@ class Mailbox:
         # place is a phantom mailbox. In this case we remove the '\Noselect'
         # flag and return success.
         #
+        logger.debug("Trying to create mailbox '{name}'")
         try:
             # See if the mailbox exists but with the '\Noselect'
             # attribute. This
@@ -2772,6 +2783,7 @@ class Mailbox:
                 raise MailboxExists(f"Mailbox '{name}' already exists")
 
         except NoSuchMailbox:
+            logger.debug("Mailbox '%s' does not exist, can create", name)
             pass
 
         # The mailbox does not exist, we can create it.
@@ -2785,7 +2797,9 @@ class Mailbox:
         mbox_names: List[str] = []
         for chain_name in name.split("/"):
             mbox_chain.append(chain_name)
+            logger.debug("Mailbox chain: %s", mbox_chain)
             mbox_name = "/".join(mbox_chain)
+            logger.debug("Creating mailbox: '%s', mbox_name")
             MH(server.maildir / mbox_name)
             mbox_names.append(mbox_name)
 
@@ -2794,6 +2808,7 @@ class Mailbox:
         #
         mbox_names.reverse()
         for mbox_name in mbox_names:
+            logger.debug("check set has children on '%s'", mbox_name)
             mbox = await server.get_mailbox(mbox_name)
             mbox.check_set_haschildren_attr()
             await mbox.commit_to_db()
@@ -2892,9 +2907,11 @@ class Mailbox:
             # commands to proceed. They will check the mbox.deleted flag
             # and exit immediately.
             #
+            logger.debug("*** Shutting down mbox '%s'", mbox.name)
             await mbox.shutdown(commit_db=False)
 
             try:
+                logger.debug("*** Removing folder '%s'", name)
                 server.mailbox.remove_folder(name)
             except NotEmptyError as e:
                 logger.warning("mailbox %s 'not empty', %s", name, str(e))
@@ -2904,6 +2921,7 @@ class Mailbox:
 
             # Delete all traces of the mailbox from our db.
             #
+            logger.debug("*** Removing '%s' from db", name)
             async with mbox.db_lock:
                 await server.db.execute(
                     "DELETE FROM mailboxes WHERE id = ?", (mbox.id,)
@@ -2913,7 +2931,9 @@ class Mailbox:
                 )
                 await server.db.commit()
 
+            logger.debug("**** Waiting for active mailbox lock: %s", name)
             async with server.active_mailboxes_lock:
+                logger.debug("*** Got active mailbox lock: %s", name)
                 if name in server.active_mailboxes:
                     del server.active_mailboxes[name]
 
@@ -2921,7 +2941,9 @@ class Mailbox:
         # to update that mailbox's 'has children' attributes.
         #
         parent_name = os.path.dirname(name)
+        logger.debug("do check_set_haschildren_attr on '%s'", parent_name)
         if parent_name:
+            logger.debug("has parent '%s'", parent_name)
             parent_mbox = await server.get_mailbox(parent_name)
             parent_mbox.check_set_haschildren_attr()
             await parent_mbox.commit_to_db()

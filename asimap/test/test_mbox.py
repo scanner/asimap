@@ -231,9 +231,7 @@ async def test_mbox_append(imap_user_server, email_factory):
 
     msg = email_factory()
 
-    uid = await mbox.append(
-        msg, flags=[r"\Flagged", "unseen"], date_time=datetime.now()
-    )
+    uid = await mbox.append(msg, flags=[r"\Flagged"], date_time=datetime.now())
 
     msg_keys = [int(x) for x in mbox.mailbox.keys()]
 
