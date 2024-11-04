@@ -124,6 +124,11 @@ IMAP_MESSAGES = [
     ),
     pytest.param("a002 noop\r\n", "a002 NOOP", id="NOOP"),
     pytest.param("A202 EXPUNGE\r\n", "A202 EXPUNGE", id="EXPUNGE"),
+    pytest.param(
+        "A203 UID EXPUNGE 3:3000,3002\r\n",
+        "A203 UID EXPUNGE 3:3000,3002",
+        id="EXPUNGE",
+    ),
     pytest.param("a002 NOOP\r\n", "a002 NOOP", id="NOOP"),  # Repeat?
     pytest.param("abcd CAPABILITY\r\n", "abcd CAPABILITY", id="CAPABILITY"),
     pytest.param(
@@ -186,7 +191,7 @@ PEEK_IMAP_MESSAGES = [
     pytest.param("A654 FETCH 2:4 BODY\r\n", "A654 FETCH 2:4 (BODY)", id=""),
     pytest.param(
         "A654 FETCH 2:4 BODY[]<0.2048>\r\n",
-        "A654 FETCH 2:4 (BODY[]<0.2048>)",
+        "A654 FETCH 2:4 (BODY[]<0>)",
         id="FETCH body partial",
     ),
     pytest.param(

@@ -13,7 +13,7 @@ import pytest
 # Project imports
 #
 from ..client import Authenticated
-from ..mbox import Mailbox
+from ..mbox import Mailbox, NoSuchMailbox
 from ..parse import IMAPClientCommand
 from ..user_server import IMAPUserServer
 
@@ -93,8 +93,8 @@ async def test_there_is_a_root_folder(imap_user_server):
     # In an attempt to see if the root folder would fix iOS 18's IMAP problems
     # we allow the root folder to exist. (But it still did not fix iOS 18)
     #
-    # with pytest.raises(NoSuchMailbox):
-    _ = await server.get_mailbox("")
+    with pytest.raises(NoSuchMailbox):
+        _ = await server.get_mailbox("")
 
 
 ####################################################################

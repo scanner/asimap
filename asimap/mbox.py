@@ -332,10 +332,13 @@ class Mailbox:
         Make sure mbox is commited to db if commit_db is True.
         """
         self.deleted = True  # Causes any waiting IMAP Commands to exit.
-        wait_for_mgmt_task = False
-        if hasattr(self, "mgmt_task") and not self.mgmt_task.done():
-            self.mgmt_task.cancel()
-            wait_for_mgmt_task = True
+        m_task = (
+            self.mgmt_task
+            if hasattr(self, "mgmt_task") and not self.mgmt_task.done()
+            else None
+        )
+        if m_task:
+            m_task.cancel()
 
         try:
             while True:
@@ -344,9 +347,9 @@ class Mailbox:
         except asyncio.QueueEmpty:
             pass
 
-        if hasattr(self, "mgmt_task") and wait_for_mgmt_task:
+        if m_task:
             try:
-                await self.mgmt_task
+                await m_task
             except asyncio.CancelledError:
                 pass
 
@@ -1895,6 +1898,11 @@ class Mailbox:
         #
         seqs = flags_to_seqs(flags)
 
+        # If `Seen` is *NOT* in the sequences, then we need to add `unseen`
+        #
+        if "Seen" not in seqs:
+            seqs.append("unseen")
+
         async with self.mh_sequences_lock:
             msg_key = int(self.mailbox.add(msg))
 
@@ -1939,7 +1947,7 @@ class Mailbox:
 
     ##################################################################
     #
-    async def expunge(self):
+    async def expunge(self, uid_msg_set: Optional[List[int]] = None) -> None:
         """
         Perform an expunge. All messages in the 'Deleted' sequence are removed.
 
@@ -1972,8 +1980,24 @@ class Mailbox:
         #
         to_delete = sorted(msg_keys_to_delete, reverse=True)
         uids_to_delete = [self.uids[self.msg_keys.index(x)] for x in to_delete]
+
+        # NOTE: If a `uid_msg_set` was passed in this is a restriction on the
+        #       possible list of messages to delete. We do not delete all of
+        #       the ones flagged \Delete, only the ones that are flagged and
+        #       whose uid is in the list `uid_msg_set`.
+        if uid_msg_set:
+            new_to_delete = []
+            new_uids_to_delete = []
+            for uid in uid_msg_set:
+                if uid in uids_to_delete:
+                    new_uids_to_delete.append(uid)
+                    pos = uids_to_delete.index(uid)
+                    new_to_delete.append(to_delete[pos])
+            to_delete = sorted(new_to_delete, reverse=True)
+            uids_to_delete = sorted(new_uids_to_delete, reverse=True)
+
         logger.debug(
-            "Mailbox: '%s', msg keys to delete: %s, uids to delete:",
+            "Mailbox: '%s', msg keys to delete: %s, uids to delete: %s",
             self.name,
             to_delete,
             uids_to_delete,
@@ -2742,6 +2766,11 @@ class Mailbox:
                 "Due to MH restrictions you can not create a "
                 f"mailbox that is just digits: '{name}'"
             )
+        if not name.strip():
+            raise InvalidMailbox(
+                "Due to MH restrictions you can not create a "
+                f"root or mailbox that is just white space: '{name}'"
+            )
 
         # If the mailbox already exists than it can not be created. One
         # exception is if the mailbox exists but with the "\Noselect"
@@ -2749,6 +2778,7 @@ class Mailbox:
         # place is a phantom mailbox. In this case we remove the '\Noselect'
         # flag and return success.
         #
+        logger.debug("Trying to create mailbox '{name}'")
         try:
             # See if the mailbox exists but with the '\Noselect'
             # attribute. This
@@ -2769,6 +2799,7 @@ class Mailbox:
                 raise MailboxExists(f"Mailbox '{name}' already exists")
 
         except NoSuchMailbox:
+            logger.debug("Mailbox '%s' does not exist, can create", name)
             pass
 
         # The mailbox does not exist, we can create it.
@@ -2782,7 +2813,9 @@ class Mailbox:
         mbox_names: List[str] = []
         for chain_name in name.split("/"):
             mbox_chain.append(chain_name)
+            logger.debug("Mailbox chain: %s", mbox_chain)
             mbox_name = "/".join(mbox_chain)
+            logger.debug("Creating mailbox: '%s', mbox_name")
             MH(server.maildir / mbox_name)
             mbox_names.append(mbox_name)
 
@@ -2791,6 +2824,7 @@ class Mailbox:
         #
         mbox_names.reverse()
         for mbox_name in mbox_names:
+            logger.debug("check set has children on '%s'", mbox_name)
             mbox = await server.get_mailbox(mbox_name)
             mbox.check_set_haschildren_attr()
             await mbox.commit_to_db()
@@ -2828,7 +2862,6 @@ class Mailbox:
             raise InvalidMailbox("You are not allowed to delete the inbox")
 
         mbox = await server.get_mailbox(name)
-        do_delete = False
 
         inferior_mailboxes = mbox.mailbox.list_folders()
 
@@ -2884,19 +2917,27 @@ class Mailbox:
             # mailboxes and if it has any clients that have it selected
             # they are moved back to the unauthenticated state.
             #
-            async with server.active_mailboxes_lock:
-                if name in server.active_mailboxes:
-                    del server.active_mailboxes[name]
 
             # Set the mbox deleted flag to true. Cancel the management
             # task. Go through the task queue and signal all waiting
             # commands to proceed. They will check the mbox.deleted flag
             # and exit immediately.
             #
+            logger.debug("*** Shutting down mbox '%s'", mbox.name)
             await mbox.shutdown(commit_db=False)
+
+            try:
+                logger.debug("*** Removing folder '%s'", name)
+                server.mailbox.remove_folder(name)
+            except NotEmptyError as e:
+                logger.warning("mailbox %s 'not empty', %s", name, str(e))
+                path = mbox_msg_path(server.mailbox, name)
+                logger.info("using shutil to delete '%s'", path)
+                shutil.rmtree(path)
 
             # Delete all traces of the mailbox from our db.
             #
+            logger.debug("*** Removing '%s' from db", name)
             async with mbox.db_lock:
                 await server.db.execute(
                     "DELETE FROM mailboxes WHERE id = ?", (mbox.id,)
@@ -2904,29 +2945,24 @@ class Mailbox:
                 await server.db.execute(
                     "DELETE FROM sequences WHERE mailbox_id = ?", (mbox.id,)
                 )
-            await server.db.commit()
+                await server.db.commit()
 
-            do_delete = True
+            logger.debug("**** Waiting for active mailbox lock: %s", name)
+            async with server.active_mailboxes_lock:
+                logger.debug("*** Got active mailbox lock: %s", name)
+                if name in server.active_mailboxes:
+                    del server.active_mailboxes[name]
 
         # if this mailbox was the child of another mailbox than we may need
         # to update that mailbox's 'has children' attributes.
         #
         parent_name = os.path.dirname(name)
+        logger.debug("do check_set_haschildren_attr on '%s'", parent_name)
         if parent_name:
-            parent_mbox = await server.get_mailbox(name)
+            logger.debug("has parent '%s'", parent_name)
+            parent_mbox = await server.get_mailbox(parent_name)
             parent_mbox.check_set_haschildren_attr()
             await parent_mbox.commit_to_db()
-
-        # And remove the mailbox from the filesystem.
-        #
-        if do_delete:
-            try:
-                server.mailbox.remove_folder(name)
-            except NotEmptyError as e:
-                logger.warning("mailbox %s 'not empty', %s", name, str(e))
-                path = mbox_msg_path(server.mailbox, name)
-                logger.info("using shutil to delete '%s'", path)
-                shutil.rmtree(path)
 
     ####################################################################
     #

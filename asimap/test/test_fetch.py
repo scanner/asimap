@@ -64,7 +64,7 @@ def test_fetch_create_and_str():
         ("body", {}, "BODY"),
         ("body", {"section": [1, 2, 3, 4, "header"]}, "BODY[1.2.3.4.HEADER]"),
         ("body", {"section": [3, "text"]}, "BODY[3.TEXT]"),
-        ("body", {"section": [], "partial": (0, 1024)}, "BODY[]<0.1024>"),
+        ("body", {"section": [], "partial": (0, 1024)}, "BODY[]<0>"),
         ("flags", {}, "FLAGS"),
         ("internaldate", {}, "INTERNALDATE"),
         ("envelope", {}, "ENVELOPE"),
@@ -792,7 +792,7 @@ async def test_fetch_body_text_with_partials(mailbox_with_mimekit_email):
     fetch = FetchAtt(FetchOp.BODY, section=["TEXT"], partial=(mid, size))
     result2 = fetch.fetch(ctx)
 
-    assert result1.startswith(f"BODY[TEXT]<0.{mid}> {{")
+    assert result1.startswith("BODY[TEXT]<0> {")
 
     open_brace = result1.find("{") + 1
     close_brace = result1.find("}")
@@ -800,7 +800,7 @@ async def test_fetch_body_text_with_partials(mailbox_with_mimekit_email):
     result1_msg = result1[close_brace + 3 :]
 
     assert result1_len == len(result1_msg)
-    assert result2.startswith(f"BODY[TEXT]<{mid}.{size}> {{")
+    assert result2.startswith(f"BODY[TEXT]<{mid}> {{")
 
     open_brace = result2.find("{") + 1
     close_brace = result2.find("}")
@@ -834,7 +834,7 @@ async def test_fetch_body_braces(mailbox_with_bunch_of_email):
         fetch = FetchAtt(FetchOp.BODY, section=[], partial=(mid, size))
         result2 = fetch.fetch(ctx)
 
-        assert result1.startswith(f"BODY[]<0.{mid}> {{")
+        assert result1.startswith("BODY[]<0> {")
 
         open_brace = result1.find("{") + 1
         close_brace = result1.find("}")
@@ -842,7 +842,7 @@ async def test_fetch_body_braces(mailbox_with_bunch_of_email):
         result1_msg = result1[close_brace + 3 :]
 
         assert result1_len == len(result1_msg)
-        assert result2.startswith(f"BODY[]<{mid}.{size}> {{")
+        assert result2.startswith(f"BODY[]<{mid}> {{")
 
         open_brace = result2.find("{") + 1
         close_brace = result2.find("}")

@@ -257,6 +257,7 @@ class IMAPClientProxy:
                     # client sent us we use that when sending our response to
                     # the client so it knows what message we had problems with.
                     #
+                    logger.debug("*** Bad command! '%s'", imap_msg)
                     if imap_cmd.tag is not None:
                         await self.push(f"{imap_cmd.tag} BAD {e}\r\n")
                     else:
@@ -916,8 +917,8 @@ class IMAPUserServer:
         if name.lower() == "inbox":
             name = "inbox"
 
-        # if not name.strip() or not self.folder_exists(name):
-        if not self.folder_exists(name):
+        # if not self.folder_exists(name):
+        if not name.strip() or not self.folder_exists(name):
             raise NoSuchMailbox(f"No such mailbox: '{name}'")
 
         # If the mailbox is active we can return it immediately.
@@ -1043,6 +1044,12 @@ class IMAPUserServer:
         path = os.path.join(self.mailbox._path, mbox_name)
         seq_path = os.path.join(path, ".mh_sequences")
         try:
+            # Do not bother checking the "" mailbox.
+            #
+            if not mbox_name:
+                logger.debug("Skipping empty root mailbox '%s'", mbox_name)
+                return
+
             fmtime = await Mailbox.get_actual_mtime(self.mailbox, mbox_name)
             if (fmtime > mtime) or force:
                 # Just calling `get_mailbox` on a mailbox that is not active
@@ -1053,6 +1060,16 @@ class IMAPUserServer:
                 #
                 await self.get_mailbox(mbox_name)
 
+        except NoSuchMailbox as e:
+            # We looked in the file system and there was no such
+            # mailbox. Delete it from our list of mailboxes.
+            #
+            logger.warning(
+                "delete mbox from db because it does not exist on disk: '%s': %r",
+                mbox_name,
+                e,
+            )
+            Mailbox.delete(mbox_name, self)
         except MailboxInconsistency as e:
             # If hit one of these exceptions they are usually
             # transient.  we will skip it. The command processor in

@@ -231,9 +231,7 @@ async def test_mbox_append(imap_user_server, email_factory):
 
     msg = email_factory()
 
-    uid = await mbox.append(
-        msg, flags=[r"\Flagged", "unseen"], date_time=datetime.now()
-    )
+    uid = await mbox.append(msg, flags=[r"\Flagged"], date_time=datetime.now())
 
     msg_keys = [int(x) for x in mbox.mailbox.keys()]
 
@@ -311,6 +309,77 @@ async def test_mbox_expunge_with_client(
         seqs = mbox.get_sequences_from_folder()
     assert "Deleted" not in seqs
     assert not mbox.sequences["Deleted"]
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mbox_uid_expunge_with_client(
+    bunch_of_email_in_folder, imap_user_server_and_client
+):
+    NUM_MSGS_TO_DELETE = 4
+    NUM_MSGS_MARKED_DELETED = 10
+    NAME = "inbox"
+    bunch_of_email_in_folder(folder=NAME)
+    server, imap_client = imap_user_server_and_client
+    mbox = await server.get_mailbox(NAME)
+    mbox.clients[imap_client.cmd_processor.name] = imap_client.cmd_processor
+
+    # Mark messages \Deleted
+    #
+    msg_keys = [int(x) for x in mbox.mailbox.keys()]
+    num_msgs = len(msg_keys)
+    expect_deleted = []
+    for i in range(1, NUM_MSGS_MARKED_DELETED + 1):
+        mbox.sequences["Deleted"].add(msg_keys[i])
+        expect_deleted.append(msg_keys[i])
+    print(f"**** msg keys to delete: {mbox.sequences["Deleted"]}")
+
+    async with mbox.mh_sequences_lock:
+        mbox.set_sequences_in_folder(mbox.sequences)
+
+    # NOTE: uid's and msg_keys have the same values when messages are first
+    #       added to a mailbox.
+    #
+    uids_to_delete = list(range(2, NUM_MSGS_TO_DELETE + 2))
+    set_expect_deleted = set(expect_deleted) - set(uids_to_delete)
+    print(f"**** uids to delete: {uids_to_delete}")
+    imap_client.cmd_processor.idling = True
+    await mbox.expunge(uid_msg_set=uids_to_delete)
+    imap_client.cmd_processor.idling = False
+
+    results = client_push_responses(imap_client)
+    assert results == [
+        "* 5 EXPUNGE",
+        "* 4 EXPUNGE",
+        "* 3 EXPUNGE",
+        "* 2 EXPUNGE",
+    ]
+    assert mbox.uids == [
+        1,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+    ]
+    msg_keys = [int(x) for x in mbox.mailbox.keys()]
+    assert len(msg_keys) == num_msgs - NUM_MSGS_TO_DELETE
+    assert len(mbox.uids) == len(msg_keys)
+    async with mbox.mh_sequences_lock:
+        seqs = mbox.get_sequences_from_folder()
+
+    assert seqs["Deleted"] == set_expect_deleted
 
 
 ####################################################################
@@ -766,6 +835,25 @@ async def test_mailbox_create_delete(
     archive_msg_keys = archive.msg_keys
     assert len(dst_uids) == len(archive_msg_keys)
     assert archive.uids == dst_uids
+
+    # And finally we will delete the subfolder and then the archive folder and
+    # make sure that neither folder exists after the deletes.
+    #
+    await Mailbox.delete(SUB_FOLDER, server)
+    with pytest.raises(NoSuchMailbox):
+        await server.get_mailbox(SUB_FOLDER)
+    await Mailbox.delete(ARCHIVE, server)
+    with pytest.raises(NoSuchMailbox):
+        await server.get_mailbox(ARCHIVE)
+
+    # Also if we get the list of folders, neither ARCHIVE nor SUB_FOLDER should
+    # existn.
+    #
+    mbox_names = []
+    async for mbox_name, _ in Mailbox.list("", "*", server):
+        mbox_names.append(mbox_name)
+    assert ARCHIVE not in mbox_names
+    assert SUB_FOLDER not in mbox_names
 
 
 ####################################################################

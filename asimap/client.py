@@ -196,7 +196,7 @@ class BaseClientHandler:
             return
         except Bad as e:
             logger.warning(
-                "%s: BAD Response: '%s'", self.name, imap_command.qstr(), e
+                "%s: BAD Response: '%s': %r", self.name, imap_command.qstr(), e
             )
             if self.server and imap_command.command:
                 self.server.num_failed_commands[imap_command.command] += 1
@@ -366,6 +366,22 @@ class BaseClientHandler:
         self.idling = False
         await self.send_pending_notifications()
         await self.client.push(f"{self.tag} OK IDLE terminated\r\n")
+        return None
+
+    #########################################################################
+    #
+    async def do_noop(self, cmd: IMAPClientCommand):
+        """
+        Waits for the mailbox to let the command proceed and then sends any
+        pending notifies this client may have, if this client has a selected
+        mailbox.
+
+        Arguments:
+        - `cmd`: The full IMAP command object.
+        """
+        if self.mbox:
+            async with cmd.ready_and_okay(self.mbox):
+                await self.send_pending_notifications()
         return None
 
     #########################################################################
@@ -623,22 +639,6 @@ class Authenticated(BaseClientHandler):
 
     #########################################################################
     #
-    async def do_noop(self, cmd: IMAPClientCommand):
-        """
-        Waits for the mailbox to let the command proceed and then sends any
-        pending notifies this client may have, if this client has a selected
-        mailbox.
-
-        Arguments:
-        - `cmd`: The full IMAP command object.
-        """
-        if self.mbox:
-            async with cmd.ready_and_okay(self.mbox):
-                await self.send_pending_notifications()
-        return None
-
-    #########################################################################
-    #
     async def do_authenticate(self, cmd: IMAPClientCommand):
         await self.send_pending_notifications()
         raise No("client already is in the authenticated state")
@@ -731,7 +731,9 @@ class Authenticated(BaseClientHandler):
         # message.. but that is their problem.)
         #
         if self.state != ClientState.SELECTED:
-            raise No("Client must be in the selected state")
+            logger.warning("Attempting to UNSELECT while not SELECTED")
+            # raise No("Client must be in the selected state")
+            raise Bad("Client must be in the selected state")
 
         self.select_while_selected_count = 0
         if self.mbox:
@@ -774,8 +776,11 @@ class Authenticated(BaseClientHandler):
         """
         assert self.server
         await self.send_pending_notifications()
+        logger.debug("*** Attempting delete for '%s'", cmd.mailbox_name)
         mbox = await self.server.get_mailbox(cmd.mailbox_name)
+        logger.debug("*** Got mbox %s", mbox)
         async with cmd.ready_and_okay(mbox):
+            logger.debug("*** command ready and okay... '%s'", mbox)
             await Mailbox.delete(cmd.mailbox_name, self.server)
 
     ##################################################################
@@ -867,7 +872,7 @@ class Authenticated(BaseClientHandler):
             cmd.mailbox_name, cmd.list_mailbox, self.server, lsub
         ):
             mbox_name = "INBOX" if mbox_name.lower() == "inbox" else mbox_name
-            msg = f'* {res} ({" ".join(attributes)}) "/" "{mbox_name}"\r\n'
+            msg = f'* {res} ({" ".join(sorted(attributes))}) "/" "{mbox_name}"\r\n'
             await self.client.push(msg)
 
     ####################################################################
@@ -1077,7 +1082,12 @@ class Authenticated(BaseClientHandler):
                 # Do an EXPUNGE if there are any messages marked 'Delete'
                 #
                 if self.mbox.sequences.get("Deleted", []):
-                    await self.mbox.expunge()
+                    uid_msg_set = (
+                        list(cmd.msg_set_as_set)
+                        if cmd.uid_command and cmd.msg_set_as_set
+                        else None
+                    )
+                    await self.mbox.expunge(uid_msg_set=uid_msg_set)
         finally:
             self.idling = idling
 

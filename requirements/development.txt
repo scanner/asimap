@@ -6,7 +6,7 @@
 #
 aiofiles==24.1.0
     # via -r /Users/scanner/src/asimap/requirements/production.txt
-aioretry==6.1.1
+aioretry==6.2.0
     # via -r /Users/scanner/src/asimap/requirements/production.txt
 aiosqlite==0.20.0
     # via -r /Users/scanner/src/asimap/requirements/production.txt
@@ -78,7 +78,7 @@ executing==2.1.0
     # via stack-data
 factory-boy==3.3.1
     # via pytest-factoryboy
-faker==30.8.1
+faker==30.8.2
     # via factory-boy
 filelock==3.16.1
     # via
@@ -251,7 +251,7 @@ pytest==8.3.3
     #   pytest-sugar
 pytest-asyncio==0.24.0
     # via -r development.in
-pytest-cov==5.0.0
+pytest-cov==6.0.0
     # via pytest-cover
 pytest-cover==3.0.0
     # via pytest-coverage
@@ -277,12 +277,12 @@ requests==2.32.3
     # via requests-mock
 requests-mock==1.12.1
     # via -r development.in
-rich==13.9.3
+rich==13.9.4
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   -r development.in
     #   hatch
-ruff==0.7.1
+ruff==0.7.2
     # via -r /Users/scanner/src/asimap/requirements/lint.txt
 sentry-sdk==2.17.0
     # via -r /Users/scanner/src/asimap/requirements/production.txt
@@ -366,11 +366,11 @@ userpath==1.9.2
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   hatch
-uv==0.4.27
+uv==0.4.29
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   hatch
-virtualenv==20.27.0
+virtualenv==20.27.1
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   -r /Users/scanner/src/asimap/requirements/lint.txt
