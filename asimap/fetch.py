@@ -116,7 +116,7 @@ class FetchAtt:
         if self.section:
             result.append(f"[{self.section}]")
         if self.partial:
-            result.append(f"<{self.partial[0]}.{self.partial[1]}>")
+            result.append(f"<{self.partial[0]}>")
         return "".join(result)
 
     ##################################################################
@@ -155,7 +155,7 @@ class FetchAtt:
                         sects.append(str(s).upper())
                 result += f"[{'.'.join(sects)}]"
             if self.partial:
-                result += f"<{self.partial[0]}.{self.partial[1]}>"
+                result += f"<{self.partial[0]}>"
         return result
 
     #######################################################################
@@ -345,7 +345,8 @@ class FetchAtt:
         # If this is a partial only return the bits asked for.
         #
         if self.partial:
-            msg_text = msg_text[self.partial[0] : self.partial[1]]
+            end = self.partial[0] + self.partial[1]
+            msg_text = msg_text[self.partial[0] : end]
 
         # Return literal length encoded string.
         #

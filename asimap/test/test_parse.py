@@ -186,7 +186,7 @@ PEEK_IMAP_MESSAGES = [
     pytest.param("A654 FETCH 2:4 BODY\r\n", "A654 FETCH 2:4 (BODY)", id=""),
     pytest.param(
         "A654 FETCH 2:4 BODY[]<0.2048>\r\n",
-        "A654 FETCH 2:4 (BODY[]<0.2048>)",
+        "A654 FETCH 2:4 (BODY[]<0>)",
         id="FETCH body partial",
     ),
     pytest.param(

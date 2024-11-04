@@ -1981,7 +1981,7 @@ class Mailbox:
         to_delete = sorted(msg_keys_to_delete, reverse=True)
         uids_to_delete = [self.uids[self.msg_keys.index(x)] for x in to_delete]
         logger.debug(
-            "Mailbox: '%s', msg keys to delete: %s, uids to delete:",
+            "Mailbox: '%s', msg keys to delete: %s, uids to delete: %s",
             self.name,
             to_delete,
             uids_to_delete,

@@ -215,7 +215,7 @@ async def test_authenticated_client_handler_commands(
             "A005 OK [READ-WRITE] SELECT command completed",
         ],
         ["A006 OK UNSELECT command completed"],
-        ["A007 NO Client must be in the selected state"],
+        ["A007 BAD Client must be in the selected state"],
         [
             "* 20 EXISTS",
             "* 20 RECENT",
@@ -482,7 +482,7 @@ async def test_authenticated_client_append(
     assert results == [
         "* 22 EXISTS",
         "* 22 RECENT",
-        r"* 22 FETCH (FLAGS (\Recent \Flagged \Seen))",
+        r"* 22 FETCH (FLAGS (unseen \Recent \Flagged))",
         "A003 OK [APPENDUID 1 22] APPEND command completed",
     ]
     appended_msg = mbox.get_msg(22)
