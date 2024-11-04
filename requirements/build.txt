@@ -74,7 +74,7 @@ pygments==2.18.0
     # via rich
 pyproject-hooks==1.2.0
     # via build
-rich==13.9.3
+rich==13.9.4
     # via hatch
 shellingham==1.5.4
     # via hatch
