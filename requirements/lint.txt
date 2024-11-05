@@ -81,7 +81,7 @@ types-redis==4.6.0.20241004
     # via -r lint.in
 types-requests==2.32.0.20241016
     # via -r lint.in
-types-setuptools==75.2.0.20241025
+types-setuptools==75.3.0.20241105
     # via
     #   -r lint.in
     #   types-cffi

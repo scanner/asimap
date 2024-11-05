@@ -284,7 +284,7 @@ rich==13.9.4
     #   hatch
 ruff==0.7.2
     # via -r /Users/scanner/src/asimap/requirements/lint.txt
-sentry-sdk==2.17.0
+sentry-sdk==2.18.0
     # via -r /Users/scanner/src/asimap/requirements/production.txt
 shellingham==1.5.4
     # via
@@ -343,7 +343,7 @@ types-redis==4.6.0.20241004
     # via -r /Users/scanner/src/asimap/requirements/lint.txt
 types-requests==2.32.0.20241016
     # via -r /Users/scanner/src/asimap/requirements/lint.txt
-types-setuptools==75.2.0.20241025
+types-setuptools==75.3.0.20241105
     # via
     #   -r /Users/scanner/src/asimap/requirements/lint.txt
     #   types-cffi
@@ -366,7 +366,7 @@ userpath==1.9.2
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   hatch
-uv==0.4.29
+uv==0.4.30
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   hatch

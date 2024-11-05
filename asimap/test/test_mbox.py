@@ -778,19 +778,19 @@ async def test_mailbox_create_delete(
 ):
     server, imap_client_proxy = imap_user_server_and_client
     mbox = mailbox_with_bunch_of_email
-    ARCHIVE = "Archive"
-    SUB_FOLDER = "Archive/foo"
+    ARCHIVE = "/Archive"
+    SUB_FOLDER = "/Archive/foo"
 
     # Make sure we can not create or delete `inbox` or one that is all digits.
     #
     with pytest.raises(InvalidMailbox):
-        await Mailbox.create("inbox", server)
+        await Mailbox.create("/inbox", server)
 
     with pytest.raises(InvalidMailbox):
-        await Mailbox.delete("inbox", server)
+        await Mailbox.delete("/inbox", server)
 
     with pytest.raises(InvalidMailbox):
-        await Mailbox.create("1234", server)
+        await Mailbox.create("/1234", server)
 
     await Mailbox.create(ARCHIVE, server)
     archive = await server.get_mailbox(ARCHIVE)

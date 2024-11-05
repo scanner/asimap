@@ -911,6 +911,12 @@ class IMAPUserServer:
           and do not take up excess memory in the server. NOTE: As long as a
           mailbox has an active clients, the expiry timer will NOT be active.
         """
+        # If the mailbox name begins with a forward slash strip it off. We
+        # specify `/` as the prefix character in the name space, but do not use
+        # it internally.
+        #
+        name = name[1:] if name and name[0] == "/" else name
+
         # The INBOX is case-insensitive but it is stored in our file system in
         # a case sensitive lower case fashion..
         #
