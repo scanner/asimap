@@ -171,6 +171,8 @@ class Mailbox:
                     currently connected to us.
 
         """
+        name = name[1:] if name and name[0] == "/" else name
+
         self.logger = logging.getLogger(f"asimap.mbox.Mailbox:'{name}'")
         self.server = server
         self.name = name
@@ -2756,6 +2758,8 @@ class Mailbox:
         Creates a mailbox on disk that does not already exist and
         instantiates a Mailbox object for it.
         """
+        name = name[1:] if name and name[0] == "/" else name
+
         # You can not create 'INBOX' nor, because of MH rules, create a mailbox
         # that is just the digits 0-9.
         #
@@ -2858,6 +2862,8 @@ class Mailbox:
         - `name`: The name of the mailbox to delete
         - `server`: The user server object
         """
+        name = name[1:] if name and name[0] == "/" else name
+
         if name == "inbox":
             raise InvalidMailbox("You are not allowed to delete the inbox")
 
@@ -2984,6 +2990,9 @@ class Mailbox:
         - `new_name`: the new name of the mailbox
         - `server`: the user server object
         """
+        old_name = old_name[1:] if old_name and old_name[0] == "/" else old_name
+        new_name = new_name[1:] if new_name and new_name[0] == "/" else new_name
+
         mbox = await server.get_mailbox(old_name)
         # The mailbox we are moving to must not exist.
         #
@@ -3043,11 +3052,19 @@ class Mailbox:
         - `lsub`: If True this will only match folders that have their
           subscribed bit set.
         """
-        # The mbox_match character can not begin with '/' because our mailboxes
-        # are unrooted.
+        # We strip the `/` prefix from the beginning of the string because
+        # internally our mailboxes are unrooted.
         #
-        if len(mbox_match) > 0 and mbox_match[0] == "/":
-            mbox_match = mbox_match[:1]
+        ref_mbox_name = (
+            ref_mbox_name[1:]
+            if ref_mbox_name and ref_mbox_name[0] == "/"
+            else ref_mbox_name
+        )
+        mbox_match = (
+            mbox_match[1:]
+            if mbox_match and mbox_match[0] == "/"
+            else mbox_match
+        )
 
         # we use normpath to collapse redundant separators and up-level
         # references. But normpath of "" == "." so we make sure that case is
@@ -3058,8 +3075,8 @@ class Mailbox:
 
         # Now we tack the ref_mbox_name and mbox_match together.
         #
-        # mbox_match = os.path.join(ref_mbox_name, mbox_match)
         mbox_match = ref_mbox_name + mbox_match
+        logger.debug("**** mbox_match: '%s'", mbox_match)
 
         # We need to escape all possible regular expression characters
         # in our string so that it only matches what is expected by the
@@ -3070,6 +3087,7 @@ class Mailbox:
         # Every '*' becomes '.*' and every % becomes [^/]
         #
         mbox_match = mbox_match.replace(r"\*", r".*").replace(r"%", r"[^\/]*")
+        logger.debug("**** mbox_match re: '%s'", mbox_match)
 
         # NOTE: We do not present to the IMAP client any folders that
         #       have the flag 'ignored' set on them.
@@ -3085,6 +3103,7 @@ class Mailbox:
             f"regexp ? {subscribed} AND attributes NOT LIKE '%ignored%' "
             "ORDER BY name"
         )
+        logger.debug("*** Query: %s", query)
         async for mbox_name, attributes in server.db.query(
             query, (mbox_match,)
         ):
