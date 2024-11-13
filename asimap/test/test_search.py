@@ -461,8 +461,8 @@ async def test_search_larger_smaller(mailbox_with_bunch_of_email):
     sizes = sorted(sizes, key=lambda x: x[0])
     mp = int(len(sizes) / 2)
     mid_size = sizes[mp][0] - 1  # One octet smaller.
-    smaller = sorted([x[1] for x in sizes[:mp]])
-    larger = sorted([x[1] for x in sizes[mp:]])
+    smaller = sorted([x[1] for x in sizes if x[0] < mid_size])
+    larger = sorted([x[1] for x in sizes if x[0] > mid_size])
 
     search_op = IMAPSearch("smaller", n=mid_size)
     for msg_idx, msg_key in enumerate(msg_keys):

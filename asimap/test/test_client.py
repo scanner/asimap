@@ -179,7 +179,7 @@ async def test_preauth_client_handler_login(
     imap_client = await imap_client_proxy()
     client_handler = PreAuthenticated(imap_client)
 
-    cmd = IMAPClientCommand(f"A001 LOGIN {user.username} {password}\r\n")
+    cmd = IMAPClientCommand(f'A001 LOGIN {user.username} "{password}"\r\n')
     cmd.parse()
     await client_handler.command(cmd)
     results = client_push_responses(imap_client)
