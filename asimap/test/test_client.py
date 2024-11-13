@@ -180,7 +180,6 @@ async def test_preauth_client_handler_login(
     client_handler = PreAuthenticated(imap_client)
 
     cmd = IMAPClientCommand(f'A001 LOGIN {user.username} "{password}"\r\n')
-    print(f"*** command: '{cmd.input}'")
     cmd.parse()
     await client_handler.command(cmd)
     results = client_push_responses(imap_client)
