@@ -5,7 +5,7 @@
 #    pip-compile --output-file=lint.txt --strip-extras lint.in
 #
 black==24.10.0
-    # via -r lint.in
+    # via -r requirements/lint.in
 build==1.2.2.post1
     # via pip-tools
 cffi==1.17.1
@@ -17,7 +17,7 @@ click==8.1.7
     #   black
     #   pip-tools
 coverage==7.6.4
-    # via -r lint.in
+    # via -r requirements/lint.in
 cryptography==43.0.3
     # via
     #   types-pyopenssl
@@ -31,9 +31,9 @@ identify==2.6.2
 importlib-metadata==8.5.0
     # via yapf
 isort==5.13.2
-    # via -r lint.in
+    # via -r requirements/lint.in
 mypy==1.13.0
-    # via -r lint.in
+    # via -r requirements/lint.in
 mypy-extensions==1.0.0
     # via
     #   black
@@ -47,14 +47,14 @@ packaging==24.2
 pathspec==0.12.1
     # via black
 pip-tools==7.4.1
-    # via -r lint.in
+    # via -r requirements/lint.in
 platformdirs==4.3.6
     # via
     #   black
     #   virtualenv
     #   yapf
 pre-commit==4.0.1
-    # via -r lint.in
+    # via -r requirements/lint.in
 pycparser==2.22
     # via cffi
 pyproject-hooks==1.2.0
@@ -64,26 +64,26 @@ pyproject-hooks==1.2.0
 pyyaml==6.0.2
     # via pre-commit
 ruff==0.7.3
-    # via -r lint.in
+    # via -r requirements/lint.in
 tomli==2.1.0
     # via yapf
 types-aiofiles==24.1.0.20240626
-    # via -r lint.in
+    # via -r requirements/lint.in
 types-cachetools==5.5.0.20240820
-    # via -r lint.in
+    # via -r requirements/lint.in
 types-cffi==1.16.0.20240331
     # via types-pyopenssl
 types-pyopenssl==24.1.0.20240722
     # via types-redis
 types-pytz==2024.2.0.20241003
-    # via -r lint.in
+    # via -r requirements/lint.in
 types-redis==4.6.0.20241004
-    # via -r lint.in
+    # via -r requirements/lint.in
 types-requests==2.32.0.20241016
-    # via -r lint.in
-types-setuptools==75.3.0.20241112
+    # via -r requirements/lint.in
+types-setuptools==75.5.0.20241121
     # via
-    #   -r lint.in
+    #   -r requirements/lint.in
     #   types-cffi
 typing-extensions==4.12.2
     # via mypy
@@ -94,7 +94,7 @@ virtualenv==20.27.1
 wheel==0.45.0
     # via pip-tools
 yapf==0.40.2
-    # via -r lint.in
+    # via -r requirements/lint.in
 zipp==3.21.0
     # via importlib-metadata
 
