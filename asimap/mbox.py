@@ -1405,6 +1405,9 @@ class Mailbox:
         # return cast(EmailMessage, self.mailbox[str(msg_key)])
         msg = cast(EmailMessage, self.mailbox[str(msg_key)])
 
+        # XXX Moving to the bytes generator we should not need this mangle code
+        #     anymore.
+        #
         # To handle the attempt to decode the header if it is 8bit-unknown with
         # a 7 bit encoding, capture that case and deal with it by re-writing
         # the subject.
@@ -1414,14 +1417,14 @@ class Mailbox:
 
         # Make sure that we can encode the subject as a 7bit string
         #
-        subj = msg["subject"]
-        try:
-            if "subject" in msg:
-                subj.encode("ascii", "surrogateescape")
-        except UnicodeEncodeError:
-            subjb = subj.encode("ascii", "xmlcharrefreplace")
-            del msg["subject"]
-            msg["subject"] = subjb.decode("ascii")
+        # subj = msg["subject"]
+        # try:
+        #     if "subject" in msg:
+        #         subj.encode("ascii", "surrogateescape")
+        # except UnicodeEncodeError:
+        #     subjb = subj.encode("ascii", "xmlcharrefreplace")
+        #     del msg["subject"]
+        #     msg["subject"] = subjb.decode("ascii")
 
         return msg
 

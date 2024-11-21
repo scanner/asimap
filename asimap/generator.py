@@ -49,6 +49,13 @@ class ASBytesGenerator(BytesGenerator):
 
     ####################################################################
     #
+    # XXX If we fail to encode the string as ascii with surrogateescape we need
+    #     to probably tweak this routine. Right now this is an exact copy of
+    #     the BytesGenerator.write() method.
+    #
+    #     If this works for all of our messages then we can get rid of this
+    #     method and use the super class's method.
+    #
     def write(self, s):
         self._fp.write(s.encode("ascii", "surrogateescape"))
 
