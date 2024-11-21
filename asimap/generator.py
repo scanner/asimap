@@ -10,15 +10,77 @@ size.
 #
 import logging
 from copy import deepcopy
-from email.generator import Generator
-from email.message import Message
-from email.policy import SMTP, Policy
-from io import StringIO
-from typing import List, Optional, TextIO, Tuple
+from email.generator import BytesGenerator, Generator
+from email.message import EmailMessage, Message
+from email.policy import HTTP, SMTP, EmailPolicy, Policy
+from io import BytesIO, StringIO
+from typing import BinaryIO, List, Optional, TextIO, Tuple
 
 logger = logging.getLogger("asimap.generator")
 
 SMTP_LONG_LINES = SMTP.clone(max_line_length=None)
+
+
+########################################################################
+########################################################################
+#
+class ASBytesGenerator(BytesGenerator):
+    """
+    Like the BytesGenerator except that it is intended to produce 8bit
+    binary output. So no re-encoding to a string is done.
+    """
+
+    ####################################################################
+    #
+    def __init__(
+        self, outfp: BinaryIO, *args, render_headers: bool = False, **kwargs
+    ):
+        self._mangle_from_: bool
+        self.policy: EmailPolicy
+
+        # We want to use SMTP policy because we want RFC822 compliant emails
+        # for what we send to the IMAP Client.. but we want to let other
+        # options in if specified when this class is instantiated.
+        #
+        kwargs["policy"] = SMTP if "policy" not in kwargs else kwargs["policy"]
+
+        super().__init__(outfp, *args, **kwargs)
+        self._render_headers = render_headers
+
+    ####################################################################
+    #
+    def write(self, s):
+        self._fp.write(s.encode("ascii", "surrogateescape"))
+
+    ####################################################################
+    #
+    def _write_headers(self, msg):
+        """
+        This method exists so we can determine whether or not to write the
+        headers based on the instance variable `_headers`.
+        """
+        if self._render_headers:
+            super()._write_headers(msg)  # type: ignore
+
+    ####################################################################
+    #
+    def clone(self, fp, render_headers=True):
+        """
+        When a message is being flattened the Generator is cloned for each
+        sub-part. We want all sub-parts to have their headers generated, thus
+        the default is `True` for these clones.
+
+        This way with the default being `False` for the top level generator
+        means that we have the option of producing a message body without its
+        initial headers (but all sub-parts get their headers.)
+        """
+        return self.__class__(
+            fp,
+            self._mangle_from_,
+            None,
+            render_headers=render_headers,
+            policy=self.policy,
+        )
 
 
 ############################################################################
@@ -271,15 +333,59 @@ def msg_as_string(msg: Message, headers: bool = True) -> str:
 
 ####################################################################
 #
-def get_msg_size(msg: Message, headers: bool = True) -> int:
+def _msg_as_bytes(msg: EmailMessage, render_headers: bool = True) -> bytes:
+    # We try two different policies. Both the SMTP and SMTPUTF8 policies fail
+    # to generate text if a header, say the subject, is split across more than
+    # one line (folded) and is encoded as a UTF8 string. I believe this is a
+    # bug in the header registry class in that it seems to break handling
+    # refold's of UTF8 encoded header values.
+    #
+    # So, force it to not fold by saying header lines have no max length. Since
+    # these text representations are for presenting to an IMAP client and not
+    # sending over the wire this is okay.
+    #
+    try:
+        failed = False
+        fp = BytesIO()
+        g = ASBytesGenerator(
+            fp, mangle_from_=False, render_headers=render_headers
+        )
+        g.flatten(msg)
+    except UnicodeEncodeError:
+        failed = True
+
+    if failed:
+        failed = False
+        fp = BytesIO()
+        g = ASBytesGenerator(
+            fp, mangle_from_=False, render_headers=render_headers, policy=HTTP
+        )
+        g.flatten(msg)
+
+    msg_bytes = fp.getvalue()
+    msg_bytes = (
+        msg_bytes if msg_bytes.endswith(b"\r\n") else msg_bytes + b"\r\n"
+    )
+    return msg_bytes
+
+
+####################################################################
+#
+def msg_as_bytes(msg: EmailMessage, render_headers: bool = True) -> bytes:
+    return _msg_as_bytes(msg, render_headers=render_headers)
+
+
+####################################################################
+#
+def get_msg_size(msg: EmailMessage, headers: bool = True) -> int:
     """
     We need to know the size of a message in octets in several different
     contexts. Our TextGenerator is what we use to flatten messages for sending
     to IMAP clients, so we want to also use it to be the canonical description
     of a message's size.
     """
-    msg_str = msg_as_string(msg, headers=headers)
-    return len(msg_str)
+    msg_bytes = msg_as_bytes(msg, headers=headers)
+    return len(msg_bytes)
 
 
 ####################################################################

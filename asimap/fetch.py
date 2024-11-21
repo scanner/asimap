@@ -160,7 +160,7 @@ class FetchAtt:
 
     #######################################################################
     #
-    def fetch(self, ctx) -> str:
+    def fetch(self, ctx) -> bytes:
         r"""
         This method applies fetch criteria that this object represents
         to the message and message entry being passed in.
@@ -215,7 +215,7 @@ class FetchAtt:
             case _:
                 raise NotImplementedError
 
-        return f"{str(self)} {result}"
+        return (str(self)).encode("latin-1") + result
 
     ####################################################################
     #
@@ -300,7 +300,7 @@ class FetchAtt:
     #
     def _body(
         self, msg: EmailMessage, section: Union[None, List[int | str]]
-    ) -> str:
+    ) -> bytes:
         if not section:
             return msg_as_string(msg)
 
@@ -331,7 +331,9 @@ class FetchAtt:
 
     ####################################################################
     #
-    def body(self, msg: EmailMessage, section: Union[None, List[int | str]]):
+    def body(
+        self, msg: EmailMessage, section: Union[None, List[int | str]]
+    ) -> bytes:
         """
         Fetch the appropriate section of the message, flatten into a string
         and return it to the user.
@@ -340,7 +342,9 @@ class FetchAtt:
 
         # We need to always terminate with crlf.
         #
-        msg_text = msg_text if msg_text.endswith("\r\n") else msg_text + "\r\n"
+        msg_text = (
+            msg_text if msg_text.endswith(b"\r\n") else msg_text + b"\r\n"
+        )
 
         # If this is a partial only return the bits asked for.
         #
@@ -350,7 +354,8 @@ class FetchAtt:
 
         # Return literal length encoded string.
         #
-        return f"{{{len(msg_text)}}}\r\n{msg_text}"
+        return str(len(msg_text)).encode("latin-1") + b"\r\n" + msg_text
+        # return f"{{{len(msg_text)}}}\r\n{msg_text}"
 
     #######################################################################
     #
