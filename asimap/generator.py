@@ -11,7 +11,7 @@ size.
 import logging
 from copy import deepcopy
 from email.generator import BytesGenerator, Generator
-from email.message import EmailMessage, Message
+from email.message import Message
 from email.policy import HTTP, SMTP, EmailPolicy, Policy
 from io import BytesIO, StringIO
 from typing import BinaryIO, List, Optional, TextIO, Tuple
@@ -488,7 +488,7 @@ def msg_as_string(msg: Message, headers: bool = True) -> str:
 
 ####################################################################
 #
-def _msg_as_bytes(msg: EmailMessage, render_headers: bool = True) -> bytes:
+def _msg_as_bytes(msg: Message, render_headers: bool = True) -> bytes:
     # We try two different policies. Both the SMTP and SMTPUTF8 policies fail
     # to generate text if a header, say the subject, is split across more than
     # one line (folded) and is encoded as a UTF8 string. I believe this is a
@@ -526,13 +526,13 @@ def _msg_as_bytes(msg: EmailMessage, render_headers: bool = True) -> bytes:
 
 ####################################################################
 #
-def msg_as_bytes(msg: EmailMessage, render_headers: bool = True) -> bytes:
+def msg_as_bytes(msg: Message, render_headers: bool = True) -> bytes:
     return _msg_as_bytes(msg, render_headers=render_headers)
 
 
 ####################################################################
 #
-def get_msg_size(msg: EmailMessage, render_headers: bool = True) -> int:
+def get_msg_size(msg: Message, render_headers: bool = True) -> int:
     """
     We need to know the size of a message in octets in several different
     contexts. Our TextGenerator is what we use to flatten messages for sending

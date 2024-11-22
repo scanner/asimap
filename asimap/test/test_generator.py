@@ -6,9 +6,9 @@ from email import message_from_bytes, message_from_string
 
 # System imports
 #
-from email.generator import Generator
+from email.generator import BytesGenerator
 from email.policy import SMTP, default
-from io import StringIO
+from io import BytesIO
 
 # 3rd party imports
 #
@@ -16,7 +16,8 @@ import pytest
 
 # Project imports
 #
-from ..generator import msg_as_string, msg_headers_as_string
+# from ..generator import msg_as_string, msg_headers_as_string
+from ..generator import msg_as_bytes, msg_headers_as_bytes
 from .conftest import PROBLEMATIC_EMAIL_MSG_KEYS, STATIC_EMAIL_MSG_KEYS
 
 
@@ -25,7 +26,7 @@ from .conftest import PROBLEMATIC_EMAIL_MSG_KEYS, STATIC_EMAIL_MSG_KEYS
 def test_simple_email_text_generator_no_headers(email_factory):
     for _ in range(5):
         msg = email_factory()
-        msg_text = msg_as_string(msg, headers=False)
+        msg_text = msg_as_bytes(msg, render_headers=False)
 
         # An email message has a bunch of lines as a header and then a two line
         # break. After those two lines is the message body. We use this to
@@ -33,15 +34,15 @@ def test_simple_email_text_generator_no_headers(email_factory):
         # sub-class that can skip headers. NOTE: rfc822 emails have `\r\n` as
         # their line ends.
         #
-        fp = StringIO()
-        g = Generator(fp, mangle_from_=False, policy=SMTP)
+        fp = BytesIO()
+        g = BytesGenerator(fp, mangle_from_=False, policy=SMTP)
         g.flatten(msg)
         rfc822_text = fp.getvalue()
 
         # Look for the first occurence of "\r\n" in our rfc822_text. Split the
         # string on that point.
         #
-        where = rfc822_text.index("\r\n\r\n") + 4
+        where = rfc822_text.index(b"\r\n\r\n") + 4
         body = rfc822_text[where:]
 
         assert msg_text == body
@@ -57,17 +58,17 @@ def test_static_email_text_generator_no_headers(
     msg = message_from_bytes(
         static_email_factory_bytes(msg_key), policy=default
     )
-    msg_text = msg_as_string(msg, headers=False)
+    msg_text = msg_as_bytes(msg, render_headers=False)
 
-    fp = StringIO()
-    g = Generator(fp, mangle_from_=False, policy=SMTP)
+    fp = BytesIO()
+    g = BytesGenerator(fp, mangle_from_=False, policy=SMTP)
     g.flatten(msg)
     rfc822_text = fp.getvalue()
 
     # Look for the first occurence of "\r\n" in our rfc822_text. Split the
     # string on that point.
     #
-    where = rfc822_text.index("\r\n\r\n") + 4
+    where = rfc822_text.index(b"\r\n\r\n") + 4
     body = rfc822_text[where:]
     assert msg_text == body
 
@@ -85,10 +86,10 @@ def test_static_email_text_generator_headers(
     msg = message_from_bytes(
         static_email_factory_bytes(msg_key), policy=default
     )
-    msg_text = msg_as_string(msg, headers=True)
+    msg_text = msg_as_bytes(msg, render_headers=True)
 
-    fp = StringIO()
-    g = Generator(fp, mangle_from_=False, policy=SMTP)
+    fp = BytesIO()
+    g = BytesGenerator(fp, mangle_from_=False, policy=SMTP)
     g.flatten(msg)
     rfc822_text = fp.getvalue()
 
@@ -105,17 +106,17 @@ def test_static_email_header_generator_all_headers(
     msg = message_from_bytes(
         static_email_factory_bytes(msg_key), policy=default
     )
-    headers = msg_headers_as_string(msg)
+    headers = msg_headers_as_bytes(msg)
 
-    fp = StringIO()
-    g = Generator(fp, mangle_from_=False, policy=SMTP)
+    fp = BytesIO()
+    g = BytesGenerator(fp, mangle_from_=False, policy=SMTP)
     g.flatten(msg)
     rfc822_text = fp.getvalue()
 
     # Look for the first occurence of "\r\n" in our rfc822_text. Split the
     # string on that point.
     #
-    where = rfc822_text.index("\r\n\r\n") + 4
+    where = rfc822_text.index(b"\r\n\r\n") + 4
     rfc822_headers = rfc822_text[:where]
 
     assert headers == rfc822_headers
@@ -129,13 +130,13 @@ def test_header_generator_some_headers(lots_of_headers_email):
     """
     msg = message_from_string(lots_of_headers_email, policy=default)
 
-    headers = msg_headers_as_string(
+    headers = msg_headers_as_bytes(
         msg, ("to", "from", "SuBjEct", "Date"), skip=False
     )
 
     assert (
         headers
-        == 'From: jang.abcdef@xyzlinu <jang.abcdef@xyzlinux12345678.it>\r\nTo: "jang12@linux12.org.new" <jang12@linux12.org.new>\r\nSubject: R: R: R: I: FR-selca LA selcaE\r\nDate: Wed, 15 Nov 2017 14:16:14 +0000\r\n\r\n'
+        == b'From: jang.abcdef@xyzlinu <jang.abcdef@xyzlinux12345678.it>\r\nTo: "jang12@linux12.org.new" <jang12@linux12.org.new>\r\nSubject: R: R: R: I: FR-selca LA selcaE\r\nDate: Wed, 15 Nov 2017 14:16:14 +0000\r\n\r\n'
     )
 
 
@@ -192,7 +193,7 @@ def test_header_generator_skip_headers(lots_of_headers_email):
         "X-MIMEOLE",
     ]
 
-    expected = """Return-Path: <jang.abcdef@xyzlinux12345678.it>\r
+    expected = b"""Return-Path: <jang.abcdef@xyzlinux12345678.it>\r
 Delivered-To: jang12@linux12.org.new\r
 Received: (qmail 21619 invoked from network); 15 Nov 2017 14:16:18 -0000\r
 Received: from unknown (HELO EUR01-HE1-obe.outbound.protection.outlook.com)\r
@@ -241,7 +242,7 @@ Content-Type: multipart/alternative;\r
 \tboundary="----=_NextPart_000_0031_01D36222.8A648550"\r
 X-Mailer: Microsoft Outlook Express 6.00.2900.5931\r\n\r\n"""
 
-    headers = msg_headers_as_string(msg, tuple(to_skip), skip=True)
+    headers = msg_headers_as_bytes(msg, tuple(to_skip), skip=True)
     assert headers == expected
 
 
@@ -257,7 +258,7 @@ def test_generator_problematic_email(msg_key, problematic_email_factory_bytes):
     msg = message_from_bytes(
         problematic_email_factory_bytes(msg_key), policy=default
     )
-    msg_text = msg_as_string(msg)
+    msg_text = msg_as_bytes(msg)
     assert msg_text
-    msg_hdrs = msg_headers_as_string(msg)
+    msg_hdrs = msg_headers_as_bytes(msg)
     assert msg_hdrs

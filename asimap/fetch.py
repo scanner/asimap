@@ -10,7 +10,7 @@ query and generate the body of the `FETCH` response IMAP message.
 #
 import email.utils
 import logging
-from email.message import EmailMessage
+from email.message import EmailMessage, Message
 from enum import StrEnum
 from typing import List, Optional, Set, Tuple, Union
 
@@ -18,7 +18,9 @@ from typing import List, Optional, Set, Tuple, Union
 #
 from .constants import seq_to_flag
 from .exceptions import Bad
-from .generator import msg_as_string, msg_headers_as_string
+
+# from .generator import msg_as_string, msg_headers_as_string
+from .generator import msg_as_bytes, msg_headers_as_bytes
 
 logger = logging.getLogger("asimap.fetch")
 
@@ -176,7 +178,7 @@ class FetchAtt:
         # Based on the operation figure out what subroutine does the rest
         # of the work.
         #
-        result: Union[str, int]
+        result: Union[bytes, int]
         match self.attribute:
             case (
                 FetchOp.BODY
@@ -205,11 +207,11 @@ class FetchAtt:
                     raise
             case FetchOp.FLAGS:
                 flags = " ".join([seq_to_flag(x) for x in self.ctx.sequences])
-                result = f"({flags})"
+                result = f"({flags})".encode("latin-1")
             case FetchOp.INTERNALDATE:
                 int_date = self.ctx.internal_date()
                 internal_date = email.utils.format_datetime(int_date)
-                result = f'"{internal_date}"'
+                result = f'"{internal_date}"'.encode("latin-1")
             case FetchOp.UID:
                 result = self.ctx.uid()
             case _:
@@ -221,7 +223,7 @@ class FetchAtt:
     #
     def _single_section(
         self, msg: EmailMessage, section: Union[int | str]
-    ) -> str:
+    ) -> bytes:
         """
         Flatten message text from single top level section.
         """
@@ -230,7 +232,7 @@ class FetchAtt:
                 # If they want section 1 and this message is NOT multipart then
                 # this is equivalent to `BODY[TEXT]`
                 #
-                return msg_as_string(msg, headers=False)
+                return msg_as_bytes(msg, render_headers=False)
 
             # Otherwise, get the sub-part of the message that they are after
             #
@@ -244,22 +246,22 @@ class FetchAtt:
                 # NOTE: IMAP sections are 1 based. Sections in the message are
                 #       0-based.
                 #
-                return msg_as_string(
-                    msg.get_payload(section - 1), headers=False
+                return msg_as_bytes(
+                    msg.get_payload(section - 1), render_headers=False
                 )
             except IndexError:
                 raise BadSection(
                     f"Section {section} does not exist in this message sub-part"
                 )
         elif isinstance(section, str) and section.upper() == "TEXT":
-            return msg_as_string(msg, headers=False)
+            return msg_as_bytes(msg, render_headers=False)
         elif isinstance(section, (list, tuple)):
             if section[0].upper() == "HEADER.FIELDS":
                 headers = tuple(section[1])
-                return msg_headers_as_string(msg, headers=headers, skip=False)
+                return msg_headers_as_bytes(msg, headers=headers, skip=False)
             elif section[0].upper() == "HEADER.FIELDS.NOT":
                 headers = tuple(section[1])
-                return msg_headers_as_string(msg, headers=headers, skip=True)
+                return msg_headers_as_bytes(msg, headers=headers, skip=True)
             else:
                 raise BadSection(
                     "Section value must be either HEADER.FIELDS or "
@@ -277,7 +279,7 @@ class FetchAtt:
                 #     not quite right in that it will accept more then it
                 #     should, but it will otherwise work.
                 #
-                return msg_headers_as_string(msg)
+                return msg_headers_as_bytes(msg)
             case "HEADER":
                 # if the content type is message/rfc822 then to
                 # get the headers we need to use the first
@@ -287,9 +289,9 @@ class FetchAtt:
                     msg.is_multipart()
                     and msg.get_content_type() == "message/rfc822"
                 ):
-                    return msg_headers_as_string(msg.get_payload(0))
+                    return msg_headers_as_bytes(msg.get_payload(0))
                 else:
-                    return msg_headers_as_string(msg)
+                    return msg_headers_as_bytes(msg)
             case _:
                 self.log.warn(f"body: Unexpected section value: '{section}'")
                 raise BadSection(
@@ -302,7 +304,7 @@ class FetchAtt:
         self, msg: EmailMessage, section: Union[None, List[int | str]]
     ) -> bytes:
         if not section:
-            return msg_as_string(msg)
+            return msg_as_bytes(msg)
 
         if len(section) == 1:
             return self._single_section(msg, section[0])
@@ -327,7 +329,7 @@ class FetchAtt:
                     f"Message does not contain subsection {section[0]} "
                     f"(section list: {section})"
                 )
-        return msg_as_string(msg)
+        return msg_as_bytes(msg)
 
     ####################################################################
     #
@@ -359,7 +361,7 @@ class FetchAtt:
 
     #######################################################################
     #
-    def envelope(self, msg: EmailMessage) -> str:
+    def envelope(self, msg: Message) -> str:
         """
         Get the envelope structure of the message as a list, in a defined
         order.
@@ -718,7 +720,7 @@ class FetchAtt:
         result.append(f'"{cte}"')
 
         # Body size
-        payload = msg_as_string(msg, headers=False)
+        payload = msg_as_bytes(msg, render_headers=False)
         result.append(str(len(payload)))
         num_lines = payload.count("\n")
 
@@ -732,7 +734,7 @@ class FetchAtt:
             encapsulated_msg = msg.get_payload()[0]
             result.append(self.envelope(encapsulated_msg))
             result.append(self.bodystructure(encapsulated_msg))
-            encapsulated_msg_text = msg_as_string(encapsulated_msg)
+            encapsulated_msg_text = msg_as_bytes(encapsulated_msg)
             result.append(str(encapsulated_msg_text.count("\n")))
         elif msg.get_content_maintype() == "text":
             result.append(str(num_lines))
