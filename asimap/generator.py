@@ -129,7 +129,7 @@ class ASHeaderGenerator(ASGenerator):
         self,
         outfp: BinaryIO,
         *args,
-        headers: Optional[List[str]] = None,
+        headers: Optional[Tuple[str, ...]] = None,
         skip: bool = True,
         **kwargs,
     ):
@@ -572,7 +572,9 @@ def msg_headers_as_bytes(
     try:
         failed = False
         fp = BytesIO()
-        g = ASBytesGenerator(fp, mangle_from_=False, headers=headers, skip=skip)
+        g = ASHeaderGenerator(
+            fp, mangle_from_=False, headers=headers, skip=skip
+        )
         g.flatten(msg)
     except UnicodeEncodeError:
         failed = True
@@ -580,7 +582,7 @@ def msg_headers_as_bytes(
     if failed:
         failed = False
         fp = BytesIO()
-        g = ASBytesGenerator(
+        g = ASHeaderGenerator(
             fp, mangle_from_=False, headers=headers, skip=skip, policy=HTTP
         )
         g.flatten(msg)
