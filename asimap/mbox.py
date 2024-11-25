@@ -25,7 +25,7 @@ from statistics import fmean, median, stdev
 from tempfile import TemporaryDirectory
 from typing import (
     TYPE_CHECKING,
-    AsyncGenerator,
+    AsyncIterator,
     Dict,
     List,
     Optional,
@@ -2128,7 +2128,7 @@ class Mailbox:
         fetch_ops: List[FetchAtt],
         uid_cmd: bool = False,
         timeout_cm: Optional[asyncio.Timeout] = None,
-    ) -> AsyncGenerator[Tuple[int, List[bytes]]]:
+    ) -> AsyncIterator[Tuple[int, List[bytes]]]:
         """
         Go through the messages in the mailbox. For the messages that are
         within the indicated message set parse them and pull out the data

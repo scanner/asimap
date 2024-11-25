@@ -361,7 +361,7 @@ class FetchAtt:
 
     #######################################################################
     #
-    def envelope(self, msg: Message) -> str:
+    def envelope(self, msg: Message) -> bytes:
         """
         Get the envelope structure of the message as a list, in a defined
         order.
@@ -450,11 +450,11 @@ class FetchAtt:
                     from_field = result[-1]
             else:
                 result.append(f'"{msg[field]}"')
-        return f"({' '.join(result)})"
+        return (f"({' '.join(result)})").encode("latin-1")
 
     ##################################################################
     #
-    def body_languages(self, msg: EmailMessage) -> str:
+    def body_languages(self, msg: EmailMessage) -> bytes:
         """
         Find the language related headers in the message and return a
         string suitable for the 'body language' element of a
@@ -479,15 +479,17 @@ class FetchAtt:
                 langs.add(f'"{value.strip()}"')
 
         if not langs:
-            return "NIL"
+            return b"NIL"
         elif len(langs) == 1:
-            return list(langs)[0]
+            return (list(langs)[0]).encode("latin-1")
         else:
-            return f"({' '.join([x for x in sorted(list(langs))])})"
+            return (f"({' '.join([x for x in sorted(list(langs))])})").encode(
+                "latin-1"
+            )
 
     ##################################################################
     #
-    def body_location(self, msg: EmailMessage) -> str:
+    def body_location(self, msg: EmailMessage) -> bytes:
         """
         Suss if the message part has a 'content-location' header or not
         and return it if it does (or NIL if it does not.)
@@ -496,12 +498,12 @@ class FetchAtt:
         - `msg`: the message (message part) we are looking at
         """
         if "content-location" in msg:
-            return '"%s"' % msg["content-location"]
-        return "NIL"
+            return (f'"{msg["content-location"]}"').encode("latin-1")
+        return b"NIL"
 
     ##################################################################
     #
-    def body_parameters(self, msg: EmailMessage) -> str:
+    def body_parameters(self, msg: EmailMessage) -> bytes:
         """
         The body parameters for a message as a parenthesized list.
         Basically this list is a set of key value pairs, all separate by
@@ -532,13 +534,13 @@ class FetchAtt:
                 params[param] = msg["Content-Type"].params[param]
 
         if not params:
-            return "NIL"
+            return b"NIL"
 
         results = []
         for k, v in params.items():
             results.append(f'"{k.upper()}" "{v}"')
 
-        return f"({' '.join(results)})"
+        return (f"({' '.join(results)})").encode("latin-1")
 
     ####################################################################
     #
@@ -591,7 +593,7 @@ class FetchAtt:
 
     #######################################################################
     #
-    def bodystructure(self, msg: EmailMessage) -> str:
+    def bodystructure(self, msg: Message) -> bytes:
         """
         The [MIME-IMB] body structure of the message.  This is computed by
         the server by parsing the [MIME-IMB] header fields in the [RFC-2822]
@@ -639,7 +641,7 @@ class FetchAtt:
             #
             # And finally, if we can, we add on the multipart extension data.
             #
-            sub_parts = []
+            sub_parts: List[bytes] = []
             for sub_part in msg.get_payload():
                 sub_parts.append(self.bodystructure(sub_part))
 
@@ -647,9 +649,11 @@ class FetchAtt:
             # doing a 'body' not a 'bodystructure' then we have
             # everything we need to return a result.
             #
-            subtype = msg.get_content_subtype().upper()
+            subtype = (msg.get_content_subtype().upper()).encode("latin-1")
             if not self.ext_data:
-                return f'({"".join(sub_parts)} "{subtype}")'
+                res = b"(" + b"".join(sub_parts) + '"' + subtype + '")'
+                return res
+                # return f'({"".join(sub_parts)} "{subtype}")'
 
             # Get the extension data and add it to our response.
             #
@@ -722,7 +726,7 @@ class FetchAtt:
         # Body size
         payload = msg_as_bytes(msg, render_headers=False)
         result.append(str(len(payload)))
-        num_lines = payload.count("\n")
+        num_lines = payload.count(b"\n")
 
         # Now come the variable fields depending on the maintype/subtype
         # of this message.
