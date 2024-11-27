@@ -23,7 +23,17 @@ from pathlib import Path
 from random import randrange
 from statistics import fmean, median, stdev
 from tempfile import TemporaryDirectory
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union, cast
+from typing import (
+    TYPE_CHECKING,
+    AsyncIterator,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+    cast,
+)
 
 # 3rd party imports
 #
@@ -1395,6 +1405,9 @@ class Mailbox:
         # return cast(EmailMessage, self.mailbox[str(msg_key)])
         msg = cast(EmailMessage, self.mailbox[str(msg_key)])
 
+        # XXX Moving to the bytes generator we should not need this mangle code
+        #     anymore.
+        #
         # To handle the attempt to decode the header if it is 8bit-unknown with
         # a 7 bit encoding, capture that case and deal with it by re-writing
         # the subject.
@@ -1404,14 +1417,14 @@ class Mailbox:
 
         # Make sure that we can encode the subject as a 7bit string
         #
-        subj = msg["subject"]
-        try:
-            if "subject" in msg:
-                subj.encode("ascii", "surrogateescape")
-        except UnicodeEncodeError:
-            subjb = subj.encode("ascii", "xmlcharrefreplace")
-            del msg["subject"]
-            msg["subject"] = subjb.decode("ascii")
+        # subj = msg["subject"]
+        # try:
+        #     if "subject" in msg:
+        #         subj.encode("ascii", "surrogateescape")
+        # except UnicodeEncodeError:
+        #     subjb = subj.encode("ascii", "xmlcharrefreplace")
+        #     del msg["subject"]
+        #     msg["subject"] = subjb.decode("ascii")
 
         return msg
 
@@ -2115,14 +2128,14 @@ class Mailbox:
         fetch_ops: List[FetchAtt],
         uid_cmd: bool = False,
         timeout_cm: Optional[asyncio.Timeout] = None,
-    ):
+    ) -> AsyncIterator[Tuple[int, List[bytes]]]:
         """
         Go through the messages in the mailbox. For the messages that are
         within the indicated message set parse them and pull out the data
         indicated by 'fetch_ops'
 
-        Return a list of tuples where the first element is the IMAP message
-        sequence number and the second is the requested data.
+        Yields a tuple of msg sequence number, and a list of fetch results (one
+        for each fetch attribute)
 
         The requested data itself is a list of tuples. The first element is the
         name of the data item from 'fetch_ops' and the second is the
@@ -2198,7 +2211,7 @@ class Mailbox:
                 )
                 fetched_flags = False
                 fetched_body_seen = False
-                iter_results = []
+                iter_results: List[bytes] = []
 
                 # If this is a uid_cmd add the UID to the fetch atts we need to
                 # return. ie: a fetch response that would have been:
@@ -2211,6 +2224,7 @@ class Mailbox:
                     if not uid_cmd
                     else fetch_ops + [FetchAtt(FetchOp.UID)]
                 )
+                last_sleep = time.monotonic()
                 for elt in fo:
                     iter_results.append(elt.fetch(ctx))
                     # If one of the FETCH ops gets the FLAGS we want to
@@ -2225,9 +2239,14 @@ class Mailbox:
                         fetched_flags = True
 
                     # Since each fetch op is asyncio blocking, release some
-                    # time to other tasks between each fetch.
+                    # time to other tasks between each fetch if we have not
+                    # done so in a certain amount of time. (Makes fetch's
+                    # faster)
                     #
-                    await asyncio.sleep(0)
+                    now = time.monotonic()
+                    if now - last_sleep > 0.05:
+                        await asyncio.sleep(0)
+                        last_sleep = time.monotonic()
 
                 # If we did a FETCH FLAGS and the message was in the
                 # 'Recent' sequence then remove it from the 'Recent'
