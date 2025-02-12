@@ -854,7 +854,7 @@ class Authenticated(BaseClientHandler):
         await self.send_pending_notifications()
 
         # Handle the special case where the client is basically just probing
-        # for the hierarchy sepration character.
+        # for the hierarchy separation character.
         #
         if cmd.mailbox_name == "" and cmd.list_mailbox == "":
             await self.client.push(r'* LIST (\Noselect) "/" ""' + "\r\n")

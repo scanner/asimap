@@ -54,7 +54,7 @@ async def test_client_namespace(imap_client_proxy):
     await client_handler.command(cmd)
     results = client_push_responses(imap_client)
     assert results == [
-        '* NAMESPACE (("/" "/")) NIL NIL',
+        '* NAMESPACE (("" "/")) NIL NIL',
         "A001 OK NAMESPACE command completed",
     ]
 
@@ -148,7 +148,7 @@ async def test_base_client_handler_command(imap_client_proxy):
             "A001 OK CAPABILITY command completed",
         ],
         [
-            r'* NAMESPACE (("/" "/")) NIL NIL',
+            r'* NAMESPACE (("" "/")) NIL NIL',
             r"A001 OK NAMESPACE command completed",
         ],
         [
@@ -367,7 +367,7 @@ async def test_authenticated_client_list(
     for result, folder in zip(results[:-1], folders):
         assert result.startswith("* LIST (")
         result_fname = result.split()[-1]
-        assert f'"/{folder.lower()}"' == result_fname.lower()
+        assert f'"{folder.lower()}"' == result_fname.lower()
 
     # Create one folder with a space in its name to make sure quoting works
     # properly.
@@ -380,7 +380,7 @@ async def test_authenticated_client_list(
     await client_handler.command(cmd)
     results = client_push_responses(imap_client)
     assert len(results) == 2
-    assert results[0].endswith(f'"/{TEST_SPACE}"')
+    assert results[0].endswith(f'"{TEST_SPACE}"')
     assert results[1] == "A002 OK LIST command completed"
 
 
@@ -437,7 +437,7 @@ async def test_authenticated_client_subscribe_lsub_unsubscribe(
     for result, subscribe in zip(results[:-1], subscribed):
         assert result.startswith("* LSUB (")
         result_fname = result.split()[-1]
-        assert f'"/{subscribe.lower()}"' == result_fname.lower()
+        assert f'"{subscribe.lower()}"' == result_fname.lower()
 
     # and unsubscribe..
     #
@@ -776,14 +776,18 @@ async def test_authenticated_client_fetch(
     cmd.parse()
     await client_handler.command(cmd)
     results = client_push_responses(imap_client)
+    # The "A001 OK FETCH" is a str, everything else is bytes.
+    #
     assert results[-1] == "A001 OK FETCH command completed"
     for idx in range(1, 6):
         msg = mbox.get_msg(idx)
-        inter = [x.strip() for x in results[idx - 1].split("\r\n")]
+        result = results[idx - 1]
+        assert isinstance(result, bytes)  # Making mypy happy
+        inter = [x.strip() for x in result.split(b"\r\n")]
         subj = inter[1]
         frm = inter[2]
-        assert msg["Subject"] == subj.split(":")[1].strip()
-        assert msg["From"] == frm.split(":")[1].strip()
+        assert msg["Subject"].encode("latin-1") == subj.split(b":")[1].strip()
+        assert msg["From"].encode("latin-1") == frm.split(b":")[1].strip()
 
 
 ####################################################################
@@ -937,7 +941,7 @@ async def test_authenticated_client_create_delete_folder(
     await client_handler.command(cmd)
     results = client_push_responses(imap_client)
     assert results == [
-        r'* LIST (\HasNoChildren \Unmarked) "/" "/__imapclient"',
+        r'* LIST (\HasNoChildren \Unmarked) "/" "__imapclient"',
         "BFCO24 OK LIST command completed",
     ]
 
@@ -960,7 +964,7 @@ async def test_authenticated_client_create_delete_folder(
     await client_handler.command(cmd)
     results = client_push_responses(imap_client)
     assert results == [
-        r'* LIST (\HasNoChildren \Unmarked) "/" "/__imapclient/foobar"',
+        r'* LIST (\HasNoChildren \Unmarked) "/" "__imapclient/foobar"',
         "BFCO28 OK LIST command completed",
     ]
 
@@ -969,8 +973,8 @@ async def test_authenticated_client_create_delete_folder(
     await client_handler.command(cmd)
     results = client_push_responses(imap_client)
     assert results == [
-        r'* LIST (\HasChildren \Unmarked) "/" "/__imapclient"',
-        r'* LIST (\HasNoChildren \Unmarked) "/" "/__imapclient/foobar"',
+        r'* LIST (\HasChildren \Unmarked) "/" "__imapclient"',
+        r'* LIST (\HasNoChildren \Unmarked) "/" "__imapclient/foobar"',
         "BFCO29 OK LIST command completed",
     ]
 
@@ -993,7 +997,7 @@ async def test_authenticated_client_create_delete_folder(
     await client_handler.command(cmd)
     results = client_push_responses(imap_client)
     assert results == [
-        r'* LIST (\HasNoChildren \Unmarked) "/" "/__imapclient"',
+        r'* LIST (\HasNoChildren \Unmarked) "/" "__imapclient"',
         "BFCO31 OK LIST command completed",
     ]
 
