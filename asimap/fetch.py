@@ -12,7 +12,7 @@ import email.utils
 import logging
 from email.message import EmailMessage, Message
 from enum import StrEnum
-from typing import List, Optional, Set, Tuple, Union
+from typing import List, Optional, Set, Tuple, TypeAlias, Union
 
 # asimap imports
 #
@@ -23,6 +23,13 @@ from .exceptions import Bad
 from .generator import msg_as_bytes, msg_headers_as_bytes
 
 logger = logging.getLogger("asimap.fetch")
+
+# A section in a message that can be fetched.
+# XXX `None` indicates the entire message? Or should `Optional` be removed?
+#
+MsgSectionType: TypeAlias = Optional[
+    List[Union[int, str, List[str | List[str]]]]
+]
 
 
 ############################################################################
@@ -123,12 +130,17 @@ class FetchAtt:
 
     ##################################################################
     #
-    def __str__(self):
+    def __str__(self) -> str:
         return self.dbg(show_peek=False)
+
+    ####################################################################
+    #
+    def __bytes__(self) -> bytes:
+        return str(self).encode("latin-1")
 
     ##################################################################
     #
-    def dbg(self, show_peek=False):
+    def dbg(self, show_peek=False) -> str:
         """
         Arguments:
         - `show_peek`: Show if this is a .PEEK or not. This is
@@ -196,10 +208,13 @@ class FetchAtt:
                         case FetchOp.ENVELOPE:
                             result = self.envelope(msg)
                         case FetchOp.RFC822_SIZE:
-                            result = ctx.msg_size()
+                            result = str(ctx.msg_size()).encode("latin-1")
                 except UnicodeEncodeError as e:
                     logger.error(
-                        "Unable to perform fetch %s, failed on message %s, exception: %r",
+                        (
+                            "Unable to perform fetch %s, failed on message %s, "
+                            "exception: %r",
+                        ),
                         self.attribute,
                         self.ctx,
                         e,
@@ -213,11 +228,11 @@ class FetchAtt:
                 internal_date = email.utils.format_datetime(int_date)
                 result = f'"{internal_date}"'.encode("latin-1")
             case FetchOp.UID:
-                result = self.ctx.uid()
+                result = str(self.ctx.uid()).encode("latin-1")
             case _:
                 raise NotImplementedError
 
-        return (str(self)).encode("latin-1") + result
+        return bytes(self) + b" " + result
 
     ####################################################################
     #
@@ -227,76 +242,153 @@ class FetchAtt:
         """
         Flatten message text from single top level section.
         """
-        if isinstance(section, int):
-            if section == 1 and not msg.is_multipart():
-                # If they want section 1 and this message is NOT multipart then
-                # this is equivalent to `BODY[TEXT]`
+        match section:
+            case int():
+                # If they want section 1 and this message is NOT multipart
+                # then this is equivalent to `BODY[TEXT]`
                 #
-                return msg_as_bytes(msg, render_headers=False)
+                if not msg.is_multipart():
+                    if section != 1:
+                        raise BadSection(
+                            f"Trying to retrieve section {section} and this "
+                            "message is not multipart"
+                        )
+                    return msg_as_bytes(msg, render_headers=False)
 
-            # Otherwise, get the sub-part of the message that they are after
-            #
-            if section != 1 and not msg.is_multipart():
-                raise BadSection(
-                    f"Trying to retrieve section {section} and this message "
-                    "is not multipart"
-                )
+                # Message is multipart. Retrieve the part that they want.
+                #
+                try:
+                    # NOTE: IMAP sections are 1 based. Sections in the message
+                    #       are 0-based.
+                    #
+                    return msg_as_bytes(
+                        msg.get_payload(section - 1), render_headers=False
+                    )
+                except IndexError:
+                    raise BadSection(
+                        f"Section {section} does not exist in this message "
+                        "sub-part"
+                    )
 
-            try:
-                # NOTE: IMAP sections are 1 based. Sections in the message are
-                #       0-based.
-                #
-                return msg_as_bytes(
-                    msg.get_payload(section - 1), render_headers=False
-                )
-            except IndexError:
-                raise BadSection(
-                    f"Section {section} does not exist in this message sub-part"
-                )
-        elif isinstance(section, str) and section.upper() == "TEXT":
-            return msg_as_bytes(msg, render_headers=False)
-        elif isinstance(section, (list, tuple)):
-            if section[0].upper() == "HEADER.FIELDS":
-                headers = tuple(section[1])
-                return msg_headers_as_bytes(msg, headers=headers, skip=False)
-            elif section[0].upper() == "HEADER.FIELDS.NOT":
-                headers = tuple(section[1])
-                return msg_headers_as_bytes(msg, headers=headers, skip=True)
-            else:
-                raise BadSection(
-                    "Section value must be either HEADER.FIELDS or "
-                    f"HEADER.FIELDS.NOT, not: '{section[0]}'"
-                )
-        # ELSE: section is a str.
-        #
-        if not isinstance(section, str):
-            self.log.warn(f"body: Unexpected section value: '{section}'")
-            raise BadSection(f"{self}: Unexpected section value: '{section}'")
+            case list() | tuple():
+                match section[0].upper():
+                    case "HEADER.FIELDS":
+                        headers = tuple(section[1])
+                        return msg_headers_as_bytes(
+                            msg, headers=headers, skip=False
+                        )
+                    case "HEADER.FIELDS.NOT":
+                        headers = tuple(section[1])
+                        return msg_headers_as_bytes(
+                            msg, headers=headers, skip=True
+                        )
+                    case _:
+                        raise BadSection(
+                            "Section value must be either HEADER.FIELDS or "
+                            f"HEADER.FIELDS.NOT, not: '{section[0]}'"
+                        )
 
-        match section.upper():
-            case "MIME":
-                # XXX just use the generator as it is for MIME.. I know this is
-                #     not quite right in that it will accept more then it
-                #     should, but it will otherwise work.
-                #
-                return msg_headers_as_bytes(msg)
-            case "HEADER":
-                # if the content type is message/rfc822 then to
-                # get the headers we need to use the first
-                # sub-part of this message.
-                #
-                if (
-                    msg.is_multipart()
-                    and msg.get_content_type() == "message/rfc822"
-                ):
-                    return msg_headers_as_bytes(msg.get_payload(0))
-                else:
-                    return msg_headers_as_bytes(msg)
+            case str():
+                match section.upper():
+                    case "TEXT":
+                        return msg_as_bytes(msg, render_headers=False)
+                    case "MIME":
+                        # XXX just use the generator as it is for MIME.. I know
+                        #     this is not quite right in that it will accept
+                        #     more then it should, but it will otherwise work.
+                        #
+                        return msg_headers_as_bytes(msg)
+                    case "HEADER":
+                        # if the content type is message/rfc822 then to get the
+                        # headers we need to use the first sub-part of this
+                        # message.
+                        #
+                        if (
+                            msg.is_multipart()
+                            and msg.get_content_type() == "message/rfc822"
+                        ):
+                            return msg_headers_as_bytes(msg.get_payload(0))
+                        return msg_headers_as_bytes(msg)
+                    case _:
+                        self.log.warn(
+                            f"body: Unexpected section value: '{section}'"
+                        )
+                        raise BadSection(
+                            f"{self}: Unexpected section value: '{section}'"
+                        )
+
             case _:
                 self.log.warn(f"body: Unexpected section value: '{section}'")
                 raise BadSection(
                     f"{self}: Unexpected section value: '{section}'"
                 )
+        # if isinstance(section, int):
+        #     if section == 1 and not msg.is_multipart():
+        #         return msg_as_bytes(msg, render_headers=False)
+
+        #     # Otherwise, get the sub-part of the message that they are after
+        #     #
+        #     if section != 1 and not msg.is_multipart():
+        #         raise BadSection(
+        #             f"Trying to retrieve section {section} and this message "
+        #             "is not multipart"
+        #         )
+
+        #     try:
+        #         # NOTE: IMAP sections are 1 based. Sections in the message are
+        #         #       0-based.
+        #         #
+        #         return msg_as_bytes(
+        #             msg.get_payload(section - 1), render_headers=False
+        #         )
+        #     except IndexError:
+        #         raise BadSection(
+        #             f"Section {section} does not exist in this message sub-part"
+        #         )
+        # elif isinstance(section, str) and section.upper() == "TEXT":
+        #     return msg_as_bytes(msg, render_headers=False)
+        # elif isinstance(section, (list, tuple)):
+        #     if section[0].upper() == "HEADER.FIELDS":
+        #         headers = tuple(section[1])
+        #         return msg_headers_as_bytes(msg, headers=headers, skip=False)
+        #     elif section[0].upper() == "HEADER.FIELDS.NOT":
+        #         headers = tuple(section[1])
+        #         return msg_headers_as_bytes(msg, headers=headers, skip=True)
+        #     else:
+        #         raise BadSection(
+        #             "Section value must be either HEADER.FIELDS or "
+        #             f"HEADER.FIELDS.NOT, not: '{section[0]}'"
+        #         )
+        # # ELSE: section is a str.
+        # #
+        # if not isinstance(section, str):
+        #     self.log.warn(f"body: Unexpected section value: '{section}'")
+        #     raise BadSection(f"{self}: Unexpected section value: '{section}'")
+
+        # match section.upper():
+        #     case "MIME":
+        #         # XXX just use the generator as it is for MIME.. I know this is
+        #         #     not quite right in that it will accept more then it
+        #         #     should, but it will otherwise work.
+        #         #
+        #         return msg_headers_as_bytes(msg)
+        #     case "HEADER":
+        #         # if the content type is message/rfc822 then to
+        #         # get the headers we need to use the first
+        #         # sub-part of this message.
+        #         #
+        #         if (
+        #             msg.is_multipart()
+        #             and msg.get_content_type() == "message/rfc822"
+        #         ):
+        #             return msg_headers_as_bytes(msg.get_payload(0))
+        #         else:
+        #             return msg_headers_as_bytes(msg)
+        #     case _:
+        #         self.log.warn(f"body: Unexpected section value: '{section}'")
+        #         raise BadSection(
+        #             f"{self}: Unexpected section value: '{section}'"
+        #         )
 
     ####################################################################
     #
@@ -356,8 +448,7 @@ class FetchAtt:
 
         # Return literal length encoded string.
         #
-        return str(len(msg_text)).encode("latin-1") + b"\r\n" + msg_text
-        # return f"{{{len(msg_text)}}}\r\n{msg_text}"
+        return (f"{{{len(msg_text)}}}\r\n").encode("latin-1") + msg_text
 
     #######################################################################
     #

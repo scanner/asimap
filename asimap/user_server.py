@@ -55,6 +55,10 @@ if TYPE_CHECKING:
 #
 logger = logging.getLogger("asimap.user_server")
 
+# For testing switching between "" and "/" and other prefixes.
+#
+MAILBOX_PREFIX = ""
+
 BACKLOG = 5
 USER_SERVER_PROGRAM: str = ""
 RE_LITERAL_STRING_START = re.compile(rb"\{(\d+)(\+)?\}$")

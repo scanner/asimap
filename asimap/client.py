@@ -1193,9 +1193,14 @@ class Authenticated(BaseClientHandler):
                 async for idx, results in self.mbox.fetch(
                     msg_set, cmd.fetch_atts, cmd.uid_command, cmd.timeout_cm
                 ):
-                    await self.client.push(
-                        f"* {idx} FETCH ({' '.join(results)})\r\n"
-                    )
+                    msg = b"* %(idx)d FETCH (%(results)b)\r\n" % {
+                        b"idx": idx,
+                        b"results": b" ".join(results),
+                    }
+                    await self.client.push(msg)
+                    # await self.client.push(
+                    #     f"* {idx} FETCH ({' '.join(results)})\r\n"
+                    # )
         except MailboxInconsistency as exc:
             self.mbox.optional_resync = False
             logger.exception(

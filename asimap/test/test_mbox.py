@@ -455,8 +455,8 @@ async def test_mailbox_fetch(mailbox_with_bunch_of_email):
         msg_key, result = fetch_result
         assert msg_key in expected_keys
         flags, headers = result
-        assert flags.startswith("FLAGS (")
-        assert headers.startswith("BODY[HEADER.FIELDS (Date From)] {")
+        assert flags.startswith(b"FLAGS (")
+        assert headers.startswith(b"BODY[HEADER.FIELDS (Date From)] {")
 
     for msg_key in msg_set:
         # One of the FETCH's is a BODY.PEEK, thus `\Seen` flag should
@@ -472,13 +472,13 @@ async def test_mailbox_fetch(mailbox_with_bunch_of_email):
         assert msg_key in expected_keys
         flags, headers, uid = result
         uid_str, uid_val = uid.split()
-        assert uid_str == "UID"
+        assert uid_str == b"UID"
         # NOTE: idx is a imap message sequence number, which is 1-based. So need
         #       -1 to get the proper UID.
         #
         assert int(uid_val) == mbox.uids[idx - 1]
-        assert flags.startswith("FLAGS (")
-        assert headers.startswith("BODY[HEADER.FIELDS (Date From)] {")
+        assert flags.startswith(b"FLAGS (")
+        assert headers.startswith(b"BODY[HEADER.FIELDS (Date From)] {")
 
     for msg_key in msg_set:
         # One of the FETCH's is a BODY.PEEK, thus `\Seen` flag should
@@ -583,8 +583,8 @@ async def test_mailbox_fetch_after_new_messages(
     ):
         msg_key, results = fetch_result
         for result in results:
-            if result.startswith("UID "):
-                uid = int(result.split(" ")[1])
+            if result.startswith(b"UID "):
+                uid = int(result.split(b" ")[1])
                 # message keys are 1-based, search results list is 0-based.
                 #
                 assert uid == search_results[msg_key - 1]
