@@ -10,6 +10,7 @@ query and generate the body of the `FETCH` response IMAP message.
 #
 import email.utils
 import logging
+from email.header import Header
 from email.message import EmailMessage, Message
 from enum import StrEnum
 from typing import List, Optional, Set, Tuple, TypeAlias, Union
@@ -42,6 +43,87 @@ class BadSection(Bad):
         return f"BadSection: {self.value}"
 
 
+####################################################################
+#
+def header_or_nil(msg: Message, field: str) -> bytes:
+    """
+    a shortcut for encoding a heaader if it exists in a message otherwise
+    it returns "NIL"
+    """
+    return encode_header(msg[field]) if field in msg else b"NIL"
+
+
+############################################################################
+#
+def encode_header(hdr: str) -> bytes:
+    """
+    Attempts to encode a header as bytes. It will first attempt to simply
+    encode the header using latin-1. If that fails then we will try to encode
+    it as utf-8 using the MIME encoding specified in RFC2047:
+
+        `=?charset?encoding?encoded_text?=`
+
+    If we are unable to encode it using UTF-8, we will encoded as latin-1, but
+    falling back to "?" for all characters that can not be encoded.
+    """
+    try:
+        result = hdr.encode("latin-1")
+    except UnicodeEncodeError:
+        pass
+
+    try:
+        # maxlinelen=0 means do not wrap
+        #
+        result = Header(hdr).encode(maxlinelen=0).encode("latin-1")
+    except UnicodeEncodeError:
+        result = hdr.encode("latin-1", errors="replace")
+    return b'"' + result + b'"'
+
+
+########################################################################
+#
+def encode_addrs(msg: Message, field: str) -> bytes:
+    """
+    Encode all the email addresses in a given field in the message as an
+    address structure (as bytes)
+
+    The fields of an address are in the following order: personal name, [SMTP]
+    at-domain-list (source route), mailbox name, and host name.
+
+    The includes proper UTF-8 encodeding for the personal name if it can not
+    encoded as latin-1.
+    """
+    field_data: List[str] = msg.get_all(field, [])
+    if not field_data:
+        return b"NIL"
+
+    result: List[bytes] = []
+    addrs = email.utils.getaddresses(field_data, strict=False)
+
+    for real_name, email_address in addrs:
+        addr: List[bytes] = []
+
+        # the real name is not set, it turns into nil.
+        #
+        name = encode_header(real_name) if real_name else b"NIL"
+        addr.append(name)
+        addr.append(b"NIL")  # We do not bother with the source route.
+
+        # mailbox and hostname MUST be latin-1 encodable is my understanding
+        #
+        if "@" in email_address:
+            mailbox, host = email_address.split("@")
+            addr.append(encode_header(mailbox))
+            addr.append(encode_header(host))
+        else:
+            addr.append(encode_header(email_address))
+            addr.append(b"NIL")
+
+        result.append(b"(" + b" ".join(addr) + b")")
+
+    return b"(" + b" ".join(result) + b")"
+
+
 ########################################################################
 ########################################################################
 #
@@ -64,6 +146,8 @@ class FetchOp(StrEnum):
 
 STR_TO_FETCH_OP = {op_enum.value: op_enum for op_enum in FetchOp}
 
+# The fields, in order, for the ENVELOPE response
+#
 ENVELOPE_FIELDS = (
     "date",
     "subject",
@@ -237,7 +321,7 @@ class FetchAtt:
     ####################################################################
     #
     def _single_section(
-        self, msg: EmailMessage, section: Union[int | str]
+        self, msg: Message | EmailMessage, section: Union[int | str]
     ) -> bytes:
         """
         Flatten message text from single top level section.
@@ -393,7 +477,7 @@ class FetchAtt:
     ####################################################################
     #
     def _body(
-        self, msg: EmailMessage, section: Union[None, List[int | str]]
+        self, msg: Message | EmailMessage, section: Union[None, List[int | str]]
     ) -> bytes:
         if not section:
             return msg_as_bytes(msg)
@@ -415,7 +499,9 @@ class FetchAtt:
                     f"(section list: {section})"
                 )
             try:
-                return self._body(msg.get_payload(section[0] - 1), section[1:])
+                bp = msg.get_payload(section[0] - 1)
+                assert isinstance(bp, Message)
+                return self._body(bp, section[1:])
             except (TypeError, IndexError):
                 raise BadSection(
                     f"Message does not contain subsection {section[0]} "
@@ -457,95 +543,62 @@ class FetchAtt:
         Get the envelope structure of the message as a list, in a defined
         order.
 
+        The fields of the envelope structure are in the following order:
+        - date
+        - subject
+        - from
+        - sender
+        - reply-to
+        - to
+        - cc
+        - bcc
+        - in-reply-to
+        - message-id
+
+        The date, subject, in-reply-to, and message-id fields are
+        strings(bytes).  The from, sender, reply-to, to, cc, and bcc fields are
+        parenthesized lists of address structures.
+
         Any fields that we can not determine the value of are NIL.
         """
-        result = []
+        date = header_or_nil(msg, "date")
+        subject = header_or_nil(msg, "subject")
 
-        from_field = ""
-        for field in ENVELOPE_FIELDS:
-            if field in ("date", "subject", "in-reply-to", "message-id"):
-                if field not in msg:
-                    result.append("NIL")
-                    continue
-            # 'reply-to' and 'sender' are copied from the 'from' field
-            # if they are not explicitly defined.
-            #
-            if field in ("sender", "reply-to") and field not in msg:
-                result.append(from_field)
-                continue
+        # Messages without a From field are bad, but we need to supply all
+        # fields for the ENVELOPE response (and we have seen messages without a
+        # From field.)
+        #
+        frm = encode_addrs(msg, "from")
+        sender = encode_addrs(msg, "sender") if "sender" in msg else frm
+        reply_to = encode_addrs(msg, "reply-to") if "reply-to" in msg else frm
+        to = encode_addrs(msg, "to")
+        cc = encode_addrs(msg, "cc")
+        bcc = encode_addrs(msg, "bcc")
+        in_reply_to = header_or_nil(msg, "in-reply-to")
+        msg_id = header_or_nil(msg, "message-id")
 
-            # If a field is not in the message it is nil.
-            #
-            if field not in msg:
-                if field == "from":
-                    # Messages without a From field are bad, but we need to
-                    # supply all fields for the ENVELOPE response.
-                    #
-                    from_field = "NIL"
-                result.append("NIL")
-                continue
-
-            # The from, sender, reply-to, to, cc, and bcc fields are
-            # parenthesized lists of address structures.
-            #
-            if field in ("from", "sender", "reply-to", "to", "cc", "bcc"):
-                field_data: List[str] = msg.get_all(field, [])
-                if field_data:
-                    addrs = email.utils.getaddresses(field_data)
-                else:
-                    result.append("NIL")
-                    continue
-
-                addr_list = []
-
-                # Parse each address in to an address structure: An address
-                # structure is a parenthesized list that describes an
-                # electronic mail address.  The fields of an address structure
-                # are in the following order: personal name, [SMTP]
-                # at-domain-list (source route), mailbox name, and host name.
-                #
-                for name, paddr in addrs:
-                    one_addr = []
-                    if name == "":
-                        one_addr.append("NIL")
-                    else:
-                        one_addr.append(f'"{name}"')
-
-                    # This is the '[SMTP] at-domain-list (source route)' which
-                    # for now we do not bother with (not in any of my messages
-                    # so I am just going to punt on it.)
-                    #
-                    one_addr.append("NIL")
-
-                    # Next: mailbox name, and host name. Handle the case like
-                    # 'MAILER-DAEMON' on the local host where there is no host
-                    # name.
-                    #
-                    if paddr != "":
-                        if "@" in paddr:
-                            mbox_name, host_name = paddr.split("@")
-                            one_addr.append(f'"{mbox_name}"')
-                            one_addr.append(f'"{host_name}"')
-                        else:
-                            one_addr.append(f'"{paddr}"')
-                            one_addr.append("NIL")
-                    else:
-                        one_addr.append("NIL")
-                    addr_list.append(f"({' '.join(one_addr)})")
-                result.append(f"({''.join(addr_list)})")
-
-                # We stash the from field because we may need it for sender
-                # and reply-to
-                #
-                if field == "from":
-                    from_field = result[-1]
-            else:
-                result.append(f'"{msg[field]}"')
-        return (f"({' '.join(result)})").encode("latin-1")
+        return (
+            b"("
+            + b" ".join(
+                (
+                    date,
+                    subject,
+                    frm,
+                    sender,
+                    reply_to,
+                    to,
+                    cc,
+                    bcc,
+                    in_reply_to,
+                    msg_id,
+                )
+            )
+            + b")"
+        )
 
     ##################################################################
     #
-    def body_languages(self, msg: EmailMessage) -> bytes:
+    def body_languages(self, msg: Message | EmailMessage) -> bytes:
         """
         Find the language related headers in the message and return a
         string suitable for the 'body language' element of a
@@ -635,7 +688,7 @@ class FetchAtt:
 
     ####################################################################
     #
-    def extension_data(self, msg: EmailMessage) -> List[str]:
+    def extension_data(self, msg: Message | EmailMessage) -> List[bytes]:
         """
         Keyword Arguments:
         msg: EmailMessages --
@@ -648,12 +701,12 @@ class FetchAtt:
             if "Content-Location" in msg
             else "NIL"
         )
-        results.append(cl)
+        results.append(cl.encode("latin-1"))
         return results
 
     #######################################################################
     #
-    def body_disposition(self, msg: EmailMessage) -> str:
+    def body_disposition(self, msg: Message | EmailMessage) -> bytes:
         """
         Return the body-disposition properly formatted for returning as
         part of a BODYSTRUCTURE fetch.
@@ -670,17 +723,17 @@ class FetchAtt:
         """
         cd = msg.get_content_disposition()
         if cd is None:
-            return "NIL"
+            return b"NIL"
 
         params = msg["Content-Disposition"].params
         if not params:
-            return f'("{cd}" NIL)'
+            return (f'("{cd}" NIL)').encode("latin-1")
 
         result = []
         for param, value in params.items():
             result.append(f'"{param.upper()}" "{value}"')
 
-        return f'("{cd.upper()}" ({" ".join(result)}))'
+        return (f'("{cd.upper()}" ({" ".join(result)}))').encode("latin-1")
 
     #######################################################################
     #
@@ -734,6 +787,7 @@ class FetchAtt:
             #
             sub_parts: List[bytes] = []
             for sub_part in msg.get_payload():
+                assert isinstance(sub_part, Message)
                 sub_parts.append(self.bodystructure(sub_part))
 
             # If we are NOT supposed to return extension data (ie:
@@ -742,7 +796,7 @@ class FetchAtt:
             #
             subtype = (msg.get_content_subtype().upper()).encode("latin-1")
             if not self.ext_data:
-                res = b"(" + b"".join(sub_parts) + '"' + subtype + '")'
+                res = b"(" + b"".join(sub_parts) + b'"' + subtype + b'")'
                 return res
                 # return f'({"".join(sub_parts)} "{subtype}")'
 
@@ -752,7 +806,17 @@ class FetchAtt:
             body_params = self.body_parameters(msg)
             ext_data.insert(0, body_params)
 
-            return f'({"".join(sub_parts)} "{subtype}" {" ".join(ext_data)})'
+            res = (
+                b"("
+                + b"".join(sub_parts)
+                + b' "'
+                + subtype
+                + b'" '
+                + b" ".join(ext_data)
+                + b")"
+            )
+            return res
+            # return f'({"".join(sub_parts)} "{subtype}" {" ".join(ext_data)})'
 
         # This is a non-multipart msg (NOTE: This may very well be one of the
         # sub-parts of the original message).
@@ -792,31 +856,31 @@ class FetchAtt:
         #
         maintype = msg.get_content_maintype()
         subtype = msg.get_content_subtype()
-        result.append(f'"{maintype.upper()}"')
-        result.append(f'"{subtype.upper()}"')
+        result.append((f'"{maintype.upper()}"').encode("latin-1"))
+        result.append((f'"{subtype.upper()}"').encode("latin-1"))
 
         result.append(self.body_parameters(msg))
 
         body_id = f'"{msg["Content-ID"]}"' if "Content-ID" in msg else "NIL"
-        result.append(body_id)
+        result.append(body_id.encode("latin-1"))
 
         body_desc = (
             f'"{msg["Content-Description"]}"'
             if "Content-Description" in msg
             else "NIL"
         )
-        result.append(body_desc)
+        result.append(body_desc.encode("latin-1"))
 
         cte = (
             msg["Content-Transfer-Encoding"]
             if "Content-Transfer-Encoding" in msg
             else "7BIT"
         )
-        result.append(f'"{cte}"')
+        result.append((f'"{cte}"').encode("latin-1"))
 
         # Body size
         payload = msg_as_bytes(msg, render_headers=False)
-        result.append(str(len(payload)))
+        result.append(str(len(payload)).encode("latin-1"))
         num_lines = payload.count(b"\n")
 
         # Now come the variable fields depending on the maintype/subtype
@@ -827,23 +891,27 @@ class FetchAtt:
             # - body structure
             # - size in text lines of encapsulated message
             encapsulated_msg = msg.get_payload()[0]
+            assert isinstance(encapsulated_msg, Message)
             result.append(self.envelope(encapsulated_msg))
             result.append(self.bodystructure(encapsulated_msg))
             encapsulated_msg_text = msg_as_bytes(encapsulated_msg)
-            result.append(str(encapsulated_msg_text.count("\n")))
+            result.append(
+                str(encapsulated_msg_text.count(b"\n")).encode("latin-1")
+            )
         elif msg.get_content_maintype() == "text":
-            result.append(str(num_lines))
+            result.append(str(num_lines).encode("latin-1"))
 
         # If we are not supposed to return extension data then we are done here
         #
         if not self.ext_data:
-            return f"({' '.join(result)})"
+            return b"(" + b" ".join(result) + b")"
+            # return f"({' '.join(result)})"
 
         # Now we have the message body extension data. NOTE: This does NOT
         # return the `NIL` for MD5.
         #
         extension_data = self.extension_data(msg)
-        extension_data.insert(0, "NIL")
+        extension_data.insert(0, b"NIL")
 
         # If there is no extension data then do not bother to include it.
         #
@@ -856,4 +924,7 @@ class FetchAtt:
         #
         for x in extension_data:
             result.append(x)
-        return f"({' '.join(result)})"
+
+        # return f"({' '.join(result)})"
+        print(f"**** result: {result}")
+        return b"(" + b" ".join(result) + b")"

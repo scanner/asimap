@@ -7,7 +7,7 @@ Fetch.. the part that gets various bits and pieces of messages.
 import random
 from collections import defaultdict
 from datetime import datetime, timezone
-from email import message_from_string
+from email import message_from_bytes
 from email.message import EmailMessage
 from email.policy import SMTP
 from typing import Any, Dict, List, Tuple, cast
@@ -94,17 +94,17 @@ async def test_fetch_body(mailbox_with_mimekit_email):
         fetch = FetchAtt(FetchOp.BODY)
         result = fetch.fetch(ctx)
 
-        assert result.startswith("BODY {")
-        m = _lit_ref_re.search(result)
+        assert result.startswith(b"BODY {")
+        m = _lit_ref_re.search(result.decode("latin-1"))
         assert m
         result_msg_size = int(m.group(1))
         assert result_msg_size == msg_size
 
-        msg_start_idx = result.find("}\r\n") + 3
+        msg_start_idx = result.find(b"}\r\n") + 3
         data = result[msg_start_idx : msg_start_idx + result_msg_size]
         result_msg = cast(
             EmailMessage,
-            message_from_string((data), policy=SMTP),
+            message_from_bytes((data), policy=SMTP),
         )
         assert_email_equal(msg, result_msg)
 
@@ -245,123 +245,125 @@ def test_fetch_bodystructure(
     fetch = FetchAtt(FetchOp.BODYSTRUCTURE)
     result = fetch.fetch(ctx)
 
-    assert result.startswith("BODYSTRUCTURE ")
-    if result[14:] != expected_bodystructure:
+    assert result.startswith(b"BODYSTRUCTURE ")
+    if result[14:] != expected_bodystructure.encode("latin-1"):
         pytest.fail(
-            f"Message {msg_key} failed fetch: result '{result[14:]}' != expected '{expected_bodystructure}'"
+            f"Message {msg_key} failed fetch: result '{result[14:].decode('latin-1')}' != expected '{expected_bodystructure}'"
         )
 
 
 ENVELOPE_BY_MSG_KEY = [
     pytest.param(
         1,
-        """("Sat, 02 Jan 2016 17:42:00 -0400" "MimeMessage.TextBody and HtmlBody tests" (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) NIL NIL NIL NIL)""",
+        b"""("Sat, 02 Jan 2016 17:42:00 -0400" "MimeMessage.TextBody and HtmlBody tests" (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) NIL NIL NIL NIL)""",
         id="1",
     ),
     pytest.param(
         2,
-        """("Sat, 02 Jan 2016 17:42:00 -0400" "MimeMessage.TextBody and HtmlBody tests" (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) NIL NIL NIL NIL)""",
+        b"""("Sat, 02 Jan 2016 17:42:00 -0400" "MimeMessage.TextBody and HtmlBody tests" (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) NIL NIL NIL NIL)""",
         id="2",
     ),
     pytest.param(
         3,
-        """("Sat, 02 Jan 2016 17:42:00 -0400" "MimeMessage.TextBody and HtmlBody tests" (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) NIL NIL NIL NIL)""",
+        b"""("Sat, 02 Jan 2016 17:42:00 -0400" "MimeMessage.TextBody and HtmlBody tests" (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) NIL NIL NIL NIL)""",
         id="3",
     ),
     pytest.param(
         4,
-        """("Sat, 02 Jan 2016 17:42:00 -0400" "MimeMessage.TextBody and HtmlBody tests" (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) NIL NIL NIL NIL)""",
+        b"""("Sat, 02 Jan 2016 17:42:00 -0400" "MimeMessage.TextBody and HtmlBody tests" (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) NIL NIL NIL NIL)""",
         id="4",
     ),
     pytest.param(
         5,
-        """("Sat, 02 Jan 2016 17:42:00 -0400" "MimeMessage.TextBody and HtmlBody tests" (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) NIL NIL NIL NIL)""",
+        b"""("Sat, 02 Jan 2016 17:42:00 -0400" "MimeMessage.TextBody and HtmlBody tests" (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) NIL NIL NIL NIL)""",
         id="5",
     ),
     pytest.param(
         6,
-        """("Sat, 02 Jan 2016 17:42:00 -0400" "MimeMessage.TextBody and HtmlBody tests" (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) NIL NIL NIL NIL)""",
+        b"""("Sat, 02 Jan 2016 17:42:00 -0400" "MimeMessage.TextBody and HtmlBody tests" (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) NIL NIL NIL NIL)""",
         id="6",
     ),
     pytest.param(
         7,
-        """("Sat, 02 Jan 2016 17:42:00 -0400" "MimeMessage.TextBody and HtmlBody tests" (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) NIL NIL NIL NIL)""",
+        b"""("Sat, 02 Jan 2016 17:42:00 -0400" "MimeMessage.TextBody and HtmlBody tests" (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) NIL NIL NIL NIL)""",
         id="7",
     ),
     pytest.param(
         8,
-        """("Sat, 02 Jan 2016 17:42:00 -0400" "MimeMessage.TextBody and HtmlBody tests" (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) NIL NIL NIL NIL)""",
+        b"""("Sat, 02 Jan 2016 17:42:00 -0400" "MimeMessage.TextBody and HtmlBody tests" (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) NIL NIL NIL NIL)""",
         id="8",
     ),
     pytest.param(
         9,
-        """("Sat, 02 Jan 2016 17:42:00 -0400" "MimeMessage.TextBody and HtmlBody tests" (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) NIL NIL NIL NIL)""",
+        b"""("Sat, 02 Jan 2016 17:42:00 -0400" "MimeMessage.TextBody and HtmlBody tests" (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) (("MimeKit Unit Tests" NIL "mimekit" "mimekit.net")) NIL NIL NIL NIL)""",
         id="9",
     ),
     pytest.param(
         10,
-        """("Wed, 26 Jan 2022 04:06:48 -0500" "Undelivered Mail Returned to Sender" ((NIL NIL "MAILER-DAEMON" "hmail.jitbit.com")) ((NIL NIL "MAILER-DAEMON" "hmail.jitbit.com")) ((NIL NIL "MAILER-DAEMON" "hmail.jitbit.com")) ((NIL NIL "helpdesk" "netecgc.com")) NIL NIL NIL "<20220126090648.12632412E9@hmail.jitbit.com>")""",
+        b"""("Wed, 26 Jan 2022 04:06:48 -0500" "Undelivered Mail Returned to Sender" ((NIL NIL "MAILER-DAEMON" "hmail.jitbit.com")) ((NIL NIL "MAILER-DAEMON" "hmail.jitbit.com")) ((NIL NIL "MAILER-DAEMON" "hmail.jitbit.com")) ((NIL NIL "helpdesk" "netecgc.com")) NIL NIL NIL "<20220126090648.12632412E9@hmail.jitbit.com>")""",
         id="10",
     ),
     pytest.param(
         11,
-        """("Mon, 29 Jul 1996 02:13:08 -0700" "email delivery error" (("The Post Office" NIL "postmaster" "mm1.sprynet.com")) (("The Post Office" NIL "postmaster" "mm1.sprynet.com")) (("The Post Office" NIL "postmaster" "mm1.sprynet.com")) ((NIL NIL "noone" "example.net")) (("The Postmaster" NIL "postmaster" "mm1.sprynet.com")) NIL NIL "<96Jul29.022158-0700pdt.148226-12799+708@mm1.sprynet.com>")""",
+        b"""("Mon, 29 Jul 1996 02:13:08 -0700" "email delivery error" (("The Post Office" NIL "postmaster" "mm1.sprynet.com")) (("The Post Office" NIL "postmaster" "mm1.sprynet.com")) (("The Post Office" NIL "postmaster" "mm1.sprynet.com")) ((NIL NIL "noone" "example.net")) (("The Postmaster" NIL "postmaster" "mm1.sprynet.com")) NIL NIL "<96Jul29.022158-0700pdt.148226-12799+708@mm1.sprynet.com>")""",
         id="11",
     ),
     pytest.param(
         12,
-        """("Mon, 29 Jul 1996 02:13:08 -0700" "email delivery error" (("The Post Office" NIL "postmaster" "mm1.sprynet.com")) (("The Post Office" NIL "postmaster" "mm1.sprynet.com")) (("The Post Office" NIL "postmaster" "mm1.sprynet.com")) ((NIL NIL "noone" "example.net")) (("The Postmaster" NIL "postmaster" "mm1.sprynet.com")) NIL NIL "<96Jul29.022158-0700pdt.148226-12799+708@mm1.sprynet.com>")""",
+        b"""("Mon, 29 Jul 1996 02:13:08 -0700" "email delivery error" (("The Post Office" NIL "postmaster" "mm1.sprynet.com")) (("The Post Office" NIL "postmaster" "mm1.sprynet.com")) (("The Post Office" NIL "postmaster" "mm1.sprynet.com")) ((NIL NIL "noone" "example.net")) (("The Postmaster" NIL "postmaster" "mm1.sprynet.com")) NIL NIL "<96Jul29.022158-0700pdt.148226-12799+708@mm1.sprynet.com>")""",
         id="12",
     ),
     pytest.param(
         13,
-        """("Wed, 20 Sep 1995 00:19:00 -0000" "Disposition notification" (("Joe Recipient" NIL "Joe_Recipient" "example.com")) (("Joe Recipient" NIL "Joe_Recipient" "example.com")) (("Joe Recipient" NIL "Joe_Recipient" "example.com")) (("Jane Sender" NIL "Jane_Sender" "example.org")) NIL NIL NIL "<199509200019.12345@example.com>")""",
+        b"""("Wed, 20 Sep 1995 00:19:00 -0000" "Disposition notification" (("Joe Recipient" NIL "Joe_Recipient" "example.com")) (("Joe Recipient" NIL "Joe_Recipient" "example.com")) (("Joe Recipient" NIL "Joe_Recipient" "example.com")) (("Jane Sender" NIL "Jane_Sender" "example.org")) NIL NIL NIL "<199509200019.12345@example.com>")""",
         id="13",
     ),
     pytest.param(
         14,
-        """("Tue, 12 Nov 2013 09:12:42 -0500" "test of empty multipart/alternative" ((NIL NIL "mimekit" "example.com")) ((NIL NIL "mimekit" "example.com")) ((NIL NIL "mimekit" "example.com")) ((NIL NIL "mimekit" "example.com")) NIL NIL NIL "<54AD68C9E3B0184CAC6041320424FD1B5B81E74D@localhost.localdomain>")""",
+        b"""("Tue, 12 Nov 2013 09:12:42 -0500" "test of empty multipart/alternative" ((NIL NIL "mimekit" "example.com")) ((NIL NIL "mimekit" "example.com")) ((NIL NIL "mimekit" "example.com")) ((NIL NIL "mimekit" "example.com")) NIL NIL NIL "<54AD68C9E3B0184CAC6041320424FD1B5B81E74D@localhost.localdomain>")""",
         id="14",
     ),
     pytest.param(
         15,
-        """("Sun, 07 May 1995 16:21:03 +0000" "Re: The Once and Future OS" (("Peter Urka" NIL "pcu" "umich.edu")) ((NIL NIL "preston" "urkabox.chem.lsa.umich.edu")) ((NIL NIL "pcu" "umich.edu")) NIL NIL NIL NIL "<07May1621030321@urkabox.chem.lsa.umich.edu>")""",
+        b"""("Sun, 07 May 1995 16:21:03 +0000" "Re: The Once and Future OS" (("Peter Urka" NIL "pcu" "umich.edu")) ((NIL NIL "preston" "urkabox.chem.lsa.umich.edu")) ((NIL NIL "pcu" "umich.edu")) NIL NIL NIL NIL "<07May1621030321@urkabox.chem.lsa.umich.edu>")""",
         id="15",
     ),
     pytest.param(
         16,
-        """("Wed, 15 Nov 2017 14:16:14 +0000" "R: R: R: I: FR-selca LA selcaE" ((NIL NIL "jang.abcdef" "xyzlinu")) ((NIL NIL "jang.abcdef" "xyzlinu")) ((NIL NIL "jang.abcdef" "xyzlinu")) (("jang12@linux12.org.new" NIL "jang12" "linux12.org.new")) NIL NIL "<5185e377-81c5-4361-91ba-11d42f4c5cc9@AM5EUR02FT056.eop-EUR02.prod.protection.outlook.com>" "<AM4PR01MB1444B3F21AE7DA9C8128C28FF7290@AM4PR01MB1444.eurprd01.prod.exchangelabs.com>")""",
+        b"""("Wed, 15 Nov 2017 14:16:14 +0000" "R: R: R: I: FR-selca LA selcaE" ((NIL NIL "jang.abcdef" "xyzlinu")) ((NIL NIL "jang.abcdef" "xyzlinu")) ((NIL NIL "jang.abcdef" "xyzlinu")) (("jang12@linux12.org.new" NIL "jang12" "linux12.org.new")) NIL NIL "<5185e377-81c5-4361-91ba-11d42f4c5cc9@AM5EUR02FT056.eop-EUR02.prod.protection.outlook.com>" "<AM4PR01MB1444B3F21AE7DA9C8128C28FF7290@AM4PR01MB1444.eurprd01.prod.exchangelabs.com>")""",
         id="16",
     ),
     pytest.param(
         17,
-        # """("Wed, 22 Jul 2015 01:02:29 +0900" "日本語メールテスト (testing Japanese emails)" (("Atsushi Eno" NIL "x" "x.com")) (("Atsushi Eno" NIL "x" "x.com")) (("Atsushi Eno" NIL "x" "x.com")) (("Jeffrey Stedfast" NIL "x" "x.com")) NIL NIL NIL "<55AE6D15.4010805@veritas-vos-liberabit.com>")""",
-        """("Wed, 22 Jul 2015 01:02:29 +0900" "&#26085;&#26412;&#35486;&#12513;&#12540;&#12523;&#12486;&#12473;&#12488; (testing Japanese emails)" (("Atsushi Eno" NIL "x" "x.com")) (("Atsushi Eno" NIL "x" "x.com")) (("Atsushi Eno" NIL "x" "x.com")) (("Jeffrey Stedfast" NIL "x" "x.com")) NIL NIL NIL "<55AE6D15.4010805@veritas-vos-liberabit.com>")""",
+        # b"""("Wed, 22 Jul 2015 01:02:29 +0900" "日本語メールテスト (testing Japanese emails)" (("Atsushi Eno" NIL "x" "x.com")) (("Atsushi Eno" NIL "x" "x.com")) (("Atsushi Eno" NIL "x" "x.com")) (("Jeffrey Stedfast" NIL "x" "x.com")) NIL NIL NIL "<55AE6D15.4010805@veritas-vos-liberabit.com>")""",
+        # b"""("Wed, 22 Jul 2015 01:02:29 +0900" "&#26085;&#26412;&#35486;&#12513;&#12540;&#12523;&#12486;&#12473;&#12488; (testing Japanese emails)" (("Atsushi Eno" NIL "x" "x.com")) (("Atsushi Eno" NIL "x" "x.com")) (("Atsushi Eno" NIL "x" "x.com")) (("Jeffrey Stedfast" NIL "x" "x.com")) NIL NIL NIL "<55AE6D15.4010805@veritas-vos-liberabit.com>")""",
+        b"""("Wed, 22 Jul 2015 01:02:29 +0900" "=?utf-8?b?5pel5pys6Kqe44Oh44O844Or44OG44K544OIICh0ZXN0aW5nIEphcGFuZXNlIGVtYWlscyk=?=" (("Atsushi Eno" NIL "x" "x.com")) (("Atsushi Eno" NIL "x" "x.com")) (("Atsushi Eno" NIL "x" "x.com")) (("Jeffrey Stedfast" NIL "x" "x.com")) NIL NIL NIL "<55AE6D15.4010805@veritas-vos-liberabit.com>")""",
         id="17",
     ),
     pytest.param(
         18,
-        """("Tue, 29 Dec 2015 09:06:17 -0400" "Test of an invalid mime-type" (("someone" NIL "someone" "somewhere.com")) (("someone" NIL "someone" "somewhere.com")) (("someone" NIL "someone" "somewhere.com")) (("someone else" NIL "someone.else" "somewhere.else.com")) NIL NIL NIL NIL)""",
+        b"""("Tue, 29 Dec 2015 09:06:17 -0400" "Test of an invalid mime-type" (("someone" NIL "someone" "somewhere.com")) (("someone" NIL "someone" "somewhere.com")) (("someone" NIL "someone" "somewhere.com")) (("someone else" NIL "someone.else" "somewhere.else.com")) NIL NIL NIL NIL)""",
         id="18",
     ),
     pytest.param(
         19,
-        """("Sat, 24 Mar 2007 23:00:00 +0200" NIL ((NIL NIL "user" "domain.org")) ((NIL NIL "user" "domain.org")) ((NIL NIL "user" "domain.org")) NIL NIL NIL NIL NIL)""",
+        b"""("Sat, 24 Mar 2007 23:00:00 +0200" NIL ((NIL NIL "user" "domain.org")) ((NIL NIL "user" "domain.org")) ((NIL NIL "user" "domain.org")) NIL NIL NIL NIL NIL)""",
         id="19",
     ),
     pytest.param(
         20,
-        """(NIL NIL NIL NIL NIL NIL NIL NIL NIL NIL)""",
+        b"""(NIL NIL NIL NIL NIL NIL NIL NIL NIL NIL)""",
         id="20",
     ),
     pytest.param(
         21,
-        """(NIL "Sample message structure for IMAP part specifiers" ((NIL NIL "me" "myself.com")) ((NIL NIL "me" "myself.com")) ((NIL NIL "me" "myself.com")) ((NIL NIL "me" "myself.com")) NIL NIL NIL NIL)""",
+        b"""(NIL "Sample message structure for IMAP part specifiers" ((NIL NIL "me" "myself.com")) ((NIL NIL "me" "myself.com")) ((NIL NIL "me" "myself.com")) ((NIL NIL "me" "myself.com")) NIL NIL NIL NIL)""",
         id="21",
     ),
     pytest.param(
         22,
-        """("Fri, 03 Nov 2017 12:00:00 -0800" "Message Subject" (("test" NIL "test" "test.com")) (("test" NIL "test" "test.com")) (("test" NIL "test" "test.com")) (("test" NIL "test" "test.com")(NIL NIL "date" NIL)) NIL NIL NIL "<aasfasdfasdfa@bb>")""",
+        # b"""("Fri, 03 Nov 2017 12:00:00 -0800" "Message Subject" (("test" NIL "test" "test.com")) (("test" NIL "test" "test.com")) (("test" NIL "test" "test.com")) (("test" NIL "test" "test.com")(NIL NIL "date" NIL)) NIL NIL NIL "<aasfasdfasdfa@bb>")""",
+        b"""("Fri, 03 Nov 2017 12:00:00 -0800" "Message Subject" (("test" NIL "test" "test.com")) (("test" NIL "test" "test.com")) (("test" NIL "test" "test.com")) (("test" NIL "test" "test.com") (NIL NIL "date" NIL)) NIL NIL NIL "<aasfasdfasdfa@bb>")""",
         id="22",
     ),
 ]
@@ -381,7 +383,7 @@ def test_fetch_envelope(msg_key, expected_envelope, mailbox_with_mimekit_email):
     fetch = FetchAtt(FetchOp.ENVELOPE)
     result = fetch.fetch(ctx)
 
-    assert result.startswith("ENVELOPE ")
+    assert result.startswith(b"ENVELOPE ")
     assert result[9:] == expected_envelope
 
 
@@ -427,7 +429,7 @@ def test_fetch_rfc822_size(msg_key, expected_size, mailbox_with_mimekit_email):
     fetch = FetchAtt(FetchOp.RFC822_SIZE)
     result = fetch.fetch(ctx)
 
-    assert result.startswith("RFC822.SIZE ")
+    assert result.startswith(b"RFC822.SIZE ")
     assert int(result[12:]) == expected_size
 
 
