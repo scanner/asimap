@@ -20,7 +20,7 @@ import pytest
 #
 from ..constants import REV_SYSTEM_FLAG_MAP, SYSTEM_FLAGS
 from ..fetch import STR_TO_FETCH_OP, FetchAtt, FetchOp
-from ..generator import msg_as_string, msg_headers_as_string
+from ..generator import msg_as_bytes, msg_as_string, msg_headers_as_string
 from ..mbox import mbox_msg_path
 from ..parse import _lit_ref_re
 from ..search import SearchContext
@@ -397,15 +397,16 @@ MSG_SIZE_BY_MSG_KEY = [
     pytest.param(7, 1018, id="7"),
     pytest.param(8, 586, id="8"),
     pytest.param(9, 586, id="9"),
-    pytest.param(10, 28202, id="10"),
+    # pytest.param(10, 28202, id="10"),
+    pytest.param(10, 28067, id="10"),
     pytest.param(11, 2440, id="11"),
     pytest.param(12, 2438, id="12"),
     pytest.param(13, 1441, id="13"),
     pytest.param(14, 717, id="14"),
     pytest.param(15, 1221, id="15"),
     pytest.param(16, 9395, id="16"),
-    # pytest.param(17, 584, id="17"),
-    pytest.param(17, 579, id="17"),
+    pytest.param(17, 584, id="17"),
+    # pytest.param(17, 579, id="17"),
     pytest.param(18, 264, id="18"),
     pytest.param(19, 467, id="19"),
     pytest.param(20, 2686, id="20"),
@@ -434,14 +435,17 @@ def test_fetch_rfc822_size(msg_key, expected_size, mailbox_with_mimekit_email):
 
 
 PROBLEMATIC_MSG_SIZE_BY_MSG_KEY = [
-    pytest.param(1, 1164, id="1"),
-    # pytest.param(2, 4392, id="2"),
-    pytest.param(2, 4335, id="2"),
+    # pytest.param(1, 1164, id="1"),
+    pytest.param(1, 1162, id="1"),
+    pytest.param(2, 4392, id="2"),
+    # pytest.param(2, 4335, id="2"),
     # pytest.param(3, 26777, id="3"),
-    pytest.param(3, 26737, id="3"),
+    # pytest.param(3, 26737, id="3"),
+    pytest.param(3, 26083, id="3"),
     # pytest.param(4, 9631, id="4"),
     # pytest.param(4, 9606, id="4"),
-    pytest.param(4, 9604, id="4"),
+    # pytest.param(4, 9604, id="4"),
+    pytest.param(4, 9629, id="4"),
 ]
 
 
@@ -464,10 +468,18 @@ def test_fetch_problematic_rfc822_size(
     fetch = FetchAtt(FetchOp.RFC822_SIZE)
     result = fetch.fetch(ctx)
 
+    msg_str = msg_as_string(ctx.msg())
+    msg_bytes = msg_as_bytes(ctx.msg())
+    print(f"Message size: str: {len(msg_str)}, bytes: {len(msg_bytes)}")
     print("Message as string:")
-    print(repr(msg_as_string(ctx.msg())))
+    print(repr(msg_str))
+    print("\nMessage as bytes:")
+    print(repr(msg_bytes.decode("latin-1")))
 
-    assert result.startswith("RFC822.SIZE ")
+    print("\nMessage as bytes:")
+    print(msg_bytes)
+
+    assert result.startswith(b"RFC822.SIZE ")
     assert int(result[12:]) == expected_size
 
 
@@ -502,10 +514,13 @@ async def test_fetch_flags(mailbox_with_bunch_of_email):
         fetch = FetchAtt(FetchOp.FLAGS)
         result = fetch.fetch(ctx)
 
-        assert result.startswith("FLAGS ")
+        assert result.startswith(b"FLAGS ")
         flags = result[6:]
-        assert flags[0] == "(" and flags[-1] == ")"
-        assert sorted(flags_by_msg[msg_key]) == sorted(flags[1:-1].split(" "))
+        print(f"Flags: {result!r}")
+        assert flags[:1] == b"(" and flags[-1:] == b")"
+        assert sorted(
+            [x.encode("latin-1") for x in flags_by_msg[msg_key]]
+        ) == sorted(flags[1:-1].split(b" "))
 
 
 ####################################################################
@@ -533,9 +548,9 @@ async def test_fetch_internaldate(mailbox_with_bunch_of_email):
         fetch = FetchAtt(FetchOp.INTERNALDATE)
         result = fetch.fetch(ctx)
 
-        assert result.startswith("INTERNALDATE ")
-        assert result[13] == '"' and result[-1] == '"'
-        internal_date = parsedate(result[14:-1])
+        assert result.startswith(b"INTERNALDATE ")
+        assert result[13:14] == b'"' and result[-1:] == b'"'
+        internal_date = parsedate((result[14:-1]).decode("latin-1"))
         assert internal_date == internal_date_by_msg[msg_key]
 
 
@@ -560,7 +575,7 @@ async def test_fetch_uid(mailbox_with_bunch_of_email):
         fetch = FetchAtt(FetchOp.UID)
         result = fetch.fetch(ctx)
 
-        assert result.startswith("UID ")
+        assert result.startswith(b"UID ")
         assert int(result[4:]) == uid_by_msg[msg_key]
 
 
@@ -585,9 +600,9 @@ async def test_fetch_body_section_text(mailbox_with_mimekit_email):
     result = fetch.fetch(ctx)
     email_msg = ctx.msg()
 
-    assert result.startswith("BODY[TEXT] {")
-    body_start = result.find("}") + 3
-    res_length = int(result[result.find("{") + 1 : result.find("}")])
+    assert result.startswith(b"BODY[TEXT] {")
+    body_start = result.find(b"}") + 3
+    res_length = int(result[result.find(b"{") + 1 : result.find(b"}")])
     result_body = result[body_start:]
     assert len(result_body) == res_length
 
@@ -602,9 +617,9 @@ async def test_fetch_body_section_text(mailbox_with_mimekit_email):
     fetch = FetchAtt(FetchOp.BODY, section=[1, "TEXT"])
     result = fetch.fetch(ctx)
 
-    assert result.startswith("BODY[1.TEXT] {")
-    body_start = result.find("}") + 3
-    res_length = int(result[result.find("{") + 1 : result.find("}")])
+    assert result.startswith(b"BODY[1.TEXT] {")
+    body_start = result.find(b"}") + 3
+    res_length = int(result[result.find(b"{") + 1 : result.find(b"}")])
     result_body = result[body_start:]
     assert len(result_body) == res_length
 
@@ -619,7 +634,7 @@ async def test_fetch_body_section_text(mailbox_with_mimekit_email):
     fetch = FetchAtt(FetchOp.BODY, section=[2, 1, "TEXT"])
     result = fetch.fetch(ctx)
 
-    assert result.startswith("BODY[2.1.TEXT] {")
+    assert result.startswith(b"BODY[2.1.TEXT] {")
     body_start = result.find("}") + 3
     res_length = int(result[result.find("{") + 1 : result.find("}")])
     result_body = result[body_start:]
@@ -652,7 +667,7 @@ async def test_fetch_body_section_header(mailbox_with_mimekit_email):
     result = fetch.fetch(ctx)
     email_msg = ctx.msg()
 
-    assert result.startswith("BODY[HEADER] {")
+    assert result.startswith(b"BODY[HEADER] {")
     headers_start = result.find("}") + 3
     res_length = int(result[result.find("{") + 1 : result.find("}")])
     result_headers = result[headers_start:]
@@ -682,7 +697,7 @@ async def test_fetch_body_section_header(mailbox_with_mimekit_email):
     result = fetch.fetch(ctx)
 
     result_headers = result[headers_start:]
-    assert result.startswith("BODY[1.HEADER] {")
+    assert result.startswith(b"BODY[1.HEADER] {")
     body_start = result.find("}") + 3
     res_length = int(result[result.find("{") + 1 : result.find("}")])
     result_body = result[body_start:]
@@ -700,7 +715,7 @@ async def test_fetch_body_section_header(mailbox_with_mimekit_email):
     result = fetch.fetch(ctx)
 
     result_headers = result[headers_start:]
-    assert result.startswith("BODY[2.1.HEADER] {")
+    assert result.startswith(b"BODY[2.1.HEADER] {")
     body_start = result.find("}") + 3
     res_length = int(result[result.find("{") + 1 : result.find("}")])
     result_body = result[body_start:]

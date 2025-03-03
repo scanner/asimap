@@ -926,5 +926,4 @@ class FetchAtt:
             result.append(x)
 
         # return f"({' '.join(result)})"
-        print(f"**** result: {result}")
         return b"(" + b" ".join(result) + b")"
