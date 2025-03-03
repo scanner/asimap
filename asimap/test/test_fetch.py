@@ -606,7 +606,7 @@ async def test_fetch_body_section_text(mailbox_with_mimekit_email):
     result_body = result[body_start:]
     assert len(result_body) == res_length
 
-    msg_body = msg_as_string(email_msg, headers=False)
+    msg_body = msg_as_bytes(email_msg, render_headers=False)
 
     assert res_length == len(msg_body)
     assert msg_body == result_body
@@ -624,7 +624,7 @@ async def test_fetch_body_section_text(mailbox_with_mimekit_email):
     assert len(result_body) == res_length
 
     msg_parts = email_msg.get_payload()
-    msg_body = msg_as_string(msg_parts[0], headers=False)
+    msg_body = msg_as_bytes(msg_parts[0], render_headers=False)
     assert res_length == len(msg_body)
     assert msg_body == result_body
 
@@ -635,12 +635,12 @@ async def test_fetch_body_section_text(mailbox_with_mimekit_email):
     result = fetch.fetch(ctx)
 
     assert result.startswith(b"BODY[2.1.TEXT] {")
-    body_start = result.find("}") + 3
-    res_length = int(result[result.find("{") + 1 : result.find("}")])
+    body_start = result.find(b"}") + 3
+    res_length = int(result[result.find(b"{") + 1 : result.find(b"}")])
     result_body = result[body_start:]
     assert len(result_body) == res_length
     sub_parts = msg_parts[1].get_payload()
-    msg_body = msg_as_string(sub_parts[0], headers=False)
+    msg_body = msg_as_bytes(sub_parts[0], render_headers=False)
 
     assert res_length == len(msg_body)
     assert msg_body == result_body
