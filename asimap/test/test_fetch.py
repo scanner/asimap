@@ -157,7 +157,6 @@ BODYSTRUCTURE_BY_MSG_KEY = [
     ),
     pytest.param(
         10,
-        #        """(("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL "Notification" "base64" 1868 24 NIL NIL NIL NIL)(("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "base64" 2 1 NIL NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 2 1 NIL NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 2 1 NIL NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 724 12 NIL NIL NIL NIL) "DELIVERY-STATUS" ("CHARSET" "US-ASCII") NIL NIL NIL)("MESSAGE" "RFC822" ("CHARSET" "US-ASCII") NIL "Undelivered Message" "7BIT" 17961 ("Wed, 26 Jan 2022 09:06:45 +0000" "FILE-SRV | FILE-SRV | Ellern Mede | eventlog | Security - Microsoft-Windows-Security-Auditing | Code: '4625' - Type: 'Critical, Error, Warning, , Information, Verbose' - Desc: '' {44565655}" (("Netec RMM" NIL "helpdesk" "netecgc.com")) (("Netec RMM" NIL "helpdesk" "netecgc.com")) ((NIL NIL "helpdesk" "netecgc.com")) ((NIL NIL "netec.test" "netecgc.com")) NIL NIL NIL "<44565655.JitbitHelpdesk.13439.691a0afc-a0a0-457c-8208-f20b7c4a4cb1@jitbit.com>") (("TEXT" "PLAIN" ("CHARSET" "UTF-8") NIL NIL "base64" 5452 88 NIL NIL NIL NIL)("TEXT" "HTML" ("CHARSET" "UTF-8") NIL NIL "base64" 11254 145 NIL NIL NIL NIL) "ALTERNATIVE" ("BOUNDARY" "=-JG9iIL0Fmro08hOsLcfbiQ==") NIL NIL NIL) 266 NIL NIL NIL NIL) "REPORT" ("REPORT-TYPE" "delivery-status" "BOUNDARY" "630A242E63.1643188008/hmail.jitbit.com") NIL NIL NIL)""",
         """(("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL "Notification" "base64" 1868 24 NIL NIL NIL NIL)(("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "base64" 2 1 NIL NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 2 1 NIL NIL NIL NIL)("TEXT" "PLAIN" ("CHARSET" "US-ASCII") NIL NIL "7BIT" 724 12 NIL NIL NIL NIL) "DELIVERY-STATUS" ("CHARSET" "US-ASCII") NIL NIL NIL)("MESSAGE" "RFC822" ("CHARSET" "US-ASCII") NIL "Undelivered Message" "7BIT" 17961 ("Wed, 26 Jan 2022 09:06:45 +0000" "FILE-SRV | FILE-SRV | Ellern Mede | eventlog | Security - Microsoft-Windows-Security-Auditing | Code: '4625' - Type: 'Critical, Error, Warning, , Information, Verbose' - Desc: '' {44565655}" (("Netec RMM" NIL "helpdesk" "netecgc.com")) (("Netec RMM" NIL "helpdesk" "netecgc.com")) ((NIL NIL "helpdesk" "netecgc.com")) ((NIL NIL "netec.test" "netecgc.com")) NIL NIL NIL "<44565655.JitbitHelpdesk.13439.691a0afc-a0a0-457c-8208-f20b7c4a4cb1@jitbit.com>") (("TEXT" "PLAIN" ("CHARSET" "UTF-8") NIL NIL "base64" 5452 88 NIL NIL NIL NIL)("TEXT" "HTML" ("CHARSET" "UTF-8") NIL NIL "base64" 11254 145 NIL NIL NIL NIL) "ALTERNATIVE" ("BOUNDARY" "=-JG9iIL0Fmro08hOsLcfbiQ==") NIL NIL NIL) 266 NIL NIL NIL NIL) "REPORT" ("REPORT-TYPE" "delivery-status" "BOUNDARY" "630A242E63.1643188008/hmail.jitbit.com") NIL NIL NIL)""",
         id="10",
     ),
@@ -336,7 +335,6 @@ ENVELOPE_BY_MSG_KEY = [
     pytest.param(
         17,
         # b"""("Wed, 22 Jul 2015 01:02:29 +0900" "日本語メールテスト (testing Japanese emails)" (("Atsushi Eno" NIL "x" "x.com")) (("Atsushi Eno" NIL "x" "x.com")) (("Atsushi Eno" NIL "x" "x.com")) (("Jeffrey Stedfast" NIL "x" "x.com")) NIL NIL NIL "<55AE6D15.4010805@veritas-vos-liberabit.com>")""",
-        # b"""("Wed, 22 Jul 2015 01:02:29 +0900" "&#26085;&#26412;&#35486;&#12513;&#12540;&#12523;&#12486;&#12473;&#12488; (testing Japanese emails)" (("Atsushi Eno" NIL "x" "x.com")) (("Atsushi Eno" NIL "x" "x.com")) (("Atsushi Eno" NIL "x" "x.com")) (("Jeffrey Stedfast" NIL "x" "x.com")) NIL NIL NIL "<55AE6D15.4010805@veritas-vos-liberabit.com>")""",
         b"""("Wed, 22 Jul 2015 01:02:29 +0900" "=?utf-8?b?5pel5pys6Kqe44Oh44O844Or44OG44K544OIICh0ZXN0aW5nIEphcGFuZXNlIGVtYWlscyk=?=" (("Atsushi Eno" NIL "x" "x.com")) (("Atsushi Eno" NIL "x" "x.com")) (("Atsushi Eno" NIL "x" "x.com")) (("Jeffrey Stedfast" NIL "x" "x.com")) NIL NIL NIL "<55AE6D15.4010805@veritas-vos-liberabit.com>")""",
         id="17",
     ),
@@ -362,7 +360,6 @@ ENVELOPE_BY_MSG_KEY = [
     ),
     pytest.param(
         22,
-        # b"""("Fri, 03 Nov 2017 12:00:00 -0800" "Message Subject" (("test" NIL "test" "test.com")) (("test" NIL "test" "test.com")) (("test" NIL "test" "test.com")) (("test" NIL "test" "test.com")(NIL NIL "date" NIL)) NIL NIL NIL "<aasfasdfasdfa@bb>")""",
         b"""("Fri, 03 Nov 2017 12:00:00 -0800" "Message Subject" (("test" NIL "test" "test.com")) (("test" NIL "test" "test.com")) (("test" NIL "test" "test.com")) (("test" NIL "test" "test.com") (NIL NIL "date" NIL)) NIL NIL NIL "<aasfasdfasdfa@bb>")""",
         id="22",
     ),
@@ -397,8 +394,8 @@ MSG_SIZE_BY_MSG_KEY = [
     pytest.param(7, 1018, id="7"),
     pytest.param(8, 586, id="8"),
     pytest.param(9, 586, id="9"),
-    # pytest.param(10, 28202, id="10"),
-    pytest.param(10, 28067, id="10"),
+    # pytest.param(10, 28202, id="10"),  # python 3.12.7
+    pytest.param(10, 28067, id="10"),  # python 3.12.9
     pytest.param(11, 2440, id="11"),
     pytest.param(12, 2438, id="12"),
     pytest.param(13, 1441, id="13"),
@@ -753,7 +750,6 @@ async def test_fetch_body_section_header_fields(mailbox_with_mimekit_email):
 
     bheaders = b" ".join(x.encode("latin-1") for x in headers)
     assert result.startswith(b"BODY[HEADER.FIELDS (" + bheaders + b")] {")
-    # assert result.startswith(f"BODY[HEADER.FIELDS ({' '.join(headers)})] {{")
     headers_start = result.find(b"}") + 3
     res_length = int(result[result.find(b"{") + 1 : result.find(b"}")])
     result_headers = result[headers_start:]
@@ -774,12 +770,7 @@ async def test_fetch_body_section_header_fields(mailbox_with_mimekit_email):
     result = fetch.fetch(ctx)
     email_msg = ctx.msg()
 
-    assert result.startswith(
-        b"BODY[HEADER.FIELDS.NOT ("
-        + bheaders
-        + b")] {"
-        # f"BODY[HEADER.FIELDS.NOT ({' '.join(headers)})] {{"
-    )
+    assert result.startswith(b"BODY[HEADER.FIELDS.NOT (" + bheaders + b")] {")
     headers_start = result.find(b"}") + 3
     res_length = int(result[result.find(b"{") + 1 : result.find(b"}")])
     result_headers = result[headers_start:]
@@ -826,7 +817,6 @@ async def test_fetch_body_text_with_partials(mailbox_with_mimekit_email):
 
     assert result1_len == len(result1_msg)
     assert result2.startswith(b"BODY[TEXT]<" + str(mid).encode() + b"> {")
-    # assert result2.startswith(f"BODY[TEXT]<{mid}> {{")
 
     open_brace = result2.find(b"{") + 1
     close_brace = result2.find(b"}")
@@ -869,7 +859,6 @@ async def test_fetch_body_braces(mailbox_with_bunch_of_email):
 
         assert result1_len == len(result1_msg)
         assert result2.startswith(b"BODY[]<" + str(mid).encode() + b"> {")
-        # assert result2.startswith(f"BODY[]<{mid}> {{")
 
         open_brace = result2.find(b"{") + 1
         close_brace = result2.find(b"}")

@@ -342,7 +342,6 @@ async def test_mbox_uid_expunge_with_client(
     #
     uids_to_delete = list(range(2, NUM_MSGS_TO_DELETE + 2))
     set_expect_deleted = set(expect_deleted) - set(uids_to_delete)
-    print(f"**** uids to delete: {uids_to_delete}")
     imap_client.cmd_processor.idling = True
     await mbox.expunge(uid_msg_set=uids_to_delete)
     imap_client.cmd_processor.idling = False

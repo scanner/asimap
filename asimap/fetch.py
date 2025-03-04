@@ -391,73 +391,6 @@ class FetchAtt:
                 raise BadSection(
                     f"{self}: Unexpected section value: '{section}'"
                 )
-        # if isinstance(section, int):
-        #     if section == 1 and not msg.is_multipart():
-        #         return msg_as_bytes(msg, render_headers=False)
-
-        #     # Otherwise, get the sub-part of the message that they are after
-        #     #
-        #     if section != 1 and not msg.is_multipart():
-        #         raise BadSection(
-        #             f"Trying to retrieve section {section} and this message "
-        #             "is not multipart"
-        #         )
-
-        #     try:
-        #         # NOTE: IMAP sections are 1 based. Sections in the message are
-        #         #       0-based.
-        #         #
-        #         return msg_as_bytes(
-        #             msg.get_payload(section - 1), render_headers=False
-        #         )
-        #     except IndexError:
-        #         raise BadSection(
-        #             f"Section {section} does not exist in this message sub-part"
-        #         )
-        # elif isinstance(section, str) and section.upper() == "TEXT":
-        #     return msg_as_bytes(msg, render_headers=False)
-        # elif isinstance(section, (list, tuple)):
-        #     if section[0].upper() == "HEADER.FIELDS":
-        #         headers = tuple(section[1])
-        #         return msg_headers_as_bytes(msg, headers=headers, skip=False)
-        #     elif section[0].upper() == "HEADER.FIELDS.NOT":
-        #         headers = tuple(section[1])
-        #         return msg_headers_as_bytes(msg, headers=headers, skip=True)
-        #     else:
-        #         raise BadSection(
-        #             "Section value must be either HEADER.FIELDS or "
-        #             f"HEADER.FIELDS.NOT, not: '{section[0]}'"
-        #         )
-        # # ELSE: section is a str.
-        # #
-        # if not isinstance(section, str):
-        #     self.log.warn(f"body: Unexpected section value: '{section}'")
-        #     raise BadSection(f"{self}: Unexpected section value: '{section}'")
-
-        # match section.upper():
-        #     case "MIME":
-        #         # XXX just use the generator as it is for MIME.. I know this is
-        #         #     not quite right in that it will accept more then it
-        #         #     should, but it will otherwise work.
-        #         #
-        #         return msg_headers_as_bytes(msg)
-        #     case "HEADER":
-        #         # if the content type is message/rfc822 then to
-        #         # get the headers we need to use the first
-        #         # sub-part of this message.
-        #         #
-        #         if (
-        #             msg.is_multipart()
-        #             and msg.get_content_type() == "message/rfc822"
-        #         ):
-        #             return msg_headers_as_bytes(msg.get_payload(0))
-        #         else:
-        #             return msg_headers_as_bytes(msg)
-        #     case _:
-        #         self.log.warn(f"body: Unexpected section value: '{section}'")
-        #         raise BadSection(
-        #             f"{self}: Unexpected section value: '{section}'"
-        #         )
 
     ####################################################################
     #
@@ -787,7 +720,6 @@ class FetchAtt:
             if not self.ext_data:
                 res = b"(" + b"".join(sub_parts) + b'"' + subtype + b'")'
                 return res
-                # return f'({"".join(sub_parts)} "{subtype}")'
 
             # Get the extension data and add it to our response.
             #
@@ -805,7 +737,6 @@ class FetchAtt:
                 + b")"
             )
             return res
-            # return f'({"".join(sub_parts)} "{subtype}" {" ".join(ext_data)})'
 
         # This is a non-multipart msg (NOTE: This may very well be one of the
         # sub-parts of the original message).
@@ -894,7 +825,6 @@ class FetchAtt:
         #
         if not self.ext_data:
             return b"(" + b" ".join(result) + b")"
-            # return f"({' '.join(result)})"
 
         # Now we have the message body extension data. NOTE: This does NOT
         # return the `NIL` for MD5.
@@ -902,17 +832,10 @@ class FetchAtt:
         extension_data = self.extension_data(msg)
         extension_data.insert(0, b"NIL")
 
-        # If there is no extension data then do not bother to include it.
-        #
-        # if any(x != "NIL" for x in extension_data):
-        #     for x in extension_data:
-        #         result.append(x)
-        #
         # Extension data should be optional but some IMAP clients seem to
         # require it. it does no harm to include it as far as I can tell.
         #
         for x in extension_data:
             result.append(x)
 
-        # return f"({' '.join(result)})"
         return b"(" + b" ".join(result) + b")"

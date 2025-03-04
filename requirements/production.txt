@@ -6,23 +6,23 @@
 #
 aiofiles==24.1.0
     # via -r production.in
-aioretry==6.2.0
+aioretry==6.3.1
     # via -r production.in
-aiosqlite==0.20.0
+aiosqlite==0.21.0
     # via -r production.in
-certifi==2024.8.30
+certifi==2025.1.31
     # via sentry-sdk
-charset-normalizer==3.4.0
+charset-normalizer==3.4.1
     # via -r production.in
 docopt==0.6.2
     # via -r production.in
 python-dotenv==1.0.1
     # via -r production.in
-python-json-logger==2.0.7
+python-json-logger==3.2.1
     # via -r production.in
-sentry-sdk==2.18.0
+sentry-sdk==2.22.0
     # via -r production.in
 typing-extensions==4.12.2
     # via aiosqlite
-urllib3==2.2.3
+urllib3==2.3.0
     # via sentry-sdk
