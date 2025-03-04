@@ -20,7 +20,7 @@ import pytest
 #
 from ..constants import REV_SYSTEM_FLAG_MAP, SYSTEM_FLAGS
 from ..fetch import STR_TO_FETCH_OP, FetchAtt, FetchOp
-from ..generator import msg_as_bytes, msg_as_string, msg_headers_as_string
+from ..generator import msg_as_bytes, msg_headers_as_bytes
 from ..mbox import mbox_msg_path
 from ..parse import _lit_ref_re
 from ..search import SearchContext
@@ -468,17 +468,6 @@ def test_fetch_problematic_rfc822_size(
     fetch = FetchAtt(FetchOp.RFC822_SIZE)
     result = fetch.fetch(ctx)
 
-    msg_str = msg_as_string(ctx.msg())
-    msg_bytes = msg_as_bytes(ctx.msg())
-    print(f"Message size: str: {len(msg_str)}, bytes: {len(msg_bytes)}")
-    print("Message as string:")
-    print(repr(msg_str))
-    print("\nMessage as bytes:")
-    print(repr(msg_bytes.decode("latin-1")))
-
-    print("\nMessage as bytes:")
-    print(msg_bytes)
-
     assert result.startswith(b"RFC822.SIZE ")
     assert int(result[12:]) == expected_size
 
@@ -516,7 +505,6 @@ async def test_fetch_flags(mailbox_with_bunch_of_email):
 
         assert result.startswith(b"FLAGS ")
         flags = result[6:]
-        print(f"Flags: {result!r}")
         assert flags[:1] == b"(" and flags[-1:] == b")"
         assert sorted(
             [x.encode("latin-1") for x in flags_by_msg[msg_key]]
@@ -668,13 +656,13 @@ async def test_fetch_body_section_header(mailbox_with_mimekit_email):
     email_msg = ctx.msg()
 
     assert result.startswith(b"BODY[HEADER] {")
-    headers_start = result.find("}") + 3
-    res_length = int(result[result.find("{") + 1 : result.find("}")])
+    headers_start = result.find(b"}") + 3
+    res_length = int(result[result.find(b"{") + 1 : result.find(b"}")])
     result_headers = result[headers_start:]
 
     assert len(result_headers) == res_length
 
-    msg_headers = msg_headers_as_string(email_msg)
+    msg_headers = msg_headers_as_bytes(email_msg)
 
     assert res_length == len(msg_headers)
     assert msg_headers == result_headers
@@ -698,13 +686,13 @@ async def test_fetch_body_section_header(mailbox_with_mimekit_email):
 
     result_headers = result[headers_start:]
     assert result.startswith(b"BODY[1.HEADER] {")
-    body_start = result.find("}") + 3
-    res_length = int(result[result.find("{") + 1 : result.find("}")])
+    body_start = result.find(b"}") + 3
+    res_length = int(result[result.find(b"{") + 1 : result.find(b"}")])
     result_body = result[body_start:]
     assert len(result_body) == res_length
 
     msg_parts = email_msg.get_payload()
-    msg_headers = msg_headers_as_string(msg_parts[0])
+    msg_headers = msg_headers_as_bytes(msg_parts[0])
     assert res_length == len(msg_headers)
     assert msg_headers == result_body
 
@@ -716,14 +704,14 @@ async def test_fetch_body_section_header(mailbox_with_mimekit_email):
 
     result_headers = result[headers_start:]
     assert result.startswith(b"BODY[2.1.HEADER] {")
-    body_start = result.find("}") + 3
-    res_length = int(result[result.find("{") + 1 : result.find("}")])
+    body_start = result.find(b"}") + 3
+    res_length = int(result[result.find(b"{") + 1 : result.find(b"}")])
     result_body = result[body_start:]
     assert len(result_body) == res_length
     # NOTE: zero-based array vs 1-based section list so 2.1 is index 1, index 0
     #
     sub_parts = msg_parts[1].get_payload()
-    msg_headers = msg_headers_as_string(sub_parts[0])
+    msg_headers = msg_headers_as_bytes(sub_parts[0])
 
     assert res_length == len(msg_headers)
     assert msg_headers == result_body
@@ -748,14 +736,16 @@ async def test_fetch_body_section_header_fields(mailbox_with_mimekit_email):
     result = fetch.fetch(ctx)
     email_msg = ctx.msg()
 
-    assert result.startswith(f"BODY[HEADER.FIELDS ({' '.join(headers)})] {{")
-    headers_start = result.find("}") + 3
-    res_length = int(result[result.find("{") + 1 : result.find("}")])
+    bheaders = b" ".join(x.encode("latin-1") for x in headers)
+    assert result.startswith(b"BODY[HEADER.FIELDS (" + bheaders + b")] {")
+    # assert result.startswith(f"BODY[HEADER.FIELDS ({' '.join(headers)})] {{")
+    headers_start = result.find(b"}") + 3
+    res_length = int(result[result.find(b"{") + 1 : result.find(b"}")])
     result_headers = result[headers_start:]
 
     assert len(result_headers) == res_length
 
-    msg_headers = msg_headers_as_string(
+    msg_headers = msg_headers_as_bytes(
         email_msg, headers=tuple(headers), skip=False
     )
 
@@ -770,15 +760,18 @@ async def test_fetch_body_section_header_fields(mailbox_with_mimekit_email):
     email_msg = ctx.msg()
 
     assert result.startswith(
-        f"BODY[HEADER.FIELDS.NOT ({' '.join(headers)})] {{"
+        b"BODY[HEADER.FIELDS.NOT ("
+        + bheaders
+        + b")] {"
+        # f"BODY[HEADER.FIELDS.NOT ({' '.join(headers)})] {{"
     )
-    headers_start = result.find("}") + 3
-    res_length = int(result[result.find("{") + 1 : result.find("}")])
+    headers_start = result.find(b"}") + 3
+    res_length = int(result[result.find(b"{") + 1 : result.find(b"}")])
     result_headers = result[headers_start:]
 
     assert len(result_headers) == res_length
 
-    msg_headers = msg_headers_as_string(
+    msg_headers = msg_headers_as_bytes(
         email_msg, headers=tuple(headers), skip=True
     )
 
@@ -800,7 +793,7 @@ async def test_fetch_body_text_with_partials(mailbox_with_mimekit_email):
     msg_idx = 10
     ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
     email_msg = ctx.msg()
-    msg_body = msg_as_string(email_msg, headers=False)
+    msg_body = msg_as_bytes(email_msg, render_headers=False)
     size = len(msg_body)
     mid = int(size / 2)
 
@@ -809,18 +802,19 @@ async def test_fetch_body_text_with_partials(mailbox_with_mimekit_email):
     fetch = FetchAtt(FetchOp.BODY, section=["TEXT"], partial=(mid, size))
     result2 = fetch.fetch(ctx)
 
-    assert result1.startswith("BODY[TEXT]<0> {")
+    assert result1.startswith(b"BODY[TEXT]<0> {")
 
-    open_brace = result1.find("{") + 1
-    close_brace = result1.find("}")
+    open_brace = result1.find(b"{") + 1
+    close_brace = result1.find(b"}")
     result1_len = int(result1[open_brace:close_brace])
     result1_msg = result1[close_brace + 3 :]
 
     assert result1_len == len(result1_msg)
-    assert result2.startswith(f"BODY[TEXT]<{mid}> {{")
+    assert result2.startswith(b"BODY[TEXT]<" + str(mid).encode() + b"> {")
+    # assert result2.startswith(f"BODY[TEXT]<{mid}> {{")
 
-    open_brace = result2.find("{") + 1
-    close_brace = result2.find("}")
+    open_brace = result2.find(b"{") + 1
+    close_brace = result2.find(b"}")
     result2_len = int(result2[open_brace:close_brace])
     result2_msg = result2[close_brace + 3 :]
 
@@ -842,7 +836,7 @@ async def test_fetch_body_braces(mailbox_with_bunch_of_email):
         msg_idx += 1
         ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         email_msg = ctx.msg()
-        msg_body = msg_as_string(email_msg)
+        msg_body = msg_as_bytes(email_msg)
         size = len(msg_body)
         mid = int(size / 2)
         fetch = FetchAtt(FetchOp.BODY, section=[], partial=(0, mid))
@@ -851,18 +845,19 @@ async def test_fetch_body_braces(mailbox_with_bunch_of_email):
         fetch = FetchAtt(FetchOp.BODY, section=[], partial=(mid, size))
         result2 = fetch.fetch(ctx)
 
-        assert result1.startswith("BODY[]<0> {")
+        assert result1.startswith(b"BODY[]<0> {")
 
-        open_brace = result1.find("{") + 1
-        close_brace = result1.find("}")
+        open_brace = result1.find(b"{") + 1
+        close_brace = result1.find(b"}")
         result1_len = int(result1[open_brace:close_brace])
         result1_msg = result1[close_brace + 3 :]
 
         assert result1_len == len(result1_msg)
-        assert result2.startswith(f"BODY[]<{mid}> {{")
+        assert result2.startswith(b"BODY[]<" + str(mid).encode() + b"> {")
+        # assert result2.startswith(f"BODY[]<{mid}> {{")
 
-        open_brace = result2.find("{") + 1
-        close_brace = result2.find("}")
+        open_brace = result2.find(b"{") + 1
+        close_brace = result2.find(b"}")
         result2_len = int(result2[open_brace:close_brace])
         result2_msg = result2[close_brace + 3 :]
 

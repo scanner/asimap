@@ -333,7 +333,6 @@ async def test_mbox_uid_expunge_with_client(
     for i in range(1, NUM_MSGS_MARKED_DELETED + 1):
         mbox.sequences["Deleted"].add(msg_keys[i])
         expect_deleted.append(msg_keys[i])
-    print(f"**** msg keys to delete: {mbox.sequences["Deleted"]}")
 
     async with mbox.mh_sequences_lock:
         mbox.set_sequences_in_folder(mbox.sequences)
@@ -778,19 +777,19 @@ async def test_mailbox_create_delete(
 ):
     server, imap_client_proxy = imap_user_server_and_client
     mbox = mailbox_with_bunch_of_email
-    ARCHIVE = "/Archive"
-    SUB_FOLDER = "/Archive/foo"
+    ARCHIVE = "Archive"
+    SUB_FOLDER = "Archive/foo"
 
     # Make sure we can not create or delete `inbox` or one that is all digits.
     #
     with pytest.raises(InvalidMailbox):
-        await Mailbox.create("/inbox", server)
+        await Mailbox.create("inbox", server)
 
     with pytest.raises(InvalidMailbox):
-        await Mailbox.delete("/inbox", server)
+        await Mailbox.delete("inbox", server)
 
     with pytest.raises(InvalidMailbox):
-        await Mailbox.create("/1234", server)
+        await Mailbox.create("1234", server)
 
     await Mailbox.create(ARCHIVE, server)
     archive = await server.get_mailbox(ARCHIVE)

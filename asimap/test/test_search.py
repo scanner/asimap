@@ -125,19 +125,12 @@ async def test_search_keywords(mailbox_with_bunch_of_email):
     async with mbox.mh_sequences_lock:
         mbox.set_sequences_in_folder(seqs)
 
-    from pprint import pprint
-
-    print("Sequences set in folder:")
-    pprint(seqs)
-
     matches_by_flag: Dict[str, List[int]] = defaultdict(list)
     for keyword in SYSTEM_FLAGS:
         search_op = IMAPSearch("keyword", keyword=keyword)
         for msg_idx, msg_key in enumerate(msg_keys):
             msg_idx += 1
             ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
-            print(f"Search context: {ctx}, sequences:")
-            pprint(ctx.sequences)
             if await search_op.match(ctx):
                 matches_by_flag[keyword].append(msg_key)
 
