@@ -1198,9 +1198,6 @@ class Authenticated(BaseClientHandler):
                         b"results": b" ".join(results),
                     }
                     await self.client.push(msg)
-                    # await self.client.push(
-                    #     f"* {idx} FETCH ({' '.join(results)})\r\n"
-                    # )
         except MailboxInconsistency as exc:
             self.mbox.optional_resync = False
             logger.exception(
