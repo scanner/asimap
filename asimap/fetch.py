@@ -654,8 +654,11 @@ class FetchAtt:
         result = []
         for param, value in params.items():
             result.append(f'"{param.upper()}" "{value}"')
-
-        return (f'("{cd.upper()}" ({" ".join(result)}))').encode("latin-1")
+        res = f'("{cd.upper()}" ({" ".join(result)}))'
+        try:
+            return res.encode("latin-1")
+        except UnicodeEncodeError:
+            return res.encode("utf-8")
 
     #######################################################################
     #
