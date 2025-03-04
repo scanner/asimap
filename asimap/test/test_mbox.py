@@ -333,7 +333,6 @@ async def test_mbox_uid_expunge_with_client(
     for i in range(1, NUM_MSGS_MARKED_DELETED + 1):
         mbox.sequences["Deleted"].add(msg_keys[i])
         expect_deleted.append(msg_keys[i])
-    print(f"**** msg keys to delete: {mbox.sequences["Deleted"]}")
 
     async with mbox.mh_sequences_lock:
         mbox.set_sequences_in_folder(mbox.sequences)
@@ -343,7 +342,6 @@ async def test_mbox_uid_expunge_with_client(
     #
     uids_to_delete = list(range(2, NUM_MSGS_TO_DELETE + 2))
     set_expect_deleted = set(expect_deleted) - set(uids_to_delete)
-    print(f"**** uids to delete: {uids_to_delete}")
     imap_client.cmd_processor.idling = True
     await mbox.expunge(uid_msg_set=uids_to_delete)
     imap_client.cmd_processor.idling = False
@@ -455,8 +453,8 @@ async def test_mailbox_fetch(mailbox_with_bunch_of_email):
         msg_key, result = fetch_result
         assert msg_key in expected_keys
         flags, headers = result
-        assert flags.startswith("FLAGS (")
-        assert headers.startswith("BODY[HEADER.FIELDS (Date From)] {")
+        assert flags.startswith(b"FLAGS (")
+        assert headers.startswith(b"BODY[HEADER.FIELDS (Date From)] {")
 
     for msg_key in msg_set:
         # One of the FETCH's is a BODY.PEEK, thus `\Seen` flag should
@@ -472,13 +470,13 @@ async def test_mailbox_fetch(mailbox_with_bunch_of_email):
         assert msg_key in expected_keys
         flags, headers, uid = result
         uid_str, uid_val = uid.split()
-        assert uid_str == "UID"
+        assert uid_str == b"UID"
         # NOTE: idx is a imap message sequence number, which is 1-based. So need
         #       -1 to get the proper UID.
         #
         assert int(uid_val) == mbox.uids[idx - 1]
-        assert flags.startswith("FLAGS (")
-        assert headers.startswith("BODY[HEADER.FIELDS (Date From)] {")
+        assert flags.startswith(b"FLAGS (")
+        assert headers.startswith(b"BODY[HEADER.FIELDS (Date From)] {")
 
     for msg_key in msg_set:
         # One of the FETCH's is a BODY.PEEK, thus `\Seen` flag should
@@ -583,8 +581,8 @@ async def test_mailbox_fetch_after_new_messages(
     ):
         msg_key, results = fetch_result
         for result in results:
-            if result.startswith("UID "):
-                uid = int(result.split(" ")[1])
+            if result.startswith(b"UID "):
+                uid = int(result.split(b" ")[1])
                 # message keys are 1-based, search results list is 0-based.
                 #
                 assert uid == search_results[msg_key - 1]
@@ -778,19 +776,19 @@ async def test_mailbox_create_delete(
 ):
     server, imap_client_proxy = imap_user_server_and_client
     mbox = mailbox_with_bunch_of_email
-    ARCHIVE = "/Archive"
-    SUB_FOLDER = "/Archive/foo"
+    ARCHIVE = "Archive"
+    SUB_FOLDER = "Archive/foo"
 
     # Make sure we can not create or delete `inbox` or one that is all digits.
     #
     with pytest.raises(InvalidMailbox):
-        await Mailbox.create("/inbox", server)
+        await Mailbox.create("inbox", server)
 
     with pytest.raises(InvalidMailbox):
-        await Mailbox.delete("/inbox", server)
+        await Mailbox.delete("inbox", server)
 
     with pytest.raises(InvalidMailbox):
-        await Mailbox.create("/1234", server)
+        await Mailbox.create("1234", server)
 
     await Mailbox.create(ARCHIVE, server)
     archive = await server.get_mailbox(ARCHIVE)

@@ -10,17 +10,27 @@ query and generate the body of the `FETCH` response IMAP message.
 #
 import email.utils
 import logging
-from email.message import EmailMessage
+from email.header import Header
+from email.message import EmailMessage, Message
 from enum import StrEnum
-from typing import List, Optional, Set, Tuple, Union
+from typing import List, Optional, Set, Tuple, TypeAlias, Union
 
 # asimap imports
 #
 from .constants import seq_to_flag
 from .exceptions import Bad
-from .generator import msg_as_string, msg_headers_as_string
+
+# from .generator import msg_as_string, msg_headers_as_string
+from .generator import msg_as_bytes, msg_headers_as_bytes
 
 logger = logging.getLogger("asimap.fetch")
+
+# A section in a message that can be fetched.
+# XXX `None` indicates the entire message? Or should `Optional` be removed?
+#
+MsgSectionType: TypeAlias = Optional[
+    List[Union[int, str, List[str | List[str]]]]
+]
 
 
 ############################################################################
@@ -31,6 +41,87 @@ class BadSection(Bad):
 
     def __str__(self):
         return f"BadSection: {self.value}"
+
+
+####################################################################
+#
+def header_or_nil(msg: Message, field: str) -> bytes:
+    """
+    a shortcut for encoding a heaader if it exists in a message otherwise
+    it returns "NIL"
+    """
+    return encode_header(msg[field]) if field in msg else b"NIL"
+
+
+############################################################################
+#
+def encode_header(hdr: str) -> bytes:
+    """
+    Attempts to encode a header as bytes. It will first attempt to simply
+    encode the header using latin-1. If that fails then we will try to encode
+    it as utf-8 using the MIME encoding specified in RFC2047:
+
+        `=?charset?encoding?encoded_text?=`
+
+    If we are unable to encode it using UTF-8, we will encoded as latin-1, but
+    falling back to "?" for all characters that can not be encoded.
+    """
+    try:
+        result = hdr.encode("latin-1")
+    except UnicodeEncodeError:
+        pass
+
+    try:
+        # maxlinelen=0 means do not wrap
+        #
+        result = Header(hdr).encode(maxlinelen=0).encode("latin-1")
+    except UnicodeEncodeError:
+        result = hdr.encode("latin-1", errors="replace")
+    return b'"' + result + b'"'
+
+
+########################################################################
+#
+def encode_addrs(msg: Message, field: str) -> bytes:
+    """
+    Encode all the email addresses in a given field in the message as an
+    address structure (as bytes)
+
+    The fields of an address are in the following order: personal name, [SMTP]
+    at-domain-list (source route), mailbox name, and host name.
+
+    The includes proper UTF-8 encodeding for the personal name if it can not
+    encoded as latin-1.
+    """
+    field_data: List[str] = msg.get_all(field, [])
+    if not field_data:
+        return b"NIL"
+
+    result: List[bytes] = []
+    addrs = email.utils.getaddresses(field_data, strict=False)
+
+    for real_name, email_address in addrs:
+        addr: List[bytes] = []
+
+        # the real name is not set, it turns into nil.
+        #
+        name = encode_header(real_name) if real_name else b"NIL"
+        addr.append(name)
+        addr.append(b"NIL")  # We do not bother with the source route.
+
+        # mailbox and hostname MUST be latin-1 encodable is my understanding
+        #
+        if "@" in email_address:
+            mailbox, host = email_address.split("@")
+            addr.append(encode_header(mailbox))
+            addr.append(encode_header(host))
+        else:
+            addr.append(encode_header(email_address))
+            addr.append(b"NIL")
+
+        result.append(b"(" + b" ".join(addr) + b")")
+
+    return b"(" + b" ".join(result) + b")"
 
 
 ########################################################################
@@ -54,19 +145,6 @@ class FetchOp(StrEnum):
 
 
 STR_TO_FETCH_OP = {op_enum.value: op_enum for op_enum in FetchOp}
-
-ENVELOPE_FIELDS = (
-    "date",
-    "subject",
-    "from",
-    "sender",
-    "reply-to",
-    "to",
-    "cc",
-    "bcc",
-    "in-reply-to",
-    "message-id",
-)
 
 
 ############################################################################
@@ -121,12 +199,17 @@ class FetchAtt:
 
     ##################################################################
     #
-    def __str__(self):
+    def __str__(self) -> str:
         return self.dbg(show_peek=False)
+
+    ####################################################################
+    #
+    def __bytes__(self) -> bytes:
+        return str(self).encode("latin-1")
 
     ##################################################################
     #
-    def dbg(self, show_peek=False):
+    def dbg(self, show_peek=False) -> str:
         """
         Arguments:
         - `show_peek`: Show if this is a .PEEK or not. This is
@@ -160,7 +243,7 @@ class FetchAtt:
 
     #######################################################################
     #
-    def fetch(self, ctx) -> str:
+    def fetch(self, ctx) -> bytes:
         r"""
         This method applies fetch criteria that this object represents
         to the message and message entry being passed in.
@@ -176,7 +259,7 @@ class FetchAtt:
         # Based on the operation figure out what subroutine does the rest
         # of the work.
         #
-        result: Union[str, int]
+        result: Union[bytes, int]
         match self.attribute:
             case (
                 FetchOp.BODY
@@ -194,10 +277,13 @@ class FetchAtt:
                         case FetchOp.ENVELOPE:
                             result = self.envelope(msg)
                         case FetchOp.RFC822_SIZE:
-                            result = ctx.msg_size()
+                            result = str(ctx.msg_size()).encode("latin-1")
                 except UnicodeEncodeError as e:
                     logger.error(
-                        "Unable to perform fetch %s, failed on message %s, exception: %r",
+                        (
+                            "Unable to perform fetch %s, failed on message %s, "
+                            "exception: %r",
+                        ),
                         self.attribute,
                         self.ctx,
                         e,
@@ -205,91 +291,101 @@ class FetchAtt:
                     raise
             case FetchOp.FLAGS:
                 flags = " ".join([seq_to_flag(x) for x in self.ctx.sequences])
-                result = f"({flags})"
+                result = f"({flags})".encode("latin-1")
             case FetchOp.INTERNALDATE:
                 int_date = self.ctx.internal_date()
                 internal_date = email.utils.format_datetime(int_date)
-                result = f'"{internal_date}"'
+                result = f'"{internal_date}"'.encode("latin-1")
             case FetchOp.UID:
-                result = self.ctx.uid()
+                result = str(self.ctx.uid()).encode("latin-1")
             case _:
                 raise NotImplementedError
 
-        return f"{str(self)} {result}"
+        return bytes(self) + b" " + result
 
     ####################################################################
     #
     def _single_section(
-        self, msg: EmailMessage, section: Union[int | str]
-    ) -> str:
+        self, msg: Message | EmailMessage, section: Union[int | str]
+    ) -> bytes:
         """
         Flatten message text from single top level section.
         """
-        if isinstance(section, int):
-            if section == 1 and not msg.is_multipart():
-                # If they want section 1 and this message is NOT multipart then
-                # this is equivalent to `BODY[TEXT]`
+        match section:
+            case int():
+                # If they want section 1 and this message is NOT multipart
+                # then this is equivalent to `BODY[TEXT]`
                 #
-                return msg_as_string(msg, headers=False)
+                if not msg.is_multipart():
+                    if section != 1:
+                        raise BadSection(
+                            f"Trying to retrieve section {section} and this "
+                            "message is not multipart"
+                        )
+                    return msg_as_bytes(msg, render_headers=False)
 
-            # Otherwise, get the sub-part of the message that they are after
-            #
-            if section != 1 and not msg.is_multipart():
-                raise BadSection(
-                    f"Trying to retrieve section {section} and this message "
-                    "is not multipart"
-                )
+                # Message is multipart. Retrieve the part that they want.
+                #
+                try:
+                    # NOTE: IMAP sections are 1 based. Sections in the message
+                    #       are 0-based.
+                    #
+                    return msg_as_bytes(
+                        msg.get_payload(section - 1), render_headers=False
+                    )
+                except IndexError:
+                    raise BadSection(
+                        f"Section {section} does not exist in this message "
+                        "sub-part"
+                    )
 
-            try:
-                # NOTE: IMAP sections are 1 based. Sections in the message are
-                #       0-based.
-                #
-                return msg_as_string(
-                    msg.get_payload(section - 1), headers=False
-                )
-            except IndexError:
-                raise BadSection(
-                    f"Section {section} does not exist in this message sub-part"
-                )
-        elif isinstance(section, str) and section.upper() == "TEXT":
-            return msg_as_string(msg, headers=False)
-        elif isinstance(section, (list, tuple)):
-            if section[0].upper() == "HEADER.FIELDS":
-                headers = tuple(section[1])
-                return msg_headers_as_string(msg, headers=headers, skip=False)
-            elif section[0].upper() == "HEADER.FIELDS.NOT":
-                headers = tuple(section[1])
-                return msg_headers_as_string(msg, headers=headers, skip=True)
-            else:
-                raise BadSection(
-                    "Section value must be either HEADER.FIELDS or "
-                    f"HEADER.FIELDS.NOT, not: '{section[0]}'"
-                )
-        # ELSE: section is a str.
-        #
-        if not isinstance(section, str):
-            self.log.warn(f"body: Unexpected section value: '{section}'")
-            raise BadSection(f"{self}: Unexpected section value: '{section}'")
+            case list() | tuple():
+                match section[0].upper():
+                    case "HEADER.FIELDS":
+                        headers = tuple(section[1])
+                        return msg_headers_as_bytes(
+                            msg, headers=headers, skip=False
+                        )
+                    case "HEADER.FIELDS.NOT":
+                        headers = tuple(section[1])
+                        return msg_headers_as_bytes(
+                            msg, headers=headers, skip=True
+                        )
+                    case _:
+                        raise BadSection(
+                            "Section value must be either HEADER.FIELDS or "
+                            f"HEADER.FIELDS.NOT, not: '{section[0]}'"
+                        )
 
-        match section.upper():
-            case "MIME":
-                # XXX just use the generator as it is for MIME.. I know this is
-                #     not quite right in that it will accept more then it
-                #     should, but it will otherwise work.
-                #
-                return msg_headers_as_string(msg)
-            case "HEADER":
-                # if the content type is message/rfc822 then to
-                # get the headers we need to use the first
-                # sub-part of this message.
-                #
-                if (
-                    msg.is_multipart()
-                    and msg.get_content_type() == "message/rfc822"
-                ):
-                    return msg_headers_as_string(msg.get_payload(0))
-                else:
-                    return msg_headers_as_string(msg)
+            case str():
+                match section.upper():
+                    case "TEXT":
+                        return msg_as_bytes(msg, render_headers=False)
+                    case "MIME":
+                        # XXX just use the generator as it is for MIME.. I know
+                        #     this is not quite right in that it will accept
+                        #     more then it should, but it will otherwise work.
+                        #
+                        return msg_headers_as_bytes(msg)
+                    case "HEADER":
+                        # if the content type is message/rfc822 then to get the
+                        # headers we need to use the first sub-part of this
+                        # message.
+                        #
+                        if (
+                            msg.is_multipart()
+                            and msg.get_content_type() == "message/rfc822"
+                        ):
+                            return msg_headers_as_bytes(msg.get_payload(0))
+                        return msg_headers_as_bytes(msg)
+                    case _:
+                        self.log.warn(
+                            f"body: Unexpected section value: '{section}'"
+                        )
+                        raise BadSection(
+                            f"{self}: Unexpected section value: '{section}'"
+                        )
+
             case _:
                 self.log.warn(f"body: Unexpected section value: '{section}'")
                 raise BadSection(
@@ -299,10 +395,10 @@ class FetchAtt:
     ####################################################################
     #
     def _body(
-        self, msg: EmailMessage, section: Union[None, List[int | str]]
-    ) -> str:
+        self, msg: Message | EmailMessage, section: Union[None, List[int | str]]
+    ) -> bytes:
         if not section:
-            return msg_as_string(msg)
+            return msg_as_bytes(msg)
 
         if len(section) == 1:
             return self._single_section(msg, section[0])
@@ -321,17 +417,21 @@ class FetchAtt:
                     f"(section list: {section})"
                 )
             try:
-                return self._body(msg.get_payload(section[0] - 1), section[1:])
+                bp = msg.get_payload(section[0] - 1)
+                assert isinstance(bp, Message)
+                return self._body(bp, section[1:])
             except (TypeError, IndexError):
                 raise BadSection(
                     f"Message does not contain subsection {section[0]} "
                     f"(section list: {section})"
                 )
-        return msg_as_string(msg)
+        return msg_as_bytes(msg)
 
     ####################################################################
     #
-    def body(self, msg: EmailMessage, section: Union[None, List[int | str]]):
+    def body(
+        self, msg: EmailMessage, section: Union[None, List[int | str]]
+    ) -> bytes:
         """
         Fetch the appropriate section of the message, flatten into a string
         and return it to the user.
@@ -340,7 +440,9 @@ class FetchAtt:
 
         # We need to always terminate with crlf.
         #
-        msg_text = msg_text if msg_text.endswith("\r\n") else msg_text + "\r\n"
+        msg_text = (
+            msg_text if msg_text.endswith(b"\r\n") else msg_text + b"\r\n"
+        )
 
         # If this is a partial only return the bits asked for.
         #
@@ -350,104 +452,71 @@ class FetchAtt:
 
         # Return literal length encoded string.
         #
-        return f"{{{len(msg_text)}}}\r\n{msg_text}"
+        return (f"{{{len(msg_text)}}}\r\n").encode("latin-1") + msg_text
 
     #######################################################################
     #
-    def envelope(self, msg: EmailMessage) -> str:
+    def envelope(self, msg: Message) -> bytes:
         """
         Get the envelope structure of the message as a list, in a defined
         order.
 
+        The fields of the envelope structure are in the following order:
+        - date
+        - subject
+        - from
+        - sender
+        - reply-to
+        - to
+        - cc
+        - bcc
+        - in-reply-to
+        - message-id
+
+        The date, subject, in-reply-to, and message-id fields are
+        strings(bytes).  The from, sender, reply-to, to, cc, and bcc fields are
+        parenthesized lists of address structures.
+
         Any fields that we can not determine the value of are NIL.
         """
-        result = []
+        date = header_or_nil(msg, "date")
+        subject = header_or_nil(msg, "subject")
 
-        from_field = ""
-        for field in ENVELOPE_FIELDS:
-            if field in ("date", "subject", "in-reply-to", "message-id"):
-                if field not in msg:
-                    result.append("NIL")
-                    continue
-            # 'reply-to' and 'sender' are copied from the 'from' field
-            # if they are not explicitly defined.
-            #
-            if field in ("sender", "reply-to") and field not in msg:
-                result.append(from_field)
-                continue
+        # Messages without a From field are bad, but we need to supply all
+        # fields for the ENVELOPE response (and we have seen messages without a
+        # From field.)
+        #
+        frm = encode_addrs(msg, "from")
+        sender = encode_addrs(msg, "sender") if "sender" in msg else frm
+        reply_to = encode_addrs(msg, "reply-to") if "reply-to" in msg else frm
+        to = encode_addrs(msg, "to")
+        cc = encode_addrs(msg, "cc")
+        bcc = encode_addrs(msg, "bcc")
+        in_reply_to = header_or_nil(msg, "in-reply-to")
+        msg_id = header_or_nil(msg, "message-id")
 
-            # If a field is not in the message it is nil.
-            #
-            if field not in msg:
-                if field == "from":
-                    # Messages without a From field are bad, but we need to
-                    # supply all fields for the ENVELOPE response.
-                    #
-                    from_field = "NIL"
-                result.append("NIL")
-                continue
-
-            # The from, sender, reply-to, to, cc, and bcc fields are
-            # parenthesized lists of address structures.
-            #
-            if field in ("from", "sender", "reply-to", "to", "cc", "bcc"):
-                field_data: List[str] = msg.get_all(field, [])
-                if field_data:
-                    addrs = email.utils.getaddresses(field_data)
-                else:
-                    result.append("NIL")
-                    continue
-
-                addr_list = []
-
-                # Parse each address in to an address structure: An address
-                # structure is a parenthesized list that describes an
-                # electronic mail address.  The fields of an address structure
-                # are in the following order: personal name, [SMTP]
-                # at-domain-list (source route), mailbox name, and host name.
-                #
-                for name, paddr in addrs:
-                    one_addr = []
-                    if name == "":
-                        one_addr.append("NIL")
-                    else:
-                        one_addr.append(f'"{name}"')
-
-                    # This is the '[SMTP] at-domain-list (source route)' which
-                    # for now we do not bother with (not in any of my messages
-                    # so I am just going to punt on it.)
-                    #
-                    one_addr.append("NIL")
-
-                    # Next: mailbox name, and host name. Handle the case like
-                    # 'MAILER-DAEMON' on the local host where there is no host
-                    # name.
-                    #
-                    if paddr != "":
-                        if "@" in paddr:
-                            mbox_name, host_name = paddr.split("@")
-                            one_addr.append(f'"{mbox_name}"')
-                            one_addr.append(f'"{host_name}"')
-                        else:
-                            one_addr.append(f'"{paddr}"')
-                            one_addr.append("NIL")
-                    else:
-                        one_addr.append("NIL")
-                    addr_list.append(f"({' '.join(one_addr)})")
-                result.append(f"({''.join(addr_list)})")
-
-                # We stash the from field because we may need it for sender
-                # and reply-to
-                #
-                if field == "from":
-                    from_field = result[-1]
-            else:
-                result.append(f'"{msg[field]}"')
-        return f"({' '.join(result)})"
+        return (
+            b"("
+            + b" ".join(
+                (
+                    date,
+                    subject,
+                    frm,
+                    sender,
+                    reply_to,
+                    to,
+                    cc,
+                    bcc,
+                    in_reply_to,
+                    msg_id,
+                )
+            )
+            + b")"
+        )
 
     ##################################################################
     #
-    def body_languages(self, msg: EmailMessage) -> str:
+    def body_languages(self, msg: Message | EmailMessage) -> bytes:
         """
         Find the language related headers in the message and return a
         string suitable for the 'body language' element of a
@@ -472,15 +541,17 @@ class FetchAtt:
                 langs.add(f'"{value.strip()}"')
 
         if not langs:
-            return "NIL"
+            return b"NIL"
         elif len(langs) == 1:
-            return list(langs)[0]
+            return (list(langs)[0]).encode("latin-1")
         else:
-            return f"({' '.join([x for x in sorted(list(langs))])})"
+            return (f"({' '.join([x for x in sorted(list(langs))])})").encode(
+                "latin-1"
+            )
 
     ##################################################################
     #
-    def body_location(self, msg: EmailMessage) -> str:
+    def body_location(self, msg: EmailMessage) -> bytes:
         """
         Suss if the message part has a 'content-location' header or not
         and return it if it does (or NIL if it does not.)
@@ -489,12 +560,12 @@ class FetchAtt:
         - `msg`: the message (message part) we are looking at
         """
         if "content-location" in msg:
-            return '"%s"' % msg["content-location"]
-        return "NIL"
+            return (f'"{msg["content-location"]}"').encode("latin-1")
+        return b"NIL"
 
     ##################################################################
     #
-    def body_parameters(self, msg: EmailMessage) -> str:
+    def body_parameters(self, msg: EmailMessage) -> bytes:
         """
         The body parameters for a message as a parenthesized list.
         Basically this list is a set of key value pairs, all separate by
@@ -525,17 +596,21 @@ class FetchAtt:
                 params[param] = msg["Content-Type"].params[param]
 
         if not params:
-            return "NIL"
+            return b"NIL"
 
         results = []
         for k, v in params.items():
             results.append(f'"{k.upper()}" "{v}"')
 
-        return f"({' '.join(results)})"
+        try:
+            res = (f"({' '.join(results)})").encode("latin-1")
+        except UnicodeEncodeError:
+            res = (f"({' '.join(results)})").encode("utf-8")
+        return res
 
     ####################################################################
     #
-    def extension_data(self, msg: EmailMessage) -> List[str]:
+    def extension_data(self, msg: Message | EmailMessage) -> List[bytes]:
         """
         Keyword Arguments:
         msg: EmailMessages --
@@ -548,12 +623,12 @@ class FetchAtt:
             if "Content-Location" in msg
             else "NIL"
         )
-        results.append(cl)
+        results.append(cl.encode("latin-1"))
         return results
 
     #######################################################################
     #
-    def body_disposition(self, msg: EmailMessage) -> str:
+    def body_disposition(self, msg: Message | EmailMessage) -> bytes:
         """
         Return the body-disposition properly formatted for returning as
         part of a BODYSTRUCTURE fetch.
@@ -570,21 +645,21 @@ class FetchAtt:
         """
         cd = msg.get_content_disposition()
         if cd is None:
-            return "NIL"
+            return b"NIL"
 
         params = msg["Content-Disposition"].params
         if not params:
-            return f'("{cd}" NIL)'
+            return (f'("{cd}" NIL)').encode("latin-1")
 
         result = []
         for param, value in params.items():
             result.append(f'"{param.upper()}" "{value}"')
 
-        return f'("{cd.upper()}" ({" ".join(result)}))'
+        return (f'("{cd.upper()}" ({" ".join(result)}))').encode("latin-1")
 
     #######################################################################
     #
-    def bodystructure(self, msg: EmailMessage) -> str:
+    def bodystructure(self, msg: Message) -> bytes:
         """
         The [MIME-IMB] body structure of the message.  This is computed by
         the server by parsing the [MIME-IMB] header fields in the [RFC-2822]
@@ -632,17 +707,19 @@ class FetchAtt:
             #
             # And finally, if we can, we add on the multipart extension data.
             #
-            sub_parts = []
+            sub_parts: List[bytes] = []
             for sub_part in msg.get_payload():
+                assert isinstance(sub_part, Message)
                 sub_parts.append(self.bodystructure(sub_part))
 
             # If we are NOT supposed to return extension data (ie:
             # doing a 'body' not a 'bodystructure' then we have
             # everything we need to return a result.
             #
-            subtype = msg.get_content_subtype().upper()
+            subtype = (msg.get_content_subtype().upper()).encode("latin-1")
             if not self.ext_data:
-                return f'({"".join(sub_parts)} "{subtype}")'
+                res = b"(" + b"".join(sub_parts) + b'"' + subtype + b'")'
+                return res
 
             # Get the extension data and add it to our response.
             #
@@ -650,7 +727,16 @@ class FetchAtt:
             body_params = self.body_parameters(msg)
             ext_data.insert(0, body_params)
 
-            return f'({"".join(sub_parts)} "{subtype}" {" ".join(ext_data)})'
+            res = (
+                b"("
+                + b"".join(sub_parts)
+                + b' "'
+                + subtype
+                + b'" '
+                + b" ".join(ext_data)
+                + b")"
+            )
+            return res
 
         # This is a non-multipart msg (NOTE: This may very well be one of the
         # sub-parts of the original message).
@@ -690,32 +776,32 @@ class FetchAtt:
         #
         maintype = msg.get_content_maintype()
         subtype = msg.get_content_subtype()
-        result.append(f'"{maintype.upper()}"')
-        result.append(f'"{subtype.upper()}"')
+        result.append((f'"{maintype.upper()}"').encode("latin-1"))
+        result.append((f'"{subtype.upper()}"').encode("latin-1"))
 
         result.append(self.body_parameters(msg))
 
         body_id = f'"{msg["Content-ID"]}"' if "Content-ID" in msg else "NIL"
-        result.append(body_id)
+        result.append(body_id.encode("latin-1"))
 
         body_desc = (
             f'"{msg["Content-Description"]}"'
             if "Content-Description" in msg
             else "NIL"
         )
-        result.append(body_desc)
+        result.append(body_desc.encode("latin-1"))
 
         cte = (
             msg["Content-Transfer-Encoding"]
             if "Content-Transfer-Encoding" in msg
             else "7BIT"
         )
-        result.append(f'"{cte}"')
+        result.append((f'"{cte}"').encode("latin-1"))
 
         # Body size
-        payload = msg_as_string(msg, headers=False)
-        result.append(str(len(payload)))
-        num_lines = payload.count("\n")
+        payload = msg_as_bytes(msg, render_headers=False)
+        result.append(str(len(payload)).encode("latin-1"))
+        num_lines = payload.count(b"\n")
 
         # Now come the variable fields depending on the maintype/subtype
         # of this message.
@@ -725,33 +811,31 @@ class FetchAtt:
             # - body structure
             # - size in text lines of encapsulated message
             encapsulated_msg = msg.get_payload()[0]
+            assert isinstance(encapsulated_msg, Message)
             result.append(self.envelope(encapsulated_msg))
             result.append(self.bodystructure(encapsulated_msg))
-            encapsulated_msg_text = msg_as_string(encapsulated_msg)
-            result.append(str(encapsulated_msg_text.count("\n")))
+            encapsulated_msg_text = msg_as_bytes(encapsulated_msg)
+            result.append(
+                str(encapsulated_msg_text.count(b"\n")).encode("latin-1")
+            )
         elif msg.get_content_maintype() == "text":
-            result.append(str(num_lines))
+            result.append(str(num_lines).encode("latin-1"))
 
         # If we are not supposed to return extension data then we are done here
         #
         if not self.ext_data:
-            return f"({' '.join(result)})"
+            return b"(" + b" ".join(result) + b")"
 
         # Now we have the message body extension data. NOTE: This does NOT
         # return the `NIL` for MD5.
         #
         extension_data = self.extension_data(msg)
-        extension_data.insert(0, "NIL")
+        extension_data.insert(0, b"NIL")
 
-        # If there is no extension data then do not bother to include it.
-        #
-        # if any(x != "NIL" for x in extension_data):
-        #     for x in extension_data:
-        #         result.append(x)
-        #
         # Extension data should be optional but some IMAP clients seem to
         # require it. it does no harm to include it as far as I can tell.
         #
         for x in extension_data:
             result.append(x)
-        return f"({' '.join(result)})"
+
+        return b"(" + b" ".join(result) + b")"

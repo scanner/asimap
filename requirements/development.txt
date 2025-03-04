@@ -6,24 +6,24 @@
 #
 aiofiles==24.1.0
     # via -r /Users/scanner/src/asimap/requirements/production.txt
-aioretry==6.2.0
+aioretry==6.3.1
     # via -r /Users/scanner/src/asimap/requirements/production.txt
-aiosqlite==0.20.0
+aiosqlite==0.21.0
     # via -r /Users/scanner/src/asimap/requirements/production.txt
-anyio==4.6.2.post1
+anyio==4.8.0
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   httpx
-asttokens==2.4.1
+asttokens==3.0.0
     # via stack-data
-black==24.10.0
+black==25.1.0
     # via -r /Users/scanner/src/asimap/requirements/lint.txt
 build==1.2.2.post1
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   -r /Users/scanner/src/asimap/requirements/lint.txt
     #   pip-tools
-certifi==2024.8.30
+certifi==2025.1.31
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   -r /Users/scanner/src/asimap/requirements/production.txt
@@ -39,11 +39,11 @@ cfgv==3.4.0
     # via
     #   -r /Users/scanner/src/asimap/requirements/lint.txt
     #   pre-commit
-charset-normalizer==3.4.0
+charset-normalizer==3.4.1
     # via
     #   -r /Users/scanner/src/asimap/requirements/production.txt
     #   requests
-click==8.1.7
+click==8.1.8
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   -r /Users/scanner/src/asimap/requirements/lint.txt
@@ -53,19 +53,19 @@ click==8.1.7
     #   userpath
 codetiming==1.4.0
     # via -r development.in
-coverage==7.6.4
+coverage==7.6.12
     # via
     #   -r /Users/scanner/src/asimap/requirements/lint.txt
     #   pytest-cov
-cryptography==43.0.3
+cryptography==44.0.2
     # via
     #   -r /Users/scanner/src/asimap/requirements/lint.txt
     #   trustme
     #   types-pyopenssl
     #   types-redis
-decorator==5.1.1
+decorator==5.2.1
     # via ipython
-dirty-equals==0.8.0
+dirty-equals==0.9.0
     # via -r development.in
 distlib==0.3.9
     # via
@@ -74,13 +74,13 @@ distlib==0.3.9
     #   virtualenv
 docopt==0.6.2
     # via -r /Users/scanner/src/asimap/requirements/production.txt
-executing==2.1.0
+executing==2.2.0
     # via stack-data
-factory-boy==3.3.1
+factory-boy==3.3.3
     # via pytest-factoryboy
-faker==32.1.0
+faker==36.1.1
     # via factory-boy
-filelock==3.16.1
+filelock==3.17.0
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   -r /Users/scanner/src/asimap/requirements/lint.txt
@@ -89,17 +89,17 @@ h11==0.14.0
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   httpcore
-hatch==1.13.0
+hatch==1.14.0
     # via -r /Users/scanner/src/asimap/requirements/build.txt
-hatchling==1.26.3
+hatchling==1.27.0
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   hatch
-httpcore==1.0.6
+httpcore==1.0.7
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   httpx
-httpx==0.27.2
+httpx==0.28.1
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   hatch
@@ -107,7 +107,7 @@ hyperlink==21.0.0
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   hatch
-identify==2.6.2
+identify==2.6.8
     # via
     #   -r /Users/scanner/src/asimap/requirements/lint.txt
     #   pre-commit
@@ -121,17 +121,15 @@ idna==3.10
     #   trustme
 imapclient==3.0.1
     # via -r development.in
-importlib-metadata==8.5.0
-    # via
-    #   -r /Users/scanner/src/asimap/requirements/lint.txt
-    #   yapf
 inflection==0.5.1
     # via pytest-factoryboy
 iniconfig==2.0.0
     # via pytest
-ipython==8.29.0
+ipython==9.0.1
     # via -r development.in
-isort==5.13.2
+ipython-pygments-lexers==1.1.1
+    # via ipython
+isort==6.0.1
     # via -r /Users/scanner/src/asimap/requirements/lint.txt
 jaraco-classes==3.4.0
     # via
@@ -147,7 +145,7 @@ jaraco-functools==4.1.0
     #   keyring
 jedi==0.19.2
     # via ipython
-keyring==25.5.0
+keyring==25.6.0
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   hatch
@@ -161,12 +159,12 @@ mdurl==0.1.2
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   markdown-it-py
-more-itertools==10.5.0
+more-itertools==10.6.0
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   jaraco-classes
     #   jaraco-functools
-mypy==1.13.0
+mypy==1.15.0
     # via -r /Users/scanner/src/asimap/requirements/lint.txt
 mypy-extensions==1.0.0
     # via
@@ -216,9 +214,9 @@ pluggy==1.5.0
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   hatchling
     #   pytest
-pre-commit==4.0.1
+pre-commit==4.1.0
     # via -r /Users/scanner/src/asimap/requirements/lint.txt
-prompt-toolkit==3.0.48
+prompt-toolkit==3.0.50
     # via ipython
 ptyprocess==0.7.0
     # via
@@ -230,10 +228,11 @@ pycparser==2.22
     # via
     #   -r /Users/scanner/src/asimap/requirements/lint.txt
     #   cffi
-pygments==2.18.0
+pygments==2.19.1
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   ipython
+    #   ipython-pygments-lexers
     #   rich
 pyproject-hooks==1.2.0
     # via
@@ -241,7 +240,7 @@ pyproject-hooks==1.2.0
     #   -r /Users/scanner/src/asimap/requirements/lint.txt
     #   build
     #   pip-tools
-pytest==8.3.3
+pytest==8.3.5
     # via
     #   -r development.in
     #   pytest-asyncio
@@ -249,7 +248,7 @@ pytest==8.3.3
     #   pytest-factoryboy
     #   pytest-mock
     #   pytest-sugar
-pytest-asyncio==0.24.0
+pytest-asyncio==0.25.3
     # via -r development.in
 pytest-cov==6.0.0
     # via pytest-cover
@@ -263,11 +262,9 @@ pytest-mock==3.14.0
     # via -r development.in
 pytest-sugar==1.0.0
     # via -r development.in
-python-dateutil==2.9.0.post0
-    # via faker
 python-dotenv==1.0.1
     # via -r /Users/scanner/src/asimap/requirements/production.txt
-python-json-logger==2.0.7
+python-json-logger==3.2.1
     # via -r /Users/scanner/src/asimap/requirements/production.txt
 pyyaml==6.0.2
     # via
@@ -282,32 +279,23 @@ rich==13.9.4
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   -r development.in
     #   hatch
-ruff==0.7.3
+ruff==0.9.9
     # via -r /Users/scanner/src/asimap/requirements/lint.txt
-sentry-sdk==2.18.0
+sentry-sdk==2.22.0
     # via -r /Users/scanner/src/asimap/requirements/production.txt
 shellingham==1.5.4
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   hatch
-six==1.16.0
-    # via
-    #   asttokens
-    #   python-dateutil
 sniffio==1.3.1
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   anyio
-    #   httpx
 stack-data==0.6.3
     # via ipython
 termcolor==2.5.0
     # via pytest-sugar
-tomli==2.1.0
-    # via
-    #   -r /Users/scanner/src/asimap/requirements/lint.txt
-    #   yapf
-tomli-w==1.1.0
+tomli-w==1.2.0
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   hatch
@@ -319,17 +307,17 @@ traitlets==5.14.3
     # via
     #   ipython
     #   matplotlib-inline
-trove-classifiers==2024.10.21.16
+trove-classifiers==2025.3.3.18
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   hatchling
-trustme==1.2.0
+trustme==1.2.1
     # via -r development.in
-types-aiofiles==24.1.0.20240626
+types-aiofiles==24.1.0.20241221
     # via -r /Users/scanner/src/asimap/requirements/lint.txt
 types-cachetools==5.5.0.20240820
     # via -r /Users/scanner/src/asimap/requirements/lint.txt
-types-cffi==1.16.0.20240331
+types-cffi==1.16.0.20241221
     # via
     #   -r /Users/scanner/src/asimap/requirements/lint.txt
     #   types-pyopenssl
@@ -337,25 +325,28 @@ types-pyopenssl==24.1.0.20240722
     # via
     #   -r /Users/scanner/src/asimap/requirements/lint.txt
     #   types-redis
-types-pytz==2024.2.0.20241003
+types-pytz==2025.1.0.20250204
     # via -r /Users/scanner/src/asimap/requirements/lint.txt
 types-redis==4.6.0.20241004
     # via -r /Users/scanner/src/asimap/requirements/lint.txt
-types-requests==2.32.0.20241016
+types-requests==2.32.0.20250301
     # via -r /Users/scanner/src/asimap/requirements/lint.txt
-types-setuptools==75.3.0.20241112
+types-setuptools==75.8.2.20250301
     # via
     #   -r /Users/scanner/src/asimap/requirements/lint.txt
     #   types-cffi
 typing-extensions==4.12.2
     # via
+    #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   -r /Users/scanner/src/asimap/requirements/lint.txt
     #   -r /Users/scanner/src/asimap/requirements/production.txt
     #   aiosqlite
-    #   faker
+    #   anyio
     #   mypy
     #   pytest-factoryboy
-urllib3==2.2.3
+tzdata==2025.1
+    # via faker
+urllib3==2.3.0
     # via
     #   -r /Users/scanner/src/asimap/requirements/lint.txt
     #   -r /Users/scanner/src/asimap/requirements/production.txt
@@ -366,11 +357,11 @@ userpath==1.9.2
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   hatch
-uv==0.5.1
+uv==0.6.4
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   hatch
-virtualenv==20.27.1
+virtualenv==20.29.2
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt
     #   -r /Users/scanner/src/asimap/requirements/lint.txt
@@ -378,16 +369,12 @@ virtualenv==20.27.1
     #   pre-commit
 wcwidth==0.2.13
     # via prompt-toolkit
-wheel==0.45.0
+wheel==0.45.1
     # via
     #   -r /Users/scanner/src/asimap/requirements/lint.txt
     #   pip-tools
-yapf==0.40.2
+yapf==0.43.0
     # via -r /Users/scanner/src/asimap/requirements/lint.txt
-zipp==3.21.0
-    # via
-    #   -r /Users/scanner/src/asimap/requirements/lint.txt
-    #   importlib-metadata
 zstandard==0.23.0
     # via
     #   -r /Users/scanner/src/asimap/requirements/build.txt

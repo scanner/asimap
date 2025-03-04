@@ -6,16 +6,16 @@ DOCKER_BUILDKIT := 1
 .PHONY: clean lint test test-units test-integrations mypy logs shell restart delete down up build dirs help package publish tag publish-tag
 
 test-integrations: venv
-	PYTHONPATH=`pwd` $(ACTIVATE) pytest -m integration
+	PYTHONPATH=`pwd` $(ACTIVATE) pytest -m integration asimap/
 
 test-units: venv
-	PYTHONPATH=`pwd` $(ACTIVATE) pytest -m "not integration"
+	PYTHONPATH=`pwd` $(ACTIVATE) pytest -m "not integration" asimap/
 
 test: venv
-	PYTHONPATH=`pwd` $(ACTIVATE) pytest
+	PYTHONPATH=`pwd` $(ACTIVATE) pytest asimap/
 
 coverage: venv
-	PYTHONPATH=`pwd` $(ACTIVATE) coverage run -m pytest
+	PYTHONPATH=`pwd` $(ACTIVATE) coverage run -m pytest asimap/
 	coverage html
 	open 'htmlcov/index.html'
 

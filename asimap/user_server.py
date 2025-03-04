@@ -55,6 +55,10 @@ if TYPE_CHECKING:
 #
 logger = logging.getLogger("asimap.user_server")
 
+# For testing switching between "" and "/" and other prefixes.
+#
+MAILBOX_PREFIX = ""
+
 BACKLOG = 5
 USER_SERVER_PROGRAM: str = ""
 RE_LITERAL_STRING_START = re.compile(rb"\{(\d+)(\+)?\}$")
@@ -357,16 +361,24 @@ class IMAPClientProxy:
             try:
                 d = d.encode("latin-1") if isinstance(d, str) else d
             except UnicodeEncodeError:
+                # XXX Do we need this anymore now that we are moving all
+                #     FETCH's that return message contents to be sending us
+                #     bytes instead of str now? I think we can get rid of this.
+                #
                 # Mnugh.. you think latin-1 would work, but sometimes we just
                 # need to go with UTF-8.
                 #
-                d.encode("utf-8", "replace") if isinstance(d, str) else d
+                logger.warning("Unable to encode string using `latin-1`: %s", d)
+                d = d.encode("utf-8", "replace") if isinstance(d, str) else d
             try:
                 self.writer.write(d)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                raise ConnectionError("unable to write message") from exc
+                raise ConnectionError(
+                    f"unable to write message: {exc!r}"
+                ) from exc
+
         if not self.writer.is_closing():
             # If the drain takes more than 2 seconds something has likely gone
             # wrong. Exit out. This blocking can hold on to locks too long.

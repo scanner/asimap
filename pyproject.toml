@@ -102,7 +102,7 @@ module = [
 ]
 
 [tool.pytest.ini_options]
-
+asyncio_default_fixture_loop_scope = "function"
 markers = [
     "smoke: marks tests as smoke (deselect with '-m \"not smoke\"')",
     "integration",

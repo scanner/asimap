@@ -401,21 +401,15 @@ class BaseClientHandler:
     #
     async def do_namespace(self, cmd: IMAPClientCommand):
         """
-        We currently only support a single personal name space. A leading
-        prefix of '/' is used on personal mailboxes and '/' is the hierarchy
+        We currently only support a single personal name space. There is no
+        leading prefix on personal mailboxes and '/' is the hierarchy
         delimiter.
-
-        So 'inbox' is '/inbox'
-
-        NOTE: This is an attempt to see if this is problem with the iOS 18 Mail
-        client. It seems like they are requiring a prefix (and default to '/'
-        if one is not set.)
 
         Arguments:
         - `cmd`: The full IMAP command object.
         """
         await self.send_pending_notifications()
-        await self.client.push('* NAMESPACE (("/" "/")) NIL NIL\r\n')
+        await self.client.push('* NAMESPACE (("" "/")) NIL NIL\r\n')
         return None
 
     #########################################################################
@@ -782,11 +776,8 @@ class Authenticated(BaseClientHandler):
         """
         assert self.server
         await self.send_pending_notifications()
-        logger.debug("*** Attempting delete for '%s'", cmd.mailbox_name)
         mbox = await self.server.get_mailbox(cmd.mailbox_name)
-        logger.debug("*** Got mbox %s", mbox)
         async with cmd.ready_and_okay(mbox):
-            logger.debug("*** command ready and okay... '%s'", mbox)
             await Mailbox.delete(cmd.mailbox_name, self.server)
 
     ##################################################################
@@ -863,7 +854,7 @@ class Authenticated(BaseClientHandler):
         await self.send_pending_notifications()
 
         # Handle the special case where the client is basically just probing
-        # for the hierarchy sepration character.
+        # for the hierarchy separation character.
         #
         if cmd.mailbox_name == "" and cmd.list_mailbox == "":
             await self.client.push(r'* LIST (\Noselect) "/" ""' + "\r\n")
@@ -874,18 +865,11 @@ class Authenticated(BaseClientHandler):
             res = "LSUB"
 
         assert self.server
-        logger.debug("*** LIST '%s', '%s'", cmd.mailbox_name, cmd.list_mailbox)
         async for mbox_name, attributes in Mailbox.list(
             cmd.mailbox_name, cmd.list_mailbox, self.server, lsub
         ):
             mbox_name = "INBOX" if mbox_name.lower() == "inbox" else mbox_name
-            msg = f'* {res} ({" ".join(sorted(attributes))}) "/" "/{mbox_name}"\r\n'
-            logger.debug(
-                "*** List '%s' '%s': %s",
-                cmd.mailbox_name,
-                cmd.list_mailbox,
-                msg[:-2],
-            )
+            msg = f'* {res} ({" ".join(sorted(attributes))}) "/" "{mbox_name}"\r\n'
             await self.client.push(msg)
 
     ####################################################################
@@ -1209,9 +1193,11 @@ class Authenticated(BaseClientHandler):
                 async for idx, results in self.mbox.fetch(
                     msg_set, cmd.fetch_atts, cmd.uid_command, cmd.timeout_cm
                 ):
-                    await self.client.push(
-                        f"* {idx} FETCH ({' '.join(results)})\r\n"
-                    )
+                    msg = b"* %(idx)d FETCH (%(results)b)\r\n" % {
+                        b"idx": idx,
+                        b"results": b" ".join(results),
+                    }
+                    await self.client.push(msg)
         except MailboxInconsistency as exc:
             self.mbox.optional_resync = False
             logger.exception(
