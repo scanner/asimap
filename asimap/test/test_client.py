@@ -793,6 +793,35 @@ async def test_authenticated_client_fetch(
 ####################################################################
 #
 @pytest.mark.asyncio
+async def test_fetch_with_problematic_email(
+    mailbox_with_problematic_email, imap_user_server_and_client
+):
+    server, imap_client = imap_user_server_and_client
+    mailbox_with_problematic_email
+    client_handler = Authenticated(imap_client, server)
+
+    await server.get_mailbox("inbox")
+    cmd = IMAPClientCommand("A004 SELECT INBOX")
+    cmd.parse()
+    await client_handler.command(cmd)
+    client_push_responses(imap_client)
+
+    cmd = IMAPClientCommand(
+        "A001 UID FETCH 1:4 (INTERNALDATE RFC822.SIZE FLAGS BODY[HEADER])"
+    )
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+
+    # We do not care what the results are, as long as the client command did
+    # not fail with an exception.
+    #
+    assert len(results) == 9
+
+
+####################################################################
+#
+@pytest.mark.asyncio
 async def test_authenticated_client_fetch_lotta_fields(
     mailbox_with_bunch_of_email, imap_user_server_and_client
 ):

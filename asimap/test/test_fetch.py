@@ -435,16 +435,9 @@ def test_fetch_rfc822_size(msg_key, expected_size, mailbox_with_mimekit_email):
 
 
 PROBLEMATIC_MSG_SIZE_BY_MSG_KEY = [
-    # pytest.param(1, 1164, id="1"),
     pytest.param(1, 1162, id="1"),
     pytest.param(2, 4392, id="2"),
-    # pytest.param(2, 4335, id="2"),
-    # pytest.param(3, 26777, id="3"),
-    # pytest.param(3, 26737, id="3"),
     pytest.param(3, 26083, id="3"),
-    # pytest.param(4, 9631, id="4"),
-    # pytest.param(4, 9606, id="4"),
-    # pytest.param(4, 9604, id="4"),
     pytest.param(4, 9629, id="4"),
 ]
 
@@ -470,6 +463,28 @@ def test_fetch_problematic_rfc822_size(
 
     assert result.startswith(b"RFC822.SIZE ")
     assert int(result[12:]) == expected_size
+
+
+####################################################################
+#
+@pytest.mark.parametrize("msg_key", [1, 2, 3, 4])
+def test_probelmatic_encoding(msg_key, mailbox_with_problematic_email):
+    """
+    Testing fetch with encoding issues on problematic emails
+    """
+    mbox = mailbox_with_problematic_email
+    seq_max = mbox.num_msgs
+    uid_vv, uid_max = mbox.get_uid_from_msg(mbox.msg_keys[-1])
+    assert uid_max
+
+    msg_seq_num = msg_key
+
+    ctx = SearchContext(mbox, msg_key, msg_seq_num, seq_max, uid_max)
+    fetch = FetchAtt(FetchOp.BODY, ["HEADER"])
+    result = fetch.fetch(ctx)
+
+    # Note testing the results.. just making sure the fetch does not fail.
+    assert result.startswith(b"BODY")
 
 
 ####################################################################

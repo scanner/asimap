@@ -146,21 +146,6 @@ class FetchOp(StrEnum):
 
 STR_TO_FETCH_OP = {op_enum.value: op_enum for op_enum in FetchOp}
 
-# The fields, in order, for the ENVELOPE response
-#
-ENVELOPE_FIELDS = (
-    "date",
-    "subject",
-    "from",
-    "sender",
-    "reply-to",
-    "to",
-    "cc",
-    "bcc",
-    "in-reply-to",
-    "message-id",
-)
-
 
 ############################################################################
 ############################################################################
@@ -684,7 +669,11 @@ class FetchAtt:
         for k, v in params.items():
             results.append(f'"{k.upper()}" "{v}"')
 
-        return (f"({' '.join(results)})").encode("latin-1")
+        try:
+            res = (f"({' '.join(results)})").encode("latin-1")
+        except UnicodeEncodeError:
+            res = (f"({' '.join(results)})").encode("utf-8")
+        return res
 
     ####################################################################
     #
