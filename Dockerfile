@@ -61,7 +61,7 @@ CMD ["python", "/app/asimap/asimapd.py"]
 #
 # `app` - The docker image for the django app web service
 #
-FROM python:3.12.7-slim AS prod
+FROM python:3.12.9-slim AS prod
 
 LABEL org.opencontainers.image.source=https://github.com/scanner/asimap
 LABEL org.opencontainers.image.description="Apricot Systematic IMAP Demon"
