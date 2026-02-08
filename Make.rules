@@ -1,7 +1,6 @@
 # -*- Mode: Makefile -*-
 
 UV_RUN := uv run
-PYTHON ?= python3.12
 
 .git/hooks/pre-commit .git/hooks/pre-push: .venv
 	@$(UV_RUN) pre-commit install
