@@ -9,6 +9,7 @@ steps:
       PYTHONUNBUFFERED: 1
       PYTHONPATH: /drone/src
 
+      UV_LINK_MODE: copy
       DEBUG: true
     commands:
       - pip install uv

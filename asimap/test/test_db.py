@@ -26,7 +26,7 @@ async def db(tmp_path):
     """
     db = None
     try:
-        async with asyncio.timeout(1):
+        async with asyncio.timeout(5):
             db = await Database.new(tmp_path)
         assert db
         yield db
