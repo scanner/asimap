@@ -1,8 +1,0 @@
-aiofiles
-aioretry
-aiosqlite
-charset_normalizer
-docopt
-python-dotenv
-python-json-logger
-sentry-sdk

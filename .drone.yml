@@ -11,9 +11,9 @@ steps:
 
       DEBUG: true
     commands:
-      - pip install -U pip
-      - pip install -r ./requirements/development.txt
-      - pytest
+      - pip install uv
+      - uv sync --frozen
+      - uv run pytest
 
 ---
 kind: pipeline

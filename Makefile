@@ -3,25 +3,48 @@ ROOT_DIR := $(shell git rev-parse --show-toplevel)
 include $(ROOT_DIR)/Make.rules
 DOCKER_BUILDKIT := 1
 
-.PHONY: clean lint test test-units test-integrations mypy logs shell restart delete down up build dirs help package publish tag publish-tag
+.PHONY: clean lint test test-units test-integrations mypy logs shell restart delete down up build dirs help package publish tag publish-tag uv-sync uv-lock uv-add uv-add-dev uv-upgrade
 
-test-integrations: venv
-	PYTHONPATH=`pwd` $(ACTIVATE) pytest -m integration asimap/
+test-integrations: .venv
+	PYTHONPATH=`pwd` $(UV_RUN) pytest -m integration asimap/
 
-test-units: venv
-	PYTHONPATH=`pwd` $(ACTIVATE) pytest -m "not integration" asimap/
+test-units: .venv
+	PYTHONPATH=`pwd` $(UV_RUN) pytest -m "not integration" asimap/
 
-test: venv
-	PYTHONPATH=`pwd` $(ACTIVATE) pytest asimap/
+test: .venv
+	PYTHONPATH=`pwd` $(UV_RUN) pytest asimap/
 
-coverage: venv
-	PYTHONPATH=`pwd` $(ACTIVATE) coverage run -m pytest asimap/
-	coverage html
+coverage: .venv
+	PYTHONPATH=`pwd` $(UV_RUN) coverage run -m pytest asimap/
+	$(UV_RUN) coverage html
 	open 'htmlcov/index.html'
 
-build: version requirements/build.txt requirements/development.txt	## `docker build` for both `prod` and `dev` targets
+build: version	## `docker build` for both `prod` and `dev` targets
 	COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg VERSION="$(VERSION)" --target prod --tag asimap:$(VERSION) --tag asimap:prod .
 	COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg VERSION=$(VERSION) --target dev --tag asimap:$(VERSION)-dev --tag asimap:dev .
+
+uv-sync: .venv	## Sync .venv with uv.lock (run after updating pyproject.toml or pulling changes)
+	@uv sync
+
+uv-lock:	## Update uv.lock file from pyproject.toml dependencies
+	@uv lock
+
+uv-add:	## Add a new dependency (usage: make uv-add PACKAGE=requests)
+	@if [ -z "$(PACKAGE)" ]; then \
+		echo "Error: PACKAGE not specified. Usage: make uv-add PACKAGE=requests"; \
+		exit 1; \
+	fi
+	@uv add $(PACKAGE)
+
+uv-add-dev:	## Add a new dev dependency (usage: make uv-add-dev PACKAGE=pytest-xdist)
+	@if [ -z "$(PACKAGE)" ]; then \
+		echo "Error: PACKAGE not specified. Usage: make uv-add-dev PACKAGE=pytest-xdist"; \
+		exit 1; \
+	fi
+	@uv add --dev $(PACKAGE)
+
+uv-upgrade:	## Upgrade all dependencies to latest compatible versions
+	@uv sync --upgrade
 
 asimap_test_dir:   ## Create directory running local development
 	@mkdir -p $(ROOT_DIR)/asimap_test_dir
@@ -66,8 +89,8 @@ shell:	## Make a bash shell an ephemeral dev container
 exec-shell: ## Make a bash shell in the docker-compose running imap-dev container
 	@docker compose exec -ti asimap-dev /bin/bash
 
-.package: version venv $(PY_FILES) pyproject.toml README.md LICENSE Makefile requirements/build.txt requirements/production.txt
-	@PYTHONPATH=`pwd` $(ACTIVATE) python -m build
+.package: version .venv $(PY_FILES) pyproject.toml README.md LICENSE Makefile
+	@PYTHONPATH=`pwd` $(UV_RUN) python -m build
 	@touch .package
 
 package: .package ## build python package (.tar.gz and .whl)
