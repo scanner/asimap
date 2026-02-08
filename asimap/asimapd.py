@@ -74,6 +74,7 @@ from dotenv import load_dotenv
 
 # Application imports
 #
+import asimap.trace
 from asimap import __version__ as VERSION
 from asimap import auth
 from asimap.server import IMAPServer
@@ -169,6 +170,9 @@ def main():
     setup_logging(log_config, debug, trace_dir=trace_dir)
     setup_asyncio_logging()
     logger.info("ASIMAPD Starting, version: %s", VERSION)
+
+    if trace:
+        asimap.trace.toggle_trace(turn_on=True)
 
     ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
     ssl_context.check_hostname = False

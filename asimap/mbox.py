@@ -2211,17 +2211,17 @@ class Mailbox:
                 fetched_body_seen = False
                 iter_results: List[bytes] = []
 
-                # If this is a uid_cmd add the UID to the fetch atts we need to
-                # return. ie: a fetch response that would have been:
+                # If this is a uid_cmd add the UID to the fetch atts we
+                # need to return. ie: a fetch response that would have been:
                 # * 23 FETCH (FLAGS (\Seen))
                 # is now going to be:
                 # * 23 FETCH (FLAGS (\Seen) UID 4827313)
                 #
-                fo = (
-                    fetch_ops
-                    if not uid_cmd
-                    else fetch_ops + [FetchAtt(FetchOp.UID)]
-                )
+                fo = list(fetch_ops)
+                if uid_cmd and not any(
+                    op.attribute == FetchOp.UID for op in fo
+                ):
+                    fo.append(FetchAtt(FetchOp.UID))
                 last_sleep = time.monotonic()
                 for elt in fo:
                     iter_results.append(elt.fetch(ctx))
