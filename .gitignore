@@ -8,6 +8,7 @@ ssl
 .pytest_cache
 asimap.egg-info
 venv*
+.venv
 .tox
 .isorted
 .blackened

@@ -4,7 +4,17 @@ build-backend = "hatchling.build"
 
 [project]
 name = "asimap"
-dynamic = ["version", "dependencies"]
+dynamic = ["version"]
+dependencies = [
+    "aiofiles",
+    "aioretry",
+    "aiosqlite",
+    "charset-normalizer",
+    "docopt",
+    "python-dotenv",
+    "python-json-logger",
+    "sentry-sdk",
+]
 authors = [
   { name="Scanner Luce", email="scanner@apricot.com" },
 ]
@@ -31,8 +41,41 @@ Homepage = "https://github.com/scanner/asimap"
 Issues = "https://github.com/scanner/asimap/issues"
 Changelog = "https://github.com/scanner/asimap/blob/main/CHANGELOG.md"
 
-[tool.setuptools.dynamic]
-dependencies = {file = ["requirements/production.txt"]}
+[dependency-groups]
+dev = [
+    # Testing
+    "codetiming",
+    "dirty-equals",
+    "imapclient",
+    "ipython",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-coverage",
+    "pytest-factoryboy",
+    "pytest-mock",
+    "pytest-sugar",
+    "requests-mock",
+    "rich",
+    "trustme",
+    # Linting and formatting
+    "black",
+    "coverage",
+    "isort",
+    "mypy",
+    "pre-commit",
+    "ruff",
+    "yapf",
+    # Type stubs
+    "types-aiofiles",
+    "types-cachetools",
+    "types-pytz",
+    "types-requests",
+    "types-setuptools",
+    "types-redis",
+    # Build
+    "build",
+    "hatch",
+]
 
 [tool.hatch.version]
 path = "asimap/__init__.py"

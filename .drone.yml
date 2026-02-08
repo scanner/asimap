@@ -9,11 +9,12 @@ steps:
       PYTHONUNBUFFERED: 1
       PYTHONPATH: /drone/src
 
+      UV_LINK_MODE: copy
       DEBUG: true
     commands:
-      - pip install -U pip
-      - pip install -r ./requirements/development.txt
-      - pytest
+      - pip install uv
+      - uv sync --frozen
+      - uv run pytest
 
 ---
 kind: pipeline
