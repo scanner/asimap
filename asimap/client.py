@@ -7,6 +7,7 @@ single connected IMAP client.
 #
 import asyncio
 import logging
+import re
 import sys
 from enum import StrEnum
 from itertools import count, groupby
@@ -50,6 +51,35 @@ SERVER_ID = {
     "command": "asimapd.py",
     "os": sys.platform,
 }
+
+# Client-specific capability exclusions
+# Each entry defines a pattern to match against client ID strings and the
+# capabilities to exclude for matching clients.
+#
+# NOTE: Pattern to match iOS 26 clients (iPhone, iPad, Apple Vision Pro) that
+#       should not see IDLE in capabilities due to broken IDLE implementation.
+#       This pattern will be refined when we have actual client ID data from
+#       iOS 26.
+#
+# Expected client ID fields: "name", "os", "os-version", "vendor"
+# Example: {"name": "Mail", "os": "iOS", "os-version": "26.0", ...}
+#
+CLIENT_CAPABILITY_EXCLUSIONS = [
+    {
+        "pattern": re.compile(
+            r"(?:"
+            r"(?:iPhone|iPad|Vision\s*Pro).*\b26\b"  # Device type with version 26
+            r"|"
+            r"\bOS\s*26\b"  # OS 26
+            r"|"
+            r"\biOS.*\b26\b"  # iOS with version 26
+            r")",
+            re.IGNORECASE,
+        ),
+        "excluded_capabilities": {"IDLE"},
+        "reason": "iOS 26 broken IDLE implementation",
+    },
+]
 
 # How many seconds a command will be left to run before the client consider it
 # to have taken too long to run. Basically if commands get stuck this is a
@@ -102,6 +132,11 @@ class BaseClientHandler:
         #
         self.client_id: Optional[Dict[str, str]] = None
 
+        # Set of capabilities to exclude from CAPABILITY response for this client
+        # based on known client issues (e.g., iOS 26 broken IDLE implementation)
+        #
+        self.excluded_capabilities: set[str] = set()
+
         # Idling is like a sub-state. When we are idling we expect a 'DONE'
         # completion from the IMAP client before it sends us any other
         # message. However during this time the server may still send async
@@ -119,6 +154,38 @@ class BaseClientHandler:
         # they are stored here.
         #
         self.pending_notifications: List[str] = []
+
+    ##################################################################
+    #
+    def update_capability_exclusions(self):
+        """
+        Check the client ID against known problematic client patterns and
+        update the set of excluded capabilities accordingly.
+
+        Iterates through CLIENT_CAPABILITY_EXCLUSIONS and applies any
+        matching exclusion rules based on the client's ID.
+        """
+        if not self.client_id:
+            return
+
+        # Convert client_id dict to a searchable string
+        # Check both keys and values for pattern matches
+        client_id_str = " ".join(
+            f"{k}:{v}" for k, v in self.client_id.items() if v
+        )
+
+        # Check each exclusion rule
+        for rule in CLIENT_CAPABILITY_EXCLUSIONS:
+            if rule["pattern"].search(client_id_str):
+                logger.info(
+                    "%s: Client ID matched exclusion pattern: %s. "
+                    "Excluding capabilities: %s. Client ID: %s",
+                    self.name,
+                    rule["reason"],
+                    ", ".join(sorted(rule["excluded_capabilities"])),
+                    self.client_id,
+                )
+                self.excluded_capabilities.update(rule["excluded_capabilities"])
 
     ##################################################################
     #
@@ -394,7 +461,13 @@ class BaseClientHandler:
         - `cmd`: The full IMAP command object.
         """
         await self.send_pending_notifications()
-        await self.client.push(f"* CAPABILITY {' '.join(CAPABILITIES)}\r\n")
+
+        # Filter out any excluded capabilities for this client
+        capabilities = [
+            cap for cap in CAPABILITIES if cap not in self.excluded_capabilities
+        ]
+
+        await self.client.push(f"* CAPABILITY {' '.join(capabilities)}\r\n")
         return None
 
     #########################################################################
@@ -423,6 +496,10 @@ class BaseClientHandler:
         """
         await self.send_pending_notifications()
         self.client_id = cmd.id_dict
+
+        # Check if this client should have any capabilities excluded
+        self.update_capability_exclusions()
+
         res = " ".join([f'"{k}" "{v}"' for k, v in SERVER_ID.items()])
         await self.client.push(f"* ID ({res})\r\n")
         return None

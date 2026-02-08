@@ -1,7 +1,7 @@
 # -*- Mode: Makefile -*-
 
-ACTIVATE := source $(ROOT_DIR)/venv/bin/activate &&
-PYTHON ?= python3.12
+ACTIVATE := . $(ROOT_DIR)/venv/bin/activate &&
+PYTHON ?= $(shell for v in python3.14 python3.13 python3.12; do command -v $$v >/dev/null 2>&1 && echo $$v && break; done)
 VERSION := $(shell PYTHONPATH=`pwd` python -c 'import asimap ; print(asimap.__version__)')
 
 .git/hooks/pre-commit .git/hooks/pre-push: venv

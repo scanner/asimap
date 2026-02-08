@@ -2,7 +2,7 @@
 #
 # Builder stage
 #
-FROM python:3.12.9 AS builder
+FROM python:3.13.11 AS builder
 
 ARG APP_HOME=/app
 WORKDIR ${APP_HOME}
