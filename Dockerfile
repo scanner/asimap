@@ -4,23 +4,19 @@
 #
 FROM python:3.12.9 AS builder
 
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
 ARG APP_HOME=/app
 WORKDIR ${APP_HOME}
-COPY requirements/build.txt requirements/production.txt /app/requirements/
-COPY README.md LICENSE Makefile Make.rules pyproject.toml /app/
-RUN python -m venv --copies /venv
-RUN . /venv/bin/activate && \
-    pip install --upgrade pip && \
-    pip install --upgrade setuptools && \
-    pip install -r /app/requirements/build.txt && \
-    pip install -r /app/requirements/production.txt
-
+COPY pyproject.toml uv.lock README.md LICENSE /app/
 COPY asimap /app/asimap
-RUN . /venv/bin/activate && python -m build
+
+RUN uv sync --frozen --no-dev
+RUN uv run python -m build
 
 #########################
 #
-# includes the 'development' requirements
+# includes the 'development' dependencies
 #
 FROM builder AS dev
 
@@ -38,15 +34,12 @@ ARG APP_HOME=/app
 WORKDIR ${APP_HOME}
 ENV PYTHONPATH=${APP_HOME}
 
-COPY README.md LICENSE Makefile Make.rules pyproject.toml /app/
-COPY requirements/development.txt /app/requirements/development.txt
-COPY asimap /app/asimap
-RUN . /venv/bin/activate && pip install -r requirements/development.txt
+RUN uv sync --frozen
 
 # Puts the venv's python (and other executables) at the front of the
 # PATH so invoking 'python' will activate the venv.
 #
-ENV PATH=/venv/bin:/usr/bin/mh:$PATH
+ENV PATH=/app/.venv/bin:/usr/bin/mh:$PATH
 
 WORKDIR ${APP_HOME}
 
@@ -59,7 +52,7 @@ CMD ["python", "/app/asimap/asimapd.py"]
 
 #########################
 #
-# `app` - The docker image for the django app web service
+# `prod` - The docker image for the production service
 #
 FROM python:3.12.9-slim AS prod
 
@@ -75,11 +68,11 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # We only want the installable dist we created in the builder.
 #
 COPY --from=builder /app/dist /app/dist
-COPY --from=builder /venv /venv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 ARG VERSION
-RUN . /venv/bin/activate && \
-    pip install /app/dist/asimap-${VERSION}-py3-none-any.whl
+RUN uv venv /venv && \
+    VIRTUAL_ENV=/venv uv pip install /app/dist/asimap-${VERSION}-py3-none-any.whl
 
 # Puts the venv's python (and other executables) at the front of the
 # PATH so invoking 'python' will activate the venv.
