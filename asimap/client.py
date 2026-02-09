@@ -942,10 +942,36 @@ class Authenticated(BaseClientHandler):
             res = "LSUB"
 
         assert self.server
+
+        # Collect all results first so we can fix \HasChildren /
+        # \HasNoChildren attributes based on which folders are
+        # actually present (the cached attributes can be stale).
+        #
+        results: list[tuple[str, set[str]]] = []
         async for mbox_name, attributes in Mailbox.list(
             cmd.mailbox_name, cmd.list_mailbox, self.server, lsub
         ):
+            # Skip the root "" entry from LIST results. It is not a
+            # real mailbox and confuses strict IMAP clients (iOS 18+).
+            #
+            if mbox_name == "":
+                continue
             mbox_name = "INBOX" if mbox_name.lower() == "inbox" else mbox_name
+            results.append((mbox_name, attributes))
+
+        # Build a set of all returned folder names so we can verify
+        # \HasChildren / \HasNoChildren correctness.
+        #
+        all_names = {name for name, _ in results}
+        for mbox_name, attributes in results:
+            has_children = any(n.startswith(mbox_name + "/") for n in all_names)
+            if has_children:
+                attributes.discard(r"\HasNoChildren")
+                attributes.add(r"\HasChildren")
+            else:
+                attributes.discard(r"\HasChildren")
+                attributes.add(r"\HasNoChildren")
+
             msg = f'* {res} ({" ".join(sorted(attributes))}) "/" "{mbox_name}"\r\n'
             await self.client.push(msg)
 
