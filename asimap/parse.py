@@ -166,6 +166,22 @@ class StatusAtt(StrEnum):
 
 #######################################################################
 #
+class ListSelectOpt(StrEnum):
+    SUBSCRIBED = "subscribed"
+    REMOTE = "remote"
+    RECURSIVEMATCH = "recursivematch"
+
+
+#######################################################################
+#
+class ListReturnOpt(StrEnum):
+    SUBSCRIBED = "subscribed"
+    CHILDREN = "children"
+    STATUS = "status"
+
+
+#######################################################################
+#
 # Attributes of a fetch command. Note that the order is important. We need to
 # match the longest strings with the common prefix first to insure that we
 # fully match the proper keyword (ie: if we look for 'rfc822' first we will
@@ -538,8 +554,7 @@ class IMAPClientCommand:
                 ):
                     result.append(self.mailbox_name)
                 case IMAPCommand.LIST | IMAPCommand.LSUB:
-                    result.append(f'"{self.mailbox_name}"')
-                    result.append(f'"{self.list_mailbox}"')
+                    result.extend(self._fmt_list_cmd_args())
                 case IMAPCommand.SEARCH:
                     result.append(str(self.search_key))
                 case IMAPCommand.STORE:
@@ -565,6 +580,46 @@ class IMAPClientCommand:
                     raise UnknownCommand(value=self.command)
 
         return " ".join(result)
+
+    #######################################################################
+    #
+    def _fmt_list_cmd_args(self) -> list[str]:
+        """
+        Format the arguments for the IMAP LIST/LSUB command as a list of
+        string tokens suitable for joining into the __str__ output.
+
+        Handles both legacy LIST (RFC 3501: reference + mailbox pattern)
+        and LIST-EXTENDED (RFC 5258/5819: selection options, multiple
+        patterns, and return options including STATUS).
+
+        Legacy:    LIST "reference" "pattern"
+        Extended:  LIST (SELECT-OPTS) "ref" "pattern" RETURN (RETURN-OPTS)
+        """
+        parts: list[str] = []
+        if self.list_select_opts:
+            opts = " ".join(
+                o.value.upper()
+                for o in sorted(self.list_select_opts, key=lambda x: x.value)
+            )
+            parts.append(f"({opts})")
+        parts.append(f'"{self.mailbox_name}"')
+        if self.list_patterns:
+            pats = " ".join(f'"{p}"' for p in self.list_patterns)
+            parts.append(f"({pats})")
+        else:
+            parts.append(f'"{self.list_mailbox}"')
+        if self.list_return_opts:
+            return_parts: list[str] = []
+            for opt in sorted(self.list_return_opts, key=lambda x: x.value):
+                if opt == ListReturnOpt.STATUS and self.list_status_atts:
+                    atts = " ".join(
+                        a.value.upper() for a in self.list_status_atts
+                    )
+                    return_parts.append(f"STATUS ({atts})")
+                else:
+                    return_parts.append(opt.value.upper())
+            parts.append(f"RETURN ({' '.join(return_parts)})")
+        return parts
 
     #######################################################################
     #
@@ -670,10 +725,7 @@ class IMAPClientCommand:
                 self._p_simple_string(" ")
                 self.mailbox_dst_name = self._p_mailbox()
             case IMAPCommand.LIST | IMAPCommand.LSUB:
-                self._p_simple_string(" ")
-                self.mailbox_name = self._p_mailbox()
-                self._p_simple_string(" ")
-                self.list_mailbox = self._p_list_mailbox()
+                self._p_list_extended()
             case IMAPCommand.STATUS:
                 self._p_simple_string(" ")
                 self.mailbox_name = self._p_mailbox()
@@ -888,6 +940,161 @@ class IMAPClientCommand:
     #
     # Here ends the list of supported commands
     #
+    #######################################################################
+
+    #######################################################################
+    #
+    def _p_list_extended(self) -> None:
+        """
+        Parse LIST/LSUB with support for RFC 5258 (LIST-EXTENDED) and
+        RFC 5819 (LIST-STATUS).
+
+        Handles both the legacy format and the extended format:
+
+          Legacy:   LIST SP reference SP list-mailbox
+          Extended: LIST [SP "(" select-opts ")"] SP reference
+                    SP (list-mailbox / "(" patterns ")") [SP RETURN ...]
+
+        Sets: mailbox_name, list_mailbox, list_select_opts,
+              list_return_opts, list_patterns, list_status_atts
+        """
+        self.list_select_opts: set[ListSelectOpt] = set()
+        self.list_return_opts: set[ListReturnOpt] = set()
+        self.list_patterns: list[str] = []
+        self.list_status_atts: list[StatusAtt] = []
+        self.list_mailbox: str = ""
+
+        self._p_simple_string(" ")
+
+        # Selection options are a parenthesized list before the reference.
+        # A mailbox reference (astring) cannot start with "(" so this is
+        # unambiguous.
+        #
+        if self._p_simple_string("(", silent=True, swallow=False):
+            self._p_list_select_options()
+            self._p_simple_string(" ")
+
+        # Reference mailbox name
+        #
+        self.mailbox_name = self._p_mailbox()
+        self._p_simple_string(" ")
+
+        # Mailbox pattern(s): either a single list-mailbox or a
+        # parenthesized list of patterns (RFC 5258 mbox-or-pat).
+        #
+        if self._p_simple_string("(", silent=True, swallow=False):
+            self.list_patterns = self._p_paren_list_of(
+                self._p_list_mailbox_pattern
+            )
+        else:
+            self.list_mailbox = self._p_list_mailbox()
+
+        # Optional RETURN options (RFC 5258 Section 3, RFC 5819)
+        #
+        if self._p_simple_string(" ", silent=True) is not None:
+            self._p_simple_string(
+                "return",
+                syntax_error="expected RETURN keyword after LIST pattern",
+            )
+            self._p_simple_string(" ")
+            self._p_list_return_options()
+
+    #######################################################################
+    #
+    def _p_list_select_options(self) -> None:
+        """
+        Parse LIST-EXTENDED selection options (RFC 5258 Section 3).
+
+        Grammar: "(" [list-select-option *(SP list-select-option)] ")"
+
+        Valid options: SUBSCRIBED, REMOTE, RECURSIVEMATCH.
+        RECURSIVEMATCH requires at least one filtering option (SUBSCRIBED);
+        REMOTE alone does not qualify.
+        """
+        self._p_simple_string("(")
+        if self._p_simple_string(")", silent=True) is not None:
+            return
+
+        while True:
+            opt_str = self._p_re(_atom_re).lower()
+            try:
+                opt = ListSelectOpt(opt_str)
+            except ValueError:
+                raise BadSyntax(f"Unknown LIST selection option: {opt_str}")
+            self.list_select_opts.add(opt)
+
+            if self._p_simple_string(")", silent=True) is not None:
+                break
+            self._p_simple_string(" ")
+
+        # RFC 5258: RECURSIVEMATCH MUST be accompanied by a selection
+        # option that filters mailboxes (e.g. SUBSCRIBED). REMOTE
+        # extends results but does not filter.
+        #
+        if ListSelectOpt.RECURSIVEMATCH in self.list_select_opts:
+            filtering = self.list_select_opts - {
+                ListSelectOpt.RECURSIVEMATCH,
+                ListSelectOpt.REMOTE,
+            }
+            if not filtering:
+                raise BadSyntax(
+                    "RECURSIVEMATCH requires a filtering selection "
+                    "option (e.g. SUBSCRIBED)"
+                )
+
+    #######################################################################
+    #
+    def _p_list_return_options(self) -> None:
+        """
+        Parse LIST-EXTENDED return options (RFC 5258 Section 3, RFC 5819).
+
+        Grammar: "(" [return-option *(SP return-option)] ")"
+
+        The STATUS return option (RFC 5819) is followed by a parenthesized
+        list of status attributes (MESSAGES, RECENT, etc.).
+        """
+        self._p_simple_string("(")
+        if self._p_simple_string(")", silent=True) is not None:
+            return
+
+        while True:
+            opt_str = self._p_re(_atom_re).lower()
+
+            if opt_str == ListReturnOpt.STATUS:
+                self.list_return_opts.add(ListReturnOpt.STATUS)
+                self._p_simple_string(" ")
+                self.list_status_atts = self._p_paren_list_of(
+                    self._p_status_att
+                )
+                if not self.list_status_atts:
+                    raise BadSyntax(
+                        "STATUS return option requires at least one "
+                        "status attribute"
+                    )
+            else:
+                try:
+                    opt = ListReturnOpt(opt_str)
+                except ValueError:
+                    raise BadSyntax(f"Unknown LIST return option: {opt_str}")
+                self.list_return_opts.add(opt)
+
+            if self._p_simple_string(")", silent=True) is not None:
+                break
+            self._p_simple_string(" ")
+
+    #######################################################################
+    #
+    def _p_list_mailbox_pattern(self) -> str:
+        """
+        Parse a single mailbox pattern inside a parenthesized pattern list.
+        Like _p_list_mailbox but normalizes INBOX to lowercase per RFC 3501
+        Section 5.1 (INBOX is case-insensitive).
+        """
+        pattern = self._p_list_mailbox()
+        if pattern.lower() == "inbox":
+            return "inbox"
+        return pattern
+
     #######################################################################
     #######################################################################
     #

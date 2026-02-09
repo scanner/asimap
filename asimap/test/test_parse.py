@@ -10,7 +10,13 @@ Test the asimap IMAP message parser.
 import pytest
 
 from ..fetch import FetchOp
-from ..parse import IMAPClientCommand
+from ..parse import (
+    BadSyntax,
+    IMAPClientCommand,
+    ListReturnOpt,
+    ListSelectOpt,
+    StatusAtt,
+)
 
 IMAP_MESSAGES = [
     pytest.param(
@@ -308,3 +314,345 @@ def test_fetch_peek(received, expected):
             peek_expected = True
 
     assert p.fetch_peek == peek_expected
+
+
+####################################################################
+####################################################################
+#
+# Tests for LIST-EXTENDED (RFC 5258) and LIST-STATUS (RFC 5819) parsing
+#
+####################################################################
+#
+
+# Parametrized test data for valid LIST-EXTENDED commands.
+# Each entry: (input, expected_select_opts, expected_return_opts,
+#              expected_patterns, expected_status_atts,
+#              expected_mailbox_name, expected_list_mailbox)
+#
+# expected_patterns is [] for single-pattern commands (use list_mailbox),
+# non-empty for multi-pattern commands.
+#
+S = ListSelectOpt
+R = ListReturnOpt
+
+LIST_EXTENDED_VALID = [
+    # Legacy LIST/LSUB (backward compatibility)
+    pytest.param(
+        'A01 LIST "" "*"\r\n',
+        set(),
+        set(),
+        [],
+        [],
+        "",
+        "*",
+        id="legacy LIST",
+    ),
+    pytest.param(
+        'A01 LIST "" ""\r\n',
+        set(),
+        set(),
+        [],
+        [],
+        "",
+        "",
+        id="legacy LIST hierarchy delimiter probe",
+    ),
+    pytest.param(
+        'A01 LSUB "" "*"\r\n',
+        set(),
+        set(),
+        [],
+        [],
+        "",
+        "*",
+        id="legacy LSUB",
+    ),
+    # Selection options
+    pytest.param(
+        'A01 LIST (SUBSCRIBED) "" "*"\r\n',
+        {S.SUBSCRIBED},
+        set(),
+        [],
+        [],
+        "",
+        "*",
+        id="SUBSCRIBED selection",
+    ),
+    pytest.param(
+        'A01 LIST (REMOTE) "" "*"\r\n',
+        {S.REMOTE},
+        set(),
+        [],
+        [],
+        "",
+        "*",
+        id="REMOTE selection",
+    ),
+    pytest.param(
+        'A01 LIST (SUBSCRIBED RECURSIVEMATCH) "" "*"\r\n',
+        {S.SUBSCRIBED, S.RECURSIVEMATCH},
+        set(),
+        [],
+        [],
+        "",
+        "*",
+        id="SUBSCRIBED RECURSIVEMATCH selection",
+    ),
+    pytest.param(
+        'A01 LIST (SUBSCRIBED REMOTE RECURSIVEMATCH) "" "*"\r\n',
+        {S.SUBSCRIBED, S.REMOTE, S.RECURSIVEMATCH},
+        set(),
+        [],
+        [],
+        "",
+        "*",
+        id="all three selection options",
+    ),
+    pytest.param(
+        'A01 LIST () "" "%"\r\n',
+        set(),
+        set(),
+        [],
+        [],
+        "",
+        "%",
+        id="empty selection options",
+    ),
+    # Case insensitivity
+    pytest.param(
+        'A01 LIST (subscribed) "" "*"\r\n',
+        {S.SUBSCRIBED},
+        set(),
+        [],
+        [],
+        "",
+        "*",
+        id="lowercase selection option",
+    ),
+    # Multiple patterns
+    pytest.param(
+        'A01 LIST "" ("INBOX" "Drafts" "Sent/%")\r\n',
+        set(),
+        set(),
+        ["inbox", "Drafts", "Sent/%"],
+        [],
+        "",
+        None,
+        id="multiple patterns",
+    ),
+    pytest.param(
+        'A01 LIST "" ("*")\r\n',
+        set(),
+        set(),
+        ["*"],
+        [],
+        "",
+        None,
+        id="single pattern in parens",
+    ),
+    # Return options
+    pytest.param(
+        'A01 LIST () "" "%" RETURN (CHILDREN)\r\n',
+        set(),
+        {R.CHILDREN},
+        [],
+        [],
+        "",
+        "%",
+        id="RETURN CHILDREN",
+    ),
+    pytest.param(
+        'A01 LIST () "" "%" RETURN (SUBSCRIBED)\r\n',
+        set(),
+        {R.SUBSCRIBED},
+        [],
+        [],
+        "",
+        "%",
+        id="RETURN SUBSCRIBED",
+    ),
+    pytest.param(
+        'A01 LIST () "" "%" RETURN (SUBSCRIBED CHILDREN)\r\n',
+        set(),
+        {R.SUBSCRIBED, R.CHILDREN},
+        [],
+        [],
+        "",
+        "%",
+        id="RETURN SUBSCRIBED CHILDREN",
+    ),
+    pytest.param(
+        'A01 LIST () "" "%" RETURN ()\r\n',
+        set(),
+        set(),
+        [],
+        [],
+        "",
+        "%",
+        id="RETURN empty",
+    ),
+    pytest.param(
+        'A01 LIST () "" "%" return (CHILDREN)\r\n',
+        set(),
+        {R.CHILDREN},
+        [],
+        [],
+        "",
+        "%",
+        id="lowercase RETURN keyword",
+    ),
+    # RETURN without selection options (detected by >2 parameters)
+    pytest.param(
+        'A01 LIST "" "%" RETURN (CHILDREN)\r\n',
+        set(),
+        {R.CHILDREN},
+        [],
+        [],
+        "",
+        "%",
+        id="RETURN without selection opts",
+    ),
+    # STATUS return option (RFC 5819)
+    pytest.param(
+        'A01 LIST "" "%" RETURN (STATUS (MESSAGES UNSEEN))\r\n',
+        set(),
+        {R.STATUS},
+        [],
+        [StatusAtt.MESSAGES, StatusAtt.UNSEEN],
+        "",
+        "%",
+        id="RETURN STATUS MESSAGES UNSEEN",
+    ),
+    pytest.param(
+        'A01 LIST "" "*" RETURN (STATUS (MESSAGES RECENT UIDNEXT UIDVALIDITY UNSEEN))\r\n',
+        set(),
+        {R.STATUS},
+        [],
+        [
+            StatusAtt.MESSAGES,
+            StatusAtt.RECENT,
+            StatusAtt.UIDNEXT,
+            StatusAtt.UIDVALIDITY,
+            StatusAtt.UNSEEN,
+        ],
+        "",
+        "*",
+        id="RETURN STATUS all five attributes",
+    ),
+    pytest.param(
+        'A01 LIST () "" "%" RETURN (CHILDREN STATUS (MESSAGES))\r\n',
+        set(),
+        {R.CHILDREN, R.STATUS},
+        [],
+        [StatusAtt.MESSAGES],
+        "",
+        "%",
+        id="RETURN CHILDREN and STATUS",
+    ),
+    # Combined selection + return
+    pytest.param(
+        'A01 LIST (SUBSCRIBED) "" "*" RETURN (CHILDREN)\r\n',
+        {S.SUBSCRIBED},
+        {R.CHILDREN},
+        [],
+        [],
+        "",
+        "*",
+        id="SUBSCRIBED selection with CHILDREN return",
+    ),
+    pytest.param(
+        'A01 LIST (SUBSCRIBED RECURSIVEMATCH) "" "%" RETURN (STATUS (MESSAGES UNSEEN))\r\n',
+        {S.SUBSCRIBED, S.RECURSIVEMATCH},
+        {R.STATUS},
+        [],
+        [StatusAtt.MESSAGES, StatusAtt.UNSEEN],
+        "",
+        "%",
+        id="SUBSCRIBED RECURSIVEMATCH with STATUS return",
+    ),
+    # Selection + multiple patterns + return
+    pytest.param(
+        'A01 LIST (SUBSCRIBED) "" ("INBOX" "Sent/%") RETURN (CHILDREN STATUS (MESSAGES))\r\n',
+        {S.SUBSCRIBED},
+        {R.CHILDREN, R.STATUS},
+        ["inbox", "Sent/%"],
+        [StatusAtt.MESSAGES],
+        "",
+        None,
+        id="selection + multiple patterns + return",
+    ),
+]
+
+# Commands that should raise BadSyntax
+LIST_EXTENDED_BAD = [
+    pytest.param(
+        'A01 LIST (RECURSIVEMATCH) "" "*"\r\n',
+        id="RECURSIVEMATCH alone",
+    ),
+    pytest.param(
+        'A01 LIST (REMOTE RECURSIVEMATCH) "" "*"\r\n',
+        id="RECURSIVEMATCH with only REMOTE",
+    ),
+    pytest.param(
+        'A01 LIST (BOGUS) "" "*"\r\n',
+        id="unknown selection option",
+    ),
+    pytest.param(
+        'A01 LIST () "" "%" RETURN (BOGUS)\r\n',
+        id="unknown return option",
+    ),
+    pytest.param(
+        'A01 LIST "" "%" RETURN (STATUS ())\r\n',
+        id="STATUS with empty attributes",
+    ),
+]
+
+
+####################################################################
+#
+@pytest.mark.parametrize(
+    "received,exp_select,exp_return,exp_patterns,exp_status,"
+    "exp_mbox_name,exp_list_mbox",
+    LIST_EXTENDED_VALID,
+)
+def test_list_extended_valid(
+    received,
+    exp_select,
+    exp_return,
+    exp_patterns,
+    exp_status,
+    exp_mbox_name,
+    exp_list_mbox,
+):
+    """
+    GIVEN: a valid LIST or LIST-EXTENDED command
+    WHEN:  parsed
+    THEN:  selection opts, return opts, patterns, status atts, and
+           mailbox name / list_mailbox should match expectations
+    """
+    p = IMAPClientCommand(received)
+    p.parse()
+    assert p.list_select_opts == exp_select
+    assert p.list_return_opts == exp_return
+    assert p.list_patterns == exp_patterns
+    if exp_status:
+        assert set(p.list_status_atts) == set(exp_status)
+    else:
+        assert p.list_status_atts == []
+    assert p.mailbox_name == exp_mbox_name
+    if exp_list_mbox is not None:
+        assert p.list_mailbox == exp_list_mbox
+
+
+####################################################################
+#
+@pytest.mark.parametrize("received", LIST_EXTENDED_BAD)
+def test_list_extended_bad_syntax(received):
+    """
+    GIVEN: a LIST-EXTENDED command with invalid option combinations
+    WHEN:  parsed
+    THEN:  it should raise BadSyntax
+    """
+    with pytest.raises(BadSyntax):
+        p = IMAPClientCommand(received)
+        p.parse()
