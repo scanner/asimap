@@ -570,6 +570,15 @@ class IMAPClient:
             # client. Close our connection and return which will cause this
             # task to be completed.
             #
+            # Cancel the subprocess interface's wait_task first so it does not
+            # linger as a pending task after this task completes.
+            #
+            if self.subprocess_intf.wait_task:
+                self.subprocess_intf.wait_task.cancel()
+                try:
+                    await self.subprocess_intf.wait_task
+                except asyncio.CancelledError:
+                    pass
             await self.close()
 
     ####################################################################
