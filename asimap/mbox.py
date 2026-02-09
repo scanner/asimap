@@ -58,6 +58,7 @@ from .parse import (
     CONFLICTING_COMMANDS,
     IMAPClientCommand,
     IMAPCommand,
+    ListSelectOpt,
     StoreAction,
 )
 from .search import IMAPSearch, SearchContext
@@ -3022,6 +3023,34 @@ class Mailbox:
 
     ####################################################################
     #
+    @staticmethod
+    def _mbox_pattern_to_re(ref_mbox_name: str, mbox_match: str) -> str:
+        """
+        Convert an IMAP LIST reference + pattern into a regex string.
+
+        IMAP wildcards are converted as follows:
+        - ``*`` matches zero or more characters (like shell glob)
+        - ``%`` matches zero or more characters except the hierarchy
+          delimiter ``/``
+
+        Returns a regex anchored with ``^...$``.
+        """
+        if len(mbox_match) > 0 and mbox_match[0] == "/":
+            mbox_match = mbox_match[1:]
+
+        if mbox_match != "":
+            mbox_match = os.path.normpath(mbox_match)
+
+        mbox_match = ref_mbox_name + mbox_match
+
+        # Escape regex metacharacters, then convert IMAP wildcards.
+        #
+        mbox_match = "^" + re.escape(mbox_match) + "$"
+        mbox_match = mbox_match.replace(r"\*", r".*").replace(r"%", r"[^\/]*")
+        return mbox_match
+
+    ####################################################################
+    #
     @classmethod
     async def list(
         cls,
@@ -3029,87 +3058,81 @@ class Mailbox:
         mbox_match: str,
         server: "IMAPUserServer",
         lsub: bool = False,
-    ):
+        select_opts: set[ListSelectOpt] | None = None,
+        patterns: list[str] | None = None,
+    ) -> AsyncIterator[tuple[str, set[str]]]:
         """
-        This returns a list of tuples of mailbox names and those mailbox's
-        attributes. The list is generated from the mailboxes db shelf.
+        Async generator yielding ``(mbox_name, attributes)`` tuples for
+        mailboxes matching the given pattern(s).
 
-        The `ref_mbox_name` is a string prefix for mailbox names to match.
+        Supports both legacy LIST/LSUB and RFC 5258 LIST-EXTENDED:
 
-        mbox_match is a pattern that determines which of the subset that match
-        ref_mbox_name will be returned to our caller.
-
-        The tricky part is that we need to re-interpret 'mbox_match' as a
-        regular expression that we can apply to our mbox names.
-
-        As near as I can tell '*' is like the shell glob pattern - it matches
-        zero or more characters.
-
-        '%' is special in that it matches zero or more characters, but not the
-        character that separates the hierarchies of mailboxes (ie: '/' in our
-        case.)
-
-        So we should be able to get away with: '*' -> '.*', '%' -> '[^/]*' We
-        also need to escape any characters that could be interpreted as part of
-        a regular expression.
+        - ``lsub=True`` (legacy LSUB): filter to subscribed folders only.
+        - ``select_opts``: RFC 5258 selection options. When
+          ``ListSelectOpt.SUBSCRIBED`` is present, filters to subscribed
+          folders and adds ``\\Subscribed`` to their attributes. Folders
+          that are subscribed but marked ``\\Noselect`` (deleted with
+          sub-folders) also get ``\\NonExistent``.
+        - ``patterns``: RFC 5258 multiple mailbox patterns. When provided,
+          results are the union of all pattern matches (OR semantics),
+          and ``mbox_match`` is ignored.
 
         Arguments:
-        - `cls`: the mailbox class (this is a clas method)
-        - `server`: the user server object instance
-        - `ref_mbox_name`: The reference mailbox name
-        - `mbox_match`: The pattern of mailboxes to match under the reference
-          mailbox name.
-        - `lsub`: If True this will only match folders that have their
-          subscribed bit set.
+        - `ref_mbox_name`: The reference mailbox name (prefix).
+        - `mbox_match`: Single mailbox pattern (legacy / single-pattern).
+        - `server`: The user server object instance.
+        - `lsub`: If True, only match subscribed folders (legacy LSUB).
+        - `select_opts`: RFC 5258 selection options (overrides ``lsub``
+          when set).
+        - `patterns`: RFC 5258 multiple patterns (overrides ``mbox_match``
+          when non-empty).
         """
-        # We strip the `/` prefix from the beginning of the string because
-        # internally our mailboxes are unrooted.
+        # Build the regex: either a single pattern or OR of multiple
+        # patterns.
         #
-        if len(mbox_match) > 0 and mbox_match[0] == "/":
-            mbox_match = mbox_match[:1]
+        if patterns:
+            re_parts = [
+                cls._mbox_pattern_to_re(ref_mbox_name, p) for p in patterns
+            ]
+            mbox_re = "(" + "|".join(re_parts) + ")"
+        else:
+            mbox_re = cls._mbox_pattern_to_re(ref_mbox_name, mbox_match)
 
-        # we use normpath to collapse redundant separators and up-level
-        # references. But normpath of "" == "." so we make sure that case is
-        # handled.
-        #
-        if mbox_match != "":
-            mbox_match = os.path.normpath(mbox_match)
+        logger.debug("**** mbox_match re: '%s'", mbox_re)
 
-        # Now we tack the ref_mbox_name and mbox_match together.
+        # Determine subscription filter: lsub (legacy) or SUBSCRIBED
+        # selection option (RFC 5258).
         #
-        mbox_match = ref_mbox_name + mbox_match
-        logger.debug("**** mbox_match: '%s'", mbox_match)
-
-        # We need to escape all possible regular expression characters
-        # in our string so that it only matches what is expected by the
-        # imap specification.
-        #
-        mbox_match = "^" + re.escape(mbox_match) + "$"
-
-        # Every '*' becomes '.*' and every % becomes [^/]
-        #
-        mbox_match = mbox_match.replace(r"\*", r".*").replace(r"%", r"[^\/]*")
-        logger.debug("**** mbox_match re: '%s'", mbox_match)
+        subscribed_selection = (
+            select_opts is not None and ListSelectOpt.SUBSCRIBED in select_opts
+        )
+        filter_subscribed = lsub or subscribed_selection
 
         # NOTE: We do not present to the IMAP client any folders that
         #       have the flag 'ignored' set on them.
         #
-        # XXX All mailboxes are in-memory now. We likely do not need to
-        #     make a db query here for a mailbox's attributes anymore.
-        #
-        subscribed = "AND subscribed=1" if lsub else ""
+        sub_clause = "AND subscribed=1" if filter_subscribed else ""
         query = (
-            "SELECT name,attributes FROM mailboxes WHERE name "
-            f"regexp ? {subscribed} AND attributes NOT LIKE '%ignored%' "
+            "SELECT name,attributes,subscribed FROM mailboxes WHERE name "
+            f"regexp ? {sub_clause} AND attributes NOT LIKE '%ignored%' "
             "ORDER BY name"
         )
         logger.debug("*** Query: %s", query)
-        async for mbox_name, attributes in server.db.query(
-            query, (mbox_match,)
+        async for mbox_name, attributes, subscribed in server.db.query(
+            query, (mbox_re,)
         ):
             attributes = set(attributes.split(","))
             if mbox_name.lower() == "inbox":
                 mbox_name = "INBOX"
+
+            # RFC 5258: when SUBSCRIBED selection is active, annotate
+            # results with subscription-related attributes.
+            #
+            if subscribed_selection and subscribed:
+                attributes.add(r"\Subscribed")
+                if r"\Noselect" in attributes:
+                    attributes.add(r"\NonExistent")
+
             yield (mbox_name, attributes)
 
 

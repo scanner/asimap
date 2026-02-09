@@ -25,7 +25,12 @@ from ..constants import flag_to_seq
 from ..exceptions import Bad, No
 from ..fetch import FetchAtt, FetchOp
 from ..mbox import InvalidMailbox, Mailbox, MailboxExists, NoSuchMailbox
-from ..parse import IMAPClientCommand, StoreAction, parse_cmd_from_msg
+from ..parse import (
+    IMAPClientCommand,
+    ListSelectOpt,
+    StoreAction,
+    parse_cmd_from_msg,
+)
 from ..search import IMAPSearch
 from .conftest import assert_email_equal, client_push_responses
 
@@ -985,6 +990,190 @@ async def test_mailbox_list(
         list_results.append(mbox_name)
 
     assert sorted(folders) == sorted(list_results)
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mailbox_list_subscribed_selection(
+    mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    """
+    GIVEN: a set of folders, some subscribed and some not
+    WHEN:  Mailbox.list() is called with SUBSCRIBED selection option
+    THEN:  only subscribed folders are returned, each with \\Subscribed
+           in its attributes
+    """
+    server, _ = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+
+    # Create folders and subscribe to some of them.
+    #
+    await Mailbox.create("alpha", server)
+    await Mailbox.create("beta", server)
+    await Mailbox.create("gamma", server)
+
+    alpha = await server.get_mailbox("alpha")
+    alpha.subscribed = True
+    await alpha.commit_to_db()
+
+    gamma = await server.get_mailbox("gamma")
+    gamma.subscribed = True
+    await gamma.commit_to_db()
+
+    # SUBSCRIBED selection should only return subscribed folders.
+    #
+    results: list[tuple[str, set[str]]] = []
+    async for name, attrs in Mailbox.list(
+        "", "*", server, select_opts={ListSelectOpt.SUBSCRIBED}
+    ):
+        results.append((name, attrs))
+
+    names = {name for name, _ in results}
+    assert "alpha" in names
+    assert "gamma" in names
+    assert "beta" not in names
+
+    # Every result should have \Subscribed in its attributes.
+    #
+    for _, attrs in results:
+        assert r"\Subscribed" in attrs
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mailbox_list_subscribed_nonexistent(
+    mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    """
+    GIVEN: a subscribed folder that has been deleted (\\Noselect) but
+           retained because it has sub-folders
+    WHEN:  Mailbox.list() is called with SUBSCRIBED selection
+    THEN:  the deleted folder appears with \\NonExistent and
+           \\Subscribed attributes
+    """
+    server, _ = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+
+    await Mailbox.create("parent", server)
+    await Mailbox.create("parent/child", server)
+
+    parent = await server.get_mailbox("parent")
+    parent.subscribed = True
+    parent.attributes.add(r"\Noselect")
+    await parent.commit_to_db()
+
+    child = await server.get_mailbox("parent/child")
+    child.subscribed = True
+    await child.commit_to_db()
+
+    results: dict[str, set[str]] = {}
+    async for name, attrs in Mailbox.list(
+        "", "*", server, select_opts={ListSelectOpt.SUBSCRIBED}
+    ):
+        results[name] = attrs
+
+    assert "parent" in results
+    assert r"\Subscribed" in results["parent"]
+    assert r"\NonExistent" in results["parent"]
+    assert r"\Noselect" in results["parent"]
+
+    assert "parent/child" in results
+    assert r"\Subscribed" in results["parent/child"]
+    assert r"\NonExistent" not in results["parent/child"]
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mailbox_list_multiple_patterns(
+    mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    """
+    GIVEN: several folders in a hierarchy
+    WHEN:  Mailbox.list() is called with multiple patterns
+    THEN:  the union of all pattern matches is returned
+    """
+    server, _ = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+
+    await Mailbox.create("Drafts", server)
+    await Mailbox.create("Sent", server)
+    await Mailbox.create("Sent/2024", server)
+    await Mailbox.create("Trash", server)
+
+    # Match only "inbox" and "Drafts" and "Sent/*" via multiple patterns.
+    #
+    results: list[str] = []
+    async for name, _ in Mailbox.list(
+        "", "", server, patterns=["inbox", "Drafts", "Sent/%"]
+    ):
+        results.append(name)
+
+    assert "INBOX" in results
+    assert "Drafts" in results
+    assert "Sent/2024" in results
+    assert "Trash" not in results
+    # "Sent" itself should not match "Sent/%" (% doesn't match empty).
+    # But "Sent" is not in the pattern list as a literal either.
+    assert "Sent" not in results
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mailbox_list_remote_is_noop(
+    mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    """
+    GIVEN: some folders
+    WHEN:  Mailbox.list() is called with REMOTE selection option
+    THEN:  the results are the same as without it (no-op)
+    """
+    server, _ = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+
+    await Mailbox.create("work", server)
+
+    baseline: list[str] = []
+    async for name, _ in Mailbox.list("", "*", server):
+        baseline.append(name)
+
+    with_remote: list[str] = []
+    async for name, _ in Mailbox.list(
+        "", "*", server, select_opts={ListSelectOpt.REMOTE}
+    ):
+        with_remote.append(name)
+
+    assert sorted(baseline) == sorted(with_remote)
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mailbox_list_empty_select_opts_is_legacy(
+    mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    """
+    GIVEN: some folders
+    WHEN:  Mailbox.list() is called with an empty select_opts set
+    THEN:  the results are the same as legacy LIST (no filtering)
+    """
+    server, _ = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+
+    await Mailbox.create("misc", server)
+
+    legacy: list[str] = []
+    async for name, _ in Mailbox.list("", "*", server):
+        legacy.append(name)
+
+    with_empty: list[str] = []
+    async for name, _ in Mailbox.list("", "*", server, select_opts=set()):
+        with_empty.append(name)
+
+    assert sorted(legacy) == sorted(with_empty)
 
 
 ####################################################################
