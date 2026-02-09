@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Tuple, cast
 # 3rd party imports
 #
 import pytest
+from pytest_mock import MockerFixture
 
 # Project imports
 #
@@ -432,7 +433,7 @@ def test_fetch_rfc822_size(msg_key, expected_size, mailbox_with_mimekit_email):
 
 PROBLEMATIC_MSG_SIZE_BY_MSG_KEY = [
     pytest.param(1, 1162, id="1"),
-    pytest.param(2, 4392, id="2"),
+    pytest.param(2, 4393, id="2"),
     pytest.param(3, 26083, id="3"),
     pytest.param(4, 9629, id="4"),
 ]
@@ -869,3 +870,110 @@ async def test_fetch_body_braces(mailbox_with_bunch_of_email):
 
         assert result2_len == len(result2_msg)
         assert msg_body == result1_msg + result2_msg
+
+
+####################################################################
+#
+class TestBadlyEncodedHeaders:
+    """
+    Tests for messages with headers that have bad encodings which
+    cause Python's email library fold_binary() to raise
+    UnicodeEncodeError (GH-456).
+    """
+
+    ################################################################
+    #
+    @pytest.mark.parametrize(
+        "func,kwargs,expected_present,expected_absent",
+        [
+            pytest.param(
+                msg_as_bytes,
+                {},
+                [b"From:", b"Subject:", b"To:", b"Body"],
+                [],
+                id="msg_as_bytes",
+            ),
+            pytest.param(
+                msg_headers_as_bytes,
+                {},
+                [b"From:", b"Subject:", b"To:"],
+                [b"Body"],
+                id="msg_headers_as_bytes",
+            ),
+            pytest.param(
+                msg_headers_as_bytes,
+                {"headers": ("subject", "from"), "skip": False},
+                [b"From:", b"Subject:"],
+                [b"To:"],
+                id="msg_headers_as_bytes_filtered",
+            ),
+        ],
+    )
+    def test_fold_binary_fallback(
+        self,
+        mocker: MockerFixture,
+        func,
+        kwargs,
+        expected_present,
+        expected_absent,
+    ):
+        """
+        GIVEN: A message where fold_binary raises UnicodeEncodeError
+               for the Subject header
+        WHEN:  a generator function is called
+        THEN:  It should succeed by falling back to raw encoding
+               for the problematic header
+        """
+        raw = (
+            b"From: test@example.com\r\n"
+            b"Subject: Hello world\r\n"
+            b"To: other@example.com\r\n"
+            b"\r\n"
+            b"Body\r\n"
+        )
+        msg = message_from_bytes(raw)
+
+        original_fold_binary = SMTP.fold_binary
+
+        def failing_fold_binary(name, value):
+            if name.lower() == "subject":
+                raise UnicodeEncodeError(
+                    "ascii",
+                    "test \xe9\xe0\xfc",
+                    5,
+                    8,
+                    "ordinal not in range(128)",
+                )
+            return original_fold_binary(name, value)
+
+        mocker.patch.object(
+            type(SMTP), "fold_binary", side_effect=failing_fold_binary
+        )
+        result = func(msg, **kwargs)
+
+        for expected in expected_present:
+            assert expected in result
+        for absent in expected_absent:
+            assert absent not in result
+
+    ################################################################
+    #
+    def test_real_message_with_raw_utf8_headers(
+        self, problematic_email_factory_bytes
+    ):
+        """
+        GIVEN: A real email message (fixture problems/5) with raw
+               UTF-8 bytes in the Subject header (trademark symbols
+               encoded as \\xe2\\x84\\xa2)
+        WHEN:  msg_as_bytes and msg_headers_as_bytes are called
+        THEN:  Both should succeed without raising
+        """
+        raw = problematic_email_factory_bytes(5)
+        msg = message_from_bytes(raw)
+        result = msg_as_bytes(msg)
+        assert b"Subject:" in result
+        assert b"From:" in result
+
+        headers = msg_headers_as_bytes(msg)
+        assert b"Subject:" in headers
+        assert b"From:" in headers
