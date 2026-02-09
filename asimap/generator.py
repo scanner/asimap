@@ -79,9 +79,24 @@ class ASBytesGenerator(ASGenerator):
         """
         This method exists so we can determine whether or not to write the
         headers based on the instance variable `_headers`.
+
+        We implement the header loop ourselves (instead of calling
+        super()._write_headers) so we can catch per-header encoding
+        errors. Some messages have badly encoded headers that cause
+        Python's fold_binary() to raise UnicodeEncodeError.
         """
         if self._render_headers:
-            super()._write_headers(msg)  # type: ignore
+            for h, v in msg.raw_items():
+                try:
+                    self._fp.write(self.policy.fold_binary(h, v))
+                except (UnicodeEncodeError, UnicodeDecodeError):
+                    # Header has characters that can't be encoded by
+                    # the policy's fold_binary. Write it raw instead.
+                    #
+                    self._fp.write(
+                        f"{h}: {v}\r\n".encode("utf-8", "surrogateescape")
+                    )
+            self.write(self._NL)
 
     ####################################################################
     #
@@ -231,7 +246,15 @@ class ASHeaderGenerator(ASGenerator):
             if not self._skip and hdr not in self._headers:
                 continue
 
-            self._fp.write(self.policy.fold_binary(h, v))
+            try:
+                self._fp.write(self.policy.fold_binary(h, v))
+            except (UnicodeEncodeError, UnicodeDecodeError):
+                # Header has characters that can't be encoded by
+                # the policy's fold_binary. Write it raw instead.
+                #
+                self._fp.write(
+                    f"{h}: {v}\r\n".encode("utf-8", "surrogateescape")
+                )
         # A blank line always separates headers from body
         # and this is always included in our response to IMAP clients.
         #
