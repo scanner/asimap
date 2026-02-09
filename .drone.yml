@@ -4,7 +4,8 @@ name: AS IMAP Tests
 
 steps:
   - name: test
-    image: "python:3.13.11"
+    # NOTE: Keep this version in sync with PYTHON_VERSION in Make.rules
+    image: "python:3.13.12"
     environment:
       PYTHONUNBUFFERED: 1
       PYTHONPATH: /drone/src
@@ -23,6 +24,11 @@ name: Build and Publish Docker Image
 depends_on:
   - AS IMAP Tests
 
+environment:
+  # NOTE: Keep this version in sync with PYTHON_VERSION in Make.rules
+  #       and the test step image above.
+  PYTHON_VERSION: "3.13.12"
+
 steps:
   - name: Build prod
     image: plugins/docker
@@ -36,6 +42,7 @@ steps:
       auto_tag: true
       target: prod
       build_args:
+        - PYTHON_VERSION=${PYTHON_VERSION}
         - VERSION=${DRONE_TAG}
 
   - name: Build dev
@@ -51,6 +58,7 @@ steps:
       auto_tag_suffix: dev
       target: dev
       build_args:
+        - PYTHON_VERSION=${PYTHON_VERSION}
         - VERSION=${DRONE_TAG}
 
 trigger:
