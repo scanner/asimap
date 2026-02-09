@@ -951,7 +951,7 @@ class Authenticated(BaseClientHandler):
         # actually present (the cached attributes can be stale).
         #
         results: list[tuple[str, set[str]]] = []
-        async for mbox_name, attributes in Mailbox.list(
+        async for mbox_name, attributes, _ in Mailbox.list(
             cmd.mailbox_name, cmd.list_mailbox, self.server, lsub
         ):
             # Skip the root "" entry from LIST results. It is not a

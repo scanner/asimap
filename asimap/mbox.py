@@ -3060,10 +3060,17 @@ class Mailbox:
         lsub: bool = False,
         select_opts: set[ListSelectOpt] | None = None,
         patterns: list[str] | None = None,
-    ) -> AsyncIterator[tuple[str, set[str]]]:
+    ) -> AsyncIterator[tuple[str, set[str], set[str] | None]]:
         """
-        Async generator yielding ``(mbox_name, attributes)`` tuples for
-        mailboxes matching the given pattern(s).
+        Async generator yielding ``(mbox_name, attributes, childinfo)``
+        tuples for mailboxes matching the given pattern(s).
+
+        The third element ``childinfo`` is ``None`` for normal results. When
+        RECURSIVEMATCH is active, parent folders that don't satisfy
+        the selection criteria themselves but have descendants that do are
+        yielded with a ``childinfo`` set naming the criteria
+        (e.g. ``{"SUBSCRIBED"}``).  This maps to the RFC 5258 CHILDINFO
+        extended data item.
 
         Supports both legacy LIST/LSUB and RFC 5258 LIST-EXTENDED:
 
@@ -3108,6 +3115,37 @@ class Mailbox:
         )
         filter_subscribed = lsub or subscribed_selection
 
+        recursivematch = (
+            select_opts is not None
+            and ListSelectOpt.RECURSIVEMATCH in select_opts
+        )
+
+        if recursivematch:
+            async for result in cls._list_with_recursivematch(
+                mbox_re, server, subscribed_selection
+            ):
+                yield result
+        else:
+            async for result in cls._list_simple(
+                mbox_re, server, filter_subscribed, subscribed_selection
+            ):
+                yield result
+
+    ####################################################################
+    #
+    @classmethod
+    async def _list_simple(
+        cls,
+        mbox_re: str,
+        server: "IMAPUserServer",
+        filter_subscribed: bool,
+        subscribed_selection: bool,
+    ) -> AsyncIterator[tuple[str, set[str], set[str] | None]]:
+        """
+        Standard LIST/LSUB query: match folders by pattern, optionally
+        filtering to subscribed-only.  Yields ``(name, attrs, None)``
+        3-tuples (childinfo is always None for non-RECURSIVEMATCH).
+        """
         # NOTE: We do not present to the IMAP client any folders that
         #       have the flag 'ignored' set on them.
         #
@@ -3133,7 +3171,114 @@ class Mailbox:
                 if r"\Noselect" in attributes:
                     attributes.add(r"\NonExistent")
 
-            yield (mbox_name, attributes)
+            yield (mbox_name, attributes, None)
+
+    ####################################################################
+    #
+    @classmethod
+    async def _list_with_recursivematch(
+        cls,
+        mbox_re: str,
+        server: "IMAPUserServer",
+        subscribed_selection: bool,
+    ) -> AsyncIterator[tuple[str, set[str], set[str] | None]]:
+        """
+        RFC 5258 RECURSIVEMATCH logic.
+
+        When RECURSIVEMATCH is active alongside a filtering selection
+        option (e.g. SUBSCRIBED), the server returns:
+
+        1. Folders that match **both** the selection criteria **and** the
+           LIST pattern — yielded normally with ``childinfo=None``.
+        2. Parent folders that match the LIST pattern but do **not** satisfy
+           the selection criteria, provided they have at least one
+           descendant that **does** satisfy the criteria and that
+           descendant does **not** match the LIST pattern itself.  These
+           are yielded with a ``childinfo`` set naming the criteria
+           (e.g. ``{"SUBSCRIBED"}``), which maps to the CHILDINFO
+           extended data item in the LIST response.
+
+        The algorithm:
+        - Query all folders satisfying the selection criteria (ignoring
+          the pattern).
+        - Partition them into *pattern-matching* and *non-matching*.
+        - For each non-matching folder, walk up its ancestor chain.
+          Ancestors that match the pattern (and aren't already in the
+          normal results) become RECURSIVEMATCH entries with CHILDINFO.
+        """
+        pattern_re = re.compile(mbox_re)
+
+        # Phase 1: query all selection-matching folders (no pattern
+        # filter).  RECURSIVEMATCH requires a filtering selection option;
+        # currently only SUBSCRIBED is meaningful (REMOTE is a no-op).
+        #
+        query = (
+            "SELECT name,attributes,subscribed FROM mailboxes WHERE "
+            "subscribed=1 AND attributes NOT LIKE '%ignored%' "
+            "ORDER BY name"
+        )
+        normal_results: list[tuple[str, set[str]]] = []
+        non_matching_names: list[str] = []
+
+        async for mbox_name, attrs_str, subscribed in server.db.query(query):
+            attrs = set(attrs_str.split(","))
+            if mbox_name.lower() == "inbox":
+                mbox_name = "INBOX"
+
+            if pattern_re.search(mbox_name):
+                # Matches both selection criteria and pattern.
+                #
+                if subscribed_selection and subscribed:
+                    attrs.add(r"\Subscribed")
+                    if r"\Noselect" in attrs:
+                        attrs.add(r"\NonExistent")
+                normal_results.append((mbox_name, attrs))
+            else:
+                non_matching_names.append(mbox_name)
+
+        # Yield the normal (pattern + selection matching) results.
+        #
+        yielded_names = set()
+        for name, attrs in normal_results:
+            yielded_names.add(name)
+            yield (name, attrs, None)
+
+        # Phase 2: for each non-matching folder, walk up its ancestor
+        # chain.  Ancestors that match the pattern and are NOT already
+        # yielded become RECURSIVEMATCH entries.
+        #
+        childinfo_map: dict[str, set[str]] = {}
+        for nm in non_matching_names:
+            parts = nm.split("/")
+            for i in range(1, len(parts)):
+                ancestor = "/".join(parts[:i])
+                if ancestor.lower() == "inbox":
+                    ancestor = "INBOX"
+                if (
+                    pattern_re.search(ancestor)
+                    and ancestor not in yielded_names
+                ):
+                    childinfo_map.setdefault(ancestor, set())
+                    if subscribed_selection:
+                        childinfo_map[ancestor].add("SUBSCRIBED")
+
+        # Phase 3: fetch attributes for each RECURSIVEMATCH ancestor
+        # and yield them with childinfo.
+        #
+        for ancestor_name in sorted(childinfo_map):
+            row = await server.db.fetchone(
+                "SELECT attributes FROM mailboxes WHERE name=?",
+                (
+                    (
+                        ancestor_name.lower()
+                        if ancestor_name == "INBOX"
+                        else ancestor_name
+                    ),
+                ),
+            )
+            if row:
+                attrs = set(row[0].split(","))
+                yield (ancestor_name, attrs, childinfo_map[ancestor_name])
 
 
 ####################################################################
