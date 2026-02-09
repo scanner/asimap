@@ -24,7 +24,11 @@ maintainers = [
 description = "An IMAP server that uses `mailbox.MH` as its storage"
 keywords = ["email", "imap"]
 readme = "README.md"
-requires-python = ">=3.12"
+
+# NOTE: There are fixes to mail header parsing routines that require we specify
+#       this version of python specifically.
+#
+requires-python = ">=3.13.12"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: BSD License",

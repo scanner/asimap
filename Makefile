@@ -20,8 +20,8 @@ coverage: .venv
 	open 'htmlcov/index.html'
 
 build: version	## `docker build` for both `prod` and `dev` targets
-	COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg VERSION="$(VERSION)" --target prod --tag asimap:$(VERSION) --tag asimap:prod .
-	COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg VERSION=$(VERSION) --target dev --tag asimap:$(VERSION)-dev --tag asimap:dev .
+	COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg PYTHON_VERSION="$(PYTHON_VERSION)" --build-arg VERSION="$(VERSION)" --target prod --tag asimap:$(VERSION) --tag asimap:prod .
+	COMPOSE_DOCKER_CLI_BUILD=1 DOCKER_BUILDKIT=1 docker build --build-arg PYTHON_VERSION="$(PYTHON_VERSION)" --build-arg VERSION=$(VERSION) --target dev --tag asimap:$(VERSION)-dev --tag asimap:dev .
 
 uv-sync: .venv	## Sync .venv with uv.lock (run after updating pyproject.toml or pulling changes)
 	@uv sync

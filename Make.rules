@@ -1,5 +1,7 @@
 # -*- Mode: Makefile -*-
 
+PYTHON_VERSION := 3.13.12
+
 UV_RUN := uv run
 
 .git/hooks/pre-commit .git/hooks/pre-push: .venv

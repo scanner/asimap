@@ -225,12 +225,9 @@ Thread-Index: =?utf-8?q?AdNST+6DXK4xfZYaRzuyUbaIacENgAHGVF+AAACaRUAAAhGDmgAA?=\r
  =?utf-8?q?St6QACm+BjkA/3MzkAAAPw7yAAA7j6A=3D?=\r
 Date: Wed, 15 Nov 2017 14:16:14 +0000\r
 Message-ID: <AM4PR01MB1444B3F21AE7DA9C8128C28FF7290@AM4PR01MB1444.eurprd01.prod.exchangelabs.com>\r
-References: =?utf-8?q?=3CAM4PR01MB1444920F2AF5B6F4856FEA13F7290=40AM4PR01MB1?=\r
- =?utf-8?q?444=2Eeurprd01=2Eprod=2Eexchangelabs=2Ecom=3E_=3C5185e377-81c5-43?=\r
- =?utf-8?q?61-91ba-11d42f4c5cc9=40AM5EUR02FT056=2Eeop-EUR02=2Eprod=2Eprotect?=\r
- =?utf-8?q?ion=2Eoutlook=2Ecom=3E?=\r
-In-Reply-To: =?utf-8?q?=3C5185e377-81c5-4361-91ba-11d42f4c5cc9=40AM5EUR02FT0?=\r
- =?utf-8?q?56=2Eeop-EUR02=2Eprod=2Eprotection=2Eoutlook=2Ecom=3E?=\r
+References: <AM4PR01MB1444920F2AF5B6F4856FEA13F7290@AM4PR01MB1444.eurprd01.prod.exchangelabs.com>\r
+ <5185e377-81c5-4361-91ba-11d42f4c5cc9@AM5EUR02FT056.eop-EUR02.prod.protection.outlook.com>\r
+In-Reply-To: <5185e377-81c5-4361-91ba-11d42f4c5cc9@AM5EUR02FT056.eop-EUR02.prod.protection.outlook.com>\r
 Accept-Language: it-IT, en-US\r
 Content-Language: it-IT\r
 authentication-results: spf=none (sender IP is )\r

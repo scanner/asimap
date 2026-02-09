@@ -2,7 +2,8 @@
 #
 # Builder stage
 #
-FROM python:3.13.11 AS builder
+ARG PYTHON_VERSION=3.13.12
+FROM python:${PYTHON_VERSION} AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
@@ -54,7 +55,8 @@ CMD ["python", "/app/asimap/asimapd.py"]
 #
 # `prod` - The docker image for the production service
 #
-FROM python:3.13.11-slim AS prod
+ARG PYTHON_VERSION=3.13.12
+FROM python:${PYTHON_VERSION}-slim AS prod
 
 LABEL org.opencontainers.image.source=https://github.com/scanner/asimap
 LABEL org.opencontainers.image.description="Apricot Systematic IMAP Demon"
