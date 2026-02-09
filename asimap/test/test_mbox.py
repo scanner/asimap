@@ -492,6 +492,46 @@ async def test_mailbox_fetch(mailbox_with_bunch_of_email):
 
 ####################################################################
 #
+@pytest.mark.asyncio
+async def test_mailbox_uid_fetch_no_duplicate_uid(
+    mailbox_with_bunch_of_email,
+):
+    """
+    GIVEN: A UID FETCH command where the client explicitly requests UID
+           as one of the fetch attributes (as iPadOS 18+ Mail does)
+    WHEN:  The fetch is executed with uid_cmd=True
+    THEN:  The UID should appear exactly once in the results, not twice
+    """
+    mbox = mailbox_with_bunch_of_email
+    msg_set = [1, 2, 3]
+
+    # Explicitly include UID in fetch_ops, matching what iPadOS sends:
+    # UID FETCH ... (UID INTERNALDATE RFC822.SIZE FLAGS BODY.PEEK[HEADER])
+    #
+    fetch_ops = [
+        FetchAtt(FetchOp.UID),
+        FetchAtt(FetchOp.FLAGS),
+        FetchAtt(
+            FetchOp.BODY,
+            section=[["HEADER.FIELDS", ["Date", "From"]]],
+            peek=True,
+        ),
+    ]
+
+    async for idx, result in mbox.fetch(msg_set, fetch_ops, uid_cmd=True):
+        # UID should appear exactly once, not twice
+        #
+        uid_results = [r for r in result if r.startswith(b"UID ")]
+        assert len(uid_results) == 1, (
+            f"UID appears {len(uid_results)} times in FETCH response "
+            f"for msg {idx}, expected exactly 1"
+        )
+        assert uid_results[0].startswith(b"UID ")
+        assert int(uid_results[0].split()[1]) == mbox.uids[idx - 1]
+
+
+####################################################################
+#
 @pytest.mark.skip(reason="will impelement test later")
 @pytest.mark.asyncio
 async def test_mailbox_fetch_notifies_other_clients(

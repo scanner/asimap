@@ -112,29 +112,28 @@ def toggle_trace(turn_on: Optional[bool] = None) -> None:
                           turned off it is on.
     """
     global TRACE_ENABLED, TRACE_LAST_TIME, TRACE_START_TIME
-    if turn_on is None:
-        match turn_on:
-            case True:
-                if TRACE_ENABLED is False:
-                    TRACE_ENABLED = True
-                    logger.info("Tracing is enabled")
-                    TRACE_START_TIME = time.monotonic()
-                    TRACE_LAST_TIME = 0.0
-                    trace({"trace_format": "1.0"})
-            case False:
-                if TRACE_ENABLED is True:
-                    TRACE_ENABLED = False
-                    logger.info("Tracing is disabled")
-            case None:
-                if TRACE_ENABLED is True:
-                    TRACE_ENABLED = False
-                    logger.info("Tracing is disabled")
-                else:
-                    TRACE_ENABLED = True
-                    logger.info("Tracing is enabled")
-                    TRACE_START_TIME = time.monotonic()
-                    TRACE_LAST_TIME = 0.0
-                    trace({"trace_format": "1.0"})
+    match turn_on:
+        case True:
+            if TRACE_ENABLED is False:
+                TRACE_ENABLED = True
+                logger.info("Tracing is enabled")
+                TRACE_START_TIME = time.monotonic()
+                TRACE_LAST_TIME = 0.0
+                trace({"trace_format": "1.0"})
+        case False:
+            if TRACE_ENABLED is True:
+                TRACE_ENABLED = False
+                logger.info("Tracing is disabled")
+        case None:
+            if TRACE_ENABLED is True:
+                TRACE_ENABLED = False
+                logger.info("Tracing is disabled")
+            else:
+                TRACE_ENABLED = True
+                logger.info("Tracing is enabled")
+                TRACE_START_TIME = time.monotonic()
+                TRACE_LAST_TIME = 0.0
+                trace({"trace_format": "1.0"})
 
 
 ####################################################################

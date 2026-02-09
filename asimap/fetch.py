@@ -294,7 +294,16 @@ class FetchAtt:
                 result = f"({flags})".encode("latin-1")
             case FetchOp.INTERNALDATE:
                 int_date = self.ctx.internal_date()
-                internal_date = email.utils.format_datetime(int_date)
+                # RFC 3501 §2.3.3 date-time format:
+                #   "dd-Mon-yyyy HH:MM:SS +zzzz"
+                # NOT RFC 2822 format (which email.utils.format_datetime
+                # produces).
+                #
+                day = f"{int_date.day:2d}"
+                tz = int_date.strftime("%z") if int_date.tzinfo else "+0000"
+                internal_date = (
+                    f'{day}-{int_date.strftime("%b-%Y %H:%M:%S")} {tz}'
+                )
                 result = f'"{internal_date}"'.encode("latin-1")
             case FetchOp.UID:
                 result = str(self.ctx.uid()).encode("latin-1")

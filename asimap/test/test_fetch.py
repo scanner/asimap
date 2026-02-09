@@ -24,7 +24,6 @@ from ..generator import msg_as_bytes, msg_headers_as_bytes
 from ..mbox import mbox_msg_path
 from ..parse import _lit_ref_re
 from ..search import SearchContext
-from ..utils import parsedate
 from .conftest import assert_email_equal
 
 
@@ -550,7 +549,10 @@ async def test_fetch_internaldate(mailbox_with_bunch_of_email):
 
         assert result.startswith(b"INTERNALDATE ")
         assert result[13:14] == b'"' and result[-1:] == b'"'
-        internal_date = parsedate((result[14:-1]).decode("latin-1"))
+        # Parse the RFC 3501 §2.3.3 date-time format:
+        #   "dd-Mon-yyyy HH:MM:SS +zzzz"
+        date_str = (result[14:-1]).decode("latin-1")
+        internal_date = datetime.strptime(date_str, "%d-%b-%Y %H:%M:%S %z")
         assert internal_date == internal_date_by_msg[msg_key]
 
 

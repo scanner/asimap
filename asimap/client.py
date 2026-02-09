@@ -51,6 +51,39 @@ SERVER_ID = {
     "os": sys.platform,
 }
 
+# Client-specific capability exclusions
+# Each entry defines a pattern to match against client ID strings and the
+# capabilities to exclude for matching clients.
+#
+# NOTE: Pattern to match iOS 26 clients (iPhone, iPad, Apple Vision Pro) that
+#       should not see IDLE in capabilities due to broken IDLE implementation.
+#       This pattern will be refined when we have actual client ID data from
+#       iOS 26.
+#
+# Expected client ID fields: "name", "os", "os-version", "vendor"
+# Example: {"name": "Mail", "os": "iOS", "os-version": "26.0", ...}
+#
+# NOTE: We thought IDLE was broken on iOS 18+ Mail clients, but it turns out it
+#       is fine, we are leaving this code in as an example of how we can use
+#       the client ID to disable certain capabilities.
+#
+CLIENT_CAPABILITY_EXCLUSIONS = [
+    # {
+    #     "pattern": re.compile(
+    #         r"(?:"
+    #         r"(?:iPhone|iPad|Vision\s*Pro).*\b26\b"  # Device type with version 26
+    #         r"|"
+    #         r"\bOS\s*26\b"  # OS 26
+    #         r"|"
+    #         r"\biOS.*\b26\b"  # iOS with version 26
+    #         r")",
+    #         re.IGNORECASE,
+    #     ),
+    #     "excluded_capabilities": {"IDLE"},
+    #     "reason": "iOS 26 broken IDLE implementation",
+    # },
+]
+
 # How many seconds a command will be left to run before the client consider it
 # to have taken too long to run. Basically if commands get stuck this is a
 # safety measure. We should make it dynamic (so along as commands are doing
@@ -102,6 +135,11 @@ class BaseClientHandler:
         #
         self.client_id: Optional[Dict[str, str]] = None
 
+        # Set of capabilities to exclude from CAPABILITY response for this client
+        # based on known client issues (e.g., iOS 26 broken IDLE implementation)
+        #
+        self.excluded_capabilities: set[str] = set()
+
         # Idling is like a sub-state. When we are idling we expect a 'DONE'
         # completion from the IMAP client before it sends us any other
         # message. However during this time the server may still send async
@@ -119,6 +157,38 @@ class BaseClientHandler:
         # they are stored here.
         #
         self.pending_notifications: List[str] = []
+
+    ##################################################################
+    #
+    def update_capability_exclusions(self):
+        """
+        Check the client ID against known problematic client patterns and
+        update the set of excluded capabilities accordingly.
+
+        Iterates through CLIENT_CAPABILITY_EXCLUSIONS and applies any
+        matching exclusion rules based on the client's ID.
+        """
+        if not self.client_id:
+            return
+
+        # Convert client_id dict to a searchable string
+        # Check both keys and values for pattern matches
+        client_id_str = " ".join(
+            f"{k}:{v}" for k, v in self.client_id.items() if v
+        )
+
+        # Check each exclusion rule
+        for rule in CLIENT_CAPABILITY_EXCLUSIONS:
+            if rule["pattern"].search(client_id_str):
+                logger.info(
+                    "%s: Client ID matched exclusion pattern: %s. "
+                    "Excluding capabilities: %s. Client ID: %s",
+                    self.name,
+                    rule["reason"],
+                    ", ".join(sorted(rule["excluded_capabilities"])),
+                    self.client_id,
+                )
+                self.excluded_capabilities.update(rule["excluded_capabilities"])
 
     ##################################################################
     #
@@ -394,7 +464,13 @@ class BaseClientHandler:
         - `cmd`: The full IMAP command object.
         """
         await self.send_pending_notifications()
-        await self.client.push(f"* CAPABILITY {' '.join(CAPABILITIES)}\r\n")
+
+        # Filter out any excluded capabilities for this client
+        capabilities = [
+            cap for cap in CAPABILITIES if cap not in self.excluded_capabilities
+        ]
+
+        await self.client.push(f"* CAPABILITY {' '.join(capabilities)}\r\n")
         return None
 
     #########################################################################
@@ -423,6 +499,10 @@ class BaseClientHandler:
         """
         await self.send_pending_notifications()
         self.client_id = cmd.id_dict
+
+        # Check if this client should have any capabilities excluded
+        self.update_capability_exclusions()
+
         res = " ".join([f'"{k}" "{v}"' for k, v in SERVER_ID.items()])
         await self.client.push(f"* ID ({res})\r\n")
         return None
@@ -865,10 +945,36 @@ class Authenticated(BaseClientHandler):
             res = "LSUB"
 
         assert self.server
+
+        # Collect all results first so we can fix \HasChildren /
+        # \HasNoChildren attributes based on which folders are
+        # actually present (the cached attributes can be stale).
+        #
+        results: list[tuple[str, set[str]]] = []
         async for mbox_name, attributes in Mailbox.list(
             cmd.mailbox_name, cmd.list_mailbox, self.server, lsub
         ):
+            # Skip the root "" entry from LIST results. It is not a
+            # real mailbox and confuses strict IMAP clients (iOS 18+).
+            #
+            if mbox_name == "":
+                continue
             mbox_name = "INBOX" if mbox_name.lower() == "inbox" else mbox_name
+            results.append((mbox_name, attributes))
+
+        # Build a set of all returned folder names so we can verify
+        # \HasChildren / \HasNoChildren correctness.
+        #
+        all_names = {name for name, _ in results}
+        for mbox_name, attributes in results:
+            has_children = any(n.startswith(mbox_name + "/") for n in all_names)
+            if has_children:
+                attributes.discard(r"\HasNoChildren")
+                attributes.add(r"\HasChildren")
+            else:
+                attributes.discard(r"\HasChildren")
+                attributes.add(r"\HasNoChildren")
+
             msg = f'* {res} ({" ".join(sorted(attributes))}) "/" "{mbox_name}"\r\n'
             await self.client.push(msg)
 
