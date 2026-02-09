@@ -7,7 +7,6 @@ single connected IMAP client.
 #
 import asyncio
 import logging
-import re
 import sys
 from enum import StrEnum
 from itertools import count, groupby
@@ -64,21 +63,25 @@ SERVER_ID = {
 # Expected client ID fields: "name", "os", "os-version", "vendor"
 # Example: {"name": "Mail", "os": "iOS", "os-version": "26.0", ...}
 #
+# NOTE: We thought IDLE was broken on iOS 18+ Mail clients, but it turns out it
+#       is fine, we are leaving this code in as an example of how we can use
+#       the client ID to disable certain capabilities.
+#
 CLIENT_CAPABILITY_EXCLUSIONS = [
-    {
-        "pattern": re.compile(
-            r"(?:"
-            r"(?:iPhone|iPad|Vision\s*Pro).*\b26\b"  # Device type with version 26
-            r"|"
-            r"\bOS\s*26\b"  # OS 26
-            r"|"
-            r"\biOS.*\b26\b"  # iOS with version 26
-            r")",
-            re.IGNORECASE,
-        ),
-        "excluded_capabilities": {"IDLE"},
-        "reason": "iOS 26 broken IDLE implementation",
-    },
+    # {
+    #     "pattern": re.compile(
+    #         r"(?:"
+    #         r"(?:iPhone|iPad|Vision\s*Pro).*\b26\b"  # Device type with version 26
+    #         r"|"
+    #         r"\bOS\s*26\b"  # OS 26
+    #         r"|"
+    #         r"\biOS.*\b26\b"  # iOS with version 26
+    #         r")",
+    #         re.IGNORECASE,
+    #     ),
+    #     "excluded_capabilities": {"IDLE"},
+    #     "reason": "iOS 26 broken IDLE implementation",
+    # },
 ]
 
 # How many seconds a command will be left to run before the client consider it
