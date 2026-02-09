@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.33] - 2025-02-09
+
+### Fixed
+
+- Fix orphaned asyncio task on client disconnect: cancel and await the subprocess reader task when the IMAP client connection exits
+- Fix test expectations for header encoding changed by Python 3.13.12's email policy behavior
+
+### Changed
+
+- Pin Python version (3.13.12) across Make.rules, Dockerfile, and Drone CI to ensure consistent behavior
+
 ## [2.1.32] - 2025-02-08
 
 ### Fixed
