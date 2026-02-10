@@ -947,6 +947,45 @@ class Authenticated(BaseClientHandler):
 
     ####################################################################
     #
+    async def _compute_status_for_list(
+        self,
+        mbox_name: str,
+        status_atts: list[StatusAtt],
+    ) -> str | None:
+        """
+        Compute a ``* STATUS`` response line for *mbox_name* from the
+        in-memory ``Mailbox`` object.  Used by LIST-STATUS (RFC 5819).
+
+        All mailboxes are already loaded in memory by the user server,
+        so ``get_mailbox()`` returns the cached instance cheaply.
+
+        Returns the formatted response line (with trailing CRLF), or
+        ``None`` if the mailbox cannot be found.
+        """
+        assert self.server
+        try:
+            mbox = await self.server.get_mailbox(mbox_name)
+        except NoSuchMailbox:
+            return None
+
+        result: list[str] = []
+        for att in status_atts:
+            match att:
+                case StatusAtt.MESSAGES:
+                    result.append(f"MESSAGES {mbox.num_msgs}")
+                case StatusAtt.RECENT:
+                    result.append(f"RECENT {mbox.num_recent}")
+                case StatusAtt.UIDNEXT:
+                    result.append(f"UIDNEXT {mbox.next_uid}")
+                case StatusAtt.UIDVALIDITY:
+                    result.append(f"UIDVALIDITY {mbox.uid_vv}")
+                case StatusAtt.UNSEEN:
+                    result.append(f"UNSEEN {len(mbox.sequences['unseen'])}")
+
+        return f'* STATUS "{mbox_name}" ({" ".join(result)})\r\n'
+
+    ####################################################################
+    #
     async def do_list(self, cmd: IMAPClientCommand, lsub: bool = False) -> None:
         """
         Handle the LIST command (RFC 3501) with RFC 5258 LIST-EXTENDED
@@ -1046,6 +1085,23 @@ class Authenticated(BaseClientHandler):
             else:
                 msg = self._fmt_list_response(mbox_name, attributes, child_info)
             await self.client.push(msg)
+
+            # RFC 5819 LIST-STATUS: after each selectable LIST entry
+            # that is not a RECURSIVEMATCH-only result, emit a
+            # * STATUS response.  Skip \Noselect mailboxes and
+            # RECURSIVEMATCH entries (child_info is not None).
+            #
+            if (
+                ListReturnOpt.STATUS in cmd.list_return_opts
+                and cmd.list_status_atts
+                and r"\Noselect" not in attributes
+                and child_info is None
+            ):
+                status_line = await self._compute_status_for_list(
+                    mbox_name, cmd.list_status_atts
+                )
+                if status_line:
+                    await self.client.push(status_line)
 
     ####################################################################
     #

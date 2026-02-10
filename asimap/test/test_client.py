@@ -1228,3 +1228,127 @@ async def test_extended_list_hierarchy_probe_extended_mode(
     # No LIST response, just the OK.
     #
     assert results == ["A001 OK LIST command completed"]
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_extended_list_status_return(
+    mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    """
+    GIVEN: folders with messages
+    WHEN:  LIST "" * RETURN (STATUS (MESSAGES UNSEEN)) is sent
+    THEN:  each selectable folder's LIST line is followed by a
+           * STATUS response with the requested attributes
+    """
+    server, imap_client = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+    client_handler = Authenticated(imap_client, server)
+
+    await Mailbox.create("work", server)
+
+    cmd = IMAPClientCommand(
+        'A001 LIST "" * RETURN (STATUS (MESSAGES UNSEEN))\r\n'
+    )
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+
+    list_lines = [r for r in results if r.startswith("* LIST")]
+    status_lines = [r for r in results if r.startswith("* STATUS")]
+
+    # Every selectable folder should have a STATUS line.
+    #
+    selectable_names = []
+    for line in list_lines:
+        if r"\Noselect" not in line:
+            name = line.split('"')[-2]
+            selectable_names.append(name)
+
+    assert len(status_lines) == len(selectable_names)
+    for name in selectable_names:
+        matching = [s for s in status_lines if f'"{name}"' in s]
+        assert len(matching) == 1
+        assert "MESSAGES" in matching[0]
+        assert "UNSEEN" in matching[0]
+
+    assert results[-1] == "A001 OK LIST command completed"
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_extended_list_status_skips_noselect(
+    mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    """
+    GIVEN: a \\Noselect folder (parent with sub-folders, deleted)
+    WHEN:  LIST with STATUS return option is sent
+    THEN:  no * STATUS line is emitted for the \\Noselect folder
+    """
+    server, imap_client = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+    client_handler = Authenticated(imap_client, server)
+
+    await Mailbox.create("archive", server)
+    await Mailbox.create("archive/2024", server)
+
+    # Mark parent as \Noselect.
+    #
+    archive = await server.get_mailbox("archive")
+    archive.attributes.add(r"\Noselect")
+    await archive.commit_to_db()
+
+    cmd = IMAPClientCommand(
+        'A001 LIST "" "archive*" RETURN (STATUS (MESSAGES))\r\n'
+    )
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+
+    status_lines = [r for r in results if r.startswith("* STATUS")]
+
+    # Only "archive/2024" should get STATUS, not "archive".
+    #
+    assert len(status_lines) == 1
+    assert '"archive/2024"' in status_lines[0]
+    assert '"archive"' not in status_lines[0]
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_extended_list_status_skips_recursivematch(
+    mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    """
+    GIVEN: a RECURSIVEMATCH entry (parent with CHILDINFO)
+    WHEN:  LIST with SUBSCRIBED RECURSIVEMATCH and STATUS return is sent
+    THEN:  no * STATUS line is emitted for the RECURSIVEMATCH entry
+    """
+    server, imap_client = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+    client_handler = Authenticated(imap_client, server)
+
+    await Mailbox.create("team", server)
+    await Mailbox.create("team/dev", server)
+
+    child = await server.get_mailbox("team/dev")
+    child.subscribed = True
+    await child.commit_to_db()
+
+    cmd = IMAPClientCommand(
+        "A001 LIST (SUBSCRIBED RECURSIVEMATCH) "
+        '"" % RETURN (STATUS (MESSAGES))\r\n'
+    )
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+
+    status_lines = [r for r in results if r.startswith("* STATUS")]
+
+    # "team" appears via RECURSIVEMATCH with CHILDINFO — no STATUS.
+    # No subscribed top-level folders match "%" so no STATUS at all.
+    #
+    assert not any('"team"' in s for s in status_lines)
