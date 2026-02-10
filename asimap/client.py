@@ -1006,6 +1006,16 @@ class Authenticated(BaseClientHandler):
         await self.send_pending_notifications()
 
         extended = bool(cmd.list_select_opts or cmd.list_patterns)
+        if extended or cmd.list_return_opts:
+            logger.debug(
+                "LIST%s: select_opts=%s, patterns=%s, return_opts=%s, "
+                "status_atts=%s",
+                "-EXTENDED" if extended else "",
+                cmd.list_select_opts,
+                cmd.list_patterns,
+                cmd.list_return_opts,
+                cmd.list_status_atts,
+            )
 
         # Handle the special case where the client is probing for the
         # hierarchy separation character.  In extended mode (RFC 5258)
