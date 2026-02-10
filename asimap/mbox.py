@@ -58,6 +58,7 @@ from .parse import (
     CONFLICTING_COMMANDS,
     IMAPClientCommand,
     IMAPCommand,
+    ListSelectOpt,
     StoreAction,
 )
 from .search import IMAPSearch, SearchContext
@@ -3022,6 +3023,39 @@ class Mailbox:
 
     ####################################################################
     #
+    @staticmethod
+    def _mbox_pattern_to_re(ref_mbox_name: str, mbox_match: str) -> str:
+        """
+        Convert an IMAP LIST reference + pattern into a regex string.
+
+        IMAP wildcards are converted as follows:
+        - ``*`` matches zero or more characters (like shell glob)
+        - ``%`` matches zero or more characters except the hierarchy
+          delimiter ``/``
+
+        Returns a regex anchored with ``^...$``.
+
+        XXX: The resulting regex is case-sensitive but the DB stores
+        INBOX as ``"inbox"``.  A literal ``LIST "" "INBOX"`` pattern
+        will not match.  INBOX matching should be case-insensitive
+        per RFC 3501 §5.1.
+        """
+        if len(mbox_match) > 0 and mbox_match[0] == "/":
+            mbox_match = mbox_match[1:]
+
+        if mbox_match != "":
+            mbox_match = os.path.normpath(mbox_match)
+
+        mbox_match = ref_mbox_name + mbox_match
+
+        # Escape regex metacharacters, then convert IMAP wildcards.
+        #
+        mbox_match = "^" + re.escape(mbox_match) + "$"
+        mbox_match = mbox_match.replace(r"\*", r".*").replace(r"%", r"[^\/]*")
+        return mbox_match
+
+    ####################################################################
+    #
     @classmethod
     async def list(
         cls,
@@ -3029,88 +3063,227 @@ class Mailbox:
         mbox_match: str,
         server: "IMAPUserServer",
         lsub: bool = False,
-    ):
+        select_opts: set[ListSelectOpt] | None = None,
+        patterns: list[str] | None = None,
+    ) -> AsyncIterator[tuple[str, set[str], set[str] | None]]:
         """
-        This returns a list of tuples of mailbox names and those mailbox's
-        attributes. The list is generated from the mailboxes db shelf.
+        Async generator yielding ``(mbox_name, attributes, childinfo)``
+        tuples for mailboxes matching the given pattern(s).
 
-        The `ref_mbox_name` is a string prefix for mailbox names to match.
+        The third element ``childinfo`` is ``None`` for normal results. When
+        RECURSIVEMATCH is active, parent folders that don't satisfy
+        the selection criteria themselves but have descendants that do are
+        yielded with a ``childinfo`` set naming the criteria
+        (e.g. ``{"SUBSCRIBED"}``).  This maps to the RFC 5258 CHILDINFO
+        extended data item.
 
-        mbox_match is a pattern that determines which of the subset that match
-        ref_mbox_name will be returned to our caller.
+        Supports both legacy LIST/LSUB and RFC 5258 LIST-EXTENDED:
 
-        The tricky part is that we need to re-interpret 'mbox_match' as a
-        regular expression that we can apply to our mbox names.
-
-        As near as I can tell '*' is like the shell glob pattern - it matches
-        zero or more characters.
-
-        '%' is special in that it matches zero or more characters, but not the
-        character that separates the hierarchies of mailboxes (ie: '/' in our
-        case.)
-
-        So we should be able to get away with: '*' -> '.*', '%' -> '[^/]*' We
-        also need to escape any characters that could be interpreted as part of
-        a regular expression.
+        - ``lsub=True`` (legacy LSUB): filter to subscribed folders only.
+        - ``select_opts``: RFC 5258 selection options. When
+          ``ListSelectOpt.SUBSCRIBED`` is present, filters to subscribed
+          folders and adds ``\\Subscribed`` to their attributes. Folders
+          that are subscribed but marked ``\\Noselect`` (deleted with
+          sub-folders) also get ``\\NonExistent``.
+        - ``patterns``: RFC 5258 multiple mailbox patterns. When provided,
+          results are the union of all pattern matches (OR semantics),
+          and ``mbox_match`` is ignored.
 
         Arguments:
-        - `cls`: the mailbox class (this is a clas method)
-        - `server`: the user server object instance
-        - `ref_mbox_name`: The reference mailbox name
-        - `mbox_match`: The pattern of mailboxes to match under the reference
-          mailbox name.
-        - `lsub`: If True this will only match folders that have their
-          subscribed bit set.
+        - `ref_mbox_name`: The reference mailbox name (prefix).
+        - `mbox_match`: Single mailbox pattern (legacy / single-pattern).
+        - `server`: The user server object instance.
+        - `lsub`: If True, only match subscribed folders (legacy LSUB).
+        - `select_opts`: RFC 5258 selection options (overrides ``lsub``
+          when set).
+        - `patterns`: RFC 5258 multiple patterns (overrides ``mbox_match``
+          when non-empty).
         """
-        # We strip the `/` prefix from the beginning of the string because
-        # internally our mailboxes are unrooted.
+        # Build the regex: either a single pattern or OR of multiple
+        # patterns.
         #
-        if len(mbox_match) > 0 and mbox_match[0] == "/":
-            mbox_match = mbox_match[:1]
+        if patterns:
+            re_parts = [
+                cls._mbox_pattern_to_re(ref_mbox_name, p) for p in patterns
+            ]
+            mbox_re = "(" + "|".join(re_parts) + ")"
+        else:
+            mbox_re = cls._mbox_pattern_to_re(ref_mbox_name, mbox_match)
 
-        # we use normpath to collapse redundant separators and up-level
-        # references. But normpath of "" == "." so we make sure that case is
-        # handled.
+        logger.debug("**** mbox_match re: '%s'", mbox_re)
+
+        # Determine subscription filter: lsub (legacy) or SUBSCRIBED
+        # selection option (RFC 5258).
         #
-        if mbox_match != "":
-            mbox_match = os.path.normpath(mbox_match)
+        subscribed_selection = (
+            select_opts is not None and ListSelectOpt.SUBSCRIBED in select_opts
+        )
+        filter_subscribed = lsub or subscribed_selection
 
-        # Now we tack the ref_mbox_name and mbox_match together.
-        #
-        mbox_match = ref_mbox_name + mbox_match
-        logger.debug("**** mbox_match: '%s'", mbox_match)
+        recursivematch = (
+            select_opts is not None
+            and ListSelectOpt.RECURSIVEMATCH in select_opts
+        )
 
-        # We need to escape all possible regular expression characters
-        # in our string so that it only matches what is expected by the
-        # imap specification.
-        #
-        mbox_match = "^" + re.escape(mbox_match) + "$"
+        if recursivematch:
+            async for result in cls._list_with_recursivematch(
+                mbox_re, server, subscribed_selection
+            ):
+                yield result
+        else:
+            async for result in cls._list_simple(
+                mbox_re, server, filter_subscribed, subscribed_selection
+            ):
+                yield result
 
-        # Every '*' becomes '.*' and every % becomes [^/]
-        #
-        mbox_match = mbox_match.replace(r"\*", r".*").replace(r"%", r"[^\/]*")
-        logger.debug("**** mbox_match re: '%s'", mbox_match)
-
+    ####################################################################
+    #
+    @classmethod
+    async def _list_simple(
+        cls,
+        mbox_re: str,
+        server: "IMAPUserServer",
+        filter_subscribed: bool,
+        subscribed_selection: bool,
+    ) -> AsyncIterator[tuple[str, set[str], set[str] | None]]:
+        """
+        Standard LIST/LSUB query: match folders by pattern, optionally
+        filtering to subscribed-only.  Yields ``(name, attrs, None)``
+        3-tuples (childinfo is always None for non-RECURSIVEMATCH).
+        """
         # NOTE: We do not present to the IMAP client any folders that
         #       have the flag 'ignored' set on them.
         #
-        # XXX All mailboxes are in-memory now. We likely do not need to
-        #     make a db query here for a mailbox's attributes anymore.
-        #
-        subscribed = "AND subscribed=1" if lsub else ""
+        sub_clause = "AND subscribed=1" if filter_subscribed else ""
         query = (
-            "SELECT name,attributes FROM mailboxes WHERE name "
-            f"regexp ? {subscribed} AND attributes NOT LIKE '%ignored%' "
+            "SELECT name,attributes,subscribed FROM mailboxes WHERE name "
+            f"regexp ? {sub_clause} AND attributes NOT LIKE '%ignored%' "
             "ORDER BY name"
         )
         logger.debug("*** Query: %s", query)
-        async for mbox_name, attributes in server.db.query(
-            query, (mbox_match,)
+        async for mbox_name, attributes, subscribed in server.db.query(
+            query, (mbox_re,)
         ):
             attributes = set(attributes.split(","))
             if mbox_name.lower() == "inbox":
                 mbox_name = "INBOX"
-            yield (mbox_name, attributes)
+
+            # RFC 5258: when SUBSCRIBED selection is active, annotate
+            # results with subscription-related attributes.
+            #
+            if subscribed_selection and subscribed:
+                attributes.add(r"\Subscribed")
+                if r"\Noselect" in attributes:
+                    attributes.add(r"\NonExistent")
+
+            yield (mbox_name, attributes, None)
+
+    ####################################################################
+    #
+    @classmethod
+    async def _list_with_recursivematch(
+        cls,
+        mbox_re: str,
+        server: "IMAPUserServer",
+        subscribed_selection: bool,
+    ) -> AsyncIterator[tuple[str, set[str], set[str] | None]]:
+        """
+        RFC 5258 RECURSIVEMATCH logic.
+
+        When RECURSIVEMATCH is active alongside a filtering selection
+        option (e.g. SUBSCRIBED), the server returns:
+
+        1. Folders that match **both** the selection criteria **and** the
+           LIST pattern — yielded normally with ``childinfo=None``.
+        2. Parent folders that match the LIST pattern but do **not** satisfy
+           the selection criteria, provided they have at least one
+           descendant that **does** satisfy the criteria and that
+           descendant does **not** match the LIST pattern itself.  These
+           are yielded with a ``childinfo`` set naming the criteria
+           (e.g. ``{"SUBSCRIBED"}``), which maps to the CHILDINFO
+           extended data item in the LIST response.
+
+        The algorithm:
+        - Query all folders satisfying the selection criteria (ignoring
+          the pattern).
+        - Partition them into *pattern-matching* and *non-matching*.
+        - For each non-matching folder, walk up its ancestor chain.
+          Ancestors that match the pattern (and aren't already in the
+          normal results) become RECURSIVEMATCH entries with CHILDINFO.
+        """
+        pattern_re = re.compile(mbox_re)
+
+        # Phase 1: query all selection-matching folders (no pattern
+        # filter).  RECURSIVEMATCH requires a filtering selection option;
+        # currently only SUBSCRIBED is meaningful (REMOTE is a no-op).
+        #
+        query = (
+            "SELECT name,attributes,subscribed FROM mailboxes WHERE "
+            "subscribed=1 AND attributes NOT LIKE '%ignored%' "
+            "ORDER BY name"
+        )
+        normal_results: list[tuple[str, set[str]]] = []
+        non_matching_names: list[str] = []
+
+        async for mbox_name, attrs_str, subscribed in server.db.query(query):
+            attrs = set(attrs_str.split(","))
+            if mbox_name.lower() == "inbox":
+                mbox_name = "INBOX"
+
+            if pattern_re.search(mbox_name):
+                # Matches both selection criteria and pattern.
+                #
+                if subscribed_selection and subscribed:
+                    attrs.add(r"\Subscribed")
+                    if r"\Noselect" in attrs:
+                        attrs.add(r"\NonExistent")
+                normal_results.append((mbox_name, attrs))
+            else:
+                non_matching_names.append(mbox_name)
+
+        # Yield the normal (pattern + selection matching) results.
+        #
+        yielded_names = set()
+        for name, attrs in normal_results:
+            yielded_names.add(name)
+            yield (name, attrs, None)
+
+        # Phase 2: for each non-matching folder, walk up its ancestor
+        # chain.  Ancestors that match the pattern and are NOT already
+        # yielded become RECURSIVEMATCH entries.
+        #
+        childinfo_map: dict[str, set[str]] = {}
+        for nm in non_matching_names:
+            parts = nm.split("/")
+            for i in range(1, len(parts)):
+                ancestor = "/".join(parts[:i])
+                if ancestor.lower() == "inbox":
+                    ancestor = "INBOX"
+                if (
+                    pattern_re.search(ancestor)
+                    and ancestor not in yielded_names
+                ):
+                    childinfo_map.setdefault(ancestor, set())
+                    if subscribed_selection:
+                        childinfo_map[ancestor].add("SUBSCRIBED")
+
+        # Phase 3: fetch attributes for each RECURSIVEMATCH ancestor
+        # and yield them with childinfo.
+        #
+        for ancestor_name in sorted(childinfo_map):
+            row = await server.db.fetchone(
+                "SELECT attributes FROM mailboxes WHERE name=?",
+                (
+                    (
+                        ancestor_name.lower()
+                        if ancestor_name == "INBOX"
+                        else ancestor_name
+                    ),
+                ),
+            )
+            if row:
+                attrs = set(row[0].split(","))
+                yield (ancestor_name, attrs, childinfo_map[ancestor_name])
 
 
 ####################################################################

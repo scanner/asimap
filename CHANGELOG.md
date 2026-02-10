@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-02-09
+
+### Added
+
+- Support RFC 5258 LIST-EXTENDED: selection options (SUBSCRIBED, REMOTE, RECURSIVEMATCH), return options (SUBSCRIBED, CHILDREN), multiple mailbox patterns, CHILDINFO extended data, and `\Subscribed`/`\NonExistent` attributes (GH-417)
+- Support RFC 5819 LIST-STATUS: STATUS as a LIST return option emits `* STATUS` responses alongside LIST results, reducing round-trips for clients with many folders
+- Advertise LIST-EXTENDED and LIST-STATUS in CAPABILITY response
+
 ## [2.1.35] - 2025-02-09
 
 ### Changed

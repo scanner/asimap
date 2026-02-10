@@ -25,7 +25,12 @@ from ..constants import flag_to_seq
 from ..exceptions import Bad, No
 from ..fetch import FetchAtt, FetchOp
 from ..mbox import InvalidMailbox, Mailbox, MailboxExists, NoSuchMailbox
-from ..parse import IMAPClientCommand, StoreAction, parse_cmd_from_msg
+from ..parse import (
+    IMAPClientCommand,
+    ListSelectOpt,
+    StoreAction,
+    parse_cmd_from_msg,
+)
 from ..search import IMAPSearch
 from .conftest import assert_email_equal, client_push_responses
 
@@ -888,7 +893,7 @@ async def test_mailbox_create_delete(
     # existn.
     #
     mbox_names = []
-    async for mbox_name, _ in Mailbox.list("", "*", server):
+    async for mbox_name, _, _ in Mailbox.list("", "*", server):
         mbox_names.append(mbox_name)
     assert ARCHIVE not in mbox_names
     assert SUB_FOLDER not in mbox_names
@@ -979,12 +984,352 @@ async def test_mailbox_list(
             folders.append(sub_folder)
 
     list_results = []
-    async for mbox_name, attributes in Mailbox.list("", "*", server):
+    async for mbox_name, attributes, _ in Mailbox.list("", "*", server):
         mbox_name = mbox_name.lower() if mbox_name == "INBOX" else mbox_name
         assert mbox_name in folders
         list_results.append(mbox_name)
 
     assert sorted(folders) == sorted(list_results)
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mailbox_list_subscribed_selection(
+    mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    """
+    GIVEN: a set of folders, some subscribed and some not
+    WHEN:  Mailbox.list() is called with SUBSCRIBED selection option
+    THEN:  only subscribed folders are returned, each with \\Subscribed
+           in its attributes
+    """
+    server, _ = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+
+    # Create folders and subscribe to some of them.
+    #
+    await Mailbox.create("alpha", server)
+    await Mailbox.create("beta", server)
+    await Mailbox.create("gamma", server)
+
+    alpha = await server.get_mailbox("alpha")
+    alpha.subscribed = True
+    await alpha.commit_to_db()
+
+    gamma = await server.get_mailbox("gamma")
+    gamma.subscribed = True
+    await gamma.commit_to_db()
+
+    # SUBSCRIBED selection should only return subscribed folders.
+    #
+    results: list[tuple[str, set[str], set[str] | None]] = []
+    async for name, attrs, child_info in Mailbox.list(
+        "", "*", server, select_opts={ListSelectOpt.SUBSCRIBED}
+    ):
+        results.append((name, attrs, child_info))
+
+    names = {name for name, _, _ in results}
+    assert "alpha" in names
+    assert "gamma" in names
+    assert "beta" not in names
+
+    # Every result should have \Subscribed in its attributes and
+    # no childinfo (not a RECURSIVEMATCH result).
+    #
+    for _, attrs, child_info in results:
+        assert r"\Subscribed" in attrs
+        assert child_info is None
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mailbox_list_subscribed_nonexistent(
+    mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    """
+    GIVEN: a subscribed folder that has been deleted (\\Noselect) but
+           retained because it has sub-folders
+    WHEN:  Mailbox.list() is called with SUBSCRIBED selection
+    THEN:  the deleted folder appears with \\NonExistent and
+           \\Subscribed attributes
+    """
+    server, _ = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+
+    await Mailbox.create("parent", server)
+    await Mailbox.create("parent/child", server)
+
+    parent = await server.get_mailbox("parent")
+    parent.subscribed = True
+    parent.attributes.add(r"\Noselect")
+    await parent.commit_to_db()
+
+    child = await server.get_mailbox("parent/child")
+    child.subscribed = True
+    await child.commit_to_db()
+
+    results: dict[str, set[str]] = {}
+    async for name, attrs, _ in Mailbox.list(
+        "", "*", server, select_opts={ListSelectOpt.SUBSCRIBED}
+    ):
+        results[name] = attrs
+
+    assert "parent" in results
+    assert r"\Subscribed" in results["parent"]
+    assert r"\NonExistent" in results["parent"]
+    assert r"\Noselect" in results["parent"]
+
+    assert "parent/child" in results
+    assert r"\Subscribed" in results["parent/child"]
+    assert r"\NonExistent" not in results["parent/child"]
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mailbox_list_multiple_patterns(
+    mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    """
+    GIVEN: several folders in a hierarchy
+    WHEN:  Mailbox.list() is called with multiple patterns
+    THEN:  the union of all pattern matches is returned
+    """
+    server, _ = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+
+    await Mailbox.create("Drafts", server)
+    await Mailbox.create("Sent", server)
+    await Mailbox.create("Sent/2024", server)
+    await Mailbox.create("Trash", server)
+
+    # Match only "inbox" and "Drafts" and "Sent/*" via multiple patterns.
+    #
+    results: list[str] = []
+    async for name, _, _ in Mailbox.list(
+        "", "", server, patterns=["inbox", "Drafts", "Sent/%"]
+    ):
+        results.append(name)
+
+    assert "INBOX" in results
+    assert "Drafts" in results
+    assert "Sent/2024" in results
+    assert "Trash" not in results
+    # "Sent" itself should not match "Sent/%" (% doesn't match empty).
+    # But "Sent" is not in the pattern list as a literal either.
+    assert "Sent" not in results
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mailbox_list_remote_is_noop(
+    mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    """
+    GIVEN: some folders
+    WHEN:  Mailbox.list() is called with REMOTE selection option
+    THEN:  the results are the same as without it (no-op)
+    """
+    server, _ = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+
+    await Mailbox.create("work", server)
+
+    baseline: list[str] = []
+    async for name, _, _ in Mailbox.list("", "*", server):
+        baseline.append(name)
+
+    with_remote: list[str] = []
+    async for name, _, _ in Mailbox.list(
+        "", "*", server, select_opts={ListSelectOpt.REMOTE}
+    ):
+        with_remote.append(name)
+
+    assert sorted(baseline) == sorted(with_remote)
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mailbox_list_empty_select_opts_is_legacy(
+    mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    """
+    GIVEN: some folders
+    WHEN:  Mailbox.list() is called with an empty select_opts set
+    THEN:  the results are the same as legacy LIST (no filtering)
+    """
+    server, _ = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+
+    await Mailbox.create("misc", server)
+
+    legacy: list[str] = []
+    async for name, _, _ in Mailbox.list("", "*", server):
+        legacy.append(name)
+
+    with_empty: list[str] = []
+    async for name, _, _ in Mailbox.list("", "*", server, select_opts=set()):
+        with_empty.append(name)
+
+    assert sorted(legacy) == sorted(with_empty)
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mailbox_list_recursivematch_basic(
+    mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    """
+    GIVEN: a hierarchy where a deep folder is subscribed but its parent
+           is not
+    WHEN:  Mailbox.list() is called with SUBSCRIBED + RECURSIVEMATCH
+           and a pattern that matches only the top level (``%``)
+    THEN:  the unsubscribed parent appears with CHILDINFO indicating
+           SUBSCRIBED, and the subscribed child (which doesn't match
+           the pattern) is not yielded directly
+    """
+    server, _ = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+
+    await Mailbox.create("projects", server)
+    await Mailbox.create("projects/work", server)
+    await Mailbox.create("personal", server)
+
+    # Subscribe only the deep child, not the parent.
+    #
+    work = await server.get_mailbox("projects/work")
+    work.subscribed = True
+    await work.commit_to_db()
+
+    personal = await server.get_mailbox("personal")
+    personal.subscribed = True
+    await personal.commit_to_db()
+
+    # Pattern "%" matches only top-level names.
+    #
+    results: dict[str, tuple[set[str], set[str] | None]] = {}
+    async for name, attrs, child_info in Mailbox.list(
+        "",
+        "%",
+        server,
+        select_opts={ListSelectOpt.SUBSCRIBED, ListSelectOpt.RECURSIVEMATCH},
+    ):
+        results[name] = (attrs, child_info)
+
+    # "personal" is subscribed and matches "%" — normal result.
+    #
+    assert "personal" in results
+    assert r"\Subscribed" in results["personal"][0]
+    assert results["personal"][1] is None
+
+    # "projects" is NOT subscribed but matches "%" and has a subscribed
+    # descendant ("projects/work") that does NOT match "%".  It should
+    # appear via RECURSIVEMATCH with CHILDINFO.
+    #
+    assert "projects" in results
+    assert results["projects"][1] is not None
+    assert "SUBSCRIBED" in results["projects"][1]
+    assert r"\Subscribed" not in results["projects"][0]
+
+    # "projects/work" does not match "%" so it should NOT be yielded.
+    #
+    assert "projects/work" not in results
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mailbox_list_recursivematch_deep_hierarchy(
+    mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    """
+    GIVEN: a deeply nested hierarchy where only a leaf is subscribed
+    WHEN:  Mailbox.list() is called with SUBSCRIBED + RECURSIVEMATCH
+           and pattern ``*``
+    THEN:  the subscribed leaf matches the pattern directly so it is a
+           normal result; no RECURSIVEMATCH entries are produced because
+           the descendant already matches the pattern
+    """
+    server, _ = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+
+    await Mailbox.create("a", server)
+    await Mailbox.create("a/b", server)
+    await Mailbox.create("a/b/c", server)
+
+    leaf = await server.get_mailbox("a/b/c")
+    leaf.subscribed = True
+    await leaf.commit_to_db()
+
+    # Pattern "*" matches everything — so the subscribed descendant
+    # also matches the pattern.  Per RFC 5258, RECURSIVEMATCH only
+    # fires when the descendant does NOT match the pattern.
+    #
+    results: dict[str, tuple[set[str], set[str] | None]] = {}
+    async for name, attrs, child_info in Mailbox.list(
+        "",
+        "*",
+        server,
+        select_opts={ListSelectOpt.SUBSCRIBED, ListSelectOpt.RECURSIVEMATCH},
+    ):
+        results[name] = (attrs, child_info)
+
+    # Only the subscribed leaf matches the selection criteria.
+    #
+    assert "a/b/c" in results
+    assert results["a/b/c"][1] is None
+
+    # The parents should NOT appear because the subscribed descendant
+    # also matches the pattern "*".
+    #
+    assert "a" not in results
+    assert "a/b" not in results
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mailbox_list_recursivematch_multiple_children(
+    mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    """
+    GIVEN: a parent with multiple subscribed children that don't match
+           the pattern
+    WHEN:  Mailbox.list() is called with SUBSCRIBED + RECURSIVEMATCH
+    THEN:  the parent appears once with CHILDINFO (not duplicated)
+    """
+    server, _ = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+
+    await Mailbox.create("team", server)
+    await Mailbox.create("team/alice", server)
+    await Mailbox.create("team/bob", server)
+
+    for child_name in ("team/alice", "team/bob"):
+        child = await server.get_mailbox(child_name)
+        child.subscribed = True
+        await child.commit_to_db()
+
+    results: list[tuple[str, set[str], set[str] | None]] = []
+    async for name, attrs, child_info in Mailbox.list(
+        "",
+        "%",
+        server,
+        select_opts={ListSelectOpt.SUBSCRIBED, ListSelectOpt.RECURSIVEMATCH},
+    ):
+        results.append((name, attrs, child_info))
+
+    # "team" should appear exactly once via RECURSIVEMATCH.
+    #
+    team_entries = [(n, a, c) for n, a, c in results if n == "team"]
+    assert len(team_entries) == 1
+    assert team_entries[0][2] is not None
+    assert "SUBSCRIBED" in team_entries[0][2]
 
 
 ####################################################################
