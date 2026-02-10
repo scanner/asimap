@@ -53,6 +53,14 @@ Options:
                      RotatingFileHandler with a size of 20mb, and backup count
                      of 5 using the pythonjsonlogger.jsonlogger.JsonFormatter.
 
+Environment Variables:
+  ENABLE_MH_FILE_LOCKING  Set to 'true', 'yes', or '1' to enable advisory
+                     file locking on MH mailbox folders. By default file
+                     locking is disabled to prevent file descriptor exhaustion
+                     on systems with many mailboxes. Enable this if external
+                     MH command-line clients are actively modifying the same
+                     mail store concurrently.
+
 XXX We communicate with the server via localhost TCP sockets. We REALLY should
     set up some sort of authentication key that the server must use when
     connecting to us. Perhaps we will use stdin for that in the
@@ -63,6 +71,7 @@ XXX We communicate with the server via localhost TCP sockets. We REALLY should
 import asyncio
 import codecs
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -73,6 +82,7 @@ from dotenv import load_dotenv
 
 # Application imports
 #
+import asimap.mh
 import asimap.trace
 from asimap import __version__ as VERSION
 from asimap.user_server import IMAPUserServer
@@ -123,6 +133,17 @@ def main():
 
     if trace:
         asimap.trace.toggle_trace(turn_on=True)
+
+    # By default MH advisory file locking is disabled to avoid FD
+    # exhaustion with large mailbox counts. Only enable if explicitly
+    # requested via the environment variable.
+    #
+    if os.environ.get("ENABLE_MH_FILE_LOCKING", "").lower() in (
+        "1",
+        "true",
+        "yes",
+    ):
+        asimap.mh.set_file_locking(True)
 
     try:
         asyncio.run(create_and_start_user_server(maildir, debug))
