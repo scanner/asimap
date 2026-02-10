@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support RFC 5819 LIST-STATUS: STATUS as a LIST return option emits `* STATUS` responses alongside LIST results, reducing round-trips for clients with many folders
 - Advertise LIST-EXTENDED and LIST-STATUS in CAPABILITY response
 
+## [2.1.35] - 2025-02-09
+
+### Changed
+
+- MH advisory file locking disabled by default to prevent file descriptor exhaustion with large mailbox counts (ASIMAP-5Q). Set env var `ENABLE_MH_FILE_LOCKING=true` to re-enable for environments coordinating with external MH command-line clients.
+
 ## [2.1.34] - 2025-02-09
 
 ### Fixed
