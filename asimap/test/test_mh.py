@@ -2,20 +2,40 @@
 Tests for our subclass of `mailbox.MH` that adds some async methods
 """
 
+# system imports
+#
+import shutil
+from mailbox import NoSuchMailboxError
+
 # 3rd party imports
 #
 import pytest
 
 # Project imports
 #
+from .. import mh as mh_module
 from ..mh import MH
 
 
 ####################################################################
 #
+@pytest.fixture
+def enable_file_locking():
+    """Enable MH file locking for the duration of the test."""
+    mh_module.set_file_locking(True)
+    yield
+    mh_module.set_file_locking(False)
+
+
+####################################################################
+#
 @pytest.mark.asyncio
-async def test_mh_lock_folder(tmp_path):
+async def test_mh_lock_folder(tmp_path, enable_file_locking):
     """
+    GIVEN: FILE_LOCKING_ENABLED is True
+    WHEN:  lock_folder() is used as a context manager
+    THEN:  it acquires and releases the file lock normally
+
     XXX To do a proper test we need to fork a separate process and validate
 
         that it blocks while we hold this lock. Tested this by hand and it
@@ -38,6 +58,66 @@ async def test_mh_lock_folder(tmp_path):
             assert inbox._locked is True
             raise RuntimeError("Woop")
     assert inbox._locked is False
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mh_lock_folder_noop(tmp_path):
+    """
+    GIVEN: FILE_LOCKING_ENABLED is False (default)
+    WHEN:  lock_folder() is used as a context manager
+    THEN:  it yields without opening any files or setting _locked
+    """
+    assert mh_module.FILE_LOCKING_ENABLED is False
+
+    mh_dir = tmp_path / "Mail"
+    mh = MH(mh_dir)
+    inbox = mh.add_folder("inbox")
+
+    assert inbox._locked is False
+    async with inbox.lock_folder():
+        # When file locking is disabled, _locked remains False
+        assert inbox._locked is False
+    assert inbox._locked is False
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mh_lock_folder_noop_deleted_folder(tmp_path):
+    """
+    GIVEN: FILE_LOCKING_ENABLED is False (default)
+    WHEN:  lock_folder() is called on a folder that no longer exists
+    THEN:  NoSuchMailboxError is still raised
+    """
+    assert mh_module.FILE_LOCKING_ENABLED is False
+
+    mh_dir = tmp_path / "Mail"
+    mh = MH(mh_dir)
+    inbox = mh.add_folder("inbox")
+
+    # Remove the folder from disk
+    shutil.rmtree(mh_dir / "inbox")
+
+    with pytest.raises(NoSuchMailboxError):
+        async with inbox.lock_folder():
+            pass
+
+
+####################################################################
+#
+def test_set_file_locking():
+    """
+    GIVEN: default state (FILE_LOCKING_ENABLED is False)
+    WHEN:  set_file_locking() is called
+    THEN:  FILE_LOCKING_ENABLED is updated accordingly
+    """
+    assert mh_module.FILE_LOCKING_ENABLED is False
+    mh_module.set_file_locking(True)
+    assert mh_module.FILE_LOCKING_ENABLED is True
+    mh_module.set_file_locking(False)
+    assert mh_module.FILE_LOCKING_ENABLED is False
 
 
 ####################################################################

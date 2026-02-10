@@ -29,6 +29,21 @@ LINESEP = str(mailbox.linesep, "ascii")
 
 logger = logging.getLogger("asimap.mh")
 
+# By default, MH advisory file locking is disabled. This avoids FD
+# exhaustion on systems with large numbers of mailboxes (1,200+). Set to
+# True via set_file_locking() if external MH command-line clients are
+# actively modifying the same mail store.
+#
+FILE_LOCKING_ENABLED: bool = False
+
+
+####################################################################
+#
+def set_file_locking(enabled: bool) -> None:
+    """Enable or disable MH advisory file locking."""
+    global FILE_LOCKING_ENABLED
+    FILE_LOCKING_ENABLED = enabled
+
 
 ########################################################################
 ########################################################################
@@ -70,6 +85,8 @@ class MH(mailbox.MH):
         whatever is dropping mail in to the folder to use dotlocking, but that
         is fine.
         """
+        if not FILE_LOCKING_ENABLED:
+            return
         if not self._locked:
             mh_seq_fname = os.path.join(self._path, ".mh_sequences")
             if not os.path.exists(mh_seq_fname):
@@ -79,6 +96,17 @@ class MH(mailbox.MH):
             self._file = open(mh_seq_fname, "rb+")
             _lock_file(self._file, dotlock=dotlock)
             self._locked = True
+
+    ####################################################################
+    #
+    def unlock(self):
+        """
+        Unlock the mailbox. When file locking is disabled, lock() is a
+        no-op so there is nothing to unlock.
+        """
+        if not FILE_LOCKING_ENABLED:
+            return
+        super().unlock()
 
     ####################################################################
     #
@@ -107,6 +135,10 @@ class MH(mailbox.MH):
         #
         if not os.path.exists(self._path):
             raise NoSuchMailboxError(self._path)
+
+        if not FILE_LOCKING_ENABLED:
+            yield
+            return
 
         if self._locked:
             yield

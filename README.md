@@ -102,6 +102,15 @@ Options:
                      The env. var is `PWFILE`. Defaults to `/opt/asimap/pwfile`
 ```
 
+** Environment Variables
+
+`ENABLE_MH_FILE_LOCKING` -- By default asimap does not use advisory file
+locking on MH mailbox folders. Set this to `true` to re-enable file locking
+for environments where external MH command-line clients (e.g., `inc`, `scan`,
+`rmm`) are actively modifying the same mail store concurrently. Disabling file
+locking prevents file descriptor exhaustion on systems with large numbers of
+mailboxes.
+
 ** `asimapd_set_password`
 
 ``` text
