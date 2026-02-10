@@ -19,7 +19,12 @@ from asimap import __version__
 from .auth import PWUser, authenticate
 from .exceptions import AuthenticationException, Bad, MailboxInconsistency, No
 from .mbox import Mailbox, NoSuchMailbox
-from .parse import IMAPClientCommand, StatusAtt
+from .parse import (
+    IMAPClientCommand,
+    ListReturnOpt,
+    ListSelectOpt,
+    StatusAtt,
+)
 from .throttle import check_allow, login_failed
 
 # Allow circular imports for annotations
@@ -918,31 +923,65 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_list(self, cmd, lsub=False) -> None:
+    @staticmethod
+    def _fmt_list_response(
+        mbox_name: str,
+        attributes: set[str],
+        child_info: set[str] | None,
+    ) -> str:
         """
-        The LIST command returns a subset of names from the complete
-        set of all names available to the client.  Zero or more
-        untagged LIST replies are returned, containing the name
-        attributes, hierarchy delimiter, and name; see the description
-        of the LIST reply for more detail.
+        Format a single ``* LIST`` response line per RFC 3501 / RFC 5258.
+
+        Returns the complete untagged response including the trailing
+        CRLF.  When *child_info* is non-empty, an RFC 5258 CHILDINFO
+        extended data item is appended after the mailbox name::
+
+            * LIST (\\HasChildren) "/" "projects" ("CHILDINFO" ("SUBSCRIBED"))
+        """
+        attrs_str = " ".join(sorted(attributes))
+        line = f'* LIST ({attrs_str}) "/" "{mbox_name}"'
+        if child_info:
+            criteria = " ".join(f'"{c}"' for c in sorted(child_info))
+            line += f' ("CHILDINFO" ({criteria}))'
+        return line + "\r\n"
+
+    ####################################################################
+    #
+    async def do_list(self, cmd: IMAPClientCommand, lsub: bool = False) -> None:
+        """
+        Handle the LIST command (RFC 3501) with RFC 5258 LIST-EXTENDED
+        and return-option support.
+
+        In extended mode (selection options or multiple patterns present)
+        the parsed command's ``list_select_opts`` and ``list_patterns``
+        are forwarded to ``Mailbox.list()`` and the response may include
+        extended data items (CHILDINFO).
 
         Arguments:
         - `cmd`: The IMAP command we are executing
         - `lsub`: If True this will only match folders that have their
-          subscribed bit set.
+          subscribed bit set (legacy LSUB command).
         """
         await self.send_pending_notifications()
 
-        # Handle the special case where the client is basically just probing
-        # for the hierarchy separation character.
-        #
-        if cmd.mailbox_name == "" and cmd.list_mailbox == "":
-            await self.client.push(r'* LIST (\Noselect) "/" ""' + "\r\n")
-            return
+        extended = bool(cmd.list_select_opts or cmd.list_patterns)
 
-        res = "LIST"
-        if lsub:
-            res = "LSUB"
+        # Handle the special case where the client is probing for the
+        # hierarchy separation character.  In extended mode (RFC 5258)
+        # this probe is not defined — return nothing.
+        #
+        # NOTE: when ``list_patterns`` is populated the patterns live
+        # there and ``list_mailbox`` is empty, so we must also check
+        # that no patterns were provided.
+        #
+        if (
+            cmd.mailbox_name == ""
+            and cmd.list_mailbox == ""
+            and not cmd.list_patterns
+        ):
+            if not extended:
+                await self.client.push(r'* LIST (\Noselect) "/" ""' + "\r\n")
+            return
 
         assert self.server
 
@@ -950,23 +989,49 @@ class Authenticated(BaseClientHandler):
         # \HasNoChildren attributes based on which folders are
         # actually present (the cached attributes can be stale).
         #
-        results: list[tuple[str, set[str]]] = []
-        async for mbox_name, attributes, _ in Mailbox.list(
-            cmd.mailbox_name, cmd.list_mailbox, self.server, lsub
+        results: list[tuple[str, set[str], set[str] | None]] = []
+        async for mbox_name, attributes, child_info in Mailbox.list(
+            cmd.mailbox_name,
+            cmd.list_mailbox,
+            self.server,
+            lsub,
+            select_opts=cmd.list_select_opts or None,
+            patterns=cmd.list_patterns or None,
         ):
-            # Skip the root "" entry from LIST results. It is not a
+            # Skip the root "" entry from LIST results.  It is not a
             # real mailbox and confuses strict IMAP clients (iOS 18+).
             #
             if mbox_name == "":
                 continue
             mbox_name = "INBOX" if mbox_name.lower() == "inbox" else mbox_name
-            results.append((mbox_name, attributes))
+            results.append((mbox_name, attributes, child_info))
+
+        # SUBSCRIBED return option: when the client asked for
+        # \Subscribed attributes via RETURN but did NOT use SUBSCRIBED
+        # as a selection filter, Mailbox.list() won't have annotated
+        # the results.  Look up subscription status and annotate here.
+        #
+        if (
+            ListReturnOpt.SUBSCRIBED in cmd.list_return_opts
+            and ListSelectOpt.SUBSCRIBED not in cmd.list_select_opts
+        ):
+            for mbox_name, attributes, _ in results:
+                if r"\Subscribed" not in attributes:
+                    db_name = (
+                        mbox_name.lower() if mbox_name == "INBOX" else mbox_name
+                    )
+                    row = await self.server.db.fetchone(
+                        "SELECT subscribed FROM mailboxes WHERE name=?",
+                        (db_name,),
+                    )
+                    if row and row[0]:
+                        attributes.add(r"\Subscribed")
 
         # Build a set of all returned folder names so we can verify
         # \HasChildren / \HasNoChildren correctness.
         #
-        all_names = {name for name, _ in results}
-        for mbox_name, attributes in results:
+        all_names = {name for name, _, _ in results}
+        for mbox_name, attributes, child_info in results:
             has_children = any(n.startswith(mbox_name + "/") for n in all_names)
             if has_children:
                 attributes.discard(r"\HasNoChildren")
@@ -975,7 +1040,11 @@ class Authenticated(BaseClientHandler):
                 attributes.discard(r"\HasChildren")
                 attributes.add(r"\HasNoChildren")
 
-            msg = f'* {res} ({" ".join(sorted(attributes))}) "/" "{mbox_name}"\r\n'
+            if lsub:
+                attrs_str = " ".join(sorted(attributes))
+                msg = f'* LSUB ({attrs_str}) "/" "{mbox_name}"\r\n'
+            else:
+                msg = self._fmt_list_response(mbox_name, attributes, child_info)
             await self.client.push(msg)
 
     ####################################################################
