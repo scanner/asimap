@@ -3034,6 +3034,11 @@ class Mailbox:
           delimiter ``/``
 
         Returns a regex anchored with ``^...$``.
+
+        XXX: The resulting regex is case-sensitive but the DB stores
+        INBOX as ``"inbox"``.  A literal ``LIST "" "INBOX"`` pattern
+        will not match.  INBOX matching should be case-insensitive
+        per RFC 3501 §5.1.
         """
         if len(mbox_match) > 0 and mbox_match[0] == "/":
             mbox_match = mbox_match[1:]

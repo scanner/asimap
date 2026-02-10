@@ -1352,3 +1352,168 @@ async def test_extended_list_status_skips_recursivematch(
     # No subscribed top-level folders match "%" so no STATUS at all.
     #
     assert not any('"team"' in s for s in status_lines)
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_extended_list_children_return_option(
+    mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    """
+    GIVEN: folders with a parent/child hierarchy
+    WHEN:  LIST "" * RETURN (CHILDREN) is sent
+    THEN:  parent has \\HasChildren, leaf has \\HasNoChildren
+    """
+    server, imap_client = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+    client_handler = Authenticated(imap_client, server)
+
+    await Mailbox.create("docs", server)
+    await Mailbox.create("docs/specs", server)
+    await Mailbox.create("notes", server)
+
+    cmd = IMAPClientCommand('A001 LIST "" * RETURN (CHILDREN)\r\n')
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+
+    list_lines = [r for r in results if r.startswith("* LIST")]
+    for line in list_lines:
+        name = line.split('"')[-2]
+        if name == "docs":
+            assert r"\HasChildren" in line
+            assert r"\HasNoChildren" not in line
+        elif name in ("docs/specs", "notes"):
+            assert r"\HasNoChildren" in line
+            assert r"\HasChildren" not in line
+
+    assert results[-1] == "A001 OK LIST command completed"
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_extended_list_nonexistent_subscribed(
+    mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    """
+    GIVEN: a subscribed folder that has been deleted
+    WHEN:  LIST (SUBSCRIBED) "" * is sent
+    THEN:  the deleted folder appears with \\NonExistent and \\Noselect
+    """
+    server, imap_client = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+    client_handler = Authenticated(imap_client, server)
+
+    await Mailbox.create("ephemeral", server)
+    mbox = await server.get_mailbox("ephemeral")
+    mbox.subscribed = True
+    await mbox.commit_to_db()
+
+    # Delete the folder but leave the subscription in the DB.
+    #
+    await Mailbox.delete("ephemeral", server)
+
+    cmd = IMAPClientCommand('A001 LIST (SUBSCRIBED) "" *\r\n')
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+
+    list_lines = [r for r in results if r.startswith("* LIST")]
+    ephemeral_lines = [r for r in list_lines if '"ephemeral"' in r]
+    assert len(ephemeral_lines) == 1
+    assert r"\NonExistent" in ephemeral_lines[0]
+    assert r"\Noselect" in ephemeral_lines[0]
+    assert r"\Subscribed" in ephemeral_lines[0]
+    assert results[-1] == "A001 OK LIST command completed"
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_extended_list_status_all_attributes(
+    mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    """
+    GIVEN: a folder with messages
+    WHEN:  LIST with STATUS requesting all five attributes is sent
+    THEN:  the STATUS response includes MESSAGES, RECENT, UIDNEXT,
+           UIDVALIDITY, and UNSEEN
+
+    NOTE: Uses ``*`` instead of ``"INBOX"`` as the pattern because
+    ``_mbox_pattern_to_re`` produces a case-sensitive regex and the
+    DB stores the inbox as ``"inbox"``.  ``LIST "" "INBOX"`` will not
+    match.  See GH-XXX (INBOX case-insensitive LIST matching).
+    """
+    server, imap_client = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+    client_handler = Authenticated(imap_client, server)
+
+    cmd = IMAPClientCommand(
+        'A001 LIST "" * RETURN '
+        "(STATUS (MESSAGES RECENT UIDNEXT UIDVALIDITY UNSEEN))\r\n"
+    )
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+
+    status_lines = [r for r in results if r.startswith("* STATUS")]
+    assert status_lines
+
+    # Find the STATUS line for INBOX specifically.
+    #
+    inbox_status = [s for s in status_lines if '"INBOX"' in s]
+    assert len(inbox_status) == 1
+
+    status = inbox_status[0]
+    assert "MESSAGES" in status
+    assert "RECENT" in status
+    assert "UIDNEXT" in status
+    assert "UIDVALIDITY" in status
+    assert "UNSEEN" in status
+    assert results[-1] == "A001 OK LIST command completed"
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_extended_list_legacy_backward_compat(
+    faker, mailbox_with_bunch_of_email, imap_user_server_and_client
+):
+    """
+    GIVEN: a server with folders
+    WHEN:  a legacy 2-argument LIST is sent (no selection/return options)
+    THEN:  the response is standard RFC 3501 format with no extended data
+    """
+    server, imap_client = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+    client_handler = Authenticated(imap_client, server)
+
+    await Mailbox.create("legacy_test", server)
+
+    # Hierarchy probe still works.
+    #
+    cmd = IMAPClientCommand('A001 LIST "" ""\r\n')
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == [
+        r'* LIST (\Noselect) "/" ""',
+        "A001 OK LIST command completed",
+    ]
+
+    # Normal legacy LIST returns standard format.
+    #
+    cmd = IMAPClientCommand('A002 LIST "" "legacy_test"\r\n')
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    list_lines = [r for r in results if r.startswith("* LIST")]
+    assert len(list_lines) == 1
+
+    # No extended data (no CHILDINFO, no STATUS).
+    #
+    assert "CHILDINFO" not in list_lines[0]
+    assert r"\HasNoChildren" in list_lines[0]
+    assert results[-1] == "A002 OK LIST command completed"
