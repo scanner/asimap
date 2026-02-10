@@ -20,7 +20,7 @@ from pytest_mock import MockerFixture
 # Project imports
 #
 from ..constants import REV_SYSTEM_FLAG_MAP, SYSTEM_FLAGS
-from ..fetch import STR_TO_FETCH_OP, FetchAtt, FetchOp
+from ..fetch import STR_TO_FETCH_OP, FetchAtt, FetchOp, encode_header
 from ..generator import msg_as_bytes, msg_headers_as_bytes
 from ..mbox import mbox_msg_path
 from ..parse import _lit_ref_re
@@ -977,3 +977,70 @@ class TestBadlyEncodedHeaders:
         headers = msg_headers_as_bytes(msg)
         assert b"Subject:" in headers
         assert b"From:" in headers
+
+
+ENCODE_HEADER_CASES = [
+    pytest.param(
+        "hello world",
+        b'"hello world"',
+        False,
+        id="ascii",
+    ),
+    pytest.param(
+        "caf\u00e9",
+        b'"caf\xe9"',
+        False,
+        id="latin1",
+    ),
+    pytest.param(
+        "Visitenkarte f\u0148r",
+        None,
+        True,
+        id="non-latin1",
+    ),
+]
+
+
+####################################################################
+#
+@pytest.mark.parametrize("hdr,expected,is_rfc2047", ENCODE_HEADER_CASES)
+def test_encode_header(hdr: str, expected: bytes | None, is_rfc2047: bool):
+    """
+    GIVEN: A header string (ASCII, latin-1, or non-latin-1)
+    WHEN:  encode_header is called
+    THEN:  ASCII/latin-1 strings are returned as latin-1 bytes in quotes,
+           non-latin-1 strings are RFC 2047 encoded in quotes
+    """
+    result = encode_header(hdr)
+    if is_rfc2047:
+        assert result.startswith(b'"')
+        assert result.endswith(b'"')
+        assert b"=?" in result
+    else:
+        assert result == expected
+
+
+####################################################################
+#
+def test_bodystructure_non_latin1_content_description():
+    """
+    GIVEN: A message with a Content-Description containing characters
+           outside the latin-1 range (ordinal > 255)
+    WHEN:  FetchAtt.bodystructure is called directly
+    THEN:  It should succeed without UnicodeEncodeError
+    """
+    raw = (
+        b"From: test@example.com\r\n"
+        b"To: dest@example.com\r\n"
+        b"Subject: Test\r\n"
+        b"Content-Type: text/plain; charset=utf-8\r\n"
+        b"Content-Description: =?utf-8?q?Visitenkarte_f=C5=88r_Christian?=\r\n"
+        b"\r\n"
+        b"Hello\r\n"
+    )
+    msg = message_from_bytes(raw, policy=SMTP)
+    fetch = FetchAtt(FetchOp.BODYSTRUCTURE)
+    result = fetch.bodystructure(msg)
+    assert result.startswith(b"(")
+    assert result.endswith(b")")
+    assert b"TEXT" in result
