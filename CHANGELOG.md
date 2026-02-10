@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-02-10
+
+### Fixed
+
+- Fix UnicodeEncodeError in BODYSTRUCTURE fetch when Content-Description, Content-ID, or Content-Location headers contain non-latin-1 characters (ASIMAP-5Y)
+
 ## [2.2.0] - 2026-02-09
 
 ### Added

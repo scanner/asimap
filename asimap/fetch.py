@@ -69,14 +69,12 @@ def encode_header(hdr: str) -> bytes:
     try:
         result = hdr.encode("latin-1")
     except UnicodeEncodeError:
-        pass
-
-    try:
-        # maxlinelen=0 means do not wrap
-        #
-        result = Header(hdr).encode(maxlinelen=0).encode("latin-1")
-    except UnicodeEncodeError:
-        result = hdr.encode("latin-1", errors="replace")
+        try:
+            # maxlinelen=0 means do not wrap
+            #
+            result = Header(hdr).encode(maxlinelen=0).encode("latin-1")
+        except UnicodeEncodeError:
+            result = hdr.encode("latin-1", errors="replace")
     return b'"' + result + b'"'
 
 
@@ -568,9 +566,7 @@ class FetchAtt:
         Arguments:
         - `msg`: the message (message part) we are looking at
         """
-        if "content-location" in msg:
-            return (f'"{msg["content-location"]}"').encode("latin-1")
-        return b"NIL"
+        return header_or_nil(msg, "content-location")
 
     ##################################################################
     #
@@ -627,12 +623,7 @@ class FetchAtt:
         results = []
         results.append(self.body_disposition(msg))
         results.append(self.body_languages(msg))
-        cl = (
-            f'"{msg["Content-Location"]}"'
-            if "Content-Location" in msg
-            else "NIL"
-        )
-        results.append(cl.encode("latin-1"))
+        results.append(header_or_nil(msg, "Content-Location"))
         return results
 
     #######################################################################
@@ -793,15 +784,8 @@ class FetchAtt:
 
         result.append(self.body_parameters(msg))
 
-        body_id = f'"{msg["Content-ID"]}"' if "Content-ID" in msg else "NIL"
-        result.append(body_id.encode("latin-1"))
-
-        body_desc = (
-            f'"{msg["Content-Description"]}"'
-            if "Content-Description" in msg
-            else "NIL"
-        )
-        result.append(body_desc.encode("latin-1"))
+        result.append(header_or_nil(msg, "Content-ID"))
+        result.append(header_or_nil(msg, "Content-Description"))
 
         cte = (
             msg["Content-Transfer-Encoding"]
