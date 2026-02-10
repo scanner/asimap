@@ -45,6 +45,8 @@ CAPABILITIES = (
     "UIDPLUS",
     "LITERAL+",
     "CHILDREN",
+    "LIST-EXTENDED",
+    "LIST-STATUS",
     "NAMESPACE",
 )
 SERVER_ID = {
