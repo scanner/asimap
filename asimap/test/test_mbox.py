@@ -537,20 +537,72 @@ async def test_mailbox_uid_fetch_no_duplicate_uid(
 
 ####################################################################
 #
-@pytest.mark.skip(reason="will impelement test later")
 @pytest.mark.asyncio
 async def test_mailbox_fetch_notifies_other_clients(
-    mailbox_with_bunch_of_email,
+    bunch_of_email_in_folder, imap_user_server, imap_client_proxy
 ):
     """
-    If a fetch modifies flags (Recent & unseen) then we need to make sure
-    other clients were notified of these changes by being sent untagged FETCH
-    messages.
+    GIVEN: A mailbox with unseen messages and two connected clients
+    WHEN:  A FETCH BODY (non-PEEK) is performed, marking messages as Seen
+    THEN:  The other clients are notified of the flag changes via untagged
+           FETCH responses (RFC 3501 section 7.4.2)
     """
-    # XXX Do this by mocking _dispatch_or_pend_notifications and checking to
-    #     see if it was called with the right messages.
+    NAME = "inbox"
+    bunch_of_email_in_folder(folder=NAME)
+    server = imap_user_server
+    mbox = await server.get_mailbox(NAME)
+
+    # Register two clients on the mailbox. Client B is idling so it
+    # receives notifications immediately via push.
     #
-    assert False
+    client_a = await imap_client_proxy()
+    client_b = await imap_client_proxy()
+    mbox.clients[client_a.cmd_processor.name] = client_a.cmd_processor
+    mbox.clients[client_b.cmd_processor.name] = client_b.cmd_processor
+    client_b.cmd_processor.idling = True
+
+    # Verify messages start as unseen.
+    #
+    msg_set = [1, 2, 3]
+    unseen = flag_to_seq("unseen")
+    seen = flag_to_seq(r"\Seen")
+    for msg_key in msg_set:
+        assert msg_key in mbox.sequences[unseen]
+        assert msg_key not in mbox.sequences[seen]
+
+    # FETCH BODY (non-PEEK) marks messages as \Seen.
+    #
+    fetch_ops = [
+        FetchAtt(FetchOp.FLAGS),
+        FetchAtt(
+            FetchOp.BODY, section=[["HEADER.FIELDS", ["Date"]]], peek=False
+        ),
+    ]
+    async for _ in mbox.fetch(msg_set, fetch_ops):
+        pass
+
+    # Verify flags were actually changed.
+    #
+    for msg_key in msg_set:
+        assert msg_key in mbox.sequences[seen]
+        assert msg_key not in mbox.sequences[unseen]
+
+    # Client B (idling) should have received FETCH FLAG notifications
+    # for each message that changed.
+    #
+    results_b = client_push_responses(client_b)
+    assert len(results_b) == len(msg_set)
+    for msg_key in msg_set:
+        msg_seq_num = mbox._msg_key_to_idx[msg_key] + 1
+        matching = [
+            r for r in results_b if r.startswith(f"* {msg_seq_num} FETCH")
+        ]
+        assert len(matching) == 1
+        assert r"\Seen" in matching[0]
+
+    # Client A (non-idling) should have the notifications pending.
+    #
+    assert len(client_a.cmd_processor.pending_notifications) == len(msg_set)
 
 
 ####################################################################
@@ -1334,15 +1386,66 @@ async def test_mailbox_list_recursivematch_multiple_children(
 
 ####################################################################
 #
-@pytest.mark.skip(reason="will impelement test later")
 @pytest.mark.asyncio
-async def test_append_when_other_msgs_also_added():
+async def test_append_when_other_msgs_also_added(
+    bunch_of_email_in_folder, imap_user_server, email_factory
+):
     """
-    If we do an append, and other new messages have been added to the
-    mailbox (by the mail delivery system) make sure everything works
-    appropripately.
+    GIVEN: A mailbox with existing messages
+    WHEN:  External messages are delivered (simulating MDA) and then an
+           IMAP APPEND is performed
+    THEN:  Both the externally delivered messages and the appended message
+           are discovered, and UIDs are assigned contiguously
     """
-    assert False
+    NAME = "inbox"
+    num_initial = 10
+    num_external = 5
+    bunch_of_email_in_folder(folder=NAME, num_emails=num_initial)
+    server = imap_user_server
+    mbox = await server.get_mailbox(NAME)
+
+    # Record initial state.
+    #
+    initial_num_msgs = mbox.num_msgs
+    assert initial_num_msgs == num_initial
+
+    # Simulate external mail delivery by adding messages directly to the
+    # MH folder without going through the mailbox resync.
+    #
+    bunch_of_email_in_folder(folder=NAME, num_emails=num_external)
+
+    # The mailbox doesn't know about the external messages yet.
+    #
+    assert mbox.num_msgs == initial_num_msgs
+
+    # Now do an IMAP APPEND. This internally calls check_new_msgs_and_flags
+    # which discovers both the external messages and the appended one.
+    #
+    appended_msg = email_factory()
+    appended_uid = await mbox.append(
+        appended_msg, flags=[r"\Flagged"], date_time=datetime.now()
+    )
+
+    # All messages should be accounted for.
+    #
+    expected_total = num_initial + num_external + 1
+    assert mbox.num_msgs == expected_total
+    assert len(mbox.msg_keys) == expected_total
+    assert len(mbox.uids) == expected_total
+
+    # UIDs should be contiguous starting from 1.
+    #
+    assert mbox.uids == list(range(1, expected_total + 1))
+
+    # The appended message should have the correct UID and flags.
+    #
+    uid_vv, uid = mbox.get_uid_from_msg(mbox.msg_keys[-1])
+    assert uid == appended_uid
+    assert uid == expected_total
+    appended_seqs = mbox.msg_sequences(mbox.msg_keys[-1])
+    assert "flagged" in appended_seqs
+    assert "Recent" in appended_seqs
+    assert "unseen" in appended_seqs
 
 
 ####################################################################
