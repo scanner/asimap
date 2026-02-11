@@ -111,6 +111,62 @@ for environments where external MH command-line clients (e.g., `inc`, `scan`,
 locking prevents file descriptor exhaustion on systems with large numbers of
 mailboxes.
 
+** Performance Profiling
+
+The Docker images include [py-spy](https://github.com/benfred/py-spy), a
+sampling profiler that can attach to running processes and follow subprocesses.
+This is useful for understanding CPU usage across asimap's multi-process
+architecture.
+
+*** Dev container
+
+The dev container is already configured with `SYS_PTRACE` capability. Start it
+and open a root shell:
+
+``` shell
+make up
+make profile
+```
+
+Inside the root shell, find the asimapd root process and start profiling:
+
+``` shell
+# Record a 60-second profile of the root process and all user subprocesses
+py-spy record --subprocesses --format raw --duration 60 --rate 100 \
+  --pid $(pgrep -f asimapd) --output /opt/asimap/traces/profile.txt
+
+# Instant stack dump of all threads across all processes
+py-spy dump --subprocesses --pid $(pgrep -f asimapd)
+
+# Live top-like view
+py-spy top --subprocesses --pid $(pgrep -f asimapd)
+```
+
+The `raw` format produces collapsed stack traces with sample counts, one line
+per unique call stack. Output written to `/opt/asimap/traces/` is accessible
+from the host via the mounted volume.
+
+*** Prod container
+
+For production profiling, add `SYS_PTRACE` when starting the container:
+
+``` shell
+docker run --cap-add SYS_PTRACE ...
+```
+
+Or in docker-compose, add to the prod service temporarily:
+
+``` yaml
+cap_add:
+  - SYS_PTRACE
+```
+
+Then exec in as root to run py-spy:
+
+``` shell
+docker exec -u root -ti asimap /bin/bash
+```
+
 ** `asimapd_set_password`
 
 ``` text

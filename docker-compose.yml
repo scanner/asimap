@@ -23,6 +23,8 @@ services:
     <<: *imap-service
     image: asimap:dev
     container_name: asimap-dev
+    cap_add:
+      - SYS_PTRACE
     volumes:
       - ./:/app:z
       - "${OPT_ASIMAP_DIR}:/opt/asimap"

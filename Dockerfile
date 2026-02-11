@@ -36,6 +36,7 @@ WORKDIR ${APP_HOME}
 ENV PYTHONPATH=${APP_HOME}
 
 RUN uv sync --frozen
+RUN uv pip install py-spy
 
 # Puts the venv's python (and other executables) at the front of the
 # PATH so invoking 'python' will activate the venv.
@@ -75,6 +76,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 ARG VERSION
 RUN uv venv /venv && \
     VIRTUAL_ENV=/venv uv pip install /app/dist/asimap-${VERSION}-py3-none-any.whl
+RUN VIRTUAL_ENV=/venv uv pip install py-spy
 
 # Puts the venv's python (and other executables) at the front of the
 # PATH so invoking 'python' will activate the venv.
