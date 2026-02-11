@@ -33,7 +33,7 @@ def test_throttle_by_user(faker, mock_time):
     # failures. Each of these comes from a different address to not trigger
     # failing by address.
     #
-    for i in range(MAX_USER_ATTEMPTS):
+    for _i in range(MAX_USER_ATTEMPTS):
         now += 1
         mock_time.return_value = now
         ip_addr = faker.ipv4()
@@ -72,7 +72,7 @@ def test_throttle_by_address(faker, mock_time):
     # failures. Each of these comes from a different address to not trigger
     # failing by address.
     #
-    for i in range(MAX_ADDR_ATTEMPTS):
+    for _i in range(MAX_ADDR_ATTEMPTS):
         now += 1
         mock_time.return_value = now
         user = faker.email()

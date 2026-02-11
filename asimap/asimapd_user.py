@@ -66,6 +66,7 @@ XXX We communicate with the server via localhost TCP sockets. We REALLY should
     connecting to us. Perhaps we will use stdin for that in the
     future. Otherwise this is a bit of a nasty security hole.
 """
+
 # system imports
 #
 import asyncio

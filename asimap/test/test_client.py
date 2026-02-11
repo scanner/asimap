@@ -797,7 +797,7 @@ async def test_fetch_with_problematic_email(
     mailbox_with_problematic_email, imap_user_server_and_client
 ):
     server, imap_client = imap_user_server_and_client
-    mailbox_with_problematic_email
+    _ = mailbox_with_problematic_email
     client_handler = Authenticated(imap_client, server)
 
     await server.get_mailbox("inbox")

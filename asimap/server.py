@@ -11,10 +11,9 @@ import logging
 import os
 import random
 import re
-import socket
 import ssl
 import string
-from typing import TYPE_CHECKING, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Optional
 
 # 3rd party imports
 #
@@ -53,7 +52,7 @@ RE_LITERAL_STRING_START = re.compile(rb"\{(\d+)(\+)?\}$")
 #
 # The key is the username. The value is an IMAPSubprocess
 #
-USER_IMAP_SUBPROCESSES: Dict[str, "IMAPSubprocess"] = {}
+USER_IMAP_SUBPROCESSES: dict[str, "IMAPSubprocess"] = {}
 USER_IMAP_SUBPROCESSES_LOCK = UpgradeableReadWriteLock()
 
 
@@ -90,8 +89,8 @@ class IMAPSubprocess:
         self,
         user: PWUser,
         debug: bool = False,
-        log_config: Optional[str] = None,
-        trace: Optional[bool] = False,
+        log_config: str | None = None,
+        trace: bool | None = False,
         trace_dir: Optional["StrPath"] = None,
     ):
         """
@@ -111,7 +110,7 @@ class IMAPSubprocess:
         self.port: int
         self.subprocess: asyncio.subprocess.Process
         self.subprocess_key: bytes
-        self.wait_task: Optional[asyncio.Task] = None
+        self.wait_task: asyncio.Task | None = None
         self.rc: int
         self.has_port = asyncio.Event()
 
@@ -243,7 +242,7 @@ class IMAPSubprocess:
         self.rc = rc
         self.is_alive = False
         if self.rc != 0:
-            logger.warning("Subprocess had non-zero return code: %d" % self.rc)
+            logger.warning("Subprocess had non-zero return code: %d", self.rc)
 
     ####################################################################
     #
@@ -279,9 +278,9 @@ class IMAPServer:
         address: str,
         port: int,
         ssl_context: ssl.SSLContext,
-        trace: Optional[bool] = False,
+        trace: bool | None = False,
         trace_dir: Optional["StrPath"] = None,
-        log_config: Optional[str] = None,
+        log_config: str | None = None,
         debug: bool = False,
     ):
         self.address = address
@@ -292,7 +291,7 @@ class IMAPServer:
         self.log_config = log_config
         self.debug = debug
         self.asyncio_server: asyncio.Server
-        self.imap_client_tasks: Dict[asyncio.Task, IMAPClient] = {}
+        self.imap_client_tasks: dict[asyncio.Task, IMAPClient] = {}
 
     ####################################################################
     #
@@ -345,7 +344,7 @@ class IMAPServer:
             #
             logger.debug("IMAP Server exiting for some reason")
             clients = [c.close() for c in self.imap_client_tasks.values()]
-            tasks = [task for task in self.imap_client_tasks.keys()]
+            tasks = list(self.imap_client_tasks.keys())
             await asyncio.gather(*clients, return_exceptions=True)
             await asyncio.gather(*tasks, return_exceptions=True)
             async with USER_IMAP_SUBPROCESSES_LOCK.read_lock():
@@ -451,7 +450,7 @@ class IMAPClient:
 
         self.reading_string_literal = False
         self.stream_buffer_size = 65536
-        self.ibuffer: List[bytes] = []
+        self.ibuffer: list[bytes] = []
         self.subprocess_intf = IMAPSubprocessInterface(self)
 
     ####################################################################
@@ -461,7 +460,7 @@ class IMAPClient:
 
     ####################################################################
     #
-    async def push(self, *data: Union[bytes, str]):
+    async def push(self, *data: bytes | str):
         """
         Write data to the IMAP Client. Also write it to the trace
         file if we have one.
@@ -554,9 +553,9 @@ class IMAPClient:
                 client_connected = await self.subprocess_intf.message(msg)
 
         except (
+            OSError,
             asyncio.exceptions.IncompleteReadError,
             ConnectionResetError,
-            socket.error,
             ssl.SSLError,
         ):
             # We got an EOF while waiting for a line terminator. Client
@@ -593,7 +592,7 @@ class IMAPClient:
             if not self.writer.is_closing():
                 self.writer.close()
             await self.writer.wait_closed()
-        except socket.error:
+        except OSError:
             pass
         except Exception as exc:
             logger.error("Exception when closing %s: %s", self, exc)
@@ -646,9 +645,9 @@ class IMAPSubprocessInterface:
         #
         self.client_handler = PreAuthenticated(self.imap_client)
         self.subprocess: IMAPSubprocess
-        self.writer: Optional[asyncio.StreamWriter] = None
+        self.writer: asyncio.StreamWriter | None = None
         self.reader: asyncio.StreamReader
-        self.wait_task: Optional[asyncio.Task] = None
+        self.wait_task: asyncio.Task | None = None
 
     ##################################################################
     #
@@ -673,14 +672,14 @@ class IMAPSubprocessInterface:
                 if not self.writer.is_closing():
                     self.writer.close()
                 await self.writer.wait_closed()
-        except socket.error:
+        except OSError:
             pass
         except Exception as exc:
             logger.error("Exception when closing %s: %s", self, exc)
 
     ####################################################################
     #
-    async def push(self, *data: Union[bytes, str]):
+    async def push(self, *data: bytes | str):
         """
         Write data to IMAP Subprocess.
         """
@@ -712,7 +711,7 @@ class IMAPSubprocessInterface:
         # messages off to the subprocess to handle.
         #
         if self.client_handler.state == "authenticated":
-            await self.push("{%d}\n" % len(msg), msg)
+            await self.push(f"{{{len(msg)}}}\n", msg)
             return True
 
         # NOTE: Below this section ONLY is reached before a user authenticates.
@@ -749,8 +748,7 @@ class IMAPSubprocessInterface:
                 # Do not need a full stack trace for a connection error.
                 #
                 logger.warning(
-                    "Exception sending 'BAD' for %s: %s"
-                    % (self.log_string(), str(e))
+                    f"Exception sending 'BAD' for {self.log_string()}: {str(e)}"
                 )
                 return False
 
@@ -763,8 +761,7 @@ class IMAPSubprocessInterface:
             # Do not need a full stack trace for a connection error.
             #
             logger.warning(
-                "Exception handling IMAP command '%s' for %s: %s"
-                % (imap_cmd, self.log_string(), str(e))
+                f"Exception handling IMAP command '{imap_cmd}' for {self.log_string()}: {str(e)}"
             )
             return False
         except Exception as e:
@@ -891,7 +888,7 @@ class IMAPSubprocessInterface:
         try:
             async with asyncio.timeout(300):
                 await self.subprocess.has_port.wait()
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(
                 "IMAPClient %s, username '%s' - timed out waiting for "
                 "existing sub-process to have a port we can connect to: %s",
@@ -962,11 +959,7 @@ class IMAPSubprocessInterface:
                     break
                 msg = await self.reader.readuntil(b"\r\n")
                 await self.imap_client.push(msg)
-        except (
-            asyncio.IncompleteReadError,
-            ConnectionResetError,
-            socket.error,
-        ):
+        except (OSError, asyncio.IncompleteReadError, ConnectionResetError):
             pass
         except asyncio.LimitOverrunError as exc:
             logger.warning(

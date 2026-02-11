@@ -13,7 +13,7 @@ import stat
 from contextlib import asynccontextmanager
 from mailbox import NoSuchMailboxError, _lock_file
 from pathlib import Path
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 
 # 3rd party imports
 #
@@ -113,7 +113,7 @@ class MH(mailbox.MH):
     @asynccontextmanager
     async def lock_folder(
         self,
-        timeout: Union[int | float] = 2,
+        timeout: int | float = 2,
         fail: bool = False,
     ):
         """
@@ -185,7 +185,7 @@ class MH(mailbox.MH):
                 pass
         except OSError as e:
             if e.errno == errno.ENOENT:
-                raise KeyError("No message with key: %s" % key)
+                raise KeyError(f"No message with key: {key}") from e
             else:
                 raise
         else:

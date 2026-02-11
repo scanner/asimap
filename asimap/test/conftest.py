@@ -9,6 +9,7 @@ import imaplib
 import ssl
 import threading
 import time
+from collections.abc import Callable, Generator, Iterable
 from email import message_from_bytes
 from email.header import decode_header
 from email.headerregistry import Address
@@ -19,14 +20,6 @@ from mailbox import MH, MHMessage
 from pathlib import Path
 from typing import (
     Any,
-    Callable,
-    Generator,
-    Iterable,
-    List,
-    Optional,
-    Tuple,
-    TypeAlias,
-    Union,
 )
 
 # 3rd party imports
@@ -47,7 +40,7 @@ from ..user_server import (
 )
 from .factories import UserFactory
 
-EmailFactoryType: TypeAlias = Callable[..., EmailMessage]
+type EmailFactoryType = Callable[..., EmailMessage]
 
 REPLACE_LINESEP = {ord("\r"): None, ord("\n"): None}
 
@@ -69,14 +62,16 @@ STATIC_EMAIL_MSG_KEYS = sorted(
 ####################################################################
 #
 def client_push_responses(
-    client: Union[IMAPClient, IMAPClientProxy], strip: bool = True
-) -> List[str]:
+    client: IMAPClient | IMAPClientProxy, strip: bool = True
+) -> list[str]:
     """
     A helper function that returns all of the push's for this client since
     the last time this function was called.
     """
     results = [
-        y for x in client.push.call_args_list for y in x.args  # type: ignore [attr-defined]
+        y
+        for x in client.push.call_args_list
+        for y in x.args  # type: ignore [attr-defined]
     ]
     if strip:
         results = [x.strip() for x in results]
@@ -86,12 +81,12 @@ def client_push_responses(
 
 ####################################################################
 #
-def decode_headers(headers: List[str]) -> List[str]:
+def decode_headers(headers: list[str]) -> list[str]:
     """
     Given a list of headers, decode each of them. If, after decoding, make
     sure that they are decoded back in to strings if they were encoded
     """
-    result: List[str] = []
+    result: list[str] = []
     for hdr in headers:
         h = decode_header(hdr)
         tb = []
@@ -108,7 +103,7 @@ def decode_headers(headers: List[str]) -> List[str]:
 ####################################################################
 #
 def assert_email_equal(
-    msg1: Message, msg2: Message, ignore_headers: Optional[List[str]] = None
+    msg1: Message, msg2: Message, ignore_headers: list[str] | None = None
 ):
     """
     Because we can not directly compare a Message and EmailMessage object
@@ -129,7 +124,7 @@ def assert_email_equal(
     else:
         assert len(msg1.keys()) == len(msg2.keys())
         keys = set(msg1.keys())
-        for header in sorted(list(keys)):
+        for header in sorted(keys):
             value1 = decode_headers(msg1.get_all(header, failobj=[]))
             value2 = decode_headers(msg2.get_all(header, failobj=[]))
             value1 = sorted(
@@ -162,7 +157,7 @@ def assert_email_equal(
 
     assert len(parts1) == len(parts2)
 
-    for part1, part2 in zip(parts1, parts2):
+    for part1, _part2 in zip(parts1, parts2):
         payload1 = part1.get_payload()
         payload2 = part1.get_payload()
         assert payload1 == payload2
@@ -221,16 +216,16 @@ def password_file_factory(tmp_path):
     setup the auth module to use it, given the users it is called with.
     """
 
-    def make_pw_file(users: List[asimap.auth.PWUser]):
+    def make_pw_file(users: list[asimap.auth.PWUser]):
         pw_file_location = tmp_path / "asimap_pwfile.txt"
         accounts = {x.username: x for x in users}
         asimap.auth.write_pwfile(pw_file_location, accounts)
-        setattr(asimap.auth, "PW_FILE_LOCATION", pw_file_location)
+        asimap.auth.PW_FILE_LOCATION = pw_file_location
         return pw_file_location
 
-    orig_location = getattr(asimap.auth, "PW_FILE_LOCATION")
+    orig_location = asimap.auth.PW_FILE_LOCATION
     yield make_pw_file
-    setattr(asimap.auth, "PW_FILE_LOCATION", orig_location)
+    asimap.auth.PW_FILE_LOCATION = orig_location
 
 
 ####################################################################
@@ -248,9 +243,9 @@ def email_factory(faker: Any) -> EmailFactoryType:
     #       generated email.
     #
     def make_email(
-        msg_from: Optional[str] = None,
-        to: Optional[str] = None,
-        subject: Optional[str] = None,
+        msg_from: str | None = None,
+        to: str | None = None,
+        subject: str | None = None,
     ) -> EmailMessage:
         """
         NOTE: `from` is a reserverd word in python so you need to specify
@@ -376,12 +371,12 @@ def mock_time(mocker):
 @pytest.fixture
 def mh_folder(
     tmp_path: Path,
-) -> Callable[[str, Optional[Path]], Tuple[Path, MH, MH]]:
+) -> Callable[[str, Path | None], tuple[Path, MH, MH]]:
     """
     Create the Mail dir and the inbox dir inside that mail dir.
     """
 
-    def mk_folder(folder: str = "inbox", mh_dir: Optional[Path] = None):
+    def mk_folder(folder: str = "inbox", mh_dir: Path | None = None):
         mh_dir = tmp_path / "Mail" if mh_dir is None else mh_dir
         mh = MH(mh_dir)
         m_folder = mh.add_folder(folder)
@@ -396,9 +391,9 @@ def mh_folder(
 def incr_email(
     faker: Generator,
     email_factory: EmailFactoryType,
-    mh_folder: Callable[[str, Optional[Path]], Tuple[Path, MH, MH]],
-    mh_dir: Optional[Path] = None,
-) -> Callable[[Optional[str], Optional[Iterable[str]]], MHMessage]:
+    mh_folder: Callable[[str, Path | None], tuple[Path, MH, MH]],
+    mh_dir: Path | None = None,
+) -> Callable[[str | None, Iterable[str] | None], MHMessage]:
     """
     Returns a factory function that will add a single email to a specified
     MH folder. If no folder is specified it defaults to `inbox`. You can
@@ -408,7 +403,7 @@ def incr_email(
     """
 
     def add_one_mail_to_folder(
-        folder: Optional[str] = None, sequences: Optional[Iterable[str]] = None
+        folder: str | None = None, sequences: Iterable[str] | None = None
     ) -> MHMessage:
         folder = folder if folder else "inbox"
         sequences = sequences if sequences is not None else ["unseen"]
@@ -426,7 +421,7 @@ def incr_email(
 @pytest.fixture
 def bunch_of_email_in_folder(
     email_factory: EmailFactoryType,
-    mh_folder: Callable[[str, Optional[Path]], Tuple[Path, MH, MH]],
+    mh_folder: Callable[[str, Path | None], tuple[Path, MH, MH]],
 ) -> None:
     """
     Create a function that will create a specified number of emails in the
@@ -439,8 +434,8 @@ def bunch_of_email_in_folder(
     def create_emails(
         num_emails: int = 20,
         folder: str = "inbox",
-        sequence: Optional[Union[list, tuple, Iterable]] = None,
-        mh_dir: Optional[Path] = None,
+        sequence: list | tuple | Iterable | None = None,
+        mh_dir: Path | None = None,
     ):
         (mh_dir, _, m_folder) = mh_folder(folder, mh_dir)
         set_msgs_by_seq = True
@@ -457,7 +452,7 @@ def bunch_of_email_in_folder(
         # If sequences WAS provided the caller wants us to put messages in
         # specific keys.
         #
-        for i, key in zip(range(num_emails), sequence):
+        for _i, key in zip(range(num_emails), sequence):
             msg = MHMessage(email_factory())
             if set_msgs_by_seq:
                 msg_path = Path(m_folder._path) / str(key)
@@ -509,7 +504,7 @@ async def imap_client_proxy(faker, mocker, imap_user_server):
     objects (necessary for testing what happens when multiple clients are
     connected to the server.)
     """
-    writers: List[asyncio.StreamWriter] = []
+    writers: list[asyncio.StreamWriter] = []
 
     # NOTE: We can just create a stream reader and feed it data if we need to:
     #       https://www.pythonfixing.com/2021/10/fixed-writing-pytest-testcases-for.html

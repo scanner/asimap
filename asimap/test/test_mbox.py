@@ -10,7 +10,6 @@ import random
 from dataclasses import dataclass
 from datetime import datetime
 from mailbox import MHMessage
-from typing import Dict, List, Tuple
 
 # 3rd party imports
 #
@@ -98,7 +97,7 @@ async def test_mailbox_init_with_messages(mailbox_with_bunch_of_email):
     assert r"\Marked" in mbox.attributes
     assert r"\HasNoChildren" in mbox.attributes
 
-    msg_keys = set([int(x) for x in mbox.mailbox.keys()])
+    msg_keys = {int(x) for x in mbox.mailbox.keys()}
     assert len(msg_keys) > 0
     mtimes = []
     for msg_key in sorted(msg_keys):
@@ -150,7 +149,7 @@ async def test_mailbox_gets_new_message(
     # Now add one message to the folder.
     #
     bunch_of_email_in_folder(folder=NAME, num_emails=1)
-    msg_keys = set([int(x) for x in mbox.mailbox.keys()])
+    msg_keys = {int(x) for x in mbox.mailbox.keys()}
 
     await mbox.check_new_msgs_and_flags()
     assert r"\Marked" in mbox.attributes
@@ -435,7 +434,7 @@ async def test_mailbox_fetch(mailbox_with_bunch_of_email):
     # mailbox.
     #
     expected_keys = (2, 3, 4)
-    msgs: Dict[int, MHMessage] = {}
+    msgs: dict[int, MHMessage] = {}
     for msg_key in expected_keys:
         msgs[msg_key] = mbox.get_msg(msg_key)
     fetch_ops = [
@@ -698,7 +697,7 @@ async def test_mailbox_store(mailbox_with_bunch_of_email):
     # uid's are the same for each message (ie: 1 == 1 == 1)
     #
     mbox = mailbox_with_bunch_of_email
-    msg_set = sorted(list(random.sample(mbox.msg_keys, 5)))
+    msg_set = sorted(random.sample(mbox.msg_keys, 5))
 
     # can not touch `\Recent`
     #
@@ -770,7 +769,7 @@ async def test_mailbox_copy(mailbox_with_bunch_of_email):
     dst_mbox = await mbox.server.get_mailbox(ARCHIVE)
 
     msg_keys = mbox.msg_keys
-    msg_set = sorted(list(random.sample(msg_keys, 15)))
+    msg_set = sorted(random.sample(msg_keys, 15))
 
     src_uids, dst_uids = await mbox.copy(msg_set, dst_mbox)
     assert len(src_uids) == len(dst_uids)
@@ -925,7 +924,7 @@ async def test_mailbox_create_delete(
     # sure we can actually do stuff with it.
     #
     msg_keys = mbox.msg_keys
-    msg_set = sorted(list(random.sample(msg_keys, 5)))
+    msg_set = sorted(random.sample(msg_keys, 5))
     src_uids, dst_uids = await mbox.copy(msg_set, archive)
     archive_msg_keys = archive.msg_keys
     assert len(dst_uids) == len(archive_msg_keys)
@@ -1036,7 +1035,7 @@ async def test_mailbox_list(
             folders.append(sub_folder)
 
     list_results = []
-    async for mbox_name, attributes, _ in Mailbox.list("", "*", server):
+    async for mbox_name, _attributes, _ in Mailbox.list("", "*", server):
         mbox_name = mbox_name.lower() if mbox_name == "INBOX" else mbox_name
         assert mbox_name in folders
         list_results.append(mbox_name)
@@ -1468,8 +1467,8 @@ class IMAPCommandConflictScenario:
     """
 
     imap_command: IMAPClientCommand
-    executing_commands: List[IMAPClientCommand]
-    sequences: Dict[str, set]
+    executing_commands: list[IMAPClientCommand]
+    sequences: dict[str, set]
     would_conflict: bool
 
 
@@ -1650,12 +1649,12 @@ FETCH_VS_COPY_FETCH_STORE = [
 # I know this is 'search, select, status vs fetch, store. However have decided
 # to let SELECT and STATUS not conflict with FETCH, STORE.
 #
-SEARCH_SELECT_STATUS: List[str] = [
+SEARCH_SELECT_STATUS: list[str] = [
     "A002 SEARCH unseen",
     # "A002 SELECT foo",
     # "A002 STATUS foo (RECENT)",
 ]
-FETCH_STORE: List[Tuple[bool, str]] = [
+FETCH_STORE: list[tuple[bool, str]] = [
     (False, "A001 NOOP"),
     (True, "A001 FETCH 2:4 BODY[HEADER]"),
     (False, "A001 FETCH 2:4 BODY.PEEK[HEADER]"),

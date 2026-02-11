@@ -63,7 +63,7 @@ def test_uidvv_uid(faker):
     for x, y in zip(uid_vals, uids):
         assert get_uidvv_uid(y) == x
 
-    get_uidvv_uid("  012345.6789   ") == (12345, 6789)
+    assert get_uidvv_uid("  012345.6789   ") == (12345, 6789)
 
 
 ####################################################################

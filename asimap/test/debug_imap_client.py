@@ -58,20 +58,14 @@ def cleanup_test_mode_dir(test_mode_dir):
             # We do not care about the names of the files in this zip
             # file. Each file we insert in to this mh folder.
             #
-            print(
-                "Extracting initial messages from {}".format(
-                    init_state_msgs_file
-                )
-            )
+            print(f"Extracting initial messages from {init_state_msgs_file}")
             mh_f.lock()
             try:
                 with tarfile.open(init_state_msgs_file, "r:gz") as tf:
                     for member in tf.getmembers():
                         if member.isfile():
                             print(
-                                "    Adding message {}, size: {}".format(
-                                    member.name, member.size
-                                )
+                                f"    Adding message {member.name}, size: {member.size}"
                             )
                             mh_f.add(tf.extractfile(member).read())
             finally:
@@ -91,9 +85,7 @@ def do_baked_appends(test_mode_dir, imap, mbox_name):
     imap -- imaplib.IMAP4 object
     mbox_name -- name of the mailbox to append the messages to
     """
-    tfile = os.path.join(
-        test_mode_dir, "append_fodder-{}.tar.gz".format(mbox_name)
-    )
+    tfile = os.path.join(test_mode_dir, f"append_fodder-{mbox_name}.tar.gz")
     if not os.path.exists(tfile):
         return
 
@@ -101,9 +93,7 @@ def do_baked_appends(test_mode_dir, imap, mbox_name):
         for member in tf.getmembers():
             if member.isfile():
                 print(
-                    "    Appending tf member {}, size: {}".format(
-                        member.name, member.size
-                    )
+                    f"    Appending tf member {member.name}, size: {member.size}"
                 )
                 content = tf.extractfile(member).read()
                 imap.append(mbox_name, None, None, content)
@@ -119,10 +109,10 @@ def dump_all_messages(imap):
     """
     typ, data = imap.search(None, "ALL")
     if data[0]:
-        print("  Messages in mailbox: {}".format(data[0]))
+        print(f"  Messages in mailbox: {data[0]}")
         for num in data[0].split():
             t, d = imap.fetch(num, "(RFC822.header)")
-            print("    Message {} header info: {}".format(num, d[0][0]))
+            print(f"    Message {num} header info: {d[0][0]}")
             # typ, data = imap.fetch(num, '(RFC822)')
             # print 'Message {}, length: {}'.format(num, len(d[0][1]))
 
@@ -142,9 +132,9 @@ def main():
         creds_file = os.path.join(
             os.path.dirname(__file__), path, "test_mode_creds.txt"
         )
-        print("Looking for creds file {}".format(creds_file))
+        print(f"Looking for creds file {creds_file}")
         if os.path.exists(creds_file):
-            print("Using credentials file {}".format(creds_file))
+            print(f"Using credentials file {creds_file}")
             username, password = open(creds_file).read().strip().split(":")
             test_mode_dir = os.path.dirname(creds_file)
             break
@@ -165,7 +155,7 @@ def main():
     imap.login(username, password)
 
     for mbox_name in ("INBOX", "Archive", "Junk"):
-        print("Selected '{}'".format(mbox_name))
+        print(f"Selected '{mbox_name}'")
 
         imap.select(mbox_name)
         do_baked_appends(test_mode_dir, imap, mbox_name)

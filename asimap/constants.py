@@ -5,11 +5,11 @@
 """
 Various global constants.
 """
+
 from collections import defaultdict
 from enum import StrEnum
-from typing import List, Optional, Set, TypeAlias
 
-Sequences: TypeAlias = defaultdict[str, Set[int]]
+type Sequences = defaultdict[str, set[int]]
 
 
 # Here we set the list of defined system flags (flags that may be set on a
@@ -61,7 +61,7 @@ REV_SYSTEM_FLAG_MAP = {v: k for k, v in SYSTEM_FLAG_MAP.items()}
 
 ####################################################################
 #
-def flags_to_seqs(flags: Optional[List[str]]) -> List[str]:
+def flags_to_seqs(flags: list[str] | None) -> list[str]:
     """
     Converts an array of IMAP flags to MH sequence names.
     """
@@ -84,7 +84,7 @@ def flag_to_seq(flag):
 
 ####################################################################
 #
-def seqs_to_flags(seqs: Optional[List[str]]) -> List[str]:
+def seqs_to_flags(seqs: list[str] | None) -> list[str]:
     """
     Converts an array of MH sequence names to IMAP flags
     """

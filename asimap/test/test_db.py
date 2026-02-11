@@ -5,7 +5,6 @@ Test our asyncio sqlite db
 # system imports
 #
 import asyncio
-from typing import Dict
 
 # 3rd party imports
 #
@@ -48,7 +47,7 @@ async def test_db_init_migrate(db):
     commit. we check the results via the `query` method as an
     asynccontextmanager.
     """
-    schema: Dict[str, Dict[str, str]] = {}
+    schema: dict[str, dict[str, str]] = {}
     async for table in db.query(
         "SELECT name FROM sqlite_schema WHERE type='table'"
     ):

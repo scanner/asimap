@@ -18,6 +18,7 @@ the array.
 
 Simple but it works for our very limited set of migrations.
 """
+
 # system imports
 #
 import logging
@@ -25,7 +26,7 @@ import os.path
 import re
 import sqlite3
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING
 
 # 3rd party imports
 #
@@ -43,7 +44,7 @@ logger = logging.getLogger("asimap.db")
 # NOTE: If we know what they are ahead of time we should pre-populate this
 # dict.
 #
-USED_REGEXPS: Dict[str, re.Pattern] = {}
+USED_REGEXPS: dict[str, re.Pattern] = {}
 
 
 ####################################################################
@@ -65,7 +66,7 @@ def regexp(expr, item):
             USED_REGEXPS[expr] = reg
         return reg.search(item) is not None
     except Exception as e:
-        logger.error("exception: %s" % e)
+        logger.error(f"exception: {e}")
     return None
 
 
@@ -92,7 +93,7 @@ class Database:
         maildir = Path(maildir)
         self.maildir = maildir
         self.db_filename = os.path.join(self.maildir, "asimap.db")
-        logger.debug("Opening database file: '%s'" % self.db_filename)
+        logger.debug(f"Opening database file: '{self.db_filename}'")
         self.conn: aiosqlite.Connection
 
     ####################################################################

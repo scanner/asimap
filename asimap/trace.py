@@ -15,7 +15,7 @@ import logging.handlers
 # system imports
 #
 import time
-from typing import Any, Dict, Optional
+from typing import Any
 
 trace_logger = logging.getLogger("asimap.trace")
 logger = logging.getLogger("asimap.trace_logger")
@@ -104,7 +104,7 @@ TRACE_LAST_TIME = 0.0
 
 ####################################################################
 #
-def toggle_trace(turn_on: Optional[bool] = None) -> None:
+def toggle_trace(turn_on: bool | None = None) -> None:
     """
     If `turn_on` is True, tracing is turned on.
     If `turn_on` is False, tracing is truned off.
@@ -138,7 +138,7 @@ def toggle_trace(turn_on: Optional[bool] = None) -> None:
 
 ####################################################################
 #
-def trace(msg: Dict[str, Any]) -> None:
+def trace(msg: dict[str, Any]) -> None:
     """
     Keyword Arguments:
     msg --

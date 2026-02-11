@@ -6,11 +6,11 @@ Fetch.. the part that gets various bits and pieces of messages.
 #
 import random
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from email import message_from_bytes
 from email.message import EmailMessage
 from email.policy import SMTP
-from typing import Any, Dict, List, Tuple, cast
+from typing import Any, cast
 
 # 3rd party imports
 #
@@ -39,7 +39,7 @@ def test_fetch_create_and_str():
     # We are going to create a bunch of FetchAtt objects. These are the args,
     # kwargs for those objects as well as the expected `str()` of the objects.
     #
-    inputs: List[Tuple[str, Dict[str, Any], str]] = [
+    inputs: list[tuple[str, dict[str, Any], str]] = [
         ("body", {"section": [], "actual_command": "RFC822"}, "RFC822"),
         ("rfc822.size", {}, "RFC822.SIZE"),
         (
@@ -496,8 +496,8 @@ async def test_fetch_flags(mailbox_with_bunch_of_email):
     assert uid_max
 
     # Set some flags on the messages
-    msgs_by_flag: Dict[str, List[int]] = {}
-    flags_by_msg: Dict[int, List[str]] = defaultdict(list)
+    msgs_by_flag: dict[str, list[int]] = {}
+    flags_by_msg: dict[int, list[str]] = defaultdict(list)
     for flag in SYSTEM_FLAGS:
         msgs_by_flag[flag] = random.sample(msg_keys, k=5)
         for k in msgs_by_flag[flag]:
@@ -536,12 +536,10 @@ async def test_fetch_internaldate(mailbox_with_bunch_of_email):
     # Get all the mtime's of the messages in the mailbox and convert these in
     # to non-naive datetimes.
     #
-    internal_date_by_msg: Dict[int, datetime] = {}
+    internal_date_by_msg: dict[int, datetime] = {}
     for msg_key in msg_keys:
         mtime = int(mbox_msg_path(mbox.mailbox, msg_key).stat().st_mtime)
-        internal_date_by_msg[msg_key] = datetime.fromtimestamp(
-            mtime, timezone.utc
-        )
+        internal_date_by_msg[msg_key] = datetime.fromtimestamp(mtime, UTC)
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
         ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
@@ -567,7 +565,7 @@ async def test_fetch_uid(mailbox_with_bunch_of_email):
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
-    uid_by_msg: Dict[int, int] = {}
+    uid_by_msg: dict[int, int] = {}
     for msg_key in msg_keys:
         uid_vv, uid = mbox.get_uid_from_msg(msg_key)
         uid_by_msg[msg_key] = uid

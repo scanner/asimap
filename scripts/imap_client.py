@@ -3,10 +3,10 @@
 """
 A simple IMAP client to test our server with
 """
+
 # system imports
 #
 import imaplib
-from typing import Union
 
 
 #############################################################################
@@ -26,7 +26,7 @@ def main():
     ok, resp = imap.list()
     print(f"List response: {ok}")
     if ok.lower() == "ok":
-        mbox: Union[str, bytes]
+        mbox: str | bytes
         for mbox in resp:
             mbox = str(mbox, "latin-1").split(" ")[-1]
             ok, r = imap.subscribe(mbox)

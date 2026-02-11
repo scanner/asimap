@@ -14,7 +14,7 @@ from email.generator import BytesGenerator, Generator
 from email.message import Message
 from email.policy import HTTP, SMTP, EmailPolicy, Policy
 from io import BytesIO, StringIO
-from typing import BinaryIO, List, Optional, TextIO, Tuple
+from typing import BinaryIO, TextIO
 
 logger = logging.getLogger("asimap.generator")
 
@@ -144,7 +144,7 @@ class ASHeaderGenerator(ASGenerator):
         self,
         outfp: BinaryIO,
         *args,
-        headers: Optional[Tuple[str, ...]] = None,
+        headers: tuple[str, ...] | None = None,
         skip: bool = True,
         **kwargs,
     ):
@@ -348,7 +348,7 @@ class HeaderGenerator(Generator):
         self,
         outfp: TextIO,
         *args,
-        headers: Optional[List[str]] = None,
+        headers: list[str] | None = None,
         skip: bool = True,
         **kwargs,
     ):
@@ -570,7 +570,7 @@ def get_msg_size(msg: Message, render_headers: bool = True) -> int:
 #
 def msg_headers_as_bytes(
     msg: Message,
-    headers: Optional[Tuple[str, ...]] = None,
+    headers: tuple[str, ...] | None = None,
     skip: bool = True,
 ) -> bytes:
     """
@@ -617,7 +617,7 @@ def msg_headers_as_bytes(
 #
 def msg_headers_as_string(
     msg: Message,
-    headers: Optional[Tuple[str, ...]] = None,
+    headers: tuple[str, ...] | None = None,
     skip: bool = True,
 ) -> str:
     """

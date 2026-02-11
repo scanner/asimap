@@ -8,7 +8,7 @@ authenticate users.
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, Union
+from typing import TYPE_CHECKING
 
 # 3rd party imports
 #
@@ -27,7 +27,7 @@ logger = logging.getLogger("asimap.auth")
 # We populate a dict of mappings from username to their user object.
 # This is read in from the pw file.
 #
-USERS: Dict[str, "PWUser"] = {}
+USERS: dict[str, "PWUser"] = {}
 
 # We keep track of the last time we read the pw file so that if the underlying
 # file has its timestamp changed we know to read the users in again. This value
@@ -118,13 +118,13 @@ async def read_users_from_file(pw_file_name: "StrPath") -> None:
     """
     pw_file_name = Path(pw_file_name)
     users = {}
-    async with aiofiles.open(str(pw_file_name), "r") as f:
+    async with aiofiles.open(str(pw_file_name)) as f:
         async for line in f:
             line = line.strip()
             if not line or line[0] == "#":
                 continue
             try:
-                maildir: Union[str | Path]
+                maildir: str | Path
                 username, pw_hash, maildir = [
                     x.strip() for x in line.split(":")
                 ]
@@ -138,7 +138,7 @@ async def read_users_from_file(pw_file_name: "StrPath") -> None:
                     line,
                     exc,
                 )
-    for username, user in users.items():
+    for username, _user in users.items():
         USERS[username] = users[username]
 
     # And delete any records from USER's that were not in the pwfile.
@@ -151,7 +151,7 @@ async def read_users_from_file(pw_file_name: "StrPath") -> None:
 
 ####################################################################
 #
-def write_pwfile(pwfile: Path, accounts: Dict[str, PWUser]) -> None:
+def write_pwfile(pwfile: Path, accounts: dict[str, PWUser]) -> None:
     """
     we support a password file by email account with the password hash and
     maildir for that email account. This is for inteegration with other

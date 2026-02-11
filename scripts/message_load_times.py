@@ -34,8 +34,8 @@ def main():
     msg_results = {}
     trace_file = Path(sys.argv[1])
     timer = Timer("message_parser", text="Elapsed time: {:.7f}")
-    with open(trace_file, "r") as traces:
-        for idx, line in enumerate(traces):
+    with open(trace_file) as traces:
+        for _idx, line in enumerate(traces):
             msg = line[22:].strip()
             trace = json.loads(msg)
             if (

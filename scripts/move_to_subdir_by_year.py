@@ -8,6 +8,7 @@ timestamp of when the mail was received in its headers.
 We will exclude the current year from this process (ie: we move all messages
 from previous years in to subfolders.)
 """
+
 # system imports
 #
 import email.utils
@@ -75,7 +76,7 @@ def main():
 
         if len(msgs) < options.keep:
             print(
-                "Less than %s messages in folder. Nothing to do." % options.keep
+                f"Less than {options.keep} messages in folder. Nothing to do."
             )
             return
 
@@ -84,7 +85,7 @@ def main():
         #
         for i, msg_key in enumerate(msgs):
             if i % 200 == 0:
-                print("%d out of %d" % (i, len(msgs) - i))
+                print(f"{i} out of {len(msgs) - i}")
 
             msg = mbox[msg_key]
 
@@ -105,14 +106,12 @@ def main():
                     date = email.utils.mktime_tz(tt)
             except (ValueError, TypeError) as e:
                 print(
-                    "Yow. Message %d's 'date'(%s) resulted in a: %s"
-                    % (msg_key, msg["date"], str(e))
+                    f"Yow. Message {msg_key}'s 'date'({msg['date']}) resulted in a: {e}"
                 )
                 tt = None
             except OverflowError as e:
                 print(
-                    "Yow. Message %d's 'date'(%s) resulted in a: %s"
-                    % (msg_key, msg["date"], str(e))
+                    f"Yow. Message {msg_key}'s 'date'({msg['date']}) resulted in a: {e}"
                 )
                 tt = None
 
@@ -125,10 +124,9 @@ def main():
 
         msg_array.sort(key=lambda x: x[0])
 
-        print("Total number of messages: %d" % len(msg_array))
+        print(f"Total number of messages: {len(msg_array)}")
         print(
-            "Spanning from %s, to %s"
-            % (time.ctime(msg_array[0][0]), time.ctime(msg_array[-1][0]))
+            f"Spanning from {time.ctime(msg_array[0][0])}, to {time.ctime(msg_array[-1][0])}"
         )
 
         msg_array = msg_array[: -options.keep]
@@ -147,12 +145,9 @@ def main():
 
             if cur_year != year:
                 cur_year = year
-                folder_name = "%s_%04d" % (
-                    os.path.basename(source_folder),
-                    year,
-                )
+                folder_name = f"{os.path.basename(source_folder)}_{year:04d}"
                 folder_path = os.path.join(source_folder, folder_name)
-                print("making folder: %s" % folder_path)
+                print(f"making folder: {folder_path}")
                 if not options.dry_run:
                     subfolder = mailbox.MH(
                         os.path.join(folder_path), create=True

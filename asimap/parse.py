@@ -11,6 +11,7 @@ import email.policy
 import logging
 import os.path
 import re
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from datetime import date
 from email import message_from_string
@@ -18,12 +19,6 @@ from email.message import EmailMessage
 from enum import Enum, StrEnum
 from typing import (
     TYPE_CHECKING,
-    Callable,
-    List,
-    Optional,
-    Set,
-    Tuple,
-    Union,
     cast,
 )
 
@@ -366,7 +361,7 @@ _zone_re = re.compile(_zone)
 
 ####################################################################
 #
-def msg_set_to_str(msg_set: Optional[MsgSet]) -> str:
+def msg_set_to_str(msg_set: MsgSet | None) -> str:
     """
     Turn a message set into the equivalent IMAP protocol string representation
     """
@@ -406,10 +401,10 @@ class IMAPClientCommand:
         """
         self.input = imap_command
         self.uid_command: bool = False
-        self.tag: Optional[str] = None
-        self.command: Optional[str] = None
+        self.tag: str | None = None
+        self.command: str | None = None
         self.msg_set: MsgSet = []
-        self.fetch_atts: List[FetchAtt] = []
+        self.fetch_atts: list[FetchAtt] = []
         self.message: EmailMessage
 
         # If we are doing a `STORE.SILENT` command then `silent` is True
@@ -428,7 +423,7 @@ class IMAPClientCommand:
         #       know the max seq and how to map uid's to IMAP message sequence
         #       numbers)
         #
-        self.msg_set_as_set: Optional[Set[int]] = None
+        self.msg_set_as_set: set[int] | None = None
 
         # If the IMAP Command is currently operating under an asyncio.Timeout
         # context manager, that context manager is set here so that when a
@@ -439,7 +434,7 @@ class IMAPClientCommand:
         # process taking far longer than expected. (we should not have any,
         # this is to be safe.)
         #
-        self.timeout_cm: Optional[asyncio.Timeout] = None
+        self.timeout_cm: asyncio.Timeout | None = None
 
         # When the task executing this IMAPClientCommand wants to begin it must
         # wait for the 'ready' event to be set. This is the management task for
@@ -626,9 +621,9 @@ class IMAPClientCommand:
     def __repr__(self):
         result = "<IMAPClientCommand "
         if self.tag is not None:
-            result += "tag: '%s'" % self.tag
+            result += f"tag: '{self.tag}'"
         if self.command is not None:
-            result += " command: '%s'" % self.command
+            result += f" command: '{self.command}'"
             if self.command == "fetch":
                 result += ": " + " ".join([str(x) for x in self.fetch_atts])
         result += ">"
@@ -668,7 +663,7 @@ class IMAPClientCommand:
         )
         self._p_simple_string(" ", syntax_error="expected ' ' after tag")
         cmd = self._p_re(
-            _atom_re, syntax_error="expected an atom for " "the command name"
+            _atom_re, syntax_error="expected an atom for the command name"
         )
         if not cmd:
             raise BadCommand(value="No command")
@@ -781,7 +776,7 @@ class IMAPClientCommand:
         self._p_simple_string(
             "(",
             swallow=False,
-            syntax_error="expected " "a parenthesized list of key/value pairs",
+            syntax_error="expected a parenthesized list of key/value pairs",
         )
         kv_pairs = self._p_paren_list_of(self._p_string_nstring_pairs)
         for k, v in kv_pairs:
@@ -816,7 +811,7 @@ class IMAPClientCommand:
         if self._p_simple_string("(", silent=True, swallow=False):
             self.flag_list = self._p_paren_list_of(self._p_flag)
             self._p_simple_string(
-                " ", syntax_error="expected ' ' after flag " "list"
+                " ", syntax_error="expected ' ' after flag list"
             )
 
         # The next thing is either a date_time or a string literal. If the next
@@ -826,7 +821,7 @@ class IMAPClientCommand:
         if self._p_simple_string('"', silent=True, swallow=False):
             self.date_time = self._p_date_time()
             self._p_simple_string(
-                " ", syntax_error="expected ' ' after " "rfc822 date-time"
+                " ", syntax_error="expected ' ' after rfc822 date-time"
             )
 
         # and the last thing _must_ be a string literal, and it is an email
@@ -932,8 +927,7 @@ class IMAPClientCommand:
         self.command = command.lower()
         if self.command not in uid_commands:
             raise BadSyntax(
-                "%s is not a valid UID command: %s"
-                % (command, str(uid_commands))
+                f"{command} is not a valid UID command: {str(uid_commands)}"
             )
         self._parse_command(self.command)
 
@@ -1019,8 +1013,10 @@ class IMAPClientCommand:
             opt_str = self._p_re(_atom_re).lower()
             try:
                 opt = ListSelectOpt(opt_str)
-            except ValueError:
-                raise BadSyntax(f"Unknown LIST selection option: {opt_str}")
+            except ValueError as err:
+                raise BadSyntax(
+                    f"Unknown LIST selection option: {opt_str}"
+                ) from err
             self.list_select_opts.add(opt)
 
             if self._p_simple_string(")", silent=True) is not None:
@@ -1074,8 +1070,10 @@ class IMAPClientCommand:
             else:
                 try:
                     opt = ListReturnOpt(opt_str)
-                except ValueError:
-                    raise BadSyntax(f"Unknown LIST return option: {opt_str}")
+                except ValueError as err:
+                    raise BadSyntax(
+                        f"Unknown LIST return option: {opt_str}"
+                    ) from err
                 self.list_return_opts.add(opt)
 
             if self._p_simple_string(")", silent=True) is not None:
@@ -1153,7 +1151,7 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def _p_paren_list_of(self, func: Callable) -> List[str]:
+    def _p_paren_list_of(self, func: Callable) -> list[str]:
         """This function does not parse a specific type of singleton
         element. It is specifically for parsing lists of elements that follow a
         specific convention.
@@ -1170,10 +1168,10 @@ class IMAPClientCommand:
         We return a list of whatever the passed in function returns to us.
         """
 
-        result: List[str] = []
+        result: list[str] = []
         self._p_simple_string(
             "(",
-            syntax_error="expected a '(' beginning " "a parenthesized list",
+            syntax_error="expected a '(' beginning a parenthesized list",
         )
         # If we hit a ')' then it was an empty list.
         #
@@ -1204,7 +1202,7 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def _p_fetch_atts(self) -> List[FetchAtt]:
+    def _p_fetch_atts(self) -> list[FetchAtt]:
         """We have either a single fetch attribute or a list of fetch
         attributes. We know which it will be, because it will be a
         parenthesized list so if the next character on our input stream is a
@@ -1302,9 +1300,7 @@ class IMAPClientCommand:
 
         fetch_att_tok = self._p_re(_fetch_att_atom_re)
         if fetch_att_tok is None or fetch_att_tok.lower() not in ParseFetchAtt:
-            raise BadSyntax(
-                "'%s' is not a valid FETCH argument" % fetch_att_tok
-            )
+            raise BadSyntax(f"'{fetch_att_tok}' is not a valid FETCH argument")
         fetch_att_tok = fetch_att_tok.lower()
 
         # XXX NOTE, our turning things from shortcuts to their
@@ -1389,7 +1385,7 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def _p_partial(self) -> Tuple[int, int]:
+    def _p_partial(self) -> tuple[int, int]:
         """An attribute being fetched can have a 'partial' section that
         indicates. It is a '<' integer '.' integer '>'. We will return the
         tuple of integers
@@ -1432,7 +1428,7 @@ class IMAPClientCommand:
         #
         # So, see if we have a list of numbers separated by '.'
         #
-        sect_list: List[Union[int, str]] = []
+        sect_list: list[int | str] = []
         try:
             while True:
                 sect_list.append(int(self._p_re(_number_re)))
@@ -1464,8 +1460,8 @@ class IMAPClientCommand:
                 break
         if section is None:
             raise BadSyntax(
-                value="%s: expected a valid section "
-                "identifier, one of: %s" % (self.input[:10], str(section_texts))
+                value=f"{self.input[:10]}: expected a valid section "
+                f"identifier, one of: {str(section_texts)}"
             )
 
         # If the section is one of 'header.fields.not' or 'header.fields'
@@ -1477,9 +1473,9 @@ class IMAPClientCommand:
             header_list = self._p_paren_list_of(self._p_astring)
             if len(header_list) == 0:
                 raise BadSyntax(
-                    value="section '%s' must be followed by a "
+                    value=f"section '{section}' must be followed by a "
                     "parenthesized list of one or more "
-                    "headers." % section
+                    "headers."
                 )
             sect_list.append((section, header_list))
         else:
@@ -1549,15 +1545,15 @@ class IMAPClientCommand:
             # tokens we understand?
             #
             search_tok = search_tok.lower()
-            if not hasattr(self, "_p_srchkey_%s" % search_tok):
+            if not hasattr(self, f"_p_srchkey_{search_tok}"):
                 raise UnknownSearchKey(
-                    value='Unknown search key "%s"' % search_tok
+                    value=f'Unknown search key "{search_tok}"'
                 )
             # Yup. it was a known search key atom. Let our routine
             # specifically for parsing this search key to the rest of the
             # work.
             #
-            return getattr(self, "_p_srchkey_%s" % search_tok)()
+            return getattr(self, f"_p_srchkey_{search_tok}")()
         else:
             # See if it is a message set.
             msg_set = self._p_msg_set()
@@ -1581,8 +1577,7 @@ class IMAPClientCommand:
             num = int(val)
             if num < 0:  # 0 is a valid uid...
                 raise SyntaxError(
-                    "message sequence numbers "
-                    "must be greater then 0: %d" % num
+                    f"message sequence numbers must be greater then 0: {num}"
                 )
             return num
 
@@ -1805,7 +1800,7 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def _p_msg_set(self) -> List:
+    def _p_msg_set(self) -> list:
         """sequence_num ::= nz_number / "*"
 
         * is the largest number in use.  For message sequence numbers, it is
@@ -1835,7 +1830,7 @@ class IMAPClientCommand:
         #
         msg_set = self._p_re(
             _msg_set_re,
-            syntax_error="missing or " "invalid message sequence set",
+            syntax_error="missing or invalid message sequence set",
         )
         assert msg_set
 
@@ -1869,7 +1864,7 @@ class IMAPClientCommand:
             # Otherwise this is a bad sequence number..
             #
             raise BadSyntax(
-                value='"%s" is not a valid message ' "sequence number" % seq_num
+                value=f'"{seq_num}" is not a valid message sequence number'
             )
         return result
 
@@ -1909,7 +1904,7 @@ class IMAPClientCommand:
 
         date_time = self._p_re(
             _date_time_re,
-            syntax_error="expected a " "rfc822 formated date-time",
+            syntax_error="expected a rfc822 formated date-time",
         )
         assert date_time
 
@@ -1961,9 +1956,7 @@ class IMAPClientCommand:
             stat = self._p_simple_string(status, silent=True)
             if stat is not None:
                 return status
-        raise BadSyntax(
-            value="expected a status attribute: %s" % str(stats_atts)
-        )
+        raise BadSyntax(value=f"expected a status attribute: {str(stats_atts)}")
 
     #######################################################################
     #
@@ -2032,25 +2025,26 @@ class IMAPClientCommand:
         try:
             return self._p_re(_quoted_re)[1:-1]
         except NoMatch:
-            literal_length = int(self._p_re(_lit_ref_re, group=1))
+            pass
 
-            # Huh. We have a literal string. This means the client sent us
-            # the length of the actual string. The reader that called us
-            # passed us the entire client message. This means they went and
-            # asked the client for all the data for all literal strings. So
-            # the value of this literal string is already on our input
-            # string. The only thing we need to check for is to make sure
-            # that the input string is at least as long as the literal string
-            # is supposed to be.
-            if literal_length > len(self.input):
-                raise BadLiteral(
-                    value="Remaining input %d characters "
-                    "long, expected at least %d"
-                    % (len(self.input), literal_length)
-                )
-            str = self.input[:literal_length]
-            self.input = self.input[literal_length:]
-            return str
+        literal_length = int(self._p_re(_lit_ref_re, group=1))
+
+        # Huh. We have a literal string. This means the client sent us
+        # the length of the actual string. The reader that called us
+        # passed us the entire client message. This means they went and
+        # asked the client for all the data for all literal strings. So
+        # the value of this literal string is already on our input
+        # string. The only thing we need to check for is to make sure
+        # that the input string is at least as long as the literal string
+        # is supposed to be.
+        if literal_length > len(self.input):
+            raise BadLiteral(
+                value=f"Remaining input {len(self.input)} characters "
+                f"long, expected at least {literal_length}"
+            )
+        str = self.input[:literal_length]
+        self.input = self.input[literal_length:]
+        return str
 
     #######################################################################
     #
@@ -2060,8 +2054,8 @@ class IMAPClientCommand:
         silent: bool = False,
         swallow: bool = True,
         group: int = 0,
-        syntax_error: Optional[str] = None,
-    ) -> Optional[str]:
+        syntax_error: str | None = None,
+    ) -> str | None:
         """This will attempt to match (ie: at the beginning of the string)
         the given regular expression with our current input string. If it
         matches it will return what matched. If 'silent' is False, and it did
@@ -2085,9 +2079,7 @@ class IMAPClientCommand:
                 if syntax_error:
                     raise NoMatch(value=syntax_error)
                 else:
-                    raise NoMatch(
-                        value="No match for r.e. '%s'" % regexp.pattern
-                    )
+                    raise NoMatch(value=f"No match for r.e. '{regexp.pattern}'")
         if swallow:
             self.input = self.input[match.end() :]
         return match.group(group)
@@ -2135,8 +2127,7 @@ class IMAPClientCommand:
                     raise NoMatch(value=syntax_error)
                 else:
                     raise NoMatch(
-                        value="No match for simple string '%s', input started with: '%s'"
-                        % (string, self.input[:10])
+                        value=f"No match for simple string '{string}', input started with: '{self.input[:10]}'"
                     )
         if swallow:
             self.input = self.input[len(string) :]
@@ -2152,7 +2143,7 @@ class IMAPClientCommand:
 ####################################################################
 #
 def conflicting_cmd(
-    imap_cmd: IMAPClientCommand, tasks: List[IMAPClientCommand]
+    imap_cmd: IMAPClientCommand, tasks: list[IMAPClientCommand]
 ) -> bool:
     r"""
     Indicates whether the IMAP Command is one that would conflict with any
@@ -2195,7 +2186,7 @@ def conflicting_cmd(
 
 ####################################################################
 #
-def parse_cmd_from_msg(msg: Union[bytes, str]) -> IMAPClientCommand:
+def parse_cmd_from_msg(msg: bytes | str) -> IMAPClientCommand:
     """
     Create an IMAPClientCommand from the message, and parse it. Return the
     command to the caller.

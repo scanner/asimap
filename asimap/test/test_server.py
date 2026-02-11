@@ -3,9 +3,10 @@
 """
 Test the top level asimapd server through a series of integration tests.
 """
+
 # system imports
 #
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 # 3rd party imports
 #
@@ -104,7 +105,7 @@ def test_server_append_and_fetch(
     )
     status, resp = imap.select(mailbox="INBOX")
     msg = email_factory()
-    now = datetime.now(timezone.utc).astimezone()
+    now = datetime.now(UTC).astimezone()
     status, resp = imap.append("INBOX", r"\Unseen", now, msg.as_bytes())
     status, resp = imap.status(
         "INBOX", "(messages recent uidnext uidvalidity unseen)"

@@ -7,6 +7,7 @@
 """
 Test the asimap IMAP message parser.
 """
+
 import pytest
 
 from ..fetch import FetchOp

@@ -16,7 +16,6 @@ import os
 import os.path
 import re
 import signal
-import socket
 import sys
 import time
 from collections import Counter, defaultdict
@@ -26,7 +25,7 @@ from mailbox import NoSuchMailboxError
 from pathlib import Path
 from random import randrange
 from statistics import fmean, median, stdev
-from typing import TYPE_CHECKING, Dict, List, Optional, Union
+from typing import TYPE_CHECKING
 
 # 3rd party imports
 #
@@ -82,7 +81,7 @@ def set_user_server_program(prg: "StrPath"):
     if not prg.is_file():
         raise ValueError(f"User server '{prg}' does not exist.")
     module = sys.modules[__name__]
-    setattr(module, "USER_SERVER_PROGRAM", str(prg))
+    module.USER_SERVER_PROGRAM = str(prg)
 
 
 ##################################################################
@@ -169,7 +168,7 @@ class IMAPClientProxy:
                             await task
                         break
 
-        except socket.error:
+        except OSError:
             pass
         except asyncio.CancelledError:
             self.log.info("Cancelled: %s", self)
@@ -311,9 +310,9 @@ class IMAPClientProxy:
                     return
 
         except (
+            OSError,
             asyncio.exceptions.IncompleteReadError,
             ConnectionError,
-            socket.error,
         ):
             # Either we got an EOF while waiting for a line terminator. or the
             # client disconnected and we do not really care.
@@ -352,7 +351,7 @@ class IMAPClientProxy:
 
     ####################################################################
     #
-    async def push(self, *data: Union[bytes, str]):
+    async def push(self, *data: bytes | str):
         """
         Write data to the IMAP client by sending it up to the main process,
         which in turn sends it to the IMAP client.
@@ -386,7 +385,7 @@ class IMAPClientProxy:
             try:
                 async with asyncio.timeout(2):
                     await self.writer.drain()
-            except asyncio.TimeoutError as exc:
+            except TimeoutError as exc:
                 logger.warning(
                     "Closing writer stream for %s, %s, reason: timed out "
                     "attempting push: %s",
@@ -432,7 +431,7 @@ class IMAPUserServer:
     def __init__(
         self,
         maildir: Path,
-        debug: Optional[bool] = False,
+        debug: bool | None = False,
     ):
         """
         Setup our dispatcher.. listen on a port we are supposed to accept
@@ -446,9 +445,7 @@ class IMAPUserServer:
         self.maildir = maildir
         self.debug = debug
 
-        self.log = logging.getLogger(
-            "%s.%s" % (__name__, self.__class__.__name__)
-        )
+        self.log = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
         # We expect all of the raw email sitting in storage to use `\n` for
         # line breaks so we use `email.policy.default`. All messages are read
@@ -479,7 +476,7 @@ class IMAPUserServer:
         #
         # The key is the mailbox name.
         #
-        self.active_mailboxes: Dict[str, Mailbox] = {}
+        self.active_mailboxes: dict[str, Mailbox] = {}
 
         # Need to acquire the lock if we are adding or removing a mailbox from
         # the active mailboxes.
@@ -493,35 +490,35 @@ class IMAPUserServer:
         # that it has been activated.
         #
         self.activating_mailboxes_lock = asyncio.Lock()
-        self.activating_mailboxes: Dict[str, asyncio.Event] = {}
+        self.activating_mailboxes: dict[str, asyncio.Event] = {}
 
         # A dict of the active IMAP clients that are talking to us.
         #
         # The key is the port number of the attached client.
         #
-        self.clients: Dict[asyncio.Task, IMAPClientProxy] = {}
+        self.clients: dict[asyncio.Task, IMAPClientProxy] = {}
 
         # When we have any connected clients self.expiry gets set to
         # None. Otherwise use it to determine when we have hung around long
         # enough with no connected clients and decide to exit.
         #
-        self.expiry: Optional[float] = time.monotonic() + 1800
+        self.expiry: float | None = time.monotonic() + 1800
 
         # `self.db` will be setup in the `new()` class method.
         #
         self.db: Database
 
-        self.management_task: Optional[asyncio.Task] = None
+        self.management_task: asyncio.Task | None = None
 
         # Statistics for the `check_all_folders` function
         # key is mbox name, value is a time duration in seconds.
         #
-        self.folder_check_durations: Dict[str, float] = {}
+        self.folder_check_durations: dict[str, float] = {}
 
         # Updated by the IMAPClientProxy when it is processing commands.
         #
         self.commands_in_progress: int = 0
-        self.active_commands: List[IMAPClientCommand] = []
+        self.active_commands: list[IMAPClientCommand] = []
 
         # We keep track of how many commands of which type we have received,
         # how many have failed, etc. These are for basic stats that will be
@@ -574,7 +571,7 @@ class IMAPUserServer:
     async def new(
         cls,
         maildir: Path,
-        debug: Optional[bool] = False,
+        debug: bool | None = False,
     ) -> "IMAPUserServer":
         user_server = cls(maildir, debug=debug)
 
@@ -605,7 +602,7 @@ class IMAPUserServer:
         #
         mboxes = []
         async with self.active_mailboxes_lock:
-            for mbox_name, mbox in self.active_mailboxes.items():
+            for _mbox_name, mbox in self.active_mailboxes.items():
                 mboxes.append(mbox)
             self.active_mailboxes = {}
 
@@ -1023,7 +1020,7 @@ class IMAPUserServer:
         maildir_root_len = len(str(self.maildir)) + 1
         found_folders = 0
         async with asyncio.TaskGroup() as tg:
-            for root, dirs, files in self.maildir.walk(follow_symlinks=True):
+            for root, dirs, _files in self.maildir.walk(follow_symlinks=True):
                 for dir in dirs:
                     dirname = str(root / dir)[maildir_root_len:]
                     if dirname not in extant_mboxes:
@@ -1094,7 +1091,7 @@ class IMAPUserServer:
             # client.py knows how to handle these better.
             #
             logger.warning("skipping '%s' due to: %s", mbox_name, str(e))
-        except (OSError, IOError) as e:
+        except OSError as e:
             if e.errno == errno.ENOENT:
                 logger.error(
                     "One of %s or %s does not exist for mtime check",
@@ -1212,7 +1209,7 @@ class IMAPUserServer:
                 else 0.0
             )
             by_duration = sorted(
-                list(self.folder_check_durations.items()),
+                self.folder_check_durations.items(),
                 key=lambda x: x[1],
                 reverse=True,
             )

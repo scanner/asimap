@@ -168,7 +168,7 @@ def test_header_generator_skip_headers(lots_of_headers_email):
         "x-originating-ip",
         "x-ms-publictraffictype",
         "x-microsoft-exchange-diagnostics",
-        "x-ms-exchange-antispam-srfa-diagnostics"
+        "x-ms-exchange-antispam-srfa-diagnostics",
         "x-ms-office365-filtering-correlation-id",
         "x-microsoft-antispam",
         "x-ms-traffictypediagnostic",
@@ -182,13 +182,14 @@ def test_header_generator_skip_headers(lots_of_headers_email):
         "spamdiagnosticmetadata",
         "X-Priority",
         "X-MSMail-Priority",
-        "X-Mailer" "X-MimeOLE",
+        "X-Mailer",
+        "X-MimeOLE",
         "X-Antivirus",
         "X-Antivirus-Status",
         "X-UIDL",
         "X-Antivirus",
         "X-Antivirus-Status",
-        "x-ms-EXCHANGE-ANTISPAM-srfa-diagnostics"
+        "x-ms-EXCHANGE-ANTISPAM-srfa-diagnostics",
         "x-ms-office365-FILTERING-correlation-id",
         "X-MIMEOLE",
     ]
@@ -232,12 +233,9 @@ Accept-Language: it-IT, en-US\r
 Content-Language: it-IT\r
 authentication-results: spf=none (sender IP is )\r
  smtp.mailfrom=jang.selca.tubi@linux.selca;\r
-x-ms-exchange-antispam-srfa-diagnostics: SSOS;\r
-x-ms-office365-filtering-correlation-id: b6800147-d5b4-494e-46ff-08d52c336e1f\r
 MIME-Version: 1.0\r
 Content-Type: multipart/alternative;\r
-\tboundary="----=_NextPart_000_0031_01D36222.8A648550"\r
-X-Mailer: Microsoft Outlook Express 6.00.2900.5931\r\n\r\n"""
+\tboundary="----=_NextPart_000_0031_01D36222.8A648550"\r\n\r\n"""
 
     headers = msg_headers_as_bytes(msg, tuple(to_skip), skip=True)
     assert headers == expected

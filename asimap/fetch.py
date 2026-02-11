@@ -13,7 +13,6 @@ import logging
 from email.header import Header
 from email.message import EmailMessage, Message
 from enum import StrEnum
-from typing import List, Optional, Set, Tuple, TypeAlias, Union
 
 # asimap imports
 #
@@ -28,9 +27,7 @@ logger = logging.getLogger("asimap.fetch")
 # A section in a message that can be fetched.
 # XXX `None` indicates the entire message? Or should `Optional` be removed?
 #
-MsgSectionType: TypeAlias = Optional[
-    List[Union[int, str, List[str | List[str]]]]
-]
+type MsgSectionType = list[int | str | list[str | list[str]]] | None
 
 
 ############################################################################
@@ -91,15 +88,15 @@ def encode_addrs(msg: Message, field: str) -> bytes:
     The includes proper UTF-8 encodeding for the personal name if it can not
     encoded as latin-1.
     """
-    field_data: List[str] = msg.get_all(field, [])
+    field_data: list[str] = msg.get_all(field, [])
     if not field_data:
         return b"NIL"
 
-    result: List[bytes] = []
+    result: list[bytes] = []
     addrs = email.utils.getaddresses(field_data, strict=False)
 
     for real_name, email_address in addrs:
-        addr: List[bytes] = []
+        addr: list[bytes] = []
 
         # the real name is not set, it turns into nil.
         #
@@ -163,11 +160,11 @@ class FetchAtt:
     def __init__(
         self,
         attribute: FetchOp,
-        section: Optional[List[Union[int, str, List[str | List[str]]]]] = None,
-        partial: Optional[Tuple[int, int]] = None,
+        section: list[int | str | list[str | list[str]]] | None = None,
+        partial: tuple[int, int] | None = None,
         peek: bool = False,
         ext_data: bool = True,
-        actual_command: Optional[str] = None,
+        actual_command: str | None = None,
     ):
         """
         Fill in the details of our FetchAtt object based on what we parse
@@ -182,7 +179,7 @@ class FetchAtt:
             actual_command if actual_command else self.attribute.value.upper()
         )
         self.log = logging.getLogger(
-            "%s.%s.%s" % (__name__, self.__class__.__name__, actual_command)
+            f"{__name__}.{self.__class__.__name__}.{actual_command}"
         )
 
     #######################################################################
@@ -257,7 +254,7 @@ class FetchAtt:
         # Based on the operation figure out what subroutine does the rest
         # of the work.
         #
-        result: Union[bytes, int]
+        result: bytes | int
         match self.attribute:
             case (
                 FetchOp.BODY
@@ -300,7 +297,7 @@ class FetchAtt:
                 day = f"{int_date.day:2d}"
                 tz = int_date.strftime("%z") if int_date.tzinfo else "+0000"
                 internal_date = (
-                    f'{day}-{int_date.strftime("%b-%Y %H:%M:%S")} {tz}'
+                    f"{day}-{int_date.strftime('%b-%Y %H:%M:%S')} {tz}"
                 )
                 result = f'"{internal_date}"'.encode("latin-1")
             case FetchOp.UID:
@@ -313,7 +310,7 @@ class FetchAtt:
     ####################################################################
     #
     def _single_section(
-        self, msg: Message | EmailMessage, section: Union[int | str]
+        self, msg: Message | EmailMessage, section: int | str
     ) -> bytes:
         """
         Flatten message text from single top level section.
@@ -340,11 +337,11 @@ class FetchAtt:
                     return msg_as_bytes(
                         msg.get_payload(section - 1), render_headers=False
                     )
-                except IndexError:
+                except IndexError as err:
                     raise BadSection(
                         f"Section {section} does not exist in this message "
                         "sub-part"
-                    )
+                    ) from err
 
             case list() | tuple():
                 match section[0].upper():
@@ -402,7 +399,7 @@ class FetchAtt:
     ####################################################################
     #
     def _body(
-        self, msg: Message | EmailMessage, section: Union[None, List[int | str]]
+        self, msg: Message | EmailMessage, section: None | list[int | str]
     ) -> bytes:
         if not section:
             return msg_as_bytes(msg)
@@ -427,18 +424,16 @@ class FetchAtt:
                 bp = msg.get_payload(section[0] - 1)
                 assert isinstance(bp, Message)
                 return self._body(bp, section[1:])
-            except (TypeError, IndexError):
+            except (TypeError, IndexError) as err:
                 raise BadSection(
                     f"Message does not contain subsection {section[0]} "
                     f"(section list: {section})"
-                )
+                ) from err
         return msg_as_bytes(msg)
 
     ####################################################################
     #
-    def body(
-        self, msg: EmailMessage, section: Union[None, List[int | str]]
-    ) -> bytes:
+    def body(self, msg: EmailMessage, section: None | list[int | str]) -> bytes:
         """
         Fetch the appropriate section of the message, flatten into a string
         and return it to the user.
@@ -532,8 +527,8 @@ class FetchAtt:
         Arguments:
         - `msg`: the message we are looking in..
         """
-        langs: Set[str] = set()
-        values: List[str] = []
+        langs: set[str] = set()
+        values: list[str] = []
         for hdr in ("Accept-Language", "Content-Language"):
             values.extend(msg.get_all(hdr, failobj=[]))
 
@@ -552,9 +547,7 @@ class FetchAtt:
         elif len(langs) == 1:
             return (list(langs)[0]).encode("latin-1")
         else:
-            return (f"({' '.join([x for x in sorted(list(langs))])})").encode(
-                "latin-1"
-            )
+            return (f"({' '.join(sorted(langs))})").encode("latin-1")
 
     ##################################################################
     #
@@ -610,12 +603,12 @@ class FetchAtt:
         try:
             res = (f"({' '.join(results)})").encode("latin-1")
         except UnicodeEncodeError:
-            res = (f"({' '.join(results)})").encode("utf-8")
+            res = (f"({' '.join(results)})").encode()
         return res
 
     ####################################################################
     #
-    def extension_data(self, msg: Message | EmailMessage) -> List[bytes]:
+    def extension_data(self, msg: Message | EmailMessage) -> list[bytes]:
         """
         Keyword Arguments:
         msg: EmailMessages --
@@ -710,7 +703,7 @@ class FetchAtt:
             #
             # And finally, if we can, we add on the multipart extension data.
             #
-            sub_parts: List[bytes] = []
+            sub_parts: list[bytes] = []
             for sub_part in msg.get_payload():
                 assert isinstance(sub_part, Message)
                 sub_parts.append(self.bodystructure(sub_part))

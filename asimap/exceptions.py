@@ -70,11 +70,7 @@ class MailboxInconsistency(ProtocolException):
         self.msg_key = msg_key
 
     def __str__(self):
-        return "%s in mailbox '%s', msg key: %s" % (
-            self.value,
-            self.mbox_name,
-            str(self.msg_key),
-        )
+        return f"{self.value} in mailbox '{self.mbox_name}', msg key: {str(self.msg_key)}"
 
 
 ##################################################################
@@ -102,7 +98,7 @@ class MailboxLock(ProtocolException):
         if self.mbox is None:
             return self.value
         else:
-            return "%s on mailbox %s" % (self.value, self.mbox.name)
+            return f"{self.value} on mailbox {self.mbox.name}"
 
 
 ############################################################################
