@@ -765,26 +765,6 @@ class Mailbox:
                 imap_cmd.msg_set_as_set = self.msg_set_to_msg_seq_set(
                     imap_cmd.msg_set, imap_cmd.uid_command
                 )
-                # except Bad as e:
-                #     # XXX This is a hack for now. We are getting some FETCH
-                #     # commands where the msg seq being asked for is clearly a
-                #     # UID command, yet the `imap_cmd.uid_command` field appears
-                #     # to be Falsem, so quickly retry it and log the
-                #     # command. Maybe this is an error in the parser.
-                #     #
-                #     if not imap_cmd.uid_command:
-                #         logger.exception(
-                #             "Mailbox: '%s', converting msg set to set. "
-                #             "Re-attempging as a UID command: '%s': %s",
-                #             self.name,
-                #             str(imap_cmd),
-                #             e,
-                #         )
-                #         imap_cmd.msg_set_as_set = self.msg_set_to_msg_seq_set(
-                #             imap_cmd.msg_set, True
-                #         )
-                #     else:
-                #         raise
 
                 # Block until the new IMAP command would not conflict with any
                 # of the currently executing IMAP commands.
@@ -849,25 +829,31 @@ class Mailbox:
 
     ##################################################################
     #
-    def marked(self, mark: bool):
+    def marked(self, mark: bool) -> bool:
         r"""
         A helper function that toggles the '\Marked' or '\Unmarked' flags on a
         folder (another one of those annoying things in the RFC you really only
         need one of these flags.)
 
         Arguments:
-        - `bool`: if True the \Marked attribute is added to the folder. If
+        - `mark`: if True the \Marked attribute is added to the folder. If
                   False the \Unmarked attribute is added to the folder.
+
+        Returns:
+        - True if the attributes were changed, False if they were already
+          in the desired state.
         """
         if mark:
-            self.attributes.add(r"\Marked")
-            if r"\Unmarked" in self.attributes:
-                self.attributes.remove(r"\Unmarked")
-        else:
-            self.attributes.add(r"\Unmarked")
             if r"\Marked" in self.attributes:
-                self.attributes.remove(r"\Marked")
-        return
+                return False
+            self.attributes.add(r"\Marked")
+            self.attributes.discard(r"\Unmarked")
+        else:
+            if r"\Unmarked" in self.attributes:
+                return False
+            self.attributes.add(r"\Unmarked")
+            self.attributes.discard(r"\Marked")
+        return True
 
     ####################################################################
     #
@@ -1056,7 +1042,7 @@ class Mailbox:
             self.mtime = await self.get_actual_mtime(
                 self.server.mailbox, self.name
             )
-            await self.commit_to_db()
+            await self.update_mtime_in_db()
             return False
 
         # Get the mtime of the folder at the start so when we need to check
@@ -1074,7 +1060,6 @@ class Mailbox:
         # of the mtime.
         #
         if start_mtime <= self.mtime and self.optional_resync and optional:
-            await self.commit_to_db()
             return False
 
         # We always reset `optional_resync` once we begin a non-optional
@@ -1105,13 +1090,15 @@ class Mailbox:
         #
         if msg_keys == self.msg_keys and len(self.uids) == self.num_msgs:
             self.mtime = start_mtime
-            marked = (
-                True
-                if self.sequences["unseen"] or self.sequences["Recent"]
-                else False
-            )
-            self.marked(marked)
-            await self.commit_to_db()
+            marked = bool(self.sequences["unseen"] or self.sequences["Recent"])
+            # If marked() changed the attributes we need a full commit
+            # to persist them. Otherwise just update the mtime so we
+            # can skip the resync on the next poll cycle.
+            #
+            if self.marked(marked):
+                await self.commit_to_db()
+            else:
+                await self.update_mtime_in_db()
             return False
 
         # If the number of messages in the mailbox is less than the last
@@ -1642,6 +1629,22 @@ class Mailbox:
                     self.sequences[name] = set(expand_sequence(sequence))
 
         return False
+
+    ##################################################################
+    #
+    async def update_mtime_in_db(self):
+        """
+        Update only the mtime and last_resync fields in the database. Used
+        when the folder check determined nothing has changed -- avoids the
+        expensive compact_sequence serialization and multi-statement SQL
+        of a full commit_to_db.
+        """
+        async with self.db_lock:
+            await self.server.db.execute(
+                "UPDATE mailboxes SET mtime=?, last_resync=? WHERE id=?",
+                (self.mtime, self.last_resync, self.id),
+            )
+            await self.server.db.commit()
 
     ##################################################################
     #
