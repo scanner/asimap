@@ -3,7 +3,7 @@ ROOT_DIR := $(shell git rev-parse --show-toplevel)
 include $(ROOT_DIR)/Make.rules
 DOCKER_BUILDKIT := 1
 
-.PHONY: clean lint test test-units test-integrations mypy logs shell restart delete down up build dirs help package publish tag publish-tag uv-sync uv-lock uv-add uv-add-dev uv-upgrade
+.PHONY: clean lint test test-units test-integrations mypy logs shell restart delete down up build dirs help package publish tag publish-tag uv-sync uv-lock uv-add uv-add-dev uv-upgrade profile
 
 test-integrations: .venv
 	PYTHONPATH=`pwd` $(UV_RUN) pytest -m integration asimap/
@@ -88,6 +88,9 @@ shell:	## Make a bash shell an ephemeral dev container
 
 exec-shell: ## Make a bash shell in the docker-compose running imap-dev container
 	@docker compose exec -ti asimap-dev /bin/bash
+
+profile:  ## Open a root shell in the running dev container for py-spy profiling
+	@docker compose exec -u root -ti asimap-dev /bin/bash
 
 .package: version .venv $(PY_FILES) pyproject.toml README.md LICENSE Makefile
 	@PYTHONPATH=`pwd` $(UV_RUN) python -m build
