@@ -1721,5 +1721,6 @@ async def test_msg_set_to_msg_seq_set(
     mbox.num_msgs = num_msgs
     mbox.uids = list(range(1, num_msgs + 1))
     mbox.msg_keys = list(range(1, num_msgs + 1))
+    mbox._rebuild_index_dicts()
     msg_set_as_set = mbox.msg_set_to_msg_seq_set(sequence_set, uid_cmd)
     assert msg_set_as_set == expected

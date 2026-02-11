@@ -208,6 +208,15 @@ class Mailbox:
         # they are 1-ordered, not 0-ordered.)
         #
         self.uids: List[int] = []
+
+        # Reverse-lookup dicts for O(1) index lookups. These map
+        # msg_key -> index and uid -> index. Rebuilt via
+        # _rebuild_index_dicts() after every mutation of self.msg_keys
+        # or self.uids.
+        #
+        self._msg_key_to_idx: dict[int, int] = {}
+        self._uid_to_idx: dict[int, int] = {}
+
         self.subscribed = False
 
         # Time in seconds since the unix epoch when a resync was last tried.
@@ -637,14 +646,10 @@ class Mailbox:
             # NOTE: IMAP Message Sequence numbers start at 1. Our array starts
             # at 0.
             #
-            # XXX self.uids.index(uid) is a nasty search. Maybe we should keep
-            #     a dict of uid's that may to imap message sequence numbers?
-            #     Granted that is one more thing to keep track of.
-            #     I guess we should consider timing this function.
-            #     Luckily we will be doing this only once per imap commmand
-            #
             msgs = [
-                self.uids.index(uid) + 1 for uid in msgs if uid in self.uids
+                self._uid_to_idx[uid] + 1
+                for uid in msgs
+                if uid in self._uid_to_idx
             ]
             logger.debug(
                 "Mailbox: '%s', after converting from uids: msg seq nums: %s",
@@ -1180,6 +1185,7 @@ class Mailbox:
         self.uids.extend(new_uids)
         if self.uids:
             self.next_uid = self.uids[-1] + 1
+        self._rebuild_index_dicts()
 
         if len(self.uids) != len(self.msg_keys):
             logger.warning(
@@ -1309,7 +1315,7 @@ class Mailbox:
         """
         flags = seqs_to_flags(self.msg_sequences(msg_key))
         flags_str = " ".join(flags)
-        msg_seq_number = self.msg_keys.index(msg_key) + 1
+        msg_seq_number = self._msg_key_to_idx[msg_key] + 1
 
         uidstr = ""
         if publish_uid:
@@ -1371,6 +1377,7 @@ class Mailbox:
             self.mailbox.pack()
             self.msg_keys = [int(x) for x in self.mailbox.iterkeys()]
             self.sequences = self.get_sequences_from_folder()
+        self._rebuild_index_dicts()
 
         self.mtime = await Mailbox.get_actual_mtime(
             self.server.mailbox, self.name
@@ -1425,7 +1432,7 @@ class Mailbox:
         the index of where the UID is in the list of UID's is the index of the
         msg key in the list of msg_keys.
         """
-        idx = self.uids.index(uid)
+        idx = self._uid_to_idx[uid]
         return self.get_msg(self.msg_keys[idx])
 
     ####################################################################
@@ -1499,11 +1506,17 @@ class Mailbox:
         Arguments:
         - `msg_key`: the message key in the folder we want the uid_vv/uid for.
         """
-        try:
-            idx = self.msg_keys.index(msg_key)
-            return (self.uid_vv, self.uids[idx])
-        except ValueError:
+        idx = self._msg_key_to_idx.get(msg_key)
+        if idx is None:
             return (self.uid_vv, None)
+        return (self.uid_vv, self.uids[idx])
+
+    ####################################################################
+    #
+    def _rebuild_index_dicts(self) -> None:
+        """Rebuild the reverse-lookup dicts from the current lists."""
+        self._msg_key_to_idx = {k: i for i, k in enumerate(self.msg_keys)}
+        self._uid_to_idx = {u: i for i, u in enumerate(self.uids)}
 
     ##################################################################
     #
@@ -1616,6 +1629,7 @@ class Mailbox:
                 msg_keys = [int(x) for x in self.mailbox.keys()]
                 self.msg_keys = msg_keys[: len(self.uids)]
                 self.num_msgs = len(self.msg_keys)
+            self._rebuild_index_dicts()
 
             # And fill in the sequences we find for this mailbox.
             #
@@ -1834,15 +1848,14 @@ class Mailbox:
             # IMAP message sequence # of the first message that is unseen.
             # Convert from MH msg key to IMAP message sequence number
             first_unseen = sorted(self.sequences["unseen"])[0]
-            try:
-                first_unseen = self.msg_keys.index(first_unseen) + 1
-                push_data.append(f"* OK [UNSEEN {first_unseen}]\r\n")
-            except ValueError as exc:
+            idx = self._msg_key_to_idx.get(first_unseen)
+            if idx is not None:
+                push_data.append(f"* OK [UNSEEN {idx + 1}]\r\n")
+            else:
                 logger.error(
-                    "Mailbox '%s': '%s', first unseen msg key: %d, "
-                    "msg keys: %s, unseen: %s",
+                    "Mailbox '%s': first unseen msg key %d not in "
+                    "msg_keys: %s, unseen: %s",
                     self.name,
-                    exc,
                     first_unseen,
                     self.msg_keys,
                     self.sequences["unseen"],
@@ -1996,7 +2009,7 @@ class Mailbox:
         # mostly a nicety making the expunge messages a bit easier to read.
         #
         to_delete = sorted(msg_keys_to_delete, reverse=True)
-        uids_to_delete = [self.uids[self.msg_keys.index(x)] for x in to_delete]
+        uids_to_delete = [self.uids[self._msg_key_to_idx[x]] for x in to_delete]
 
         # NOTE: If a `uid_msg_set` was passed in this is a restriction on the
         #       possible list of messages to delete. We do not delete all of
@@ -2031,7 +2044,7 @@ class Mailbox:
             #       resync will happen before the next IMAP command begins
             #       executing.
             #
-            if msg_key not in self.msg_keys:
+            if msg_key not in self._msg_key_to_idx:
                 logger.error(
                     "Mailbox: '%s': msg key %d not in msg_keys: %s",
                     self.name,
@@ -2039,14 +2052,15 @@ class Mailbox:
                     self.msg_keys,
                 )
                 continue
-            which = self.msg_keys.index(msg_key)
+            which = self._msg_key_to_idx[msg_key]
             uid = self.uids[which]
-            self.msg_keys.remove(msg_key)
-            self.uids.remove(uid)
+            del self.msg_keys[which]
+            del self.uids[which]
             self.num_msgs -= 1
             await self.mailbox.aremove(msg_key)
             expunge_msg = f"* {which+1} EXPUNGE\r\n"
             await self._dispatch_or_pend_notifications(expunge_msg)
+        self._rebuild_index_dicts()
 
         # Remove all deleted msg keys from all sequences
         #
@@ -2314,7 +2328,7 @@ class Mailbox:
                         if msg_key in self.sequences[sequence]:
                             flags.append(seq_to_flag(sequence))
                     flags_str = " ".join(flags)
-                    msg_seq_number = self.msg_keys.index(msg_key) + 1
+                    msg_seq_number = self._msg_key_to_idx[msg_key] + 1
                     notifies.append(
                         f"* {msg_seq_number} FETCH "
                         f"(FLAGS ({flags_str}))\r\n"
@@ -2580,8 +2594,8 @@ class Mailbox:
                     #
                     msg_idxs = []
                     for uid in uid_list:
-                        if uid in self.uids:
-                            msg_idx = self.uids.index(uid) + 1
+                        if uid in self._uid_to_idx:
+                            msg_idx = self._uid_to_idx[uid] + 1
                             msg_idxs.append(msg_idx)
                 else:
                     msg_idxs = sequence_set_to_list(msg_set, seq_max)
