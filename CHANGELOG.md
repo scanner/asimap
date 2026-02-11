@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.5] - 2026-02-11
+
+### Changed
+
+- Replace O(n) list lookups for UID and message key indexing with O(1) dict lookups, reducing CPU usage during FETCH, SEARCH, COPY, and EXPUNGE commands
+
 ## [2.2.4] - 2026-02-10
 
 ### Changed
