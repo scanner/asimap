@@ -62,13 +62,10 @@ dev = [
     "rich",
     "trustme",
     # Linting and formatting
-    "black",
     "coverage",
-    "isort",
     "mypy",
     "pre-commit",
     "ruff",
-    "yapf",
     # Type stubs
     "types-aiofiles",
     "types-cachetools",
