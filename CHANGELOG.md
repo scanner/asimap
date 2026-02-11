@@ -7,7 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.2.1] - 2026-02-10
+## [2.2.4] - 2026-02-10
+
+### Changed
+
+- Reduce CPU usage in idle mailbox polling by skipping expensive `compact_sequence` serialization and full database commits when no messages or flags have changed
+- Add py-spy sampling profiler to Docker images for CPU profiling
 
 ### Fixed
 
