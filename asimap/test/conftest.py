@@ -70,8 +70,8 @@ def client_push_responses(
     """
     results = [
         y
-        for x in client.push.call_args_list
-        for y in x.args  # type: ignore [attr-defined]
+        for x in client.push.call_args_list  # type: ignore[attr-defined]
+        for y in x.args
     ]
     if strip:
         results = [x.strip() for x in results]
@@ -104,7 +104,7 @@ def decode_headers(headers: list[str]) -> list[str]:
 #
 def assert_email_equal(
     msg1: Message, msg2: Message, ignore_headers: list[str] | None = None
-):
+) -> None:
     """
     Because we can not directly compare a Message and EmailMessage object
     we need to compare their parts. Since an EmailMessage is a sub-class of
@@ -140,8 +140,12 @@ def assert_email_equal(
     # If not multipart, the payload should be the same.
     #
     if not msg1.is_multipart():
-        payload1 = msg1.get_payload().translate(REPLACE_LINESEP).strip()
-        payload2 = msg2.get_payload().translate(REPLACE_LINESEP).strip()
+        payload1 = msg1.get_payload()
+        assert isinstance(payload1, str)
+        payload1 = payload1.translate(REPLACE_LINESEP).strip()
+        payload2 = msg2.get_payload()
+        assert isinstance(payload2, str)
+        payload2 = payload2.translate(REPLACE_LINESEP).strip()
         assert payload1 == payload2
 
     # Otherwise, compare each part.
@@ -198,7 +202,7 @@ def user_factory(mailbox_dir):
             maildir = mailbox_dir / user.username
             maildir.mkdir(parents=True, exist_ok=True)
             user.maildir = maildir
-            inbox = user.maildir / "inbox"
+            inbox = user.maildir / "inbox"  # type: ignore[operator]
             inbox.mkdir()
             mh_seq = inbox / ".mh_sequences"
             mh_seq.touch()
@@ -311,7 +315,7 @@ def imap_server(
     #
     # start a mini server.. how cute
     #
-    def start_server():
+    def start_server() -> None:
         try:
             asyncio.run(server.run())
         except Exception:
@@ -341,7 +345,7 @@ def imap_server(
 ####################################################################
 #
 @pytest.fixture()
-def imap_user_server_program():
+def imap_user_server_program() -> None:
     """
     When running integration tests that need to log in as a user we need to
     say where the user server program is.
@@ -422,7 +426,7 @@ def incr_email(
 def bunch_of_email_in_folder(
     email_factory: EmailFactoryType,
     mh_folder: Callable[[str, Path | None], tuple[Path, MH, MH]],
-) -> None:
+):
     """
     Create a function that will create a specified number of emails in the
     specified folder. You can also supply a function that generates the keys to
@@ -541,7 +545,7 @@ async def imap_client_proxy(faker, mocker, imap_user_server):
         writers.append(writer)
         return imap_client_proxy
 
-    def finalizer():
+    def finalizer() -> None:
         """
         Called at the end of the test via pytest's finalizer mechanism this
         closes all the IMAPClientProxy StreamWriter's that were created.

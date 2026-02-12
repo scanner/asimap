@@ -19,7 +19,9 @@ from email.message import EmailMessage
 from enum import Enum, StrEnum
 from typing import (
     TYPE_CHECKING,
-    cast,
+    Any,
+    Literal,
+    overload,
 )
 
 from .fetch import STR_TO_FETCH_OP, FetchAtt, FetchOp
@@ -645,7 +647,7 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def _parse(self):
+    def _parse(self) -> None:
         """Parse a command from the input stream. This is the highest level
         node in our parse tree. It all starts here. This is what calls all of
         the other parsing routines.
@@ -759,7 +761,7 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def _p_id(self):
+    def _p_id(self) -> None:
         """id ::= "ID" SPACE id_params_list
 
         id_params_list ::= "(" #(string SPACE nstring) ")" / nil
@@ -785,7 +787,7 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def _p_append(self):
+    def _p_append(self) -> None:
         """append ::= "APPEND" SPACE mailbox [SPACE flag_list]
                       [SPACE date_time] SPACE literal
 
@@ -829,9 +831,8 @@ class IMAPClientCommand:
         # as a message structure right away (I hope this works in all cases,
         # even with draft messages.)
         #
-        self.message = cast(
-            EmailMessage,
-            message_from_string(self._p_string(), policy=email.policy.SMTP),
+        self.message = message_from_string(
+            self._p_string(), policy=email.policy.SMTP
         )
         # XXX Remove this after we are sure our MHMessage -> EmailMessage
         #     conversion.
@@ -840,7 +841,7 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def _p_search(self):
+    def _p_search(self) -> None:
         """search ::= "SEARCH" SPACE ["CHARSET" SPACE astring SPACE]
                    1#search_key
         [CHARSET] MUST be registered with IANA
@@ -871,7 +872,7 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def _p_store(self):
+    def _p_store(self) -> None:
         """store ::= "STORE" SPACE set SPACE store_att_flags"""
         self._p_simple_string(" ")
         self.msg_set = self._p_msg_set()
@@ -899,7 +900,7 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def _p_uid(self):
+    def _p_uid(self) -> None:
         """uid ::= "UID" SPACE (copy / fetch / search / store / expunge)
 
         a "UID" command is basically a copy, fetch, search, or store command.
@@ -1151,7 +1152,7 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def _p_paren_list_of(self, func: Callable) -> list[str]:
+    def _p_paren_list_of(self, func: Callable) -> list[Any]:
         """This function does not parse a specific type of singleton
         element. It is specifically for parsing lists of elements that follow a
         specific convention.
@@ -1168,7 +1169,7 @@ class IMAPClientCommand:
         We return a list of whatever the passed in function returns to us.
         """
 
-        result: list[str] = []
+        result: list[Any] = []
         self._p_simple_string(
             "(",
             syntax_error="expected a '(' beginning a parenthesized list",
@@ -1428,7 +1429,7 @@ class IMAPClientCommand:
         #
         # So, see if we have a list of numbers separated by '.'
         #
-        sect_list: list[int | str] = []
+        sect_list: list[int | str | tuple[str, list[str]]] = []
         try:
             while True:
                 sect_list.append(int(self._p_re(_number_re)))
@@ -2048,6 +2049,26 @@ class IMAPClientCommand:
 
     #######################################################################
     #
+    @overload
+    def _p_re(
+        self,
+        regexp: re.Pattern,
+        silent: Literal[True],
+        swallow: bool = ...,
+        group: int = ...,
+        syntax_error: str | None = ...,
+    ) -> str | None: ...
+
+    @overload
+    def _p_re(
+        self,
+        regexp: re.Pattern,
+        silent: Literal[False] = ...,
+        swallow: bool = ...,
+        group: int = ...,
+        syntax_error: str | None = ...,
+    ) -> str: ...
+
     def _p_re(
         self,
         regexp: re.Pattern,

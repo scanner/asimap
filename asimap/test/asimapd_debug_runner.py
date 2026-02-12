@@ -74,13 +74,13 @@ class DebugRunner:
 
 #############################################################################
 #
-def main():
+def main() -> None:
     """ """
     args = docopt(__doc__, version="0.1")
     user_server = args["<user_server>"]
     asimap.user_server.set_user_server_program(user_server)
 
-    DebugRunner()
+    DebugRunner()  # type: ignore[call-arg]
 
 
 ############################################################################

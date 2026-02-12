@@ -6,7 +6,10 @@ Test the top level asimapd server through a series of integration tests.
 
 # system imports
 #
+from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
 
 # 3rd party imports
 #
@@ -15,12 +18,13 @@ import pytest
 # Project imports
 #
 from ..client import CAPABILITIES
+from .conftest import EmailFactoryType
 
 
 ####################################################################
 #
 @pytest.mark.integration
-def test_server_capability(imap_server):
+def test_server_capability(imap_server: dict[str, Any]) -> None:
     """
     We want a high level test of the server, but do not want to get into it
     launching the subprocess for an authenticated user. Getting the
@@ -37,7 +41,9 @@ def test_server_capability(imap_server):
 ####################################################################
 #
 @pytest.mark.integration
-def test_server_login(imap_server, imap_user_server_program):
+def test_server_login(
+    imap_server: dict[str, Any], imap_user_server_program: None
+) -> None:
     """
     Try logging in to the server. This will also launch the subprocess and
     communicate with it.
@@ -56,8 +62,10 @@ def test_server_login(imap_server, imap_user_server_program):
 #
 @pytest.mark.integration
 def test_server_list_status_select(
-    bunch_of_email_in_folder, imap_server, imap_user_server_program
-):
+    bunch_of_email_in_folder: Callable[..., Path],
+    imap_server: dict[str, Any],
+    imap_user_server_program: None,
+) -> None:
     """
     LIST, STATUS INBOX, SELECT INBOX
     """
@@ -87,11 +95,11 @@ def test_server_list_status_select(
 ####################################################################
 #
 def test_server_append_and_fetch(
-    bunch_of_email_in_folder,
-    imap_server,
-    imap_user_server_program,
-    email_factory,
-):
+    bunch_of_email_in_folder: Callable[..., Path],
+    imap_server: dict[str, Any],
+    imap_user_server_program: None,
+    email_factory: EmailFactoryType,
+) -> None:
     """
     Make sure we can append a message to a folder.
     """

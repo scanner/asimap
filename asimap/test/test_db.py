@@ -37,7 +37,7 @@ async def db(tmp_path):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_db_init_migrate(db):
+async def test_db_init_migrate(db) -> None:
     """
     This actually tests all of the db methods so until we need to test
     something more complex this is good enough unit test for the Database and

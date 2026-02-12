@@ -347,19 +347,19 @@ class BasePasswordHasher:
         )
         return get_random_string(char_count, allowed_chars=RANDOM_STRING_CHARS)
 
-    def verify(self, password, encoded):
+    def verify(self, password, encoded) -> None:
         """Check if the given password is correct."""
         raise NotImplementedError(
             "subclasses of BasePasswordHasher must provide a verify() method"
         )
 
-    def _check_encode_args(self, password, salt):
+    def _check_encode_args(self, password, salt) -> None:
         if password is None:
             raise TypeError("password must be provided.")
         if not salt or "$" in salt:
             raise ValueError("salt must be provided and cannot contain $.")
 
-    def encode(self, password, salt):
+    def encode(self, password, salt) -> None:
         """
         Create an encoded database value.
 
@@ -370,7 +370,7 @@ class BasePasswordHasher:
             "subclasses of BasePasswordHasher must provide an encode() method"
         )
 
-    def decode(self, encoded):
+    def decode(self, encoded) -> None:
         """
         Return a decoded database value.
 
@@ -382,7 +382,7 @@ class BasePasswordHasher:
             "subclasses of BasePasswordHasher must provide a decode() method."
         )
 
-    def safe_summary(self, encoded):
+    def safe_summary(self, encoded) -> None:
         """
         Return a summary of safe values.
 
@@ -396,7 +396,7 @@ class BasePasswordHasher:
     def must_update(self, encoded):
         return False
 
-    def harden_runtime(self, password, encoded):
+    def harden_runtime(self, password, encoded) -> None:
         """
         Bridge the runtime gap between the work factor supplied in `encoded`
         and the work factor suggested by this hasher.
@@ -422,14 +422,14 @@ class PBKDF2PasswordHasher(BasePasswordHasher):
     safely but you must rename the algorithm if you change SHA256.
     """
 
-    algorithm = "pbkdf2_sha256"
+    algorithm = "pbkdf2_sha256"  # type: ignore[assignment]
     iterations = 720000
     digest = hashlib.sha256
 
     def encode(self, password, salt, iterations=None):
         self._check_encode_args(password, salt)
         iterations = iterations or self.iterations
-        hash = pbkdf2(password, salt, iterations, digest=self.digest)
+        hash = pbkdf2(password, salt, iterations, digest=self.digest)  # type: ignore[misc]
         hash = base64.b64encode(hash).decode("ascii").strip()
         return f"{self.algorithm}${iterations}${salt}${hash}"
 
@@ -464,7 +464,7 @@ class PBKDF2PasswordHasher(BasePasswordHasher):
         update_salt = must_update_salt(decoded["salt"], self.salt_entropy)
         return (decoded["iterations"] != self.iterations) or update_salt
 
-    def harden_runtime(self, password, encoded):
+    def harden_runtime(self, password, encoded) -> None:
         decoded = self.decode(encoded)
         extra_iterations = self.iterations - decoded["iterations"]
         if extra_iterations > 0:
@@ -492,8 +492,8 @@ class Argon2PasswordHasher(BasePasswordHasher):
     depends on native C code and might cause portability issues.
     """
 
-    algorithm = "argon2"
-    library = "argon2"
+    algorithm = "argon2"  # type: ignore[assignment]
+    library = "argon2"  # type: ignore[assignment]
 
     time_cost = 2
     memory_cost = 102400
@@ -566,7 +566,7 @@ class Argon2PasswordHasher(BasePasswordHasher):
         update_salt = must_update_salt(decoded["salt"], self.salt_entropy)
         return (current_params != new_params) or update_salt
 
-    def harden_runtime(self, password, encoded):
+    def harden_runtime(self, password, encoded) -> None:
         # The runtime for Argon2 is too complicated to implement a sensible
         # hardening algorithm.
         pass
@@ -595,9 +595,9 @@ class BCryptSHA256PasswordHasher(BasePasswordHasher):
     issues.
     """
 
-    algorithm = "bcrypt_sha256"
+    algorithm = "bcrypt_sha256"  # type: ignore[assignment]
     digest = hashlib.sha256
-    library = ("bcrypt", "bcrypt")
+    library = ("bcrypt", "bcrypt")  # type: ignore[assignment]
     rounds = 12
 
     def salt(self):
@@ -609,9 +609,12 @@ class BCryptSHA256PasswordHasher(BasePasswordHasher):
         password = password.encode()
         # Hash the password prior to using bcrypt to prevent password
         # truncation as described in #20138.
-        if self.digest is not None:
-            # Use binascii.hexlify() because a hex encoded bytestring is str.
-            password = binascii.hexlify(self.digest(password).digest())
+        if self.digest is not None:  # type: ignore[misc]
+            # Use binascii.hexlify() because a hex encoded
+            # bytestring is str.
+            password = binascii.hexlify(
+                self.digest(password).digest()  # type: ignore[misc]
+            )
 
         data = bcrypt.hashpw(password, salt)
         return "{}${}".format(self.algorithm, data.decode("ascii"))
@@ -646,7 +649,7 @@ class BCryptSHA256PasswordHasher(BasePasswordHasher):
         decoded = self.decode(encoded)
         return decoded["work_factor"] != self.rounds
 
-    def harden_runtime(self, password, encoded):
+    def harden_runtime(self, password, encoded) -> None:
         _, data = encoded.split("$", 1)
         salt = data[:29]  # Length of the salt in bcrypt.
         rounds = data.split("$")[2]
@@ -672,7 +675,7 @@ class BCryptPasswordHasher(BCryptSHA256PasswordHasher):
     """
 
     algorithm = "bcrypt"
-    digest = None
+    digest = None  # type: ignore[assignment]
 
 
 class ScryptPasswordHasher(BasePasswordHasher):
@@ -680,7 +683,7 @@ class ScryptPasswordHasher(BasePasswordHasher):
     Secure password hashing using the Scrypt algorithm.
     """
 
-    algorithm = "scrypt"
+    algorithm = "scrypt"  # type: ignore[assignment]
     block_size = 8
     maxmem = 0
     parallelism = 1
@@ -700,8 +703,8 @@ class ScryptPasswordHasher(BasePasswordHasher):
             maxmem=self.maxmem,
             dklen=64,
         )
-        hash_ = base64.b64encode(hash_).decode("ascii").strip()
-        return f"{self.algorithm}${n}${salt}${r}${p}${hash_}"
+        hash_str = base64.b64encode(hash_).decode("ascii").strip()
+        return f"{self.algorithm}${n}${salt}${r}${p}${hash_str}"
 
     def decode(self, encoded):
         (
@@ -752,7 +755,7 @@ class ScryptPasswordHasher(BasePasswordHasher):
             or decoded["parallelism"] != self.parallelism
         )
 
-    def harden_runtime(self, password, encoded):
+    def harden_runtime(self, password, encoded) -> None:
         # The runtime for Scrypt is too complicated to implement a sensible
         # hardening algorithm.
         pass
@@ -763,7 +766,7 @@ class MD5PasswordHasher(BasePasswordHasher):
     The Salted MD5 password hashing algorithm (not recommended)
     """
 
-    algorithm = "md5"
+    algorithm = "md5"  # type: ignore[assignment]
 
     def encode(self, password, salt):
         self._check_encode_args(password, salt)
@@ -796,5 +799,5 @@ class MD5PasswordHasher(BasePasswordHasher):
         decoded = self.decode(encoded)
         return must_update_salt(decoded["salt"], self.salt_entropy)
 
-    def harden_runtime(self, password, encoded):
+    def harden_runtime(self, password, encoded) -> None:
         pass

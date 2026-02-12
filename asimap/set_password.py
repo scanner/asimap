@@ -90,7 +90,7 @@ async def update_pw_file(
 
 #############################################################################
 #
-def main():
+def main() -> None:
     """ """
     args = docopt(__doc__, version=VERSION)
     pwfile: StrPath = args["--pwfile"]

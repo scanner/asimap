@@ -87,7 +87,7 @@ logger = logging.getLogger("asimap.asimapd")
 
 #############################################################################
 #
-def main():
+def main() -> None:
     """
     Our main entry point. Parse the options, set up logging, go in to
     daemon mode if necessary, setup the asimap library and start

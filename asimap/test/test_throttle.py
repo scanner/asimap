@@ -5,6 +5,11 @@ Test our throttle of clients that attempt to login too much.
 # System imports
 #
 from time import time
+from unittest.mock import MagicMock
+
+# 3rd party imports
+#
+from faker import Faker
 
 # Project imports
 #
@@ -19,7 +24,7 @@ from ..throttle import (
 
 ####################################################################
 #
-def test_throttle_by_user(faker, mock_time):
+def test_throttle_by_user(faker: Faker, mock_time: MagicMock) -> None:
     user = faker.email()
     ip_addr = faker.ipv4()
 
@@ -58,7 +63,7 @@ def test_throttle_by_user(faker, mock_time):
 
 ####################################################################
 #
-def test_throttle_by_address(faker, mock_time):
+def test_throttle_by_address(faker: Faker, mock_time: MagicMock) -> None:
     user = faker.email()
     ip_addr = faker.ipv4()
 

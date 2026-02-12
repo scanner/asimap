@@ -30,7 +30,7 @@ def enable_file_locking():
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_mh_lock_folder(tmp_path, enable_file_locking):
+async def test_mh_lock_folder(tmp_path, enable_file_locking) -> None:
     """
     GIVEN: FILE_LOCKING_ENABLED is True
     WHEN:  lock_folder() is used as a context manager
@@ -63,7 +63,7 @@ async def test_mh_lock_folder(tmp_path, enable_file_locking):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_mh_lock_folder_noop(tmp_path):
+async def test_mh_lock_folder_noop(tmp_path) -> None:
     """
     GIVEN: FILE_LOCKING_ENABLED is False (default)
     WHEN:  lock_folder() is used as a context manager
@@ -85,7 +85,7 @@ async def test_mh_lock_folder_noop(tmp_path):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_mh_lock_folder_noop_deleted_folder(tmp_path):
+async def test_mh_lock_folder_noop_deleted_folder(tmp_path) -> None:
     """
     GIVEN: FILE_LOCKING_ENABLED is False (default)
     WHEN:  lock_folder() is called on a folder that no longer exists
@@ -107,7 +107,7 @@ async def test_mh_lock_folder_noop_deleted_folder(tmp_path):
 
 ####################################################################
 #
-def test_set_file_locking():
+def test_set_file_locking() -> None:
     """
     GIVEN: default state (FILE_LOCKING_ENABLED is False)
     WHEN:  set_file_locking() is called
@@ -123,7 +123,7 @@ def test_set_file_locking():
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_mh_aclear(bunch_of_email_in_folder):
+async def test_mh_aclear(bunch_of_email_in_folder) -> None:
     mh_dir = bunch_of_email_in_folder()
     mh = MH(mh_dir)
     inbox_folder = mh.get_folder("inbox")
@@ -144,7 +144,7 @@ async def test_mh_aclear(bunch_of_email_in_folder):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_mh_aremove(bunch_of_email_in_folder):
+async def test_mh_aremove(bunch_of_email_in_folder) -> None:
     mh_dir = bunch_of_email_in_folder()
     mh = MH(mh_dir)
     inbox_folder = mh.get_folder("inbox")

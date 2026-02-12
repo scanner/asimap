@@ -74,7 +74,7 @@ SERVER_ID = {
 #       is fine, we are leaving this code in as an example of how we can use
 #       the client ID to disable certain capabilities.
 #
-CLIENT_CAPABILITY_EXCLUSIONS = [
+CLIENT_CAPABILITY_EXCLUSIONS: list[dict] = [
     # {
     #     "pattern": re.compile(
     #         r"(?:"
@@ -167,7 +167,7 @@ class BaseClientHandler:
 
     ##################################################################
     #
-    def update_capability_exclusions(self):
+    def update_capability_exclusions(self) -> None:
         """
         Check the client ID against known problematic client patterns and
         update the set of excluded capabilities accordingly.
@@ -199,7 +199,7 @@ class BaseClientHandler:
 
     ##################################################################
     #
-    async def command(self, imap_command: IMAPClientCommand):
+    async def command(self, imap_command: IMAPClientCommand) -> None:
         """
         Process an IMAP command we received from the client.
 
@@ -378,7 +378,7 @@ class BaseClientHandler:
 
     ##################################################################
     #
-    async def send_pending_notifications(self):
+    async def send_pending_notifications(self) -> None:
         """
         Deal with pending notifications like expunges that have built up
         for this client.  This can only be called during a command, but not
@@ -394,7 +394,7 @@ class BaseClientHandler:
 
     ##################################################################
     #
-    async def unceremonious_bye(self, msg):
+    async def unceremonious_bye(self, msg) -> None:
         """
         Sometimes we hit a state where we can not easily recover while a client
         is connected. Frequently for clients that are in 'select' on a
@@ -447,7 +447,7 @@ class BaseClientHandler:
 
     #########################################################################
     #
-    async def do_noop(self, cmd: IMAPClientCommand):
+    async def do_noop(self, cmd: IMAPClientCommand) -> None:
         """
         Waits for the mailbox to let the command proceed and then sends any
         pending notifies this client may have, if this client has a selected
@@ -463,7 +463,7 @@ class BaseClientHandler:
 
     #########################################################################
     #
-    async def do_capability(self, cmd: IMAPClientCommand):
+    async def do_capability(self, cmd: IMAPClientCommand) -> None:
         """
         Return the capabilities of this server.
 
@@ -482,7 +482,7 @@ class BaseClientHandler:
 
     #########################################################################
     #
-    async def do_namespace(self, cmd: IMAPClientCommand):
+    async def do_namespace(self, cmd: IMAPClientCommand) -> None:
         """
         We currently only support a single personal name space. There is no
         leading prefix on personal mailboxes and '/' is the hierarchy
@@ -497,7 +497,7 @@ class BaseClientHandler:
 
     #########################################################################
     #
-    async def do_id(self, cmd: IMAPClientCommand):
+    async def do_id(self, cmd: IMAPClientCommand) -> None:
         """
         Construct an ID response... uh.. lookup the rfc that defines this.
 
@@ -541,7 +541,7 @@ class BaseClientHandler:
 
     #########################################################################
     #
-    async def do_logout(self, cmd: IMAPClientCommand):
+    async def do_logout(self, cmd: IMAPClientCommand) -> None:
         """
         This just sets our state to 'logged out'. Our caller will take the
         appropriate actions to finishing a client's log out request.
@@ -586,7 +586,7 @@ class PreAuthenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_authenticated(self, cmd: IMAPClientCommand):
+    async def do_authenticated(self, cmd: IMAPClientCommand) -> None:
         """
         We do not support any authentication mechanisms at this time.. just
         password authentication via the 'login' IMAP client command.
@@ -601,7 +601,7 @@ class PreAuthenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_login(self, cmd: IMAPClientCommand):
+    async def do_login(self, cmd: IMAPClientCommand) -> None:
         """
         Process a LOGIN command with a username and password from the IMAP
         client.
@@ -726,13 +726,13 @@ class Authenticated(BaseClientHandler):
 
     #########################################################################
     #
-    async def do_authenticate(self, cmd: IMAPClientCommand):
+    async def do_authenticate(self, cmd: IMAPClientCommand) -> None:
         await self.send_pending_notifications()
         raise No("client already is in the authenticated state")
 
     #########################################################################
     #
-    async def do_login(self, cmd: IMAPClientCommand):
+    async def do_login(self, cmd: IMAPClientCommand) -> None:
         await self.send_pending_notifications()
         raise No("client already is in the authenticated state")
 
@@ -803,7 +803,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_unselect(self, cmd: IMAPClientCommand):
+    async def do_unselect(self, cmd: IMAPClientCommand) -> None:
         """
         Unselect a mailbox. Similar to close, except it does not do an expunge.
 
@@ -839,7 +839,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_create(self, cmd: IMAPClientCommand):
+    async def do_create(self, cmd: IMAPClientCommand) -> None:
         """
         Create the specified mailbox.
 
@@ -853,7 +853,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_delete(self, cmd: IMAPClientCommand):
+    async def do_delete(self, cmd: IMAPClientCommand) -> None:
         """
         Delete the specified mailbox.
 
@@ -1128,7 +1128,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_status(self, cmd: IMAPClientCommand):
+    async def do_status(self, cmd: IMAPClientCommand) -> None:
         """
         Get the designated mailbox and return the requested status
         attributes to our client.
@@ -1190,7 +1190,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_check(self, cmd: IMAPClientCommand):
+    async def do_check(self, cmd: IMAPClientCommand) -> None:
         """
         state: must be selected
 
@@ -1233,7 +1233,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_close(self, cmd: IMAPClientCommand):
+    async def do_close(self, cmd: IMAPClientCommand) -> None:
         """
         state: must be selected
 
@@ -1283,7 +1283,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_expunge(self, cmd: IMAPClientCommand):
+    async def do_expunge(self, cmd: IMAPClientCommand) -> None:
         """
         Delete all messages marked with 'Delete' from the mailbox and send out
         untagged expunge messages...
@@ -1334,7 +1334,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_search(self, cmd: IMAPClientCommand):
+    async def do_search(self, cmd: IMAPClientCommand) -> None:
         """
         Search... NOTE: Can not send untagged EXPUNGE messages during this
         command.
@@ -1363,7 +1363,7 @@ class Authenticated(BaseClientHandler):
         #
         if self.pending_expunges():
             if cmd.uid_command:
-                self.send_pending_notifications()
+                await self.send_pending_notifications()
             else:
                 raise No("There are pending untagged responses")
 
@@ -1382,7 +1382,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_fetch(self, cmd: IMAPClientCommand):
+    async def do_fetch(self, cmd: IMAPClientCommand) -> None:
         """
         Fetch data from the messages indicated in the command.
 
@@ -1461,7 +1461,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_store(self, cmd: IMAPClientCommand):
+    async def do_store(self, cmd: IMAPClientCommand) -> None:
         """
         The STORE command alters data associated with a message in the
         mailbox.  Normally, STORE will return the updated value of the
@@ -1496,7 +1496,7 @@ class Authenticated(BaseClientHandler):
         #
         if self.pending_expunges():
             if cmd.uid_command:
-                self.send_pending_notifications()
+                await self.send_pending_notifications()
             else:
                 raise No("There are pending EXPUNGEs.")
         else:
@@ -1599,7 +1599,7 @@ class Authenticated(BaseClientHandler):
         try:
             new_src_uids = [
                 list(x)
-                for _, x in groupby(src_uids, lambda x, c=count(): next(c) - x)
+                for _, x in groupby(src_uids, lambda x, c=count(): next(c) - x)  # type: ignore[misc]
             ]
             str_src_uids = ",".join(
                 ":".join(map(str, (g[0], g[-1])[: len(g)]))
@@ -1607,7 +1607,7 @@ class Authenticated(BaseClientHandler):
             )
             new_dst_uids = [
                 list(x)
-                for _, x in groupby(dst_uids, lambda x, c=count(): next(c) - x)
+                for _, x in groupby(dst_uids, lambda x, c=count(): next(c) - x)  # type: ignore[misc]
             ]
             str_dst_uids = ",".join(
                 ":".join(map(str, (g[0], g[-1])[: len(g)]))

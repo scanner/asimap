@@ -11,7 +11,7 @@ import mailbox
 import os
 import stat
 from contextlib import asynccontextmanager
-from mailbox import NoSuchMailboxError, _lock_file
+from mailbox import NoSuchMailboxError, _lock_file  # type: ignore[attr-defined]
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -78,7 +78,7 @@ class MH(mailbox.MH):
 
     ####################################################################
     #
-    def lock(self, dotlock: bool = False):
+    def lock(self, dotlock: bool = False) -> None:
         """
         Lock the mailbox. We turn off dotlock'ing because it updates the
         folder's mtime, which will causes unnecessary resyncs. We still expect
@@ -99,7 +99,7 @@ class MH(mailbox.MH):
 
     ####################################################################
     #
-    def unlock(self):
+    def unlock(self) -> None:
         """
         Unlock the mailbox. When file locking is disabled, lock() is a
         no-op so there is nothing to unlock.
@@ -164,7 +164,7 @@ class MH(mailbox.MH):
 
     ####################################################################
     #
-    async def aclear(self):
+    async def aclear(self) -> None:
         for key in [int(x) for x in self.keys()]:
             try:
                 self.remove(str(key))
@@ -174,7 +174,7 @@ class MH(mailbox.MH):
 
     ####################################################################
     #
-    async def aremove(self, key: int):
+    async def aremove(self, key: int) -> None:
         """Remove the keyed message; raise KeyError if it doesn't exist."""
         path = os.path.join(self._path, str(key))
         try:

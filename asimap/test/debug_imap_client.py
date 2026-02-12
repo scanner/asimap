@@ -22,7 +22,7 @@ import tarfile
 
 ####################################################################
 #
-def cleanup_test_mode_dir(test_mode_dir):
+def cleanup_test_mode_dir(test_mode_dir) -> None:
     """
     Set up the 'test_mode' mail directory. Clean out any messages it
     may have from previous runs
@@ -67,14 +67,16 @@ def cleanup_test_mode_dir(test_mode_dir):
                             print(
                                 f"    Adding message {member.name}, size: {member.size}"
                             )
-                            mh_f.add(tf.extractfile(member).read())
+                            extracted = tf.extractfile(member)
+                            assert extracted is not None
+                            mh_f.add(extracted.read())
             finally:
                 mh_f.unlock()
 
 
 ####################################################################
 #
-def do_baked_appends(test_mode_dir, imap, mbox_name):
+def do_baked_appends(test_mode_dir, imap, mbox_name) -> None:
     """
     Look for a tar file in the test mode directory for the given
     mailbox that contains messages we want to send to the IMAP server
@@ -95,13 +97,15 @@ def do_baked_appends(test_mode_dir, imap, mbox_name):
                 print(
                     f"    Appending tf member {member.name}, size: {member.size}"
                 )
-                content = tf.extractfile(member).read()
+                extracted = tf.extractfile(member)
+                assert extracted is not None
+                content = extracted.read()
                 imap.append(mbox_name, None, None, content)
 
 
 ####################################################################
 #
-def dump_all_messages(imap):
+def dump_all_messages(imap) -> None:
     """
     Search and dump all the messages in the currently selected mailbox
     Keyword Arguments:
@@ -119,7 +123,7 @@ def dump_all_messages(imap):
 
 #############################################################################
 #
-def main():
+def main() -> None:
     # Look for the credentials in a well known file in several
     # locations relative to the location of this file.
     #
@@ -145,8 +149,8 @@ def main():
     # Look for the address file in the same directory as the creds file
     #
     addr_file = os.path.join(test_mode_dir, "test_mode_addr.txt")
-    addr, port = open(addr_file).read().strip().split(":")
-    port = int(port)
+    addr, port_str = open(addr_file).read().strip().split(":")
+    port = int(port_str)
 
     print("Cleaning and setting up test-mode maildir")
     cleanup_test_mode_dir(test_mode_dir)

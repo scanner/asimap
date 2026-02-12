@@ -125,7 +125,7 @@ class IMAPSubprocess:
 
     ##################################################################
     #
-    async def start(self):
+    async def start(self) -> None:
         """
         Start our subprocess. This assumes that we have no subprocess
         already. If we do then we will be basically creating an orphan process.
@@ -224,7 +224,7 @@ class IMAPSubprocess:
 
     ####################################################################
     #
-    def subprocess_wait_done(self, task: asyncio.Task):
+    def subprocess_wait_done(self, task: asyncio.Task) -> None:
         """
         When the `subprocess_wait` task is done, remove the reference to it
         so it can be gc'd.
@@ -233,7 +233,7 @@ class IMAPSubprocess:
 
     ####################################################################
     #
-    async def subprocess_wait(self):
+    async def subprocess_wait(self) -> None:
         """
         A task that waits for the subprocess to exit and sets a flag when
         that happens.
@@ -246,7 +246,7 @@ class IMAPSubprocess:
 
     ####################################################################
     #
-    def terminate(self):
+    def terminate(self) -> None:
         """
         Terminate the subprocess.
         """
@@ -295,7 +295,7 @@ class IMAPServer:
 
     ####################################################################
     #
-    async def run(self):
+    async def run(self) -> None:
         """
         Create and start the asyncio server to handle IMAP clients. Run
         until server exits.
@@ -359,7 +359,7 @@ class IMAPServer:
         self,
         reader: asyncio.StreamReader,
         writer: asyncio.StreamWriter,
-    ):
+    ) -> None:
         """
         New client connection. Create a new IMAPClient
         with the reader and writer. Create a new task to handle all
@@ -383,7 +383,7 @@ class IMAPServer:
 
     ####################################################################
     #
-    def client_done(self, task):
+    def client_done(self, task) -> None:
         """
         When the asyncio task represented by the IMAPClient has
         exited this call back is invoked.
@@ -460,7 +460,7 @@ class IMAPClient:
 
     ####################################################################
     #
-    async def push(self, *data: bytes | str):
+    async def push(self, *data: bytes | str) -> None:
         """
         Write data to the IMAP Client. Also write it to the trace
         file if we have one.
@@ -473,7 +473,7 @@ class IMAPClient:
 
     ####################################################################
     #
-    async def start(self):
+    async def start(self) -> None:
         """
         Entry point for the asyncio task for handling the network
         connection from an IMAP client.
@@ -582,7 +582,7 @@ class IMAPClient:
 
     ####################################################################
     #
-    async def close(self):
+    async def close(self) -> None:
         """
         Close our streams to the client. This may happen after something
         else has failed so swallow any exceptions we get while closing it (but
@@ -663,7 +663,7 @@ class IMAPSubprocessInterface:
 
     ####################################################################
     #
-    async def close(self):
+    async def close(self) -> None:
         """
         Close our connection to the subprocess.
         """
@@ -679,7 +679,7 @@ class IMAPSubprocessInterface:
 
     ####################################################################
     #
-    async def push(self, *data: bytes | str):
+    async def push(self, *data: bytes | str) -> None:
         """
         Write data to IMAP Subprocess.
         """
@@ -826,7 +826,7 @@ class IMAPSubprocessInterface:
 
     ##################################################################
     #
-    async def get_and_connect_subprocess(self, user):
+    async def get_and_connect_subprocess(self, user) -> None:
         """
         At this point the IMAP client has authenticated to us and we know what
         user they authenticated as. We need to see if there is an existing
@@ -947,7 +947,7 @@ class IMAPSubprocessInterface:
 
     ####################################################################
     #
-    async def msgs_to_client(self):
+    async def msgs_to_client(self) -> None:
         """
         This is the asyncio task that listens for messages from the
         subprocess on `self.reader`. When we get data, send it to the IMAP
@@ -981,7 +981,7 @@ class IMAPSubprocessInterface:
 
     ####################################################################
     #
-    def msgs_to_client_done(self, task: asyncio.Task):
+    def msgs_to_client_done(self, task: asyncio.Task) -> None:
         """
         Our task for listening for messages from the subprocess has
         finished.

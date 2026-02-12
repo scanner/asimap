@@ -266,7 +266,10 @@ class FetchAtt:
                 try:
                     match self.attribute:
                         case FetchOp.BODY:
-                            result = self.body(msg, self.section)
+                            result = self.body(
+                                msg,
+                                self.section,  # type: ignore[arg-type]
+                            )
                         case FetchOp.BODYSTRUCTURE:
                             result = self.bodystructure(msg)
                         case FetchOp.ENVELOPE:
@@ -335,7 +338,8 @@ class FetchAtt:
                     #       are 0-based.
                     #
                     return msg_as_bytes(
-                        msg.get_payload(section - 1), render_headers=False
+                        msg.get_payload(section - 1),  # type: ignore[arg-type]
+                        render_headers=False,
                     )
                 except IndexError as err:
                     raise BadSection(
@@ -380,7 +384,9 @@ class FetchAtt:
                             msg.is_multipart()
                             and msg.get_content_type() == "message/rfc822"
                         ):
-                            return msg_headers_as_bytes(msg.get_payload(0))
+                            return msg_headers_as_bytes(
+                                msg.get_payload(0)  # type: ignore[arg-type]
+                            )
                         return msg_headers_as_bytes(msg)
                     case _:
                         self.log.warn(
@@ -588,10 +594,11 @@ class FetchAtt:
         # Add any other params from the 'Content-Type' header if it exists.
         #
         if "Content-Type" in msg:
-            for param in msg["Content-Type"].params.keys():
+            ct = msg["Content-Type"]
+            for param in ct.params.keys():
                 if param.lower() == "charset":
                     continue
-                params[param] = msg["Content-Type"].params[param]
+                params[param] = ct.params[param]
 
         if not params:
             return b"NIL"
@@ -640,7 +647,7 @@ class FetchAtt:
         if cd is None:
             return b"NIL"
 
-        params = msg["Content-Disposition"].params
+        params = msg["Content-Disposition"].params  # type: ignore[union-attr]
         if not params:
             return (f'("{cd}" NIL)').encode("latin-1")
 
@@ -720,7 +727,7 @@ class FetchAtt:
             # Get the extension data and add it to our response.
             #
             ext_data = self.extension_data(msg)
-            body_params = self.body_parameters(msg)
+            body_params = self.body_parameters(msg)  # type: ignore[arg-type]
             ext_data.insert(0, body_params)
 
             res = (
@@ -771,11 +778,11 @@ class FetchAtt:
         # Body type and sub-type
         #
         maintype = msg.get_content_maintype()
-        subtype = msg.get_content_subtype()
+        msg_subtype = msg.get_content_subtype()
         result.append((f'"{maintype.upper()}"').encode("latin-1"))
-        result.append((f'"{subtype.upper()}"').encode("latin-1"))
+        result.append((f'"{msg_subtype.upper()}"').encode("latin-1"))
 
-        result.append(self.body_parameters(msg))
+        result.append(self.body_parameters(msg))  # type: ignore[arg-type]
 
         result.append(header_or_nil(msg, "Content-ID"))
         result.append(header_or_nil(msg, "Content-Description"))
@@ -795,11 +802,11 @@ class FetchAtt:
         # Now come the variable fields depending on the maintype/subtype
         # of this message.
         #
-        if maintype == "message" and subtype == "rfc822":
+        if maintype == "message" and msg_subtype == "rfc822":
             # - envelope structure
             # - body structure
             # - size in text lines of encapsulated message
-            encapsulated_msg = msg.get_payload()[0]
+            encapsulated_msg = msg.get_payload()[0]  # type: ignore[index]
             assert isinstance(encapsulated_msg, Message)
             result.append(self.envelope(encapsulated_msg))
             result.append(self.bodystructure(encapsulated_msg))

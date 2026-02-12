@@ -37,7 +37,7 @@ from .conftest import assert_email_equal, client_push_responses
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_mailbox_init(imap_user_server):
+async def test_mailbox_init(imap_user_server) -> None:
     """
     We can create a Mailbox object instance.
     """
@@ -91,7 +91,7 @@ async def test_mailbox_init(imap_user_server):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_mailbox_init_with_messages(mailbox_with_bunch_of_email):
+async def test_mailbox_init_with_messages(mailbox_with_bunch_of_email) -> None:
     mbox = mailbox_with_bunch_of_email
     assert mbox.uid_vv == 1
     assert r"\Marked" in mbox.attributes
@@ -131,7 +131,7 @@ async def test_mailbox_init_with_messages(mailbox_with_bunch_of_email):
 @pytest.mark.asyncio
 async def test_mailbox_gets_new_message(
     bunch_of_email_in_folder, imap_user_server
-):
+) -> None:
     """
     After initial init, add message to folder. Do resync.
     """
@@ -167,7 +167,7 @@ async def test_mailbox_gets_new_message(
 @pytest.mark.asyncio
 async def test_mbox_resync_auto_pack(
     bunch_of_email_in_folder, imap_user_server
-):
+) -> None:
     """
     resync autopacks if the folder is too gappy.
     """
@@ -195,7 +195,7 @@ async def test_mbox_resync_auto_pack(
 @pytest.mark.asyncio
 async def test_mbox_selected_unselected(
     bunch_of_email_in_folder, imap_user_server_and_client
-):
+) -> None:
     NAME = "inbox"
     bunch_of_email_in_folder()
     server, imap_client_proxy = imap_user_server_and_client
@@ -228,7 +228,7 @@ async def test_mbox_selected_unselected(
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_mbox_append(imap_user_server, email_factory):
+async def test_mbox_append(imap_user_server, email_factory) -> None:
     server = imap_user_server
     NAME = "inbox"
     mbox = await Mailbox.new(NAME, server)
@@ -259,7 +259,7 @@ async def test_mbox_append(imap_user_server, email_factory):
 @pytest.mark.asyncio
 async def test_mbox_expunge_with_client(
     bunch_of_email_in_folder, imap_user_server_and_client
-):
+) -> None:
     num_msgs_to_delete = 4
     NAME = "inbox"
     bunch_of_email_in_folder(folder=NAME)
@@ -320,7 +320,7 @@ async def test_mbox_expunge_with_client(
 @pytest.mark.asyncio
 async def test_mbox_uid_expunge_with_client(
     bunch_of_email_in_folder, imap_user_server_and_client
-):
+) -> None:
     NUM_MSGS_TO_DELETE = 4
     NUM_MSGS_MARKED_DELETED = 10
     NAME = "inbox"
@@ -387,7 +387,7 @@ async def test_mbox_uid_expunge_with_client(
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_mailbox_search(mailbox_with_bunch_of_email):
+async def test_mailbox_search(mailbox_with_bunch_of_email) -> None:
     """
     Search is tested mostly `test_search`.. so we only need a very simple
     search.
@@ -410,7 +410,7 @@ async def test_mailbox_search(mailbox_with_bunch_of_email):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_mailbox_fetch(mailbox_with_bunch_of_email):
+async def test_mailbox_fetch(mailbox_with_bunch_of_email) -> None:
     """
     Fetch is tested mostly `test_fetch`.. so we only need a very simple
     fetch.
@@ -499,7 +499,7 @@ async def test_mailbox_fetch(mailbox_with_bunch_of_email):
 @pytest.mark.asyncio
 async def test_mailbox_uid_fetch_no_duplicate_uid(
     mailbox_with_bunch_of_email,
-):
+) -> None:
     """
     GIVEN: A UID FETCH command where the client explicitly requests UID
            as one of the fetch attributes (as iPadOS 18+ Mail does)
@@ -539,7 +539,7 @@ async def test_mailbox_uid_fetch_no_duplicate_uid(
 @pytest.mark.asyncio
 async def test_mailbox_fetch_notifies_other_clients(
     bunch_of_email_in_folder, imap_user_server, imap_client_proxy
-):
+) -> None:
     """
     GIVEN: A mailbox with unseen messages and two connected clients
     WHEN:  A FETCH BODY (non-PEEK) is performed, marking messages as Seen
@@ -609,7 +609,7 @@ async def test_mailbox_fetch_notifies_other_clients(
 @pytest.mark.asyncio
 async def test_mailbox_db_commit_sequence_changes(
     faker, bunch_of_email_in_folder, mailbox_with_bunch_of_email
-):
+) -> None:
     """
     Make sure our db commit code works when we change the sequences on a
     mailbox.
@@ -641,7 +641,7 @@ async def test_mailbox_db_commit_sequence_changes(
 @pytest.mark.asyncio
 async def test_mailbox_fetch_after_new_messages(
     faker, bunch_of_email_in_folder, mailbox_with_bunch_of_email
-):
+) -> None:
     """
     Makes sure that doing a fetch after a folder has gotten new messages
     and done a resync works.
@@ -687,7 +687,7 @@ async def test_mailbox_fetch_after_new_messages(
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_mailbox_store(mailbox_with_bunch_of_email):
+async def test_mailbox_store(mailbox_with_bunch_of_email) -> None:
     """
     Search is tested mostly `test_search`.. so we only need a very simple
     search.
@@ -751,7 +751,7 @@ async def test_mailbox_store(mailbox_with_bunch_of_email):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_mailbox_copy(mailbox_with_bunch_of_email):
+async def test_mailbox_copy(mailbox_with_bunch_of_email) -> None:
     # We know this mailbox has messages numbered from 1 to 20.  We also know
     # since this is an initial state the msg_key, message sequence number, and
     # uid's are the same for each message (ie: 1 == 1 == 1)
@@ -804,7 +804,7 @@ async def test_mailbox_copy(mailbox_with_bunch_of_email):
 @pytest.mark.asyncio
 async def test_mbox_copy_verify_sequences(
     mailbox_with_bunch_of_email, incr_email, mailbox_instance
-):
+) -> None:
     """
     When copying messages to a mailbox make sure that the sequences get
     copied correctly as well.
@@ -869,7 +869,7 @@ async def test_mbox_copy_verify_sequences(
 @pytest.mark.asyncio
 async def test_mailbox_create_delete(
     mailbox_with_bunch_of_email, imap_user_server_and_client
-):
+) -> None:
     server, imap_client_proxy = imap_user_server_and_client
     mbox = mailbox_with_bunch_of_email
     ARCHIVE = "Archive"
@@ -955,7 +955,7 @@ async def test_mailbox_create_delete(
 @pytest.mark.asyncio
 async def test_mailbox_rename(
     mailbox_with_bunch_of_email, imap_user_server_and_client
-):
+) -> None:
     server, imap_client_proxy = imap_user_server_and_client
     inbox = mailbox_with_bunch_of_email
     NEW_MBOX_NAME = "new_mbox"
@@ -1016,7 +1016,7 @@ async def test_mailbox_rename(
 @pytest.mark.asyncio
 async def test_mailbox_list(
     faker, mailbox_with_bunch_of_email, imap_user_server_and_client
-):
+) -> None:
     server, imap_client_proxy = imap_user_server_and_client
     _ = mailbox_with_bunch_of_email
 
@@ -1048,7 +1048,7 @@ async def test_mailbox_list(
 @pytest.mark.asyncio
 async def test_mailbox_list_subscribed_selection(
     mailbox_with_bunch_of_email, imap_user_server_and_client
-):
+) -> None:
     """
     GIVEN: a set of folders, some subscribed and some not
     WHEN:  Mailbox.list() is called with SUBSCRIBED selection option
@@ -1098,7 +1098,7 @@ async def test_mailbox_list_subscribed_selection(
 @pytest.mark.asyncio
 async def test_mailbox_list_subscribed_nonexistent(
     mailbox_with_bunch_of_email, imap_user_server_and_client
-):
+) -> None:
     """
     GIVEN: a subscribed folder that has been deleted (\\Noselect) but
            retained because it has sub-folders
@@ -1142,7 +1142,7 @@ async def test_mailbox_list_subscribed_nonexistent(
 @pytest.mark.asyncio
 async def test_mailbox_list_multiple_patterns(
     mailbox_with_bunch_of_email, imap_user_server_and_client
-):
+) -> None:
     """
     GIVEN: several folders in a hierarchy
     WHEN:  Mailbox.list() is called with multiple patterns
@@ -1178,7 +1178,7 @@ async def test_mailbox_list_multiple_patterns(
 @pytest.mark.asyncio
 async def test_mailbox_list_remote_is_noop(
     mailbox_with_bunch_of_email, imap_user_server_and_client
-):
+) -> None:
     """
     GIVEN: some folders
     WHEN:  Mailbox.list() is called with REMOTE selection option
@@ -1207,7 +1207,7 @@ async def test_mailbox_list_remote_is_noop(
 @pytest.mark.asyncio
 async def test_mailbox_list_empty_select_opts_is_legacy(
     mailbox_with_bunch_of_email, imap_user_server_and_client
-):
+) -> None:
     """
     GIVEN: some folders
     WHEN:  Mailbox.list() is called with an empty select_opts set
@@ -1234,7 +1234,7 @@ async def test_mailbox_list_empty_select_opts_is_legacy(
 @pytest.mark.asyncio
 async def test_mailbox_list_recursivematch_basic(
     mailbox_with_bunch_of_email, imap_user_server_and_client
-):
+) -> None:
     """
     GIVEN: a hierarchy where a deep folder is subscribed but its parent
            is not
@@ -1297,7 +1297,7 @@ async def test_mailbox_list_recursivematch_basic(
 @pytest.mark.asyncio
 async def test_mailbox_list_recursivematch_deep_hierarchy(
     mailbox_with_bunch_of_email, imap_user_server_and_client
-):
+) -> None:
     """
     GIVEN: a deeply nested hierarchy where only a leaf is subscribed
     WHEN:  Mailbox.list() is called with SUBSCRIBED + RECURSIVEMATCH
@@ -1347,7 +1347,7 @@ async def test_mailbox_list_recursivematch_deep_hierarchy(
 @pytest.mark.asyncio
 async def test_mailbox_list_recursivematch_multiple_children(
     mailbox_with_bunch_of_email, imap_user_server_and_client
-):
+) -> None:
     """
     GIVEN: a parent with multiple subscribed children that don't match
            the pattern
@@ -1388,7 +1388,7 @@ async def test_mailbox_list_recursivematch_multiple_children(
 @pytest.mark.asyncio
 async def test_append_when_other_msgs_also_added(
     bunch_of_email_in_folder, imap_user_server, email_factory
-):
+) -> None:
     """
     GIVEN: A mailbox with existing messages
     WHEN:  External messages are delivered (simulating MDA) and then an
@@ -1536,12 +1536,12 @@ CONFLICTING_COMMANDS = [
 CONFLICTING_CMD_VS_NOOP = [
     pytest.param(
         IMAPCommandConflictScenario(
-            imap_command=IMAPClientCommand(cmd).parse(),
+            imap_command=IMAPClientCommand(cmd).parse(),  # type: ignore[arg-type]
             executing_commands=[IMAPClientCommand("A002 NOOP").parse()],
-            sequences=sequences,
-            would_conflict=conflicting,
+            sequences=sequences,  # type: ignore[arg-type]
+            would_conflict=conflicting,  # type: ignore[arg-type]
         ),
-        id=f"noop_vs_{cmd.split(' ')[1]}_{conflicting}",
+        id=f"noop_vs_{cmd.split(' ')[1]}_{conflicting}",  # type: ignore[attr-defined]
     )
     for cmd, conflicting, sequences in [
         ["A001 APPEND foo (unseen) {11}\r\nFrom no one", True, {}],
@@ -1563,11 +1563,11 @@ COPY_VS_STORE_FETCH = [
     pytest.param(
         IMAPCommandConflictScenario(
             imap_command=IMAPClientCommand("A001 COPY 1:4 bar").parse(),
-            executing_commands=[IMAPClientCommand(executing_cmd).parse()],
+            executing_commands=[IMAPClientCommand(executing_cmd).parse()],  # type: ignore[arg-type]
             sequences={},
-            would_conflict=conflicting,
+            would_conflict=conflicting,  # type: ignore[arg-type]
         ),
-        id=f"copy_vs_{executing_cmd.split(' ')[1]}_{conflicting}",
+        id=f"copy_vs_{executing_cmd.split(' ')[1]}_{conflicting}",  # type: ignore[attr-defined]
     )
     for executing_cmd, conflicting in [
         ["A002 STORE 3 FLAGS unseen", True],
@@ -1626,12 +1626,12 @@ FETCH_PEEK_VS_MBOX_STATE_CMDS = [
 FETCH_VS_COPY_FETCH_STORE = [
     pytest.param(
         IMAPCommandConflictScenario(
-            imap_command=IMAPClientCommand(cmd).parse(),
-            executing_commands=[IMAPClientCommand(executing_cmd).parse()],
+            imap_command=IMAPClientCommand(cmd).parse(),  # type: ignore[arg-type]
+            executing_commands=[IMAPClientCommand(executing_cmd).parse()],  # type: ignore[arg-type]
             sequences={},
-            would_conflict=conflicting,
+            would_conflict=conflicting,  # type: ignore[arg-type]
         ),
-        id=f"fetch_{cmd.split(' ')[3]}_{executing_cmd.split(' ')[1]}_{conflicting}",
+        id=f"fetch_{cmd.split(' ')[3]}_{executing_cmd.split(' ')[1]}_{conflicting}",  # type: ignore[attr-defined]
     )
     for cmd, conflicting, executing_cmd in [
         ["A002 FETCH 3 BODY[HEADER]", True, "A001 COPY 2:4 bar"],
@@ -1664,12 +1664,12 @@ FETCH_STORE: list[tuple[bool, str]] = [
 SEARCH_SELECT_STATUS_VS_FETCH_STORE = [
     pytest.param(
         IMAPCommandConflictScenario(
-            imap_command=IMAPClientCommand(cmd).parse(),
-            executing_commands=[IMAPClientCommand(executing_cmd).parse()],
+            imap_command=IMAPClientCommand(cmd).parse(),  # type: ignore[arg-type]
+            executing_commands=[IMAPClientCommand(executing_cmd).parse()],  # type: ignore[arg-type]
             sequences={},
-            would_conflict=conflicting,
+            would_conflict=conflicting,  # type: ignore[arg-type]
         ),
-        id=f"{cmd.split(' ')[1]}_{executing_cmd.split(' ')[1]}_{conflicting}",
+        id=f"{cmd.split(' ')[1]}_{executing_cmd.split(' ')[1]}_{conflicting}",  # type: ignore[attr-defined]
     )
     for cmd, conflicting, executing_cmd in [
         [c, e[0], e[1]] for c in SEARCH_SELECT_STATUS for e in FETCH_STORE
@@ -1701,11 +1701,11 @@ STORE_VS_STORE_FETCH_COPY = [
             imap_command=IMAPClientCommand(
                 "A002 STORE 2:4 FLAGS unseen"
             ).parse(),
-            executing_commands=[IMAPClientCommand(executing_cmd).parse()],
+            executing_commands=[IMAPClientCommand(executing_cmd).parse()],  # type: ignore[arg-type]
             sequences={},
-            would_conflict=conflicting,
+            would_conflict=conflicting,  # type: ignore[arg-type]
         ),
-        id=f"copy_vs_{executing_cmd.split(' ')[1]}_{conflicting}",
+        id=f"copy_vs_{executing_cmd.split(' ')[1]}_{conflicting}",  # type: ignore[attr-defined]
     )
     for executing_cmd, conflicting in [
         ["A001 STORE 3 FLAGS unseen", True],
@@ -1738,7 +1738,7 @@ def test_would_conflict(
     scenario: IMAPCommandConflictScenario,
     mocker: MockerFixture,
     mailbox_with_bunch_of_email: Mailbox,
-):
+) -> None:
     """
     Test the variations of executing commands along with a new command to
     execute to see if the 'would conflict' or not

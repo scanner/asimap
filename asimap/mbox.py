@@ -281,7 +281,7 @@ class Mailbox:
 
     ####################################################################
     #
-    def __del__(self):
+    def __del__(self) -> None:
         """
         Make sure that the management task is cancelled on the way out.
         """
@@ -340,7 +340,7 @@ class Mailbox:
 
     ####################################################################
     #
-    async def shutdown(self, commit_db: bool = True):
+    async def shutdown(self, commit_db: bool = True) -> None:
         """
         Cancel the management task, wait for it to exit.
         Make sure any pending IMAP Tasks get told to go away.
@@ -658,7 +658,7 @@ class Mailbox:
     #
     def _maybe_extend_timeout(
         self, timeout_cm: asyncio.Timeout | None, extend: float = 10.0
-    ):
+    ) -> None:
         """
         If we have a timeout context manager and we are close to timing out,
         extend the timeout to now + extend seconds.
@@ -701,7 +701,7 @@ class Mailbox:
 
     ####################################################################
     #
-    async def management_task(self):
+    async def management_task(self) -> None:
         """
         This task will loop until it is canceled. It will pull tasks as
         many tasks from the task queue that do not conflict with each other
@@ -939,7 +939,7 @@ class Mailbox:
         self,
         notifications: str | list[str],
         dont_notify: Optional["Authenticated"] = None,
-    ):
+    ) -> None:
         """
         A helper function for sending out notifications to clients.
 
@@ -1639,7 +1639,7 @@ class Mailbox:
 
     ##################################################################
     #
-    async def update_mtime_in_db(self):
+    async def update_mtime_in_db(self) -> None:
         """
         Update only the mtime and last_resync fields in the database. Used
         when the folder check determined nothing has changed -- avoids the
@@ -1655,7 +1655,7 @@ class Mailbox:
 
     ##################################################################
     #
-    async def commit_to_db(self):
+    async def commit_to_db(self) -> None:
         """
         Write the state of the mailbox back to the database for persistent
         storage.
@@ -1737,7 +1737,7 @@ class Mailbox:
 
     ##################################################################
     #
-    def check_set_haschildren_attr(self):
+    def check_set_haschildren_attr(self) -> None:
         """
         In order to support RFC3348 we need to know if a given folder has
         children folders or not.
@@ -1875,7 +1875,7 @@ class Mailbox:
 
     ##################################################################
     #
-    def unselected(self, client_name: str):
+    def unselected(self, client_name: str) -> None:
         """
         When the client is no longer selecting/examining this mailbox.
 
@@ -2385,7 +2385,7 @@ class Mailbox:
 
     ####################################################################
     #
-    def _help_add_flag(self, key: int, flag: str):
+    def _help_add_flag(self, key: int, flag: str) -> None:
         """
         Helper function for the logic to add a message to a sequence. Updating
         both the sequences associated with the MHMessage and the sequences dict.
@@ -2402,7 +2402,7 @@ class Mailbox:
 
     ####################################################################
     #
-    def _help_remove_flag(self, key: int, flag: str):
+    def _help_remove_flag(self, key: int, flag: str) -> None:
         """
         Helper function for the logic to remove a message to a
         sequence. Updating both the sequences associated with the MHMessage and
@@ -2420,7 +2420,7 @@ class Mailbox:
 
     ####################################################################
     #
-    def _help_replace_flags(self, key: int, flags: list[str]):
+    def _help_replace_flags(self, key: int, flags: list[str]) -> None:
         r"""
         Replace the flags on the message.
         The flag `\Recent` if present is not affected.
@@ -2865,7 +2865,7 @@ class Mailbox:
     ####################################################################
     #
     @classmethod
-    async def delete(cls, name: str, server: "IMAPUserServer"):
+    async def delete(cls, name: str, server: "IMAPUserServer") -> None:
         r"""
         Delete the specified mailbox.
 
@@ -3002,7 +3002,7 @@ class Mailbox:
     @classmethod
     async def rename(
         cls, old_name: str, new_name: str, server: "IMAPUserServer"
-    ):
+    ) -> None:
         """
         Rename a mailbox from old_name to new_name.
 
@@ -3301,7 +3301,7 @@ class Mailbox:
 
 ####################################################################
 #
-async def _helper_rename_folder(mbox: Mailbox, new_name: str):
+async def _helper_rename_folder(mbox: Mailbox, new_name: str) -> None:
     """
     Breaking the logic for renaming a folder that is NOT the `inbox` out
     from the class method.
@@ -3322,7 +3322,7 @@ async def _helper_rename_folder(mbox: Mailbox, new_name: str):
     #
     async def _do_rename_folder(
         old_mbox: Mailbox, old_id: int, mbox_new_name: str
-    ):
+    ) -> None:
         """
         Helper routine for the helper routine that makes the changes to the
         db and active mailboxes once we have the mbox write lock.
@@ -3400,7 +3400,7 @@ async def _helper_rename_folder(mbox: Mailbox, new_name: str):
 
 ####################################################################
 #
-async def _helper_rename_inbox(inbox: Mailbox, new_name: str):
+async def _helper_rename_inbox(inbox: Mailbox, new_name: str) -> None:
     """
     When the `inbox` gets renamed what happens is all messages in the inbox
     get moved to the new mailbox (and removed from the inbox.)

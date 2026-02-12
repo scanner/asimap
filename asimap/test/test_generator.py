@@ -23,7 +23,7 @@ from .conftest import PROBLEMATIC_EMAIL_MSG_KEYS, STATIC_EMAIL_MSG_KEYS
 
 ####################################################################
 #
-def test_simple_email_text_generator_no_headers(email_factory):
+def test_simple_email_text_generator_no_headers(email_factory) -> None:
     for _ in range(5):
         msg = email_factory()
         msg_text = msg_as_bytes(msg, render_headers=False)
@@ -53,7 +53,7 @@ def test_simple_email_text_generator_no_headers(email_factory):
 @pytest.mark.parametrize("msg_key", STATIC_EMAIL_MSG_KEYS)
 def test_static_email_text_generator_no_headers(
     msg_key, static_email_factory_bytes
-):
+) -> None:
 
     msg = message_from_bytes(
         static_email_factory_bytes(msg_key), policy=default
@@ -78,7 +78,7 @@ def test_static_email_text_generator_no_headers(
 @pytest.mark.parametrize("msg_key", STATIC_EMAIL_MSG_KEYS)
 def test_static_email_text_generator_headers(
     msg_key, static_email_factory_bytes
-):
+) -> None:
     """
     A message with headers is the same as the default generator with
     policy=SMTP.
@@ -101,7 +101,7 @@ def test_static_email_text_generator_headers(
 @pytest.mark.parametrize("msg_key", STATIC_EMAIL_MSG_KEYS)
 def test_static_email_header_generator_all_headers(
     msg_key, static_email_factory_bytes
-):
+) -> None:
 
     msg = message_from_bytes(
         static_email_factory_bytes(msg_key), policy=default
@@ -124,7 +124,7 @@ def test_static_email_header_generator_all_headers(
 
 ####################################################################
 #
-def test_header_generator_some_headers(lots_of_headers_email):
+def test_header_generator_some_headers(lots_of_headers_email) -> None:
     """
     Test selective getting of headers.
     """
@@ -142,7 +142,7 @@ def test_header_generator_some_headers(lots_of_headers_email):
 
 ####################################################################
 #
-def test_header_generator_skip_headers(lots_of_headers_email):
+def test_header_generator_skip_headers(lots_of_headers_email) -> None:
     """
     Test selective getting of headers.
     """
@@ -244,7 +244,9 @@ Content-Type: multipart/alternative;\r
 ####################################################################
 #
 @pytest.mark.parametrize("msg_key", PROBLEMATIC_EMAIL_MSG_KEYS)
-def test_generator_problematic_email(msg_key, problematic_email_factory_bytes):
+def test_generator_problematic_email(
+    msg_key, problematic_email_factory_bytes
+) -> None:
     """
     Not all emails can be flattened out of the box without some jiggery
     pokery.  Such as messages that say they are 7-bit us-ascii but are actually

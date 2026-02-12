@@ -36,7 +36,7 @@ from typing import (
 #
 import aiofiles
 import aiofiles.os
-from aiofiles.ospath import wrap as aiofiles_wrap
+from aiofiles.ospath import wrap as aiofiles_wrap  # type: ignore[attr-defined]
 
 # Project imports
 #
@@ -663,7 +663,9 @@ def find_header_in_binary_file(fname: "StrPath", header: str) -> str | None:
 
 ####################################################################
 #
-async def update_replace_header_in_binary_file(fname: "StrPath", header: str):
+async def update_replace_header_in_binary_file(
+    fname: "StrPath", header: str
+) -> None:
     """
     This will go through the file indicating by fname, as a binary file,
     and if it encounters a line that begins with the same header as `header` it
@@ -745,7 +747,7 @@ def compact_sequence(keys: Iterable[int]) -> str:
     keys = sorted(keys)
     result = ",".join(
         as_range(g)
-        for _, g in groupby(keys, key=lambda n, c=count(): n - next(c))
+        for _, g in groupby(keys, key=lambda n, c=count(): n - next(c))  # type: ignore[misc]
     )  # '1-3,6-7,10'
 
     return result

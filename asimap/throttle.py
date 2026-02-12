@@ -60,7 +60,7 @@ logger = logging.getLogger("asimap.throttle")
 
 ####################################################################
 #
-def login_failed(user: str, addr: str):
+def login_failed(user: str, addr: str) -> None:
     """
     We had a login attempt that failed, likely due to a bad password.
     Record this attempt.

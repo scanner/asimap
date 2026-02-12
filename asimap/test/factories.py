@@ -42,6 +42,8 @@ class UserFactory(factory.Factory):
     password_hash = "!invalid_pw"  # NOTE: Fixed in post_generation below
 
     @post_generation
-    def password(self, create: bool, extracted: Sequence[Any], **kwargs):
+    def password(
+        self, create: bool, extracted: Sequence[Any], **kwargs
+    ) -> None:
         password = extracted if extracted else fake.password(length=16)
         self.pw_hash = make_password(password)

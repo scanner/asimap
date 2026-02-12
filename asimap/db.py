@@ -125,7 +125,7 @@ class Database:
 
     ##################################################################
     #
-    async def apply_migrations(self):
+    async def apply_migrations(self) -> None:
         """
         See what version the database is at and apply all migrations
         that we need to bring it up to the highest version level.
@@ -217,7 +217,7 @@ class Database:
     ####################################################################
     #
     @retry("_execute_retry_policy")
-    async def execute(self, sql: str, *args, commit=False, **kwargs):
+    async def execute(self, sql: str, *args, commit=False, **kwargs) -> None:
         """
         This is for operations that will update the db. INSERT, UPDATE,
         DELETE, etc.
@@ -232,12 +232,12 @@ class Database:
 
     ##################################################################
     #
-    async def commit(self):
+    async def commit(self) -> None:
         await self.conn.commit()
 
     ##################################################################
     #
-    async def close(self):
+    async def close(self) -> None:
         await self.conn.close()
 
 
@@ -253,7 +253,7 @@ class Database:
 #
 ####################################################################
 #
-async def initial_migration(c: aiosqlite.Connection):
+async def initial_migration(c: aiosqlite.Connection) -> None:
     await c.execute(
         "create table versions (version integer primary key, "
         "date text default CURRENT_TIMESTAMP)"
@@ -286,7 +286,7 @@ async def initial_migration(c: aiosqlite.Connection):
 
 ####################################################################
 #
-async def add_uids_to_mbox(c: aiosqlite.Connection):
+async def add_uids_to_mbox(c: aiosqlite.Connection) -> None:
     """
     Adds a uids text column to the mailbox.
     """
@@ -295,7 +295,7 @@ async def add_uids_to_mbox(c: aiosqlite.Connection):
 
 ####################################################################
 #
-async def add_last_check_time_to_mbox(c: aiosqlite.Connection):
+async def add_last_check_time_to_mbox(c: aiosqlite.Connection) -> None:
     """
     Adds a 'last checked' timestamp to the mailbox so we can know how long it
     has been since we last did a resync for a mailbox.
@@ -313,7 +313,7 @@ async def add_last_check_time_to_mbox(c: aiosqlite.Connection):
 
 ####################################################################
 #
-async def folders_can_be_subscribed(c: aiosqlite.Connection):
+async def folders_can_be_subscribed(c: aiosqlite.Connection) -> None:
     """
     Folders can be subscribed to. When they are subscribed to this bit gets set
     to true.
@@ -325,7 +325,7 @@ async def folders_can_be_subscribed(c: aiosqlite.Connection):
 
 ####################################################################
 #
-async def get_rid_of_root_folder(c: aiosqlite.Connection):
+async def get_rid_of_root_folder(c: aiosqlite.Connection) -> None:
     """
     Due to a now fixed bug in the 'find_all_folders' algorithm we were
     counting the root of the MH mailbox as a folder with an empty
@@ -339,7 +339,7 @@ async def get_rid_of_root_folder(c: aiosqlite.Connection):
 
 ####################################################################
 #
-async def add_msg_keys_to_mbox(c: aiosqlite.Connection):
+async def add_msg_keys_to_mbox(c: aiosqlite.Connection) -> None:
     """
     Adds a MH msg keys text column to the mailbox.
     """

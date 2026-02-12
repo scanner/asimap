@@ -52,8 +52,10 @@ class ASGenerator(BytesGenerator):
     #     If this works for all of our messages then we can get rid of this
     #     method and use the super class's method.
     #
-    def write(self, s):
-        self._fp.write(s.encode("ascii", "surrogateescape"))
+    def write(self, s) -> None:
+        self._fp.write(  # type: ignore[attr-defined]
+            s.encode("ascii", "surrogateescape")
+        )
 
 
 ########################################################################
@@ -75,7 +77,7 @@ class ASBytesGenerator(ASGenerator):
 
     ####################################################################
     #
-    def _write_headers(self, msg):
+    def _write_headers(self, msg) -> None:
         """
         This method exists so we can determine whether or not to write the
         headers based on the instance variable `_headers`.
@@ -88,15 +90,17 @@ class ASBytesGenerator(ASGenerator):
         if self._render_headers:
             for h, v in msg.raw_items():
                 try:
-                    self._fp.write(self.policy.fold_binary(h, v))
+                    self._fp.write(  # type: ignore[attr-defined]
+                        self.policy.fold_binary(h, v)
+                    )
                 except (UnicodeEncodeError, UnicodeDecodeError):
                     # Header has characters that can't be encoded by
                     # the policy's fold_binary. Write it raw instead.
                     #
-                    self._fp.write(
+                    self._fp.write(  # type: ignore[attr-defined]
                         f"{h}: {v}\r\n".encode("utf-8", "surrogateescape")
                     )
-            self.write(self._NL)
+            self.write(self._NL)  # type: ignore[attr-defined]
 
     ####################################################################
     #
@@ -150,11 +154,11 @@ class ASHeaderGenerator(ASGenerator):
     ):
         self._NL: str
         self._fp: BinaryIO
-        headers = [] if headers is None else headers
+        hdrs: tuple[str, ...] = () if headers is None else headers
 
         super().__init__(outfp, *args, **kwargs)
 
-        self._headers = [x.lower() for x in headers]
+        self._headers = [x.lower() for x in hdrs]
         self._skip = skip
 
     ####################################################################
@@ -164,14 +168,14 @@ class ASHeaderGenerator(ASGenerator):
             fp,
             self._mangle_from_,
             None,
-            headers=self._headers,
+            headers=tuple(self._headers),
             skip=self._skip,
             policy=self.policy,
         )
 
     ####################################################################
     #
-    def _write(self, msg):
+    def _write(self, msg) -> None:
         """
         Just like the original _write in the Generator class except
         that we do is write the headers.
@@ -193,8 +197,8 @@ class ASHeaderGenerator(ASGenerator):
         oldfp = self._fp
         try:
             self._munge_cte = None
-            self._fp = self._new_buffer()
-            self._dispatch(msg)
+            self._fp = self._new_buffer()  # type: ignore[attr-defined]
+            self._dispatch(msg)  # type: ignore[attr-defined]
         finally:
             self._fp = oldfp
             munge_cte = self._munge_cte
@@ -220,7 +224,7 @@ class ASHeaderGenerator(ASGenerator):
 
     ####################################################################
     #
-    def _write_headers(self, msg):
+    def _write_headers(self, msg) -> None:
         """
         Like the original Generator's `_write_headers`, except we may be
         asked to only send certain headers or skip certain headers.
@@ -299,7 +303,7 @@ class TextGenerator(Generator):
 
     ####################################################################
     #
-    def _write_headers(self, msg):
+    def _write_headers(self, msg) -> None:
         """
         This method exists so we can determine whether or not to write the
         headers based on the instance variable `_headers`.
@@ -382,7 +386,7 @@ class HeaderGenerator(Generator):
 
     ####################################################################
     #
-    def _write(self, msg):
+    def _write(self, msg) -> None:
         """
         Just like the original _write in the Generator class except
         that we do is write the headers.
@@ -408,11 +412,11 @@ class HeaderGenerator(Generator):
         #
         # NOTE: The new buffer (`sfp`) is going to be discarded since we are
         #       ONLY writing the headers.
-        oldfp = self._fp
+        oldfp = self._fp  # type: ignore[has-type]
         try:
             self._munge_cte = None
-            self._fp = self._new_buffer()
-            self._dispatch(msg)
+            self._fp = self._new_buffer()  # type: ignore[attr-defined]
+            self._dispatch(msg)  # type: ignore[attr-defined]
         finally:
             self._fp = oldfp
             munge_cte = self._munge_cte
@@ -437,7 +441,7 @@ class HeaderGenerator(Generator):
 
     ####################################################################
     #
-    def _write_headers(self, msg):
+    def _write_headers(self, msg) -> None:
         """
         Like the original Generator's `_write_headers`, except we may be
         asked to only send certain headers or skip certain headers.

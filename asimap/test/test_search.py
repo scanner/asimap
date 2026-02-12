@@ -26,7 +26,7 @@ from .conftest import assert_email_equal
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_search_context(mailbox_instance):
+async def test_search_context(mailbox_instance) -> None:
     """
     A fairly boring test.. just making sure the SearchContext works as
     expected without any failures.
@@ -58,7 +58,9 @@ async def test_search_context(mailbox_instance):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_search_context_with_mimekit_email(mailbox_with_mimekit_email):
+async def test_search_context_with_mimekit_email(
+    mailbox_with_mimekit_email,
+) -> None:
     """
     A fairly boring test.. just making sure the SearchContext works as
     expected without any failures.
@@ -91,7 +93,7 @@ async def test_search_context_with_mimekit_email(mailbox_with_mimekit_email):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_search_keywords(mailbox_with_bunch_of_email):
+async def test_search_keywords(mailbox_with_bunch_of_email) -> None:
     """
     Test search on keywords.
     We create a mailbox with a bunch of email in it.
@@ -140,7 +142,7 @@ async def test_search_keywords(mailbox_with_bunch_of_email):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_search_all(mailbox_with_bunch_of_email):
+async def test_search_all(mailbox_with_bunch_of_email) -> None:
     mbox = mailbox_with_bunch_of_email
     msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
@@ -160,7 +162,7 @@ async def test_search_all(mailbox_with_bunch_of_email):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_search_headers(mailbox_with_bunch_of_email):
+async def test_search_headers(mailbox_with_bunch_of_email) -> None:
     mbox = mailbox_with_bunch_of_email
     msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
@@ -209,7 +211,7 @@ async def test_search_headers(mailbox_with_bunch_of_email):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_search_sent_before_since_on(mailbox_with_bunch_of_email):
+async def test_search_sent_before_since_on(mailbox_with_bunch_of_email) -> None:
     mbox = mailbox_with_bunch_of_email
     msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
@@ -262,7 +264,7 @@ async def test_search_sent_before_since_on(mailbox_with_bunch_of_email):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_search_before_since_on(mailbox_with_bunch_of_email):
+async def test_search_before_since_on(mailbox_with_bunch_of_email) -> None:
     mbox = mailbox_with_bunch_of_email
     msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
@@ -323,7 +325,7 @@ async def test_search_before_since_on(mailbox_with_bunch_of_email):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_search_body(mailbox_with_bunch_of_email):
+async def test_search_body(mailbox_with_bunch_of_email) -> None:
     mbox = mailbox_with_bunch_of_email
     msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
@@ -380,7 +382,7 @@ async def test_search_body(mailbox_with_bunch_of_email):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_search_text(mailbox_with_bunch_of_email):
+async def test_search_text(mailbox_with_bunch_of_email) -> None:
     mbox = mailbox_with_bunch_of_email
     msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
@@ -435,7 +437,7 @@ async def test_search_text(mailbox_with_bunch_of_email):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_search_larger_smaller(mailbox_with_bunch_of_email):
+async def test_search_larger_smaller(mailbox_with_bunch_of_email) -> None:
     mbox = mailbox_with_bunch_of_email
     msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
@@ -478,7 +480,7 @@ async def test_search_larger_smaller(mailbox_with_bunch_of_email):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_search_message_set_and_not(mailbox_with_bunch_of_email):
+async def test_search_message_set_and_not(mailbox_with_bunch_of_email) -> None:
     mbox = mailbox_with_bunch_of_email
     msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
@@ -514,7 +516,7 @@ async def test_search_message_set_and_not(mailbox_with_bunch_of_email):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_search_uid(mailbox_with_bunch_of_email):
+async def test_search_uid(mailbox_with_bunch_of_email) -> None:
     mbox = mailbox_with_bunch_of_email
     msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
@@ -540,7 +542,7 @@ async def test_search_uid(mailbox_with_bunch_of_email):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_search_and_or(mailbox_with_bunch_of_email):
+async def test_search_and_or(mailbox_with_bunch_of_email) -> None:
     mbox = mailbox_with_bunch_of_email
     msg_keys = mbox.mailbox.keys()
     seq_max = len(msg_keys)
