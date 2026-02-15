@@ -11,9 +11,9 @@ import email.policy
 import logging
 import os.path
 import re
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
-from datetime import date
+from datetime import date, datetime
 from email import message_from_string
 from email.message import EmailMessage
 from enum import Enum, StrEnum
@@ -41,60 +41,60 @@ logger = logging.getLogger("asimap.parse")
 #######################################################################
 #
 class BadCommand(Exception):
-    def __init__(self, value="bad command"):
+    def __init__(self, value: str = "bad command") -> None:
         self.value = value
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"BadCommand: {self.value}"
 
 
 #######################################################################
 #
 class NoMatch(BadCommand):
-    def __init__(self, value="no match"):
+    def __init__(self, value: str = "no match") -> None:
         self.value = value
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"NoMatch: {self.value}"
 
 
 #######################################################################
 #
 class UnknownCommand(BadCommand):
-    def __init__(self, value="unknown command"):
+    def __init__(self, value: str = "unknown command") -> None:
         self.value = value
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"UnknownCommand: {self.value}"
 
 
 #######################################################################
 #
 class BadLiteral(BadCommand):
-    def __init__(self, value="bad literal"):
+    def __init__(self, value: str = "bad literal") -> None:
         self.value = value
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"BadLiteral: {self.value}"
 
 
 #######################################################################
 #
 class BadSyntax(BadCommand):
-    def __init__(self, value="bad syntax"):
+    def __init__(self, value: str = "bad syntax") -> None:
         self.value = value
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"BadSyntax: {self.value}"
 
 
 #######################################################################
 #
 class UnknownSearchKey(BadCommand):
-    def __init__(self, value="unknown search key"):
+    def __init__(self, value: str = "unknown search key") -> None:
         self.value = value
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"UnknownSearchKey: {self.value}"
 
 
@@ -454,7 +454,7 @@ class IMAPClientCommand:
     ##################################################################
     #
     @asynccontextmanager
-    async def ready_and_okay(self, mbox: "Mailbox"):
+    async def ready_and_okay(self, mbox: "Mailbox") -> AsyncIterator[None]:
         """
         Awaits the `ready` event. No matter what happens, we set the
         command to be completed before exiting.
@@ -476,7 +476,7 @@ class IMAPClientCommand:
 
     ##################################################################
     #
-    def parse(self):
+    def parse(self) -> "IMAPClientCommand":
         """
         Do the actual parsing of the IMAP command. This is separated from the
         init method so that if we hit a parsing exception the actual object
@@ -487,7 +487,7 @@ class IMAPClientCommand:
 
     ####################################################################
     #
-    def qstr(self):
+    def qstr(self) -> str:
         """
         For debugging output this gives a short string representing this
         command. Just the tag and command string (upper cased)
@@ -501,7 +501,7 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def __str__(self):
+    def __str__(self) -> str:
         result = []
         if self.tag:
             result.append(self.tag)
@@ -620,7 +620,7 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def __repr__(self):
+    def __repr__(self) -> str:
         result = "<IMAPClientCommand "
         if self.tag is not None:
             result += f"tag: '{self.tag}'"
@@ -757,7 +757,9 @@ class IMAPClientCommand:
             case IMAPCommand.UID:
                 self._p_uid()
             case _:
-                raise UnknownCommand(value=self.command)
+                raise UnknownCommand(
+                    value=self.command if self.command else "unknown"
+                )
 
     #######################################################################
     #
@@ -1107,7 +1109,7 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def _p_list_of(self, func):
+    def _p_list_of(self, func: Callable) -> list[Any]:
         """This is similar to p_paren_list_of() except that it has a slightly
         more difficult job. The elements are separated by a SPACE, yes. But
         there is no paren beginning or ending this list.
@@ -1404,7 +1406,7 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def _p_section(self):
+    def _p_section(self) -> list:
         """Fetch the "section" part of a body.
 
         section         ::= "[" [section_text / (nz_number *["." nz_number]
@@ -1488,7 +1490,7 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def _p_search_key(self):
+    def _p_search_key(self) -> IMAPSearch:
         """search_key ::= "ALL" / "ANSWERED" / "BCC" SPACE astring /
                           "BEFORE" SPACE date / "BODY" SPACE astring /
                           "CC" SPACE astring / "DELETED" / "FLAGGED" /
@@ -1566,7 +1568,7 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def is_seq_num(self, val):
+    def is_seq_num(self, val: str) -> int | str | None:
         """sequence_num ::= nz_number / "*"
 
         This function will return the sequence number passed in as val if it
@@ -1591,17 +1593,17 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def _p_srchkey_all(self):
+    def _p_srchkey_all(self) -> IMAPSearch:
         return IMAPSearch("all")
 
     #######################################################################
     #
-    def _p_srchkey_answered(self):
+    def _p_srchkey_answered(self) -> IMAPSearch:
         return IMAPSearch("keyword", keyword=r"\Answered")
 
     #######################################################################
     #
-    def _p_srchkey_bcc(self):
+    def _p_srchkey_bcc(self) -> IMAPSearch:
         self._p_simple_string(" ")
         return IMAPSearch(
             "header", header="bcc", string=self._p_astring().lower()
@@ -1609,19 +1611,19 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def _p_srchkey_before(self):
+    def _p_srchkey_before(self) -> IMAPSearch:
         self._p_simple_string(" ")
         return IMAPSearch("before", date=self._p_date())
 
     #######################################################################
     #
-    def _p_srchkey_body(self):
+    def _p_srchkey_body(self) -> IMAPSearch:
         self._p_simple_string(" ")
         return IMAPSearch("body", string=self._p_astring().lower())
 
     #######################################################################
     #
-    def _p_srchkey_cc(self):
+    def _p_srchkey_cc(self) -> IMAPSearch:
         self._p_simple_string(" ")
         return IMAPSearch(
             "header", header="cc", string=self._p_astring().lower()
@@ -1629,22 +1631,22 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def _p_srchkey_deleted(self):
+    def _p_srchkey_deleted(self) -> IMAPSearch:
         return IMAPSearch("keyword", keyword=r"\Deleted")
 
     #######################################################################
     #
-    def _p_srchkey_draft(self):
+    def _p_srchkey_draft(self) -> IMAPSearch:
         return IMAPSearch("keyword", keyword=r"\Draft")
 
     #######################################################################
     #
-    def _p_srchkey_flagged(self):
+    def _p_srchkey_flagged(self) -> IMAPSearch:
         return IMAPSearch("keyword", keyword=r"\Flagged")
 
     #######################################################################
     #
-    def _p_srchkey_from(self):
+    def _p_srchkey_from(self) -> IMAPSearch:
         self._p_simple_string(" ")
         return IMAPSearch(
             "header", header="from", string=self._p_astring().lower()
@@ -1652,7 +1654,7 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def _p_srchkey_header(self):
+    def _p_srchkey_header(self) -> IMAPSearch:
         self._p_simple_string(" ")
         header_fld_name = self._p_astring().lower()
         self._p_simple_string(" ")
@@ -1662,19 +1664,19 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def _p_srchkey_keyword(self):
+    def _p_srchkey_keyword(self) -> IMAPSearch:
         self._p_simple_string(" ")
         return IMAPSearch("keyword", keyword=self._p_re(_atom_re))
 
     #######################################################################
     #
-    def _p_srchkey_larger(self):
+    def _p_srchkey_larger(self) -> IMAPSearch:
         self._p_simple_string(" ")
         return IMAPSearch("larger", n=int(self._p_re(_number_re)))
 
     #######################################################################
     #
-    def _p_srchkey_new(self):
+    def _p_srchkey_new(self) -> IMAPSearch:
         return IMAPSearch(
             "and",
             search_key=[self._p_srchkey_recent(), self._p_srchkey_unseen()],
@@ -1682,24 +1684,24 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def _p_srchkey_not(self):
+    def _p_srchkey_not(self) -> IMAPSearch:
         self._p_simple_string(" ")
         return IMAPSearch("not", search_key=self._p_search_key())
 
     #######################################################################
     #
-    def _p_srchkey_old(self):
+    def _p_srchkey_old(self) -> IMAPSearch:
         return IMAPSearch("not", search_key=self._p_srchkey_recent())
 
     #######################################################################
     #
-    def _p_srchkey_on(self):
+    def _p_srchkey_on(self) -> IMAPSearch:
         self._p_simple_string(" ")
         return IMAPSearch("on", date=self._p_date())
 
     #######################################################################
     #
-    def _p_srchkey_or(self):
+    def _p_srchkey_or(self) -> IMAPSearch:
         self._p_simple_string(" ")
         search_key1 = self._p_search_key()
         self._p_simple_string(" ")
@@ -1708,47 +1710,47 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def _p_srchkey_recent(self):
+    def _p_srchkey_recent(self) -> IMAPSearch:
         return IMAPSearch("keyword", keyword=r"\Recent")
 
     #######################################################################
     #
-    def _p_srchkey_seen(self):
+    def _p_srchkey_seen(self) -> IMAPSearch:
         return IMAPSearch("keyword", keyword=r"\Seen")
 
     #######################################################################
     #
-    def _p_srchkey_sentbefore(self):
+    def _p_srchkey_sentbefore(self) -> IMAPSearch:
         self._p_simple_string(" ")
         return IMAPSearch("sentbefore", date=self._p_date())
 
     #######################################################################
     #
-    def _p_srchkey_senton(self):
+    def _p_srchkey_senton(self) -> IMAPSearch:
         self._p_simple_string(" ")
         return IMAPSearch("senton", date=self._p_date())
 
     #######################################################################
     #
-    def _p_srchkey_sentsince(self):
+    def _p_srchkey_sentsince(self) -> IMAPSearch:
         self._p_simple_string(" ")
         return IMAPSearch("sentsince", date=self._p_date())
 
     #######################################################################
     #
-    def _p_srchkey_since(self):
+    def _p_srchkey_since(self) -> IMAPSearch:
         self._p_simple_string(" ")
         return IMAPSearch("since", date=self._p_date())
 
     #######################################################################
     #
-    def _p_srchkey_smaller(self):
+    def _p_srchkey_smaller(self) -> IMAPSearch:
         self._p_simple_string(" ")
         return IMAPSearch("smaller", n=int(self._p_re(_number_re)))
 
     #######################################################################
     #
-    def _p_srchkey_subject(self):
+    def _p_srchkey_subject(self) -> IMAPSearch:
         self._p_simple_string(" ")
         return IMAPSearch(
             "header", header="subject", string=self._p_astring().lower()
@@ -1756,13 +1758,13 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def _p_srchkey_text(self):
+    def _p_srchkey_text(self) -> IMAPSearch:
         self._p_simple_string(" ")
         return IMAPSearch("text", string=self._p_astring().lower())
 
     #######################################################################
     #
-    def _p_srchkey_to(self):
+    def _p_srchkey_to(self) -> IMAPSearch:
         self._p_simple_string(" ")
         return IMAPSearch(
             "header", header="to", string=self._p_astring().lower()
@@ -1770,38 +1772,38 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def _p_srchkey_uid(self):
+    def _p_srchkey_uid(self) -> IMAPSearch:
         self._p_simple_string(" ")
         return IMAPSearch("uid", msg_set=self._p_msg_set())
 
     #######################################################################
     #
-    def _p_srchkey_unanswered(self):
+    def _p_srchkey_unanswered(self) -> IMAPSearch:
         return IMAPSearch("not", search_key=self._p_srchkey_answered())
 
     #######################################################################
     #
-    def _p_srchkey_undeleted(self):
+    def _p_srchkey_undeleted(self) -> IMAPSearch:
         return IMAPSearch("not", search_key=self._p_srchkey_deleted())
 
     #######################################################################
     #
-    def _p_srchkey_unflagged(self):
+    def _p_srchkey_unflagged(self) -> IMAPSearch:
         return IMAPSearch("not", search_key=self._p_srchkey_flagged())
 
     #######################################################################
     #
-    def _p_srchkey_unkeyword(self):
+    def _p_srchkey_unkeyword(self) -> IMAPSearch:
         return IMAPSearch("not", search_key=self._p_srchkey_keyword())
 
     #######################################################################
     #
-    def _p_srchkey_unseen(self):
+    def _p_srchkey_unseen(self) -> IMAPSearch:
         return IMAPSearch("not", search_key=self._p_srchkey_seen())
 
     #######################################################################
     #
-    def _p_msg_set(self) -> list:
+    def _p_msg_set(self) -> list[int | str | tuple[int | str, int | str]]:
         """sequence_num ::= nz_number / "*"
 
         * is the largest number in use.  For message sequence numbers, it is
@@ -1841,7 +1843,7 @@ class IMAPClientCommand:
         # bar are either an intger or '*'
         #
         seqs = msg_set.split(",")
-        result = []
+        result: list[int | str | tuple[int | str, int | str]] = []
         for seq_num in seqs:
             # If it is a nz positive integer or '*', then just append it to
             # our result as an integer.
@@ -1893,7 +1895,7 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def _p_date_time(self):
+    def _p_date_time(self) -> datetime:
         """date_time ::= <"> date_day_fixed "-" date_month "-" date_year
                          SPACE time SPACE zone <">
 
@@ -1915,7 +1917,7 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def _p_flag(self):
+    def _p_flag(self) -> str:
         r"""flag ::= "\Answered" / "\Flagged" / "\Deleted" /
                  "\Seen" / "\Draft" / flag_keyword / flag_extension
 
@@ -1961,7 +1963,7 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def _p_list_mailbox(self):
+    def _p_list_mailbox(self) -> str:
         """list_mailbox   ::= 1*(ATOM_CHAR / list_wildcards) / string
         list_wildcards ::= '%' / '*'
 
@@ -2004,7 +2006,7 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def _p_string_nstring_pairs(self):
+    def _p_string_nstring_pairs(self) -> tuple[str, str | None]:
         """we expect a STRING " " (NIL | STRING) pair."""
         key = self._p_string()
         self._p_simple_string(
@@ -2021,7 +2023,7 @@ class IMAPClientCommand:
 
     #######################################################################
     #
-    def _p_string(self):
+    def _p_string(self) -> str:
         """A string is either a 'quoted string' or a 'literal string'"""
         try:
             return self._p_re(_quoted_re)[1:-1]
@@ -2109,12 +2111,12 @@ class IMAPClientCommand:
     #
     def _p_simple_string(
         self,
-        string,
-        silent=False,
-        swallow=True,
-        case_matters=False,
-        syntax_error=None,
-    ):
+        string: str,
+        silent: bool = False,
+        swallow: bool = True,
+        case_matters: bool = False,
+        syntax_error: str | None = None,
+    ) -> str | None:
         """Like p_re(), this is used to parse a bit of input. However it just
         a well defined string so there is no waste time invoking a regular
         expression.

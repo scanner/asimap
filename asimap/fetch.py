@@ -160,7 +160,7 @@ class FetchAtt:
     def __init__(
         self,
         attribute: FetchOp,
-        section: list[int | str | list[str | list[str]]] | None = None,
+        section: list | None = None,
         partial: tuple[int, int] | None = None,
         peek: bool = False,
         ext_data: bool = True,
@@ -268,7 +268,7 @@ class FetchAtt:
                         case FetchOp.BODY:
                             result = self.body(
                                 msg,
-                                self.section,  # type: ignore[arg-type]
+                                self.section,
                             )
                         case FetchOp.BODYSTRUCTURE:
                             result = self.bodystructure(msg)
