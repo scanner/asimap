@@ -14,7 +14,7 @@ from email.generator import BytesGenerator, Generator
 from email.message import Message
 from email.policy import HTTP, SMTP, EmailPolicy, Policy
 from io import BytesIO, StringIO
-from typing import BinaryIO, TextIO
+from typing import Any, BinaryIO, TextIO
 
 logger = logging.getLogger("asimap.generator")
 
@@ -31,7 +31,7 @@ class ASGenerator(BytesGenerator):
 
     ####################################################################
     #
-    def __init__(self, outfp: BinaryIO, *args, **kwargs):
+    def __init__(self, outfp: BinaryIO, *args: Any, **kwargs: Any) -> None:
         self._mangle_from_: bool
         self.policy: EmailPolicy
 
@@ -52,7 +52,7 @@ class ASGenerator(BytesGenerator):
     #     If this works for all of our messages then we can get rid of this
     #     method and use the super class's method.
     #
-    def write(self, s) -> None:
+    def write(self, s: str) -> None:
         self._fp.write(  # type: ignore[attr-defined]
             s.encode("ascii", "surrogateescape")
         )
@@ -70,14 +70,18 @@ class ASBytesGenerator(ASGenerator):
     ####################################################################
     #
     def __init__(
-        self, outfp: BinaryIO, *args, render_headers: bool = False, **kwargs
-    ):
+        self,
+        outfp: BinaryIO,
+        *args: Any,
+        render_headers: bool = False,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(outfp, *args, **kwargs)
         self._render_headers = render_headers
 
     ####################################################################
     #
-    def _write_headers(self, msg) -> None:
+    def _write_headers(self, msg: Message) -> None:
         """
         This method exists so we can determine whether or not to write the
         headers based on the instance variable `_headers`.
@@ -104,7 +108,9 @@ class ASBytesGenerator(ASGenerator):
 
     ####################################################################
     #
-    def clone(self, fp, render_headers=True):
+    def clone(  # type: ignore[override]
+        self, fp: BinaryIO, render_headers: bool = True
+    ) -> "ASBytesGenerator":
         """
         When a message is being flattened the Generator is cloned for each
         sub-part. We want all sub-parts to have their headers generated, thus
@@ -147,11 +153,11 @@ class ASHeaderGenerator(ASGenerator):
     def __init__(
         self,
         outfp: BinaryIO,
-        *args,
+        *args: Any,
         headers: tuple[str, ...] | None = None,
         skip: bool = True,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         self._NL: str
         self._fp: BinaryIO
         hdrs: tuple[str, ...] = () if headers is None else headers
@@ -163,7 +169,7 @@ class ASHeaderGenerator(ASGenerator):
 
     ####################################################################
     #
-    def clone(self, fp):
+    def clone(self, fp: BinaryIO) -> "ASHeaderGenerator":  # type: ignore[override]
         return self.__class__(
             fp,
             self._mangle_from_,
@@ -175,7 +181,7 @@ class ASHeaderGenerator(ASGenerator):
 
     ####################################################################
     #
-    def _write(self, msg) -> None:
+    def _write(self, msg: Message) -> None:
         """
         Just like the original _write in the Generator class except
         that we do is write the headers.
@@ -224,7 +230,7 @@ class ASHeaderGenerator(ASGenerator):
 
     ####################################################################
     #
-    def _write_headers(self, msg) -> None:
+    def _write_headers(self, msg: Message) -> None:
         """
         Like the original Generator's `_write_headers`, except we may be
         asked to only send certain headers or skip certain headers.
@@ -268,7 +274,9 @@ class ASHeaderGenerator(ASGenerator):
 ############################################################################
 #
 class TextGenerator(Generator):
-    def __init__(self, outfp: TextIO, *args, headers: bool = False, **kwargs):
+    def __init__(
+        self, outfp: TextIO, *args: Any, headers: bool = False, **kwargs: Any
+    ) -> None:
         """
         This is a special purpose message generator.
 
@@ -303,7 +311,7 @@ class TextGenerator(Generator):
 
     ####################################################################
     #
-    def _write_headers(self, msg) -> None:
+    def _write_headers(self, msg: Message) -> None:
         """
         This method exists so we can determine whether or not to write the
         headers based on the instance variable `_headers`.
@@ -313,7 +321,9 @@ class TextGenerator(Generator):
 
     ####################################################################
     #
-    def clone(self, fp, headers=True):
+    def clone(  # type: ignore[override]
+        self, fp: TextIO, headers: bool = True
+    ) -> "TextGenerator":
         """
         When a message is being flattened the Generator is cloned for each
         sub-part. We want all sub-parts to have their headers generated, thus
@@ -351,11 +361,11 @@ class HeaderGenerator(Generator):
     def __init__(
         self,
         outfp: TextIO,
-        *args,
+        *args: Any,
         headers: list[str] | None = None,
         skip: bool = True,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         self._mangle_from_: bool
         self.policy: Policy
         self._NL: str
@@ -374,7 +384,7 @@ class HeaderGenerator(Generator):
 
     ####################################################################
     #
-    def clone(self, fp):
+    def clone(self, fp: TextIO) -> "HeaderGenerator":  # type: ignore[override]
         return self.__class__(
             fp,
             self._mangle_from_,
@@ -386,7 +396,7 @@ class HeaderGenerator(Generator):
 
     ####################################################################
     #
-    def _write(self, msg) -> None:
+    def _write(self, msg: Message) -> None:
         """
         Just like the original _write in the Generator class except
         that we do is write the headers.
@@ -441,7 +451,7 @@ class HeaderGenerator(Generator):
 
     ####################################################################
     #
-    def _write_headers(self, msg) -> None:
+    def _write_headers(self, msg: Message) -> None:
         """
         Like the original Generator's `_write_headers`, except we may be
         asked to only send certain headers or skip certain headers.
@@ -473,7 +483,7 @@ class HeaderGenerator(Generator):
 
 ####################################################################
 #
-def _msg_as_string(msg: Message, headers: bool = True):
+def _msg_as_string(msg: Message, headers: bool = True) -> str:
     """
     Instead of having to create the StringIO, TextGenerator, call flatten
     and return the contents fo the StringIO we wrap all those in this

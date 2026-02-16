@@ -470,9 +470,9 @@ class PBKDF2PasswordHasher(BasePasswordHasher):
     iterations = 720000
     digest = hashlib.sha256
 
-    def encode(
+    def encode(  # type: ignore[override]
         self, password: str, salt: str | bytes, iterations: int | None = None
-    ) -> str:  # type: ignore[override]
+    ) -> str:
         self._check_encode_args(password, salt)
         iterations = iterations or self.iterations
         hash = pbkdf2(password, salt, iterations, digest=self.digest)  # type: ignore[misc]
