@@ -20,7 +20,7 @@ import re
 import stat
 import sys
 import time
-from collections.abc import Iterable, Iterator
+from collections.abc import AsyncIterator, Callable, Iterable, Iterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from itertools import count, groupby
@@ -111,7 +111,7 @@ class UpgradeableReadWriteLock:
 
     ##################################################################
     #
-    def __init__(self):
+    def __init__(self) -> None:
         self._read_ready = asyncio.Condition()
 
         # How many read locks are currently held.
@@ -185,7 +185,7 @@ class UpgradeableReadWriteLock:
     #     (We could do the same with write locks?)
     #
     @asynccontextmanager
-    async def read_lock(self):
+    async def read_lock(self) -> AsyncIterator[None]:
         cur_task = asyncio.current_task()
         assert cur_task  # Can not use the lock outside of asyncio.
 
@@ -211,7 +211,7 @@ class UpgradeableReadWriteLock:
     ####################################################################
     #
     @asynccontextmanager
-    async def write_lock(self):
+    async def write_lock(self) -> AsyncIterator[None]:
         """
         Upgrade a read lock to a read/write lock. This MUST ONLY be called
         when you already have a readlock, otherwise the logic will not work.
@@ -334,7 +334,7 @@ def setup_logging(
     username: str | None = None,
     remote_addr: str | None = None,
     trace_dir: Optional["StrPath"] = None,
-):
+) -> None:
     """
     Set up the logger. We log either to files in 'logdir'
     or to stderr.
@@ -354,7 +354,7 @@ def setup_logging(
     LOGGED_IN_USER = username if username else "no_user"
     old_factory = logging.getLogRecordFactory()
 
-    def log_record_factory(*args, **kwargs):
+    def log_record_factory(*args: Any, **kwargs: Any) -> logging.LogRecord:
         """
         We add a log record factory to our logging system so that we can
         add as a fundamental part of our log records the logged in user and
@@ -515,7 +515,7 @@ def sequence_set_to_list(
     seq_set: MsgSet,
     seq_max: int,
     uid_cmd: bool = False,
-):
+) -> list[int]:
     """
     Convert a squence set in to a list of numbers.
 
@@ -610,15 +610,15 @@ def get_uidvv_uid(hdr: str) -> tuple:
 
 ####################################################################
 #
-def with_timeout(t: int):
+def with_timeout(t: int) -> Callable[..., Any]:
     """
     A decorator that makes sure that the wrapped async function times out
     after the specified delay in seconds. Raises the asyncio.TimeoutError
     exception.
     """
 
-    def wrapper(corofunc):
-        async def run(*args, **kwargs):
+    def wrapper(corofunc: Callable[..., Any]) -> Callable[..., Any]:
+        async def run(*args: Any, **kwargs: Any) -> Any:
             async with asyncio.timeout(t):
                 return await corofunc(*args, **kwargs)
 

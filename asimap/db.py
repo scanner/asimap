@@ -25,8 +25,9 @@ import logging
 import os.path
 import re
 import sqlite3
+from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 # 3rd party imports
 #
@@ -49,7 +50,7 @@ USED_REGEXPS: dict[str, re.Pattern] = {}
 
 ####################################################################
 #
-def regexp(expr, item):
+def regexp(expr: str, item: str) -> bool | None:
     """
     sqlite supports a regexp syntax but needs us to supply the function to
     use. This is that function.
@@ -66,7 +67,7 @@ def regexp(expr, item):
             USED_REGEXPS[expr] = reg
         return reg.search(item) is not None
     except Exception as e:
-        logger.error(f"exception: {e}")
+        logger.error("exception: %r", e)
     return None
 
 
@@ -138,7 +139,8 @@ class Database:
             row = await self.fetchone(
                 "SELECT version FROM versions ORDER BY version DESC LIMIT 1"
             )
-            version = int(row[0]) + 1
+            if row:
+                version = int(row[0]) + 1
         except aiosqlite.OperationalError as e:
             # if we have no versions table then our first migration is 0.
             #
@@ -160,7 +162,9 @@ class Database:
 
     ####################################################################
     #
-    async def fetchone(self, sql: str, *args, **kwargs):
+    async def fetchone(
+        self, sql: str, *args: Any, **kwargs: Any
+    ) -> sqlite3.Row | None:
         """
         Sometimes we want just the first row of a query. This helper makes
         that simpler.
@@ -174,10 +178,13 @@ class Database:
         async with self.conn.execute(sql, *args, **kwargs) as cursor:
             async for row in cursor:
                 return row
+        return None
 
     ####################################################################
     #
-    async def query(self, sql: str, *args, **kwargs):
+    async def query(
+        self, sql: str, *args: Any, **kwargs: Any
+    ) -> AsyncIterator[sqlite3.Row]:
         """
         An async context manager that yields the rows from the query.
 
@@ -217,7 +224,9 @@ class Database:
     ####################################################################
     #
     @retry("_execute_retry_policy")
-    async def execute(self, sql: str, *args, commit=False, **kwargs) -> None:
+    async def execute(
+        self, sql: str, *args: Any, commit: bool = False, **kwargs: Any
+    ) -> None:
         """
         This is for operations that will update the db. INSERT, UPDATE,
         DELETE, etc.

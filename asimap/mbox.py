@@ -1564,6 +1564,7 @@ class Mailbox:
                 results = await self.server.db.fetchone(
                     "SELECT id FROM mailboxes WHERE name=?", (self.name,)
                 )
+                assert results
                 self.id = results[0]
 
                 # For every sequence we store it in the db also so we can later
@@ -2625,8 +2626,8 @@ class Mailbox:
                     copy_msgs.append((msg_path, msg_seqs, mtime))
                     with open(msg_path, "wb") as f:
                         f.write(msg)
-                    uid_vv, uid = self.get_uid_from_msg(msg_key)
-                    src_uids.append(uid)
+                    _, src_uid = self.get_uid_from_msg(msg_key)
+                    src_uids.append(src_uid)
                     await asyncio.sleep(0)
             finally:
                 # The part of the IMAP Command that has any relation to the src
@@ -2744,8 +2745,8 @@ class Mailbox:
                     # dst_uids refer to the correct messages.
                     #
                     for k in dst_msg_keys:
-                        uid_vv, uid = dst_mbox.get_uid_from_msg(k)
-                        dst_uids.append(uid)
+                        _, dst_uid = dst_mbox.get_uid_from_msg(k)
+                        dst_uids.append(dst_uid)
             finally:
                 append_imap_cmd.completed = True
         return src_uids, dst_uids

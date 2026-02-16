@@ -394,7 +394,7 @@ class BaseClientHandler:
 
     ##################################################################
     #
-    async def unceremonious_bye(self, msg) -> None:
+    async def unceremonious_bye(self, msg: str) -> None:
         """
         Sometimes we hit a state where we can not easily recover while a client
         is connected. Frequently for clients that are in 'select' on a
@@ -516,7 +516,7 @@ class BaseClientHandler:
 
     #########################################################################
     #
-    async def do_idle(self, cmd: IMAPClientCommand):
+    async def do_idle(self, cmd: IMAPClientCommand) -> bool:
         """
         The idle command causes the server to wait until the client sends
         us a 'DONE' continuation. During that time the client can not send
@@ -741,8 +741,8 @@ class Authenticated(BaseClientHandler):
     async def do_select(
         self,
         cmd: IMAPClientCommand,
-        examine=False,
-    ):
+        examine: bool = False,
+    ) -> str | None:
         """
         Select a folder, enter in to 'selected' mode.
 
@@ -775,7 +775,7 @@ class Authenticated(BaseClientHandler):
                         await self.unceremonious_bye(
                             "You are SELECT'ing the same mailbox too often."
                         )
-                        return
+                        return None
 
                 else:
                     self.select_while_selected_count = 0
@@ -831,7 +831,7 @@ class Authenticated(BaseClientHandler):
 
     #########################################################################
     #
-    async def do_examine(self, cmd: IMAPClientCommand):
+    async def do_examine(self, cmd: IMAPClientCommand) -> str | None:
         """
         examine a specific mailbox (just like select, but read only)
         """
@@ -1161,7 +1161,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_append(self, cmd: IMAPClientCommand):
+    async def do_append(self, cmd: IMAPClientCommand) -> str:
         """
         Append a message to a mailbox.
 
@@ -1547,7 +1547,7 @@ class Authenticated(BaseClientHandler):
 
     ##################################################################
     #
-    async def do_copy(self, cmd: IMAPClientCommand):
+    async def do_copy(self, cmd: IMAPClientCommand) -> str | None:
         """
         Copy the given set of messages to the destination mailbox.
 
@@ -1568,7 +1568,7 @@ class Authenticated(BaseClientHandler):
             await self.unceremonious_bye(
                 "Your selected mailbox no longer exists"
             )
-            return
+            return None
 
         await self.send_pending_notifications()
 
