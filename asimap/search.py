@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from email.message import EmailMessage
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 # asimap imports
 #
@@ -29,10 +29,10 @@ logger = logging.getLogger("asimap.search")
 ############################################################################
 #
 class BadSearchOp(Exception):
-    def __init__(self, value="bad search operation"):
+    def __init__(self, value: str = "bad search operation"):
         self.value = value
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"BadSearchOp: {self.value}"
 
 
@@ -218,7 +218,7 @@ class IMAPSearch:
 
     #########################################################################
     #
-    def __init__(self, op, **kwargs):
+    def __init__(self, op: str, **kwargs: Any):
         """This sets up the IMAPSearch object. It must be given at least the
         'search operation' keyword and a bunch of keyword arguments that are
         required for that search operation.
@@ -231,12 +231,12 @@ class IMAPSearch:
 
     #########################################################################
     #
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"IMAPSearch, operation: {self.op.value}"
 
     #########################################################################
     #
-    def __str__(self):
+    def __str__(self) -> str:
         result = [f"IMAPSearch('{self.op.value}'"]
         match self.op:
             case SearchOp.AND | SearchOp.OR:

@@ -116,7 +116,7 @@ class IMAPSubprocess:
 
     ##################################################################
     #
-    def __str__(self):
+    def __str__(self) -> str:
         if self.has_port.is_set():
             return (
                 f"IMAPSubprocess, user: {self.user.username}, port: {self.port}"
@@ -383,7 +383,7 @@ class IMAPServer:
 
     ####################################################################
     #
-    def client_done(self, task) -> None:
+    def client_done(self, task: asyncio.Task) -> None:
         """
         When the asyncio task represented by the IMAPClient has
         exited this call back is invoked.
@@ -455,7 +455,7 @@ class IMAPClient:
 
     ####################################################################
     #
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{type(self)}:{self.name}"
 
     ####################################################################
@@ -651,7 +651,7 @@ class IMAPSubprocessInterface:
 
     ##################################################################
     #
-    def log_string(self):
+    def log_string(self) -> str:
         """
         A bit of DRY: returns a string with common information that we like to
         have in our log messages.
@@ -787,6 +787,7 @@ class IMAPSubprocessInterface:
         match self.client_handler.state:
             case "authenticated":
                 try:
+                    assert self.client_handler.user is not None
                     await self.get_and_connect_subprocess(
                         self.client_handler.user
                     )
@@ -826,7 +827,7 @@ class IMAPSubprocessInterface:
 
     ##################################################################
     #
-    async def get_and_connect_subprocess(self, user) -> None:
+    async def get_and_connect_subprocess(self, user: PWUser) -> None:
         """
         At this point the IMAP client has authenticated to us and we know what
         user they authenticated as. We need to see if there is an existing

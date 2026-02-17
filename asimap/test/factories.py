@@ -43,7 +43,7 @@ class UserFactory(factory.Factory):
 
     @post_generation
     def password(
-        self, create: bool, extracted: Sequence[Any], **kwargs
+        self, create: bool, extracted: Sequence[Any], **kwargs: Any
     ) -> None:
         password = str(extracted) if extracted else fake.password(length=16)
         self.pw_hash = make_password(password)

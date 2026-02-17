@@ -13,11 +13,15 @@ import logging
 from email.header import Header
 from email.message import EmailMessage, Message
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 # asimap imports
 #
 from .constants import seq_to_flag
 from .exceptions import Bad
+
+if TYPE_CHECKING:
+    from .search import SearchContext
 
 # from .generator import msg_as_string, msg_headers_as_string
 from .generator import msg_as_bytes, msg_headers_as_bytes
@@ -33,10 +37,10 @@ type MsgSectionType = list[int | str | list[str | list[str]]] | None
 ############################################################################
 #
 class BadSection(Bad):
-    def __init__(self, value="bad 'section'"):
+    def __init__(self, value: str = "bad 'section'"):
         self.value = value
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"BadSection: {self.value}"
 
 
@@ -184,7 +188,7 @@ class FetchAtt:
 
     #######################################################################
     #
-    def __repr__(self):
+    def __repr__(self) -> str:
         result = [f"FetchAtt({self.attribute.value}"]
         if self.section:
             result.append(f"[{self.section}]")
@@ -204,7 +208,7 @@ class FetchAtt:
 
     ##################################################################
     #
-    def dbg(self, show_peek=False) -> str:
+    def dbg(self, show_peek: bool = False) -> str:
         """
         Arguments:
         - `show_peek`: Show if this is a .PEEK or not. This is
@@ -238,7 +242,7 @@ class FetchAtt:
 
     #######################################################################
     #
-    def fetch(self, ctx) -> bytes:
+    def fetch(self, ctx: "SearchContext") -> bytes:
         r"""
         This method applies fetch criteria that this object represents
         to the message and message entry being passed in.

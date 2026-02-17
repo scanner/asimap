@@ -26,6 +26,7 @@ from statistics import fmean, median, stdev
 from tempfile import TemporaryDirectory
 from typing import (
     TYPE_CHECKING,
+    Any,
     Optional,
     cast,
 )
@@ -108,7 +109,7 @@ def intersect(a: IMAPClientCommand, b: IMAPClientCommand) -> bool:
 ##################################################################
 #
 class MailboxException(No):
-    def __init__(self, value="no"):
+    def __init__(self, value: str = "no"):
         self.value = value
 
 
@@ -300,7 +301,7 @@ class Mailbox:
     ####################################################################
     #
     @classmethod
-    async def new(cls, *args, **kwargs) -> "Mailbox":
+    async def new(cls, *args: Any, **kwargs: Any) -> "Mailbox":
         """
         We can not have __init__() be an async function, yet we need to do
         some async operations when we instantiate a mailbox. This code is for
@@ -821,7 +822,7 @@ class Mailbox:
 
     ####################################################################
     #
-    def __str__(self):
+    def __str__(self) -> str:
         return (
             f"<Mailbox: '{self.name}', num clients: {len(self.clients)}, "
             f"num msgs: {self.num_msgs}>"
@@ -2531,7 +2532,7 @@ class Mailbox:
         dst_mbox: "Mailbox",
         uid_command: bool = False,
         imap_cmd: IMAPClientCommand | None = None,
-    ):
+    ) -> tuple[list[int | None], list[int | None]]:
         r"""
         Copy the messages in msg_set to the destination mailbox.  Flags
         (sequences), and internal date are preserved.  Messages get the

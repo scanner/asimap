@@ -5,6 +5,8 @@ Test our asyncio sqlite db
 # system imports
 #
 import asyncio
+from collections.abc import AsyncGenerator
+from pathlib import Path
 
 # 3rd party imports
 #
@@ -19,7 +21,7 @@ from ..db import Database
 ####################################################################
 #
 @pytest_asyncio.fixture
-async def db(tmp_path):
+async def db(tmp_path: Path) -> AsyncGenerator[Database, None]:
     """
     Fixture that sets up a asimap sqlite db in a temp dir.
     """
@@ -37,7 +39,7 @@ async def db(tmp_path):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_db_init_migrate(db) -> None:
+async def test_db_init_migrate(db: Database) -> None:
     """
     This actually tests all of the db methods so until we need to test
     something more complex this is good enough unit test for the Database and

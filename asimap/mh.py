@@ -13,7 +13,7 @@ import stat
 from contextlib import asynccontextmanager
 from mailbox import NoSuchMailboxError, _lock_file  # type: ignore[attr-defined]
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 # 3rd party imports
 #
@@ -23,6 +23,10 @@ import aiofiles.os
 # from charset_normalizer import from_bytes
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator, Callable
+    from email.message import EmailMessage
+    from typing import IO
+
     from _typeshed import StrPath
 
 LINESEP = str(mailbox.linesep, "ascii")
@@ -55,26 +59,34 @@ class MH(mailbox.MH):
 
     ####################################################################
     #
-    def __init__(self, path: "StrPath", factory=None, create=True):
+    def __init__(
+        self,
+        path: "StrPath",
+        factory: "Callable[[IO[Any]], EmailMessage] | None" = None,
+        create: bool = True,
+    ):
         self._locked: bool = False
         path = str(path)
-        super().__init__(path, factory=factory, create=create)
+        super().__init__(path, factory=factory, create=create)  # type: ignore[arg-type]
 
     ####################################################################
     #
-    def get_folder(self, folder: "StrPath"):
+    def get_folder(self, folder: "StrPath") -> "MH":
         """Return an MH instance for the named folder."""
         return MH(
             os.path.join(self._path, str(folder)),
-            factory=self._factory,
+            factory=self._factory,  # type: ignore[arg-type]
             create=False,
         )
 
     ####################################################################
     #
-    def add_folder(self, folder: "StrPath"):
+    def add_folder(self, folder: "StrPath") -> "MH":
         """Create a folder and return an MH instance representing it."""
-        return MH(os.path.join(self._path, str(folder)), factory=self._factory)
+        return MH(
+            os.path.join(self._path, str(folder)),
+            factory=self._factory,  # type: ignore[arg-type]
+        )
 
     ####################################################################
     #
@@ -115,7 +127,7 @@ class MH(mailbox.MH):
         self,
         timeout: int | float = 2,
         fail: bool = False,
-    ):
+    ) -> "AsyncIterator[None]":
         """
         Implement an asyncio contextmanager for locking a folder.  This
         only protects against other _processes_ that obey the advisory locking.

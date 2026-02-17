@@ -71,7 +71,7 @@ def flags_to_seqs(flags: list[str] | None) -> list[str]:
 
 ####################################################################
 #
-def flag_to_seq(flag):
+def flag_to_seq(flag: str) -> str:
     """
     Map an IMAP flag to an mh sequence name. This basically sees if the flag
     is one we need to translate or not.

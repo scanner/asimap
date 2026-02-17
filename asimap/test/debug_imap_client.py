@@ -22,7 +22,7 @@ import tarfile
 
 ####################################################################
 #
-def cleanup_test_mode_dir(test_mode_dir) -> None:
+def cleanup_test_mode_dir(test_mode_dir: str) -> None:
     """
     Set up the 'test_mode' mail directory. Clean out any messages it
     may have from previous runs
@@ -76,7 +76,9 @@ def cleanup_test_mode_dir(test_mode_dir) -> None:
 
 ####################################################################
 #
-def do_baked_appends(test_mode_dir, imap, mbox_name) -> None:
+def do_baked_appends(
+    test_mode_dir: str, imap: imaplib.IMAP4, mbox_name: str
+) -> None:
     """
     Look for a tar file in the test mode directory for the given
     mailbox that contains messages we want to send to the IMAP server
@@ -105,7 +107,7 @@ def do_baked_appends(test_mode_dir, imap, mbox_name) -> None:
 
 ####################################################################
 #
-def dump_all_messages(imap) -> None:
+def dump_all_messages(imap: imaplib.IMAP4) -> None:
     """
     Search and dump all the messages in the currently selected mailbox
     Keyword Arguments:
