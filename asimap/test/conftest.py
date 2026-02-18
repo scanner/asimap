@@ -9,7 +9,7 @@ import imaplib
 import ssl
 import threading
 import time
-from collections.abc import Callable, Generator, Iterable
+from collections.abc import AsyncGenerator, Callable, Generator, Iterable
 from email import message_from_bytes
 from email.header import decode_header
 from email.headerregistry import Address
@@ -27,11 +27,14 @@ from typing import (
 import pytest
 import pytest_asyncio
 import trustme
+from faker import Faker
+from pytest_mock import MockerFixture
 
 # project imports
 #
 import asimap.auth
 
+from ..mbox import Mailbox
 from ..server import IMAPClient, IMAPServer
 from ..user_server import (
     IMAPClientProxy,
@@ -170,7 +173,7 @@ def assert_email_equal(
 ####################################################################
 #
 @pytest.fixture(scope="session")
-def ssl_certs():
+def ssl_certs() -> tuple[trustme.CA, Any]:
     """
     Creates certificates using `trustme`. What is returned is a tuple of a
     `trustme.CA()` instance, and the `trustme` issued server cert.
@@ -183,7 +186,7 @@ def ssl_certs():
 ####################################################################
 #
 @pytest.fixture(autouse=True)
-def mailbox_dir(tmp_path):
+def mailbox_dir(tmp_path: Path) -> Generator[Path, None, None]:
     """
     The directory all of the mail dirs will be in for our tests
     """
@@ -195,9 +198,11 @@ def mailbox_dir(tmp_path):
 ####################################################################
 #
 @pytest.fixture
-def user_factory(mailbox_dir):
-    def make_user(*args, **kwargs):
-        user = UserFactory(*args, **kwargs)
+def user_factory(
+    mailbox_dir: Path,
+) -> Generator[Callable[..., asimap.auth.PWUser], None, None]:
+    def make_user(*args: Any, **kwargs: Any) -> asimap.auth.PWUser:
+        user: asimap.auth.PWUser = UserFactory(*args, **kwargs)
         if "maildir" not in kwargs:
             maildir = mailbox_dir / user.username
             maildir.mkdir(parents=True, exist_ok=True)
@@ -214,17 +219,19 @@ def user_factory(mailbox_dir):
 ####################################################################
 #
 @pytest.fixture
-def password_file_factory(tmp_path):
+def password_file_factory(
+    tmp_path: Path,
+) -> Generator[Callable[[list[asimap.auth.PWUser]], Path], None, None]:
     """
     Returns a function that when called will create a password file and
     setup the auth module to use it, given the users it is called with.
     """
 
-    def make_pw_file(users: list[asimap.auth.PWUser]):
+    def make_pw_file(users: list[asimap.auth.PWUser]) -> Path:
         pw_file_location = tmp_path / "asimap_pwfile.txt"
         accounts = {x.username: x for x in users}
         asimap.auth.write_pwfile(pw_file_location, accounts)
-        asimap.auth.PW_FILE_LOCATION = pw_file_location
+        asimap.auth.PW_FILE_LOCATION = str(pw_file_location)
         return pw_file_location
 
     orig_location = asimap.auth.PW_FILE_LOCATION
@@ -235,7 +242,7 @@ def password_file_factory(tmp_path):
 ####################################################################
 #
 @pytest.fixture
-def email_factory(faker: Any) -> EmailFactoryType:
+def email_factory(faker: Faker) -> EmailFactoryType:
     """
     Returns a factory that creates email.message.EmailMessages
 
@@ -282,12 +289,12 @@ def email_factory(faker: Any) -> EmailFactoryType:
 #
 @pytest.fixture
 def imap_server(
-    faker,
-    ssl_certs,
-    user_factory,
-    password_file_factory,
-    bunch_of_email_in_folder,
-):
+    faker: Faker,
+    ssl_certs: tuple[Any, Any],
+    user_factory: Callable[..., asimap.auth.PWUser],
+    password_file_factory: Callable[[list[asimap.auth.PWUser]], Path],
+    bunch_of_email_in_folder: Callable[..., Path],
+) -> Generator[dict[str, Any], None, None]:
     """
     Starts an IMAP Server in a separate thread and yields an imaplib client
     connected to that server (along with other data like username, password,
@@ -309,7 +316,7 @@ def imap_server(
     ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
     server_cert.configure_cert(ssl_context)
     # XXX incorrect args.. pwfile is not password to the IMAPServer.
-    server = IMAPServer(host, port, ssl_context, pw_file, debug=True)
+    server = IMAPServer(host, port, ssl_context, pw_file, debug=True)  # type: ignore[arg-type]
 
     ############################
     #
@@ -357,7 +364,7 @@ def imap_user_server_program() -> None:
 ####################################################################
 #
 @pytest.fixture
-def mock_time(mocker):
+def mock_time(mocker: MockerFixture) -> Any:
     """
     in the throttle module mock out `time.time()` to return the values we
     want it to.
@@ -380,7 +387,9 @@ def mh_folder(
     Create the Mail dir and the inbox dir inside that mail dir.
     """
 
-    def mk_folder(folder: str = "inbox", mh_dir: Path | None = None):
+    def mk_folder(
+        folder: str = "inbox", mh_dir: Path | None = None
+    ) -> tuple[Path, MH, MH]:
         mh_dir = tmp_path / "Mail" if mh_dir is None else mh_dir
         mh = MH(mh_dir)
         m_folder = mh.add_folder(folder)
@@ -393,7 +402,7 @@ def mh_folder(
 #
 @pytest.fixture
 def incr_email(
-    faker: Generator,
+    faker: Faker,
     email_factory: EmailFactoryType,
     mh_folder: Callable[[str, Path | None], tuple[Path, MH, MH]],
     mh_dir: Path | None = None,
@@ -426,7 +435,7 @@ def incr_email(
 def bunch_of_email_in_folder(
     email_factory: EmailFactoryType,
     mh_folder: Callable[[str, Path | None], tuple[Path, MH, MH]],
-):
+) -> Callable[..., Path]:
     """
     Create a function that will create a specified number of emails in the
     specified folder. You can also supply a function that generates the keys to
@@ -440,7 +449,7 @@ def bunch_of_email_in_folder(
         folder: str = "inbox",
         sequence: list | tuple | Iterable | None = None,
         mh_dir: Path | None = None,
-    ):
+    ) -> Path:
         (mh_dir, _, m_folder) = mh_folder(folder, mh_dir)
         set_msgs_by_seq = True
         if sequence is None:
@@ -476,7 +485,9 @@ def bunch_of_email_in_folder(
 ####################################################################
 #
 @pytest_asyncio.fixture
-async def imap_user_server(mh_folder):
+async def imap_user_server(
+    mh_folder: Callable[..., tuple[Path, MH, MH]],
+) -> AsyncGenerator[IMAPUserServer, None]:
     """
     The Mailbox tests need to create a mailbox instance, which needs an
     IMAPUserServer.
@@ -492,7 +503,9 @@ async def imap_user_server(mh_folder):
 ####################################################################
 #
 @pytest_asyncio.fixture
-async def imap_client_proxy(faker, mocker, imap_user_server):
+async def imap_client_proxy(
+    faker: Faker, mocker: MockerFixture, imap_user_server: IMAPUserServer
+) -> Callable[..., Any]:
     """
     Creates an IMAPClientProxy object that can be used by our client handlers
     for tests.
@@ -521,7 +534,7 @@ async def imap_client_proxy(faker, mocker, imap_user_server):
     # XXX If we cared we should probably attach it to a text file or find
     #     someway to attach it to a text buffer.
     #
-    async def _make_imap_client_proxy():
+    async def _make_imap_client_proxy() -> IMAPClientProxy:
         rem_addr = "127.0.0.1"
         port = faker.pyint(min_value=1024, max_value=65535)
         name = f"{rem_addr}:{port}"
@@ -559,7 +572,10 @@ async def imap_client_proxy(faker, mocker, imap_user_server):
 ####################################################################
 #
 @pytest_asyncio.fixture
-async def imap_user_server_and_client(imap_user_server, imap_client_proxy):
+async def imap_user_server_and_client(
+    imap_user_server: IMAPUserServer,
+    imap_client_proxy: Callable[..., Any],
+) -> AsyncGenerator[tuple[IMAPUserServer, IMAPClientProxy], None]:
     """
     when doing simple client tests we only need one IMAPClientProxy so this
     fixture makes our tests a teeny bit simpler if you need both a client and a
@@ -581,12 +597,17 @@ async def imap_user_server_and_client(imap_user_server, imap_client_proxy):
 ####################################################################
 #
 @pytest_asyncio.fixture
-def mailbox_instance(bunch_of_email_in_folder, imap_user_server):
+def mailbox_instance(
+    bunch_of_email_in_folder: Callable[..., Path],
+    imap_user_server: IMAPUserServer,
+) -> Callable[..., Any]:
     """
     create a Mailbox which has email in it.
     """
 
-    async def create_mailbox(name: str = "inbox", with_messages: bool = False):
+    async def create_mailbox(
+        name: str = "inbox", with_messages: bool = False
+    ) -> Mailbox:
         bunch_of_email_in_folder(folder=name)
         server = imap_user_server
         mbox = await server.get_mailbox(name)
@@ -644,7 +665,9 @@ def lots_of_headers_email() -> str:
 ####################################################################
 #
 @pytest.fixture
-def big_static_email_bytes(static_email_factory_bytes) -> bytes:
+def big_static_email_bytes(
+    static_email_factory_bytes: Callable[[int], bytes],
+) -> bytes:
     """
     A message with lots of parts with encodings. Mainly so we can test more
     complicated `FETCH` commands.
@@ -656,8 +679,10 @@ def big_static_email_bytes(static_email_factory_bytes) -> bytes:
 #
 @pytest_asyncio.fixture
 async def mailbox_with_big_static_email(
-    mh_folder, big_static_email_bytes, imap_user_server
-):
+    mh_folder: Callable[..., tuple[Path, MH, MH]],
+    big_static_email_bytes: bytes,
+    imap_user_server: IMAPUserServer,
+) -> Mailbox:
     """
     Fixture for making `FETCH` tests a little easier.
     There will be _1_ message in the Mailbox `inbox`
@@ -679,8 +704,10 @@ async def mailbox_with_big_static_email(
 #
 @pytest_asyncio.fixture
 async def mailbox_with_mimekit_email(
-    mh_folder, static_email_factory_bytes, imap_user_server
-):
+    mh_folder: Callable[..., tuple[Path, MH, MH]],
+    static_email_factory_bytes: Callable[[int], bytes],
+    imap_user_server: IMAPUserServer,
+) -> Mailbox:
     """
     Create a mailbox filled with all of our static email fixtures
     (originally all from the MimeKit fixture test data)
@@ -704,8 +731,10 @@ async def mailbox_with_mimekit_email(
 #
 @pytest_asyncio.fixture
 async def mailbox_with_problematic_email(
-    mh_folder, problematic_email_factory_bytes, imap_user_server
-):
+    mh_folder: Callable[..., tuple[Path, MH, MH]],
+    problematic_email_factory_bytes: Callable[[int], bytes],
+    imap_user_server: IMAPUserServer,
+) -> Mailbox:
     """
     Create a mailbox filled with all of our static email fixtures
     (originally all from the MimeKit fixture test data)
@@ -729,8 +758,9 @@ async def mailbox_with_problematic_email(
 #
 @pytest_asyncio.fixture
 async def mailbox_with_bunch_of_email(
-    bunch_of_email_in_folder, imap_user_server
-):
+    bunch_of_email_in_folder: Callable[..., Path],
+    imap_user_server: IMAPUserServer,
+) -> Mailbox:
     """
     Email factory emails. For tests where we are not stressing about
     headers and email contents being anything fancy or complex.
