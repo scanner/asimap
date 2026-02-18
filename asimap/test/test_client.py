@@ -7,11 +7,17 @@ the Mailbox, basically.
 #
 import asyncio
 import random
+from collections.abc import Callable
 from email.policy import SMTP
+from pathlib import Path
+from typing import Any
 
 # 3rd party imports
 #
 import pytest
+from faker import Faker
+
+from ..auth import PWUser
 
 # Project imports
 #
@@ -25,13 +31,18 @@ from ..client import (
 )
 from ..mbox import Mailbox
 from ..parse import IMAPClientCommand, StoreAction
-from .conftest import assert_email_equal, client_push_responses
+from ..user_server import IMAPClientProxy, IMAPUserServer
+from .conftest import (
+    EmailFactoryType,
+    assert_email_equal,
+    client_push_responses,
+)
 
 
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_client_noop(imap_client_proxy) -> None:
+async def test_client_noop(imap_client_proxy: Callable[..., Any]) -> None:
     imap_client = await imap_client_proxy()
     client_handler = BaseClientHandler(imap_client)
 
@@ -45,7 +56,7 @@ async def test_client_noop(imap_client_proxy) -> None:
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_client_namespace(imap_client_proxy) -> None:
+async def test_client_namespace(imap_client_proxy: Callable[..., Any]) -> None:
     imap_client = await imap_client_proxy()
     client_handler = BaseClientHandler(imap_client)
 
@@ -62,7 +73,9 @@ async def test_client_namespace(imap_client_proxy) -> None:
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_client_handler_idle_done(imap_client_proxy) -> None:
+async def test_client_handler_idle_done(
+    imap_client_proxy: Callable[..., Any],
+) -> None:
     """
     `DONE` is not handled via the IMAPClientCommand. There is code in the
     user_server stream reader loop to handle it.. so we just test it manually
@@ -86,7 +99,9 @@ async def test_client_handler_idle_done(imap_client_proxy) -> None:
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_client_handler_logout(imap_client_proxy) -> None:
+async def test_client_handler_logout(
+    imap_client_proxy: Callable[..., Any],
+) -> None:
     """
     `DONE` is not handled via the IMAPClientCommand. There is code in the
     user_server stream reader loop to handle it.. so we just test it manually
@@ -109,7 +124,9 @@ async def test_client_handler_logout(imap_client_proxy) -> None:
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_client_handler_unceremonious_bye(imap_client_proxy) -> None:
+async def test_client_handler_unceremonious_bye(
+    imap_client_proxy: Callable[..., Any],
+) -> None:
     imap_client = await imap_client_proxy()
     client_handler = BaseClientHandler(imap_client)
 
@@ -124,7 +141,9 @@ async def test_client_handler_unceremonious_bye(imap_client_proxy) -> None:
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_base_client_handler_command(imap_client_proxy) -> None:
+async def test_base_client_handler_command(
+    imap_client_proxy: Callable[..., Any],
+) -> None:
     """
     Using a BaseClientHandler test the `command()` method. Using a
     BaseClientHandler lets us test things that are valid IMAPCommands, but not
@@ -170,7 +189,10 @@ async def test_base_client_handler_command(imap_client_proxy) -> None:
 #
 @pytest.mark.asyncio
 async def test_preauth_client_handler_login(
-    faker, user_factory, password_file_factory, imap_client_proxy
+    faker: Faker,
+    user_factory: Callable[..., PWUser],
+    password_file_factory: Callable[[list[PWUser]], Path],
+    imap_client_proxy: Callable[..., Any],
 ) -> None:
     password = faker.password()
     user = user_factory(password=password)
@@ -190,7 +212,8 @@ async def test_preauth_client_handler_login(
 #
 @pytest.mark.asyncio
 async def test_authenticated_client_handler_commands(
-    mailbox_with_bunch_of_email, imap_user_server_and_client
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
 ) -> None:
     """
     Test the simpler commands against the Authenticated client handler.
@@ -326,7 +349,9 @@ async def test_authenticated_client_handler_commands(
 #
 @pytest.mark.asyncio
 async def test_authenticated_client_list(
-    faker, mailbox_with_bunch_of_email, imap_user_server_and_client
+    faker: Faker,
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
 ) -> None:
     server, imap_client = imap_user_server_and_client
     _ = mailbox_with_bunch_of_email
@@ -388,7 +413,9 @@ async def test_authenticated_client_list(
 #
 @pytest.mark.asyncio
 async def test_authenticated_client_subscribe_lsub_unsubscribe(
-    faker, mailbox_with_bunch_of_email, imap_user_server_and_client
+    faker: Faker,
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
 ) -> None:
     server, imap_client = imap_user_server_and_client
     _ = mailbox_with_bunch_of_email
@@ -463,7 +490,9 @@ async def test_authenticated_client_subscribe_lsub_unsubscribe(
 #
 @pytest.mark.asyncio
 async def test_authenticated_client_append(
-    email_factory, mailbox_with_bunch_of_email, imap_user_server_and_client
+    email_factory: EmailFactoryType,
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
 ) -> None:
     server, imap_client = imap_user_server_and_client
     _ = mailbox_with_bunch_of_email
@@ -524,7 +553,8 @@ async def test_authenticated_client_append(
 #
 @pytest.mark.asyncio
 async def test_authenticated_client_check(
-    mailbox_with_bunch_of_email, imap_user_server_and_client
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
 ) -> None:
     server, imap_client = imap_user_server_and_client
     _ = mailbox_with_bunch_of_email
@@ -553,7 +583,8 @@ async def test_authenticated_client_check(
 #
 @pytest.mark.asyncio
 async def test_authenticated_client_close(
-    mailbox_with_bunch_of_email, imap_user_server_and_client
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
 ) -> None:
     server, imap_client = imap_user_server_and_client
     _ = mailbox_with_bunch_of_email
@@ -568,7 +599,7 @@ async def test_authenticated_client_close(
     # Messages that are marked `\Deleted` are removed when the mbox is closed.
     #
     mbox = await server.get_mailbox("inbox")
-    msg_keys = mbox.mailbox.keys()
+    msg_keys = [int(k) for k in mbox.mailbox.keys()]
     to_delete = sorted(random.sample(msg_keys, 5))
     await mbox.store(to_delete, StoreAction.ADD_FLAGS, [r"\Deleted"])
 
@@ -619,7 +650,8 @@ async def test_authenticated_client_close(
 #
 @pytest.mark.asyncio
 async def test_authenticated_client_expunge(
-    mailbox_with_bunch_of_email, imap_user_server_and_client
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
 ) -> None:
     server, imap_client = imap_user_server_and_client
     _ = mailbox_with_bunch_of_email
@@ -634,7 +666,7 @@ async def test_authenticated_client_expunge(
     # Messages that are marked `\Deleted` are removed when the mbox is closed.
     #
     mbox = await server.get_mailbox("inbox")
-    msg_keys = mbox.mailbox.keys()
+    msg_keys = [int(k) for k in mbox.mailbox.keys()]
     to_delete = sorted(random.sample(msg_keys, 5))
     await mbox.store(to_delete, StoreAction.ADD_FLAGS, [r"\Deleted"])
 
@@ -698,7 +730,8 @@ async def test_authenticated_client_expunge(
 #
 @pytest.mark.asyncio
 async def test_authenticated_client_search(
-    mailbox_with_bunch_of_email, imap_user_server_and_client
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
 ) -> None:
     """
     Search is tested mostly `test_search`.. so we only need a very simple
@@ -746,7 +779,8 @@ async def test_authenticated_client_search(
 #
 @pytest.mark.asyncio
 async def test_authenticated_client_fetch(
-    mailbox_with_bunch_of_email, imap_user_server_and_client
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
 ) -> None:
     """
     simple fetches
@@ -794,7 +828,8 @@ async def test_authenticated_client_fetch(
 #
 @pytest.mark.asyncio
 async def test_fetch_with_problematic_email(
-    mailbox_with_problematic_email, imap_user_server_and_client
+    mailbox_with_problematic_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
 ) -> None:
     server, imap_client = imap_user_server_and_client
     _ = mailbox_with_problematic_email
@@ -823,7 +858,8 @@ async def test_fetch_with_problematic_email(
 #
 @pytest.mark.asyncio
 async def test_authenticated_client_fetch_lotta_fields(
-    mailbox_with_bunch_of_email, imap_user_server_and_client
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
 ) -> None:
     """
     Test a more involved fetch that the apple mail client frequently does.
@@ -853,7 +889,8 @@ async def test_authenticated_client_fetch_lotta_fields(
 #
 @pytest.mark.asyncio
 async def test_authenticated_client_store(
-    mailbox_with_bunch_of_email, imap_user_server_and_client
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
 ) -> None:
     """
     Search is tested mostly `test_search`.. so we only need a very simple
@@ -898,7 +935,8 @@ async def test_authenticated_client_store(
 #
 @pytest.mark.asyncio
 async def test_authenticated_client_copy(
-    mailbox_with_bunch_of_email, imap_user_server_and_client
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
 ) -> None:
     """
     Search is tested mostly `test_search`.. so we only need a very simple
@@ -947,7 +985,8 @@ async def test_authenticated_client_copy(
 #
 @pytest.mark.asyncio
 async def test_authenticated_client_create_delete_folder(
-    mailbox_with_bunch_of_email, imap_user_server_and_client
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
 ) -> None:
     """
     Search is tested mostly `test_search`.. so we only need a very simple
@@ -1049,7 +1088,8 @@ async def test_authenticated_client_create_delete_folder(
 #
 @pytest.mark.asyncio
 async def test_extended_list_subscribed_selection(
-    mailbox_with_bunch_of_email, imap_user_server_and_client
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
 ) -> None:
     """
     GIVEN: folders with some subscribed
@@ -1091,7 +1131,8 @@ async def test_extended_list_subscribed_selection(
 #
 @pytest.mark.asyncio
 async def test_extended_list_multiple_patterns(
-    mailbox_with_bunch_of_email, imap_user_server_and_client
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
 ) -> None:
     """
     GIVEN: several folders
@@ -1123,7 +1164,8 @@ async def test_extended_list_multiple_patterns(
 #
 @pytest.mark.asyncio
 async def test_extended_list_return_subscribed(
-    mailbox_with_bunch_of_email, imap_user_server_and_client
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
 ) -> None:
     """
     GIVEN: folders with some subscribed
@@ -1170,7 +1212,8 @@ async def test_extended_list_return_subscribed(
 #
 @pytest.mark.asyncio
 async def test_extended_list_childinfo(
-    mailbox_with_bunch_of_email, imap_user_server_and_client
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
 ) -> None:
     """
     GIVEN: a parent folder (unsubscribed) with a subscribed child
@@ -1209,7 +1252,8 @@ async def test_extended_list_childinfo(
 #
 @pytest.mark.asyncio
 async def test_extended_list_hierarchy_probe_extended_mode(
-    mailbox_with_bunch_of_email, imap_user_server_and_client
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
 ) -> None:
     """
     GIVEN: any folder state
@@ -1234,7 +1278,8 @@ async def test_extended_list_hierarchy_probe_extended_mode(
 #
 @pytest.mark.asyncio
 async def test_extended_list_status_return(
-    mailbox_with_bunch_of_email, imap_user_server_and_client
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
 ) -> None:
     """
     GIVEN: folders with messages
@@ -1280,7 +1325,8 @@ async def test_extended_list_status_return(
 #
 @pytest.mark.asyncio
 async def test_extended_list_status_skips_noselect(
-    mailbox_with_bunch_of_email, imap_user_server_and_client
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
 ) -> None:
     """
     GIVEN: a \\Noselect folder (parent with sub-folders, deleted)
@@ -1320,7 +1366,8 @@ async def test_extended_list_status_skips_noselect(
 #
 @pytest.mark.asyncio
 async def test_extended_list_status_skips_recursivematch(
-    mailbox_with_bunch_of_email, imap_user_server_and_client
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
 ) -> None:
     """
     GIVEN: a RECURSIVEMATCH entry (parent with CHILDINFO)
@@ -1358,7 +1405,8 @@ async def test_extended_list_status_skips_recursivematch(
 #
 @pytest.mark.asyncio
 async def test_extended_list_children_return_option(
-    mailbox_with_bunch_of_email, imap_user_server_and_client
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
 ) -> None:
     """
     GIVEN: folders with a parent/child hierarchy
@@ -1395,7 +1443,8 @@ async def test_extended_list_children_return_option(
 #
 @pytest.mark.asyncio
 async def test_extended_list_nonexistent_subscribed(
-    mailbox_with_bunch_of_email, imap_user_server_and_client
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
 ) -> None:
     """
     GIVEN: a subscribed folder that has been deleted
@@ -1433,7 +1482,8 @@ async def test_extended_list_nonexistent_subscribed(
 #
 @pytest.mark.asyncio
 async def test_extended_list_status_all_attributes(
-    mailbox_with_bunch_of_email, imap_user_server_and_client
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
 ) -> None:
     """
     GIVEN: a folder with messages
@@ -1479,7 +1529,9 @@ async def test_extended_list_status_all_attributes(
 #
 @pytest.mark.asyncio
 async def test_extended_list_legacy_backward_compat(
-    faker, mailbox_with_bunch_of_email, imap_user_server_and_client
+    faker: Faker,
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
 ) -> None:
     """
     GIVEN: a server with folders
