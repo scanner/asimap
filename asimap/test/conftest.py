@@ -202,12 +202,12 @@ def user_factory(
     mailbox_dir: Path,
 ) -> Generator[Callable[..., asimap.auth.PWUser], None, None]:
     def make_user(*args: Any, **kwargs: Any) -> asimap.auth.PWUser:
-        user: asimap.auth.PWUser = UserFactory(*args, **kwargs)
+        user: asimap.auth.PWUser = UserFactory(*args, **kwargs)  # type: ignore[assignment]
         if "maildir" not in kwargs:
             maildir = mailbox_dir / user.username
             maildir.mkdir(parents=True, exist_ok=True)
             user.maildir = maildir
-            inbox = user.maildir / "inbox"  # type: ignore[operator]
+            inbox = user.maildir / "inbox"
             inbox.mkdir()
             mh_seq = inbox / ".mh_sequences"
             mh_seq.touch()
@@ -596,7 +596,7 @@ async def imap_user_server_and_client(
 
 ####################################################################
 #
-@pytest_asyncio.fixture
+@pytest.fixture
 def mailbox_instance(
     bunch_of_email_in_folder: Callable[..., Path],
     imap_user_server: IMAPUserServer,
@@ -692,7 +692,7 @@ async def mailbox_with_big_static_email(
     server = imap_user_server
     (mh_dir, _, m_folder) = mh_folder(NAME)
     msg = message_from_bytes(big_static_email_bytes, policy=default)
-    msg_key = m_folder.add(msg)
+    msg_key = int(m_folder.add(msg))
     seqs = m_folder.get_sequences()
     seqs["unseen"] = [msg_key]
     m_folder.set_sequences(seqs)
