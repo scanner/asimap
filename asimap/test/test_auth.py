@@ -4,21 +4,28 @@ Test the auth modules.. users, password file, password checking
 
 # System imports
 #
+from collections.abc import Callable
+from pathlib import Path
 
 # 3rd party imports
 #
 import pytest
+from faker import Faker
 
 # Project imports
 #
-from ..auth import authenticate
+from ..auth import PWUser, authenticate
 from ..exceptions import BadAuthentication, NoSuchUser
 
 
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_authenticate(faker, user_factory, password_file_factory) -> None:
+async def test_authenticate(
+    faker: Faker,
+    user_factory: Callable[..., PWUser],
+    password_file_factory: Callable[[list[PWUser]], Path],
+) -> None:
     password = faker.password()
     user = user_factory(password=password)
     users = [user_factory(password=faker.password()) for _ in range(10)]

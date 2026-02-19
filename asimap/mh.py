@@ -11,9 +11,9 @@ import mailbox
 import os
 import stat
 from contextlib import asynccontextmanager
-from mailbox import NoSuchMailboxError, _lock_file
+from mailbox import NoSuchMailboxError, _lock_file  # type: ignore[attr-defined]
 from pathlib import Path
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Any
 
 # 3rd party imports
 #
@@ -23,6 +23,10 @@ import aiofiles.os
 # from charset_normalizer import from_bytes
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator, Callable
+    from email.message import EmailMessage
+    from typing import IO
+
     from _typeshed import StrPath
 
 LINESEP = str(mailbox.linesep, "ascii")
@@ -55,30 +59,38 @@ class MH(mailbox.MH):
 
     ####################################################################
     #
-    def __init__(self, path: "StrPath", factory=None, create=True):
+    def __init__(
+        self,
+        path: "StrPath",
+        factory: "Callable[[IO[Any]], EmailMessage] | None" = None,
+        create: bool = True,
+    ):
         self._locked: bool = False
         path = str(path)
-        super().__init__(path, factory=factory, create=create)
+        super().__init__(path, factory=factory, create=create)  # type: ignore[arg-type]
 
     ####################################################################
     #
-    def get_folder(self, folder: "StrPath"):
+    def get_folder(self, folder: "StrPath") -> "MH":
         """Return an MH instance for the named folder."""
         return MH(
             os.path.join(self._path, str(folder)),
-            factory=self._factory,
+            factory=self._factory,  # type: ignore[arg-type]
             create=False,
         )
 
     ####################################################################
     #
-    def add_folder(self, folder: "StrPath"):
+    def add_folder(self, folder: "StrPath") -> "MH":
         """Create a folder and return an MH instance representing it."""
-        return MH(os.path.join(self._path, str(folder)), factory=self._factory)
+        return MH(
+            os.path.join(self._path, str(folder)),
+            factory=self._factory,  # type: ignore[arg-type]
+        )
 
     ####################################################################
     #
-    def lock(self, dotlock: bool = False):
+    def lock(self, dotlock: bool = False) -> None:
         """
         Lock the mailbox. We turn off dotlock'ing because it updates the
         folder's mtime, which will causes unnecessary resyncs. We still expect
@@ -99,7 +111,7 @@ class MH(mailbox.MH):
 
     ####################################################################
     #
-    def unlock(self):
+    def unlock(self) -> None:
         """
         Unlock the mailbox. When file locking is disabled, lock() is a
         no-op so there is nothing to unlock.
@@ -113,9 +125,9 @@ class MH(mailbox.MH):
     @asynccontextmanager
     async def lock_folder(
         self,
-        timeout: Union[int | float] = 2,
+        timeout: int | float = 2,
         fail: bool = False,
-    ):
+    ) -> "AsyncIterator[None]":
         """
         Implement an asyncio contextmanager for locking a folder.  This
         only protects against other _processes_ that obey the advisory locking.
@@ -164,7 +176,7 @@ class MH(mailbox.MH):
 
     ####################################################################
     #
-    async def aclear(self):
+    async def aclear(self) -> None:
         for key in [int(x) for x in self.keys()]:
             try:
                 self.remove(str(key))
@@ -174,7 +186,7 @@ class MH(mailbox.MH):
 
     ####################################################################
     #
-    async def aremove(self, key: int):
+    async def aremove(self, key: int) -> None:
         """Remove the keyed message; raise KeyError if it doesn't exist."""
         path = os.path.join(self._path, str(key))
         try:
@@ -185,7 +197,7 @@ class MH(mailbox.MH):
                 pass
         except OSError as e:
             if e.errno == errno.ENOENT:
-                raise KeyError("No message with key: %s" % key)
+                raise KeyError(f"No message with key: {key}") from e
             else:
                 raise
         else:

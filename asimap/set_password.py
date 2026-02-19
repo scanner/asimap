@@ -33,7 +33,7 @@ import getpass
 import logging
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 # 3rd party imports
 #
@@ -63,8 +63,8 @@ logger = logging.getLogger("asimap.set_password")
 async def update_pw_file(
     pwfile: Path,
     username: str,
-    password: Optional[str] = None,
-    maildir: Optional[Path] = None,
+    password: str | None = None,
+    maildir: Path | None = None,
 ) -> None:
     """
     Read in the password file. If the given user does not exist, add it to the
@@ -90,12 +90,12 @@ async def update_pw_file(
 
 #############################################################################
 #
-def main():
+def main() -> None:
     """ """
     args = docopt(__doc__, version=VERSION)
     pwfile: StrPath = args["--pwfile"]
     username = args["<username>"]
-    password: Optional[str] = args["<password>"]
+    password: str | None = args["<password>"]
     maildir_str: str = args["<maildir>"]
 
     load_dotenv()

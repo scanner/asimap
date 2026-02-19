@@ -20,30 +20,23 @@ import re
 import stat
 import sys
 import time
+from collections.abc import AsyncIterator, Callable, Iterable, Iterator
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from itertools import count, groupby
 from pathlib import Path
 from queue import SimpleQueue
 from typing import (
     TYPE_CHECKING,
     Any,
-    Dict,
-    Iterable,
-    Iterator,
-    List,
     Optional,
-    Set,
-    Tuple,
-    TypeAlias,
-    Union,
 )
 
 # 3rd party module imports
 #
 import aiofiles
 import aiofiles.os
-from aiofiles.ospath import wrap as aiofiles_wrap
+from aiofiles.ospath import wrap as aiofiles_wrap  # type: ignore[attr-defined]
 
 # Project imports
 #
@@ -52,7 +45,7 @@ from .exceptions import Bad
 if TYPE_CHECKING:
     from _typeshed import StrPath
 
-MsgSet: TypeAlias = Union[List | Set | Tuple]
+type MsgSet = list | set | tuple
 
 LOG_DIR = Path("/opt/asimap/logs")
 
@@ -76,7 +69,7 @@ DEFAULT_LOG_CONFIG_FILES = [
     Path("/opt/local/etc/asimapd_log.cfg"),
 ]
 
-LOGGED_IN_USER: Optional[str] = None
+LOGGED_IN_USER: str | None = None
 # REMOTE_ADDRESS:Optional[str] = None
 
 ####################################################################
@@ -88,7 +81,7 @@ utime = aiofiles_wrap(os.utime)
 
 ####################################################################
 #
-def encoding_search_fn(encoding: str) -> Optional[codecs.CodecInfo]:
+def encoding_search_fn(encoding: str) -> codecs.CodecInfo | None:
     """
     Handle some of the weird encodings we run into with all the email we
     have gotten from different eras of the internet.
@@ -118,7 +111,7 @@ class UpgradeableReadWriteLock:
 
     ##################################################################
     #
-    def __init__(self):
+    def __init__(self) -> None:
         self._read_ready = asyncio.Condition()
 
         # How many read locks are currently held.
@@ -129,7 +122,7 @@ class UpgradeableReadWriteLock:
         # gets a read lock it is prepended to this list. Whenever a task
         # releases a read lock it is removed from this list.
         #
-        self._readers_tasks: List[asyncio.Task] = []
+        self._readers_tasks: list[asyncio.Task] = []
 
         # How many read locks want to upgrade to a write lock
         #
@@ -141,7 +134,7 @@ class UpgradeableReadWriteLock:
         #
         # This potentially could be leveraged for allowing nestable write locks.
         #
-        self._write_lock_task: Optional[asyncio.Task] = None
+        self._write_lock_task: asyncio.Task | None = None
 
     ####################################################################
     #
@@ -192,7 +185,7 @@ class UpgradeableReadWriteLock:
     #     (We could do the same with write locks?)
     #
     @asynccontextmanager
-    async def read_lock(self):
+    async def read_lock(self) -> AsyncIterator[None]:
         cur_task = asyncio.current_task()
         assert cur_task  # Can not use the lock outside of asyncio.
 
@@ -218,7 +211,7 @@ class UpgradeableReadWriteLock:
     ####################################################################
     #
     @asynccontextmanager
-    async def write_lock(self):
+    async def write_lock(self) -> AsyncIterator[None]:
         """
         Upgrade a read lock to a read/write lock. This MUST ONLY be called
         when you already have a readlock, otherwise the logic will not work.
@@ -313,7 +306,7 @@ def setup_asyncio_logging() -> None:
     queue: SimpleQueue = SimpleQueue()
     root = logging.getLogger()
 
-    handlers: List[logging.Handler] = []
+    handlers: list[logging.Handler] = []
 
     handler = LocalQueueHandler(queue)
     root.addHandler(handler)
@@ -338,10 +331,10 @@ def setup_asyncio_logging() -> None:
 def setup_logging(
     log_config: Optional["StrPath"],
     debug: bool,
-    username: Optional[str] = None,
-    remote_addr: Optional[str] = None,
+    username: str | None = None,
+    remote_addr: str | None = None,
     trace_dir: Optional["StrPath"] = None,
-):
+) -> None:
     """
     Set up the logger. We log either to files in 'logdir'
     or to stderr.
@@ -361,7 +354,7 @@ def setup_logging(
     LOGGED_IN_USER = username if username else "no_user"
     old_factory = logging.getLogRecordFactory()
 
-    def log_record_factory(*args, **kwargs):
+    def log_record_factory(*args: Any, **kwargs: Any) -> logging.LogRecord:
         """
         We add a log record factory to our logging system so that we can
         add as a fundamental part of our log records the logged in user and
@@ -412,7 +405,7 @@ def setup_logging(
     # If no logging config file is specified then this is what will be used.
     # It is formatted as a logging config dict.
     #
-    DEFAULT_LOGGING_CONFIG: Dict[str, Any] = {
+    DEFAULT_LOGGING_CONFIG: dict[str, Any] = {
         "version": 1,
         "disable_existing_loggers": False,
         "formatters": {
@@ -505,7 +498,7 @@ def parsedate(datetime_str: str) -> datetime:
     #
     dt = email.utils.parsedate_to_datetime(datetime_str)
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt
 
 
@@ -522,7 +515,7 @@ def sequence_set_to_list(
     seq_set: MsgSet,
     seq_max: int,
     uid_cmd: bool = False,
-):
+) -> list[int]:
     """
     Convert a squence set in to a list of numbers.
 
@@ -611,21 +604,21 @@ def get_uidvv_uid(hdr: str) -> tuple:
     """
     s = UID_RE.search(hdr)
     if s:
-        return tuple((int(x) for x in s.groups()))
+        return tuple(int(x) for x in s.groups())
     return (None, None)
 
 
 ####################################################################
 #
-def with_timeout(t: int):
+def with_timeout(t: int) -> Callable[..., Any]:
     """
     A decorator that makes sure that the wrapped async function times out
     after the specified delay in seconds. Raises the asyncio.TimeoutError
     exception.
     """
 
-    def wrapper(corofunc):
-        async def run(*args, **kwargs):
+    def wrapper(corofunc: Callable[..., Any]) -> Callable[..., Any]:
+        async def run(*args: Any, **kwargs: Any) -> Any:
             async with asyncio.timeout(t):
                 return await corofunc(*args, **kwargs)
 
@@ -636,9 +629,7 @@ def with_timeout(t: int):
 
 ##################################################################
 #
-def find_header_in_binary_file(
-    fname: "StrPath", header: str
-) -> Union[str | None]:
+def find_header_in_binary_file(fname: "StrPath", header: str) -> str | None:
     """
     Convert the header string given as an argument to bytes. The string
     must be encodable as `latin-1`. If not an encoding error will be
@@ -672,7 +663,9 @@ def find_header_in_binary_file(
 
 ####################################################################
 #
-async def update_replace_header_in_binary_file(fname: "StrPath", header: str):
+async def update_replace_header_in_binary_file(
+    fname: "StrPath", header: str
+) -> None:
     """
     This will go through the file indicating by fname, as a binary file,
     and if it encounters a line that begins with the same header as `header` it
@@ -747,14 +740,14 @@ def compact_sequence(keys: Iterable[int]) -> str:
     ) -> str:  # not sure how to do this part elegantly
         grouped_ints = list(iterable)
         if len(grouped_ints) > 1:
-            return "{0}-{1}".format(grouped_ints[0], grouped_ints[-1])
+            return f"{grouped_ints[0]}-{grouped_ints[-1]}"
         else:
-            return "{0}".format(grouped_ints[0])
+            return f"{grouped_ints[0]}"
 
     keys = sorted(keys)
     result = ",".join(
         as_range(g)
-        for _, g in groupby(keys, key=lambda n, c=count(): n - next(c))
+        for _, g in groupby(keys, key=lambda n, c=count(): n - next(c))  # type: ignore[misc]
     )  # '1-3,6-7,10'
 
     return result
@@ -762,7 +755,7 @@ def compact_sequence(keys: Iterable[int]) -> str:
 
 ####################################################################
 #
-def expand_sequence(contents: str) -> List[int]:
+def expand_sequence(contents: str) -> list[int]:
     """
     Turns a compacted sequence in to a list of integers.
     The string '1,3-6' becomes [1,3,4,5,6]

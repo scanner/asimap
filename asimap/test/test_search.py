@@ -7,8 +7,9 @@ Test `SearchContext` and `IMAPSearch`
 import os
 import random
 from collections import Counter, defaultdict
-from datetime import date, timezone
-from typing import Dict, List, Tuple
+from collections.abc import Callable
+from datetime import UTC, date
+from typing import Any
 
 # 3rd party imports
 #
@@ -19,6 +20,7 @@ from dirty_equals import IsNow
 #
 from ..constants import REV_SYSTEM_FLAG_MAP, SYSTEM_FLAGS
 from ..generator import get_msg_size, msg_as_string
+from ..mbox import Mailbox
 from ..search import IMAPSearch, SearchContext
 from ..utils import parsedate, utime
 from .conftest import assert_email_equal
@@ -27,13 +29,13 @@ from .conftest import assert_email_equal
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_search_context(mailbox_instance):
+async def test_search_context(mailbox_instance: Callable[..., Any]) -> None:
     """
     A fairly boring test.. just making sure the SearchContext works as
     expected without any failures.
     """
     mbox = await mailbox_instance()
-    msg_keys = mbox.mailbox.keys()
+    msg_keys = [int(k) for k in mbox.mailbox.keys()]
     seq_max = len(msg_keys)
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
@@ -44,7 +46,7 @@ async def test_search_context(mailbox_instance):
         uid_vv, uid = mbox.get_uid_from_msg(msg_key)
         assert uid == ctx.uid()
         ctx._uid = None
-        assert ctx.internal_date() == IsNow(tz=timezone.utc)
+        assert ctx.internal_date() == IsNow(tz=UTC)
         assert ctx.msg_key == msg_key
         assert ctx.seq_max == seq_max
         assert ctx.uid_max == uid_max
@@ -59,7 +61,9 @@ async def test_search_context(mailbox_instance):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_search_context_with_mimekit_email(mailbox_with_mimekit_email):
+async def test_search_context_with_mimekit_email(
+    mailbox_with_mimekit_email: Mailbox,
+) -> None:
     """
     A fairly boring test.. just making sure the SearchContext works as
     expected without any failures.
@@ -77,7 +81,7 @@ async def test_search_context_with_mimekit_email(mailbox_with_mimekit_email):
         uid_vv, uid = mbox.get_uid_from_msg(msg_key)
         assert uid == ctx.uid()
         ctx._uid = None
-        assert ctx.internal_date() == IsNow(tz=timezone.utc)
+        assert ctx.internal_date() == IsNow(tz=UTC)
         assert ctx.msg_key == msg_key
         assert ctx.seq_max == seq_max
         assert ctx.uid_max == uid_max
@@ -92,7 +96,7 @@ async def test_search_context_with_mimekit_email(mailbox_with_mimekit_email):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_search_keywords(mailbox_with_bunch_of_email):
+async def test_search_keywords(mailbox_with_bunch_of_email: Mailbox) -> None:
     """
     Test search on keywords.
     We create a mailbox with a bunch of email in it.
@@ -101,7 +105,7 @@ async def test_search_keywords(mailbox_with_bunch_of_email):
     Validate that the search results match the messages we set those flags on.
     """
     mbox = mailbox_with_bunch_of_email
-    msg_keys = mbox.mailbox.keys()
+    msg_keys = [int(k) for k in mbox.mailbox.keys()]
     seq_max = len(msg_keys)
     seqs = mbox.sequences
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
@@ -109,23 +113,23 @@ async def test_search_keywords(mailbox_with_bunch_of_email):
 
     # Set some flags on the messages
     #
-    msgs_by_flag: Dict[str, List[int]] = {}
-    flags_by_msg: Dict[int, List[str]] = defaultdict(list)
+    msgs_by_flag: dict[str, list[int]] = {}
+    flags_by_msg: dict[int, list[str]] = defaultdict(list)
     for flag in SYSTEM_FLAGS:
         msgs_by_flag[flag] = random.sample(msg_keys, k=5)
         for k in msgs_by_flag[flag]:
             flags_by_msg[k].append(flag)
         if flag == r"\Seen":
-            seqs["unseen"] = list(set(msg_keys) - set(msgs_by_flag[flag]))
+            seqs["unseen"] = set(msg_keys) - set(msgs_by_flag[flag])
             for k in seqs["unseen"]:
                 flags_by_msg[k].append("unseen")
 
-        seqs[REV_SYSTEM_FLAG_MAP[flag]] = sorted(msgs_by_flag[flag])
+        seqs[REV_SYSTEM_FLAG_MAP[flag]] = set(msgs_by_flag[flag])
 
     async with mbox.mh_sequences_lock:
         mbox.set_sequences_in_folder(seqs)
 
-    matches_by_flag: Dict[str, List[int]] = defaultdict(list)
+    matches_by_flag: dict[str, list[int]] = defaultdict(list)
     for keyword in SYSTEM_FLAGS:
         search_op = IMAPSearch("keyword", keyword=keyword)
         for msg_idx, msg_key in enumerate(msg_keys):
@@ -135,19 +139,19 @@ async def test_search_keywords(mailbox_with_bunch_of_email):
                 matches_by_flag[keyword].append(msg_key)
 
     for flag, msg_keys in matches_by_flag.items():
-        assert seqs[REV_SYSTEM_FLAG_MAP[flag]] == sorted(msg_keys)
+        assert seqs[REV_SYSTEM_FLAG_MAP[flag]] == set(msg_keys)
 
 
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_search_all(mailbox_with_bunch_of_email):
+async def test_search_all(mailbox_with_bunch_of_email: Mailbox) -> None:
     mbox = mailbox_with_bunch_of_email
-    msg_keys = mbox.mailbox.keys()
+    msg_keys = [int(k) for k in mbox.mailbox.keys()]
     seq_max = len(msg_keys)
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
-    matched: List[int] = []
+    matched: list[int] = []
     search_op = IMAPSearch("all")
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
@@ -161,9 +165,9 @@ async def test_search_all(mailbox_with_bunch_of_email):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_search_headers(mailbox_with_bunch_of_email):
+async def test_search_headers(mailbox_with_bunch_of_email: Mailbox) -> None:
     mbox = mailbox_with_bunch_of_email
-    msg_keys = mbox.mailbox.keys()
+    msg_keys = [int(k) for k in mbox.mailbox.keys()]
     seq_max = len(msg_keys)
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
@@ -175,7 +179,7 @@ async def test_search_headers(mailbox_with_bunch_of_email):
         msg_idx += 1
         ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         if not await search_op.match(ctx):
-            assert False
+            raise AssertionError()
 
     # Go through the messages and find the most common words in the subject.
     # Those will be what we test header search on.
@@ -186,8 +190,8 @@ async def test_search_headers(mailbox_with_bunch_of_email):
         for word in msg["Subject"].split():
             words[word.lower()] += 1
 
-    msg_keys_by_word: Dict[str, List[int]] = defaultdict(list)
-    for word, count in words.most_common(4):
+    msg_keys_by_word: dict[str, list[int]] = defaultdict(list)
+    for word, _count in words.most_common(4):
         search_op = IMAPSearch("header", header="subject", string=word)
         for msg_idx, msg_key in enumerate(msg_keys):
             msg_idx += 1
@@ -210,16 +214,18 @@ async def test_search_headers(mailbox_with_bunch_of_email):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_search_sent_before_since_on(mailbox_with_bunch_of_email):
+async def test_search_sent_before_since_on(
+    mailbox_with_bunch_of_email: Mailbox,
+) -> None:
     mbox = mailbox_with_bunch_of_email
-    msg_keys = mbox.mailbox.keys()
+    msg_keys = [int(k) for k in mbox.mailbox.keys()]
     seq_max = len(msg_keys)
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     # Go through and find the middle most date.
     #
-    dates: List[Tuple[date, int]] = []
+    dates: list[tuple[date, int]] = []
     for msg_key in msg_keys:
         msg = mbox.get_msg(msg_key)
         dt = parsedate(msg["Date"]).date()
@@ -263,9 +269,11 @@ async def test_search_sent_before_since_on(mailbox_with_bunch_of_email):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_search_before_since_on(mailbox_with_bunch_of_email):
+async def test_search_before_since_on(
+    mailbox_with_bunch_of_email: Mailbox,
+) -> None:
     mbox = mailbox_with_bunch_of_email
-    msg_keys = mbox.mailbox.keys()
+    msg_keys = [int(k) for k in mbox.mailbox.keys()]
     seq_max = len(msg_keys)
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
@@ -275,7 +283,7 @@ async def test_search_before_since_on(mailbox_with_bunch_of_email):
     # the search context so doing this post mbox.resync() is okay in terms of
     # mbox state.
     #
-    dates: List[Tuple[date, int]] = []
+    dates: list[tuple[date, int]] = []
     for msg_key in msg_keys:
         msg = mbox.get_msg(msg_key)
         dt = parsedate(msg["Date"])
@@ -324,9 +332,9 @@ async def test_search_before_since_on(mailbox_with_bunch_of_email):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_search_body(mailbox_with_bunch_of_email):
+async def test_search_body(mailbox_with_bunch_of_email: Mailbox) -> None:
     mbox = mailbox_with_bunch_of_email
-    msg_keys = mbox.mailbox.keys()
+    msg_keys = [int(k) for k in mbox.mailbox.keys()]
     seq_max = len(msg_keys)
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
@@ -338,7 +346,7 @@ async def test_search_body(mailbox_with_bunch_of_email):
         msg_idx += 1
         ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         if not await search_op.match(ctx):
-            assert False
+            raise AssertionError()
 
     # Go through the messages and find the most common words in the text/plain
     # part.
@@ -347,7 +355,7 @@ async def test_search_body(mailbox_with_bunch_of_email):
     for msg_key in msg_keys:
         msg = mbox.get_msg(msg_key)
         parts = msg.get_payload()
-        body = msg_as_string(parts[0], headers=False).lower()
+        body = msg_as_string(parts[0], headers=False).lower()  # type: ignore[arg-type, index]
         for line in body.splitlines():
             for word in line.split():
                 if word.isalpha():
@@ -355,8 +363,8 @@ async def test_search_body(mailbox_with_bunch_of_email):
 
     # Match the top couple of words.
     #
-    msg_keys_by_word: Dict[str, List[int]] = defaultdict(list)
-    for word, count in words.most_common(5):
+    msg_keys_by_word: dict[str, list[int]] = defaultdict(list)
+    for word, _count in words.most_common(5):
         search_op = IMAPSearch("body", string=word.lower())
         for msg_idx, msg_key in enumerate(msg_keys):
             msg_idx += 1
@@ -371,7 +379,7 @@ async def test_search_body(mailbox_with_bunch_of_email):
         for msg_key in msg_keys:
             msg = mbox.get_msg(msg_key)
             parts = msg.get_payload()
-            body = msg_as_string(parts[0], headers=False).lower()
+            body = msg_as_string(parts[0], headers=False).lower()  # type: ignore[arg-type, index]
             if msg_key in matched_keys:
                 assert word in body.lower()
             else:
@@ -381,9 +389,9 @@ async def test_search_body(mailbox_with_bunch_of_email):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_search_text(mailbox_with_bunch_of_email):
+async def test_search_text(mailbox_with_bunch_of_email: Mailbox) -> None:
     mbox = mailbox_with_bunch_of_email
-    msg_keys = mbox.mailbox.keys()
+    msg_keys = [int(k) for k in mbox.mailbox.keys()]
     seq_max = len(msg_keys)
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
@@ -395,7 +403,7 @@ async def test_search_text(mailbox_with_bunch_of_email):
         msg_idx += 1
         ctx = SearchContext(mbox, msg_key, msg_idx, seq_max, uid_max)
         if not await search_op.match(ctx):
-            assert False
+            raise AssertionError()
 
     # Go through the messages and find the most common words in the text/plain
     # part.
@@ -411,8 +419,8 @@ async def test_search_text(mailbox_with_bunch_of_email):
 
     # Match the top couple of words.
     #
-    msg_keys_by_word: Dict[str, List[int]] = defaultdict(list)
-    for word, count in words.most_common(5):
+    msg_keys_by_word: dict[str, list[int]] = defaultdict(list)
+    for word, _count in words.most_common(5):
         search_op = IMAPSearch("text", string=word)
         for msg_idx, msg_key in enumerate(msg_keys):
             msg_idx += 1
@@ -436,16 +444,18 @@ async def test_search_text(mailbox_with_bunch_of_email):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_search_larger_smaller(mailbox_with_bunch_of_email):
+async def test_search_larger_smaller(
+    mailbox_with_bunch_of_email: Mailbox,
+) -> None:
     mbox = mailbox_with_bunch_of_email
-    msg_keys = mbox.mailbox.keys()
+    msg_keys = [int(k) for k in mbox.mailbox.keys()]
     seq_max = len(msg_keys)
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
 
     # Go through and find the various sizes and determine a mid-point
     #
-    sizes: List[Tuple[int, int]] = []
+    sizes: list[tuple[int, int]] = []
     for msg_key in msg_keys:
         msg = mbox.get_msg(msg_key)
         msg_size = get_msg_size(msg)
@@ -479,9 +489,11 @@ async def test_search_larger_smaller(mailbox_with_bunch_of_email):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_search_message_set_and_not(mailbox_with_bunch_of_email):
+async def test_search_message_set_and_not(
+    mailbox_with_bunch_of_email: Mailbox,
+) -> None:
     mbox = mailbox_with_bunch_of_email
-    msg_keys = mbox.mailbox.keys()
+    msg_keys = [int(k) for k in mbox.mailbox.keys()]
     seq_max = len(msg_keys)
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
@@ -515,9 +527,9 @@ async def test_search_message_set_and_not(mailbox_with_bunch_of_email):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_search_uid(mailbox_with_bunch_of_email):
+async def test_search_uid(mailbox_with_bunch_of_email: Mailbox) -> None:
     mbox = mailbox_with_bunch_of_email
-    msg_keys = mbox.mailbox.keys()
+    msg_keys = [int(k) for k in mbox.mailbox.keys()]
     seq_max = len(msg_keys)
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
@@ -541,9 +553,9 @@ async def test_search_uid(mailbox_with_bunch_of_email):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_search_and_or(mailbox_with_bunch_of_email):
+async def test_search_and_or(mailbox_with_bunch_of_email: Mailbox) -> None:
     mbox = mailbox_with_bunch_of_email
-    msg_keys = mbox.mailbox.keys()
+    msg_keys = [int(k) for k in mbox.mailbox.keys()]
     seq_max = len(msg_keys)
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max

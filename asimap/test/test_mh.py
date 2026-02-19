@@ -5,7 +5,9 @@ Tests for our subclass of `mailbox.MH` that adds some async methods
 # system imports
 #
 import shutil
+from collections.abc import Callable, Generator
 from mailbox import NoSuchMailboxError
+from pathlib import Path
 
 # 3rd party imports
 #
@@ -20,7 +22,7 @@ from ..mh import MH
 ####################################################################
 #
 @pytest.fixture
-def enable_file_locking():
+def enable_file_locking() -> Generator[None, None, None]:
     """Enable MH file locking for the duration of the test."""
     mh_module.set_file_locking(True)
     yield
@@ -30,7 +32,9 @@ def enable_file_locking():
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_mh_lock_folder(tmp_path, enable_file_locking):
+async def test_mh_lock_folder(
+    tmp_path: Path, enable_file_locking: None
+) -> None:
     """
     GIVEN: FILE_LOCKING_ENABLED is True
     WHEN:  lock_folder() is used as a context manager
@@ -63,7 +67,7 @@ async def test_mh_lock_folder(tmp_path, enable_file_locking):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_mh_lock_folder_noop(tmp_path):
+async def test_mh_lock_folder_noop(tmp_path: Path) -> None:
     """
     GIVEN: FILE_LOCKING_ENABLED is False (default)
     WHEN:  lock_folder() is used as a context manager
@@ -85,7 +89,7 @@ async def test_mh_lock_folder_noop(tmp_path):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_mh_lock_folder_noop_deleted_folder(tmp_path):
+async def test_mh_lock_folder_noop_deleted_folder(tmp_path: Path) -> None:
     """
     GIVEN: FILE_LOCKING_ENABLED is False (default)
     WHEN:  lock_folder() is called on a folder that no longer exists
@@ -107,7 +111,7 @@ async def test_mh_lock_folder_noop_deleted_folder(tmp_path):
 
 ####################################################################
 #
-def test_set_file_locking():
+def test_set_file_locking() -> None:
     """
     GIVEN: default state (FILE_LOCKING_ENABLED is False)
     WHEN:  set_file_locking() is called
@@ -123,7 +127,7 @@ def test_set_file_locking():
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_mh_aclear(bunch_of_email_in_folder):
+async def test_mh_aclear(bunch_of_email_in_folder: Callable[..., Path]) -> None:
     mh_dir = bunch_of_email_in_folder()
     mh = MH(mh_dir)
     inbox_folder = mh.get_folder("inbox")
@@ -144,7 +148,9 @@ async def test_mh_aclear(bunch_of_email_in_folder):
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_mh_aremove(bunch_of_email_in_folder):
+async def test_mh_aremove(
+    bunch_of_email_in_folder: Callable[..., Path],
+) -> None:
     mh_dir = bunch_of_email_in_folder()
     mh = MH(mh_dir)
     inbox_folder = mh.get_folder("inbox")
@@ -158,7 +164,7 @@ async def test_mh_aremove(bunch_of_email_in_folder):
     async with inbox_folder.lock_folder():
         folder_keys = inbox_folder.keys()
         for key in folder_keys:
-            await inbox_folder.aremove(key)
+            await inbox_folder.aremove(int(key))
 
     dir_keys = sorted(
         [int(x.name) for x in inbox_dir.iterdir() if x.name.isdigit()]

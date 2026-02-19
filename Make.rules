@@ -17,7 +17,7 @@ clean::	## Swab the decks! Does not touch docker images or volumes.
 	@rm -rf build bdist cover dist sdist distribute-* *.egg *.egg-info
 	@rm -rf node_modules
 	@rm -rf *.tar.gz junit.xml coverage.xml .cache
-	@rm -rf .tox .eggs .blackened .isorted .ruff_cache
+	@rm -rf .tox .eggs .ruff_formatted .ruff_cache
 	@rm -rf venv* .venv
 	@find $(ROOT_DIR) \( -name \*.orig -o -name \*.bak -o -name \*.rej \) -exec rm '{}' +
 	@mkdir -p .mypy_cache
@@ -37,8 +37,8 @@ version: .venv
 # need done for the pre-commit hook to pass. Squeegee runs the various
 # linting and formatting commands directly. It also runs mypy.
 #
-squeegee: .venv isort black mypy	## Manually run isort, black, mypy, and ruff over all project files
-	@$(UV_RUN) ruff check $(ROOT_DIR)
+squeegee: .venv ruff-format mypy	## Manually run ruff format, mypy, and ruff check over all project files
+	@$(UV_RUN) ruff check $(ROOT_DIR)/asimap/ $(ROOT_DIR)/scripts/
 
 lint: .venv .git/hooks/pre-commit	## Run all pre-commit hooks. Note: this only runs over files in the git repo (and staged files)
 	@$(UV_RUN) pre-commit run -a
@@ -46,24 +46,19 @@ lint: .venv .git/hooks/pre-commit	## Run all pre-commit hooks. Note: this only r
 PY_FILES=$(shell find $(ROOT_DIR)/asimap/ $(ROOT_DIR)/scripts/ -type f -name '*.py' 2>/dev/null)
 JS_FILES=$(shell find $(ROOT_DIR)/asimap/ $(ROOT_DIR)/scripts/ -type f -name '*.js' 2>/dev/null)
 
-.blackened: $(PY_FILES) .venv
-	@$(UV_RUN) black $(ROOT_DIR)/asimap/ $(ROOT_DIR)/scripts/
-	@touch .blackened
-
-.isorted: $(PY_FILES) .venv
-	@$(UV_RUN) isort $(ROOT_DIR)/asimap/ $(ROOT_DIR)/scripts/
-	@touch .isorted
+.ruff_formatted: $(PY_FILES) .venv
+	@$(UV_RUN) ruff format $(ROOT_DIR)/asimap/ $(ROOT_DIR)/scripts/
+	@touch .ruff_formatted
 
 .prettier: $(JS_FILES)
 	@npx prettier --write $(ROOT_DIR)/asimap
 	@touch .prettier
 
-formatting: isort black prettier	## Run `isort`, `black`, `prettier` over all files in project.
-isort: .isorted
-black: .blackened
+formatting: ruff-format prettier	## Run `ruff format`, `prettier` over all files in project.
+ruff-format: .ruff_formatted	## Run `ruff format` over all Python files
 prettier: .prettier
 
 mypy: .venv  ## Run `mypy` over `asimap/` and `scripts/`
 	@$(UV_RUN) mypy --install-types --non-interactive --explicit-package-bases ./asimap/ ./scripts/
 
-.PHONY: formatting lint squeegee isort black mypy version
+.PHONY: formatting lint squeegee ruff-format mypy version

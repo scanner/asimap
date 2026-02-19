@@ -5,6 +5,7 @@
 """
 This module has some simple logic to deal with failed login attempt throttling.
 """
+
 # system imports
 #
 import logging
@@ -59,7 +60,7 @@ logger = logging.getLogger("asimap.throttle")
 
 ####################################################################
 #
-def login_failed(user: str, addr: str):
+def login_failed(user: str, addr: str) -> None:
     """
     We had a login attempt that failed, likely due to a bad password.
     Record this attempt.
@@ -114,10 +115,10 @@ def check_allow(user: str, addr: str) -> bool:
     #
     now = time.time()
     if user in BAD_USER_AUTHS and now - BAD_USER_AUTHS[user][1] > PURGE_TIME:
-        logger.info("clearing '%s' from BAD_USER_AUTHS" % user)
+        logger.info(f"clearing '{user}' from BAD_USER_AUTHS")
         del BAD_USER_AUTHS[user]
     if addr in BAD_IP_AUTHS and now - BAD_IP_AUTHS[addr][1] > PURGE_TIME:
-        logger.info("clearing '%s' from BAD_IP_AUTHS" % addr)
+        logger.info(f"clearing '{addr}' from BAD_IP_AUTHS")
         del BAD_IP_AUTHS[addr]
 
     # if the user or client addr is NOT in either of the tracking dicts
@@ -138,7 +139,7 @@ def check_allow(user: str, addr: str) -> bool:
         return False
 
     if addr in BAD_IP_AUTHS and BAD_IP_AUTHS[addr][0] > MAX_ADDR_ATTEMPTS:
-        logger.warning("Deny: too many attempts from address: %s" % addr)
+        logger.warning(f"Deny: too many attempts from address: {addr}")
         return False
 
     # Otherwise they are not yet blocked from attempting to login.

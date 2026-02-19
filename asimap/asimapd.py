@@ -59,6 +59,7 @@ Options:
   --pwfile=<pwfile>  The file that contains the users and their hashed passwords
                      The env. var is `PWFILE`. Defaults to `/opt/asimap/pwfile`
 """
+
 # system imports
 #
 import asyncio
@@ -86,7 +87,7 @@ logger = logging.getLogger("asimap.asimapd")
 
 #############################################################################
 #
-def main():
+def main() -> None:
     """
     Our main entry point. Parse the options, set up logging, go in to
     daemon mode if necessary, setup the asimap library and start
@@ -157,7 +158,7 @@ def main():
     # password file in the asimap.auth module.
     #
     if pwfile:
-        setattr(auth, "PW_FILE_LOCATION", pwfile)
+        auth.PW_FILE_LOCATION = pwfile
 
     if not ssl_cert_file.exists() or not ssl_key_file.exists():
         raise FileNotFoundError(

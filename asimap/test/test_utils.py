@@ -6,12 +6,14 @@ Test our util functions
 #
 import asyncio
 import email.policy
+from pathlib import Path
 from queue import SimpleQueue
 
 # 3rd party imports
 #
 import aiofiles.os
 import pytest
+from faker import Faker
 
 # Project imports
 #
@@ -28,12 +30,13 @@ from ..utils import (
     utime,
     with_timeout,
 )
+from .conftest import EmailFactoryType
 
 
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_asyncio_utime(tmp_path):
+async def test_asyncio_utime(tmp_path: Path) -> None:
     """
     We use aiofile's `wrap` to make our own asyncio version of os.utime.
     """
@@ -54,7 +57,7 @@ async def test_asyncio_utime(tmp_path):
 
 ####################################################################
 #
-def test_uidvv_uid(faker):
+def test_uidvv_uid(faker: Faker) -> None:
     uid_vals = [
         (faker.pyint(max_value=999999999), faker.pyint(max_value=999999999))
         for _ in range(10)
@@ -63,52 +66,52 @@ def test_uidvv_uid(faker):
     for x, y in zip(uid_vals, uids):
         assert get_uidvv_uid(y) == x
 
-    get_uidvv_uid("  012345.6789   ") == (12345, 6789)
+    assert get_uidvv_uid("  012345.6789   ") == (12345, 6789)
 
 
 ####################################################################
 #
-def test_sequence_set_to_list(faker):
+def test_sequence_set_to_list(faker: Faker) -> None:
     # fmt: off
     valid_sequence_sets = [
         (
-            ((319128, 319164),(319169, 319186),(319192, 319210),
-             (319212, 319252),(319254, 319256),319258,319261,(319263, 319288),
-             (319293, 319389),(319392, 319413),(319415, 319418),
-             (319420, 319438),(319440, 319445),(319447, 319455),
-             (319457, 319459),(319462, 319487),(319491, 319509),
-             (319511, 319514),(319517, 319529),(319531, 319532),
-             (319535, 319551),(319553, 319558),(319562, 319595),
-             (319598, 319612),(319614, 319617),(319621, 319672),
-             (319674, 319681),(319685, 319696)),
+            ((319128, 319164), (319169, 319186), (319192, 319210),
+             (319212, 319252), (319254, 319256), 319258, 319261, (319263, 319288),
+             (319293, 319389), (319392, 319413), (319415, 319418),
+             (319420, 319438), (319440, 319445), (319447, 319455),
+             (319457, 319459), (319462, 319487), (319491, 319509),
+             (319511, 319514), (319517, 319529), (319531, 319532),
+             (319535, 319551), (319553, 319558), (319562, 319595),
+             (319598, 319612), (319614, 319617), (319621, 319672),
+             (319674, 319681), (319685, 319696)),
             319696
         ),
         (
-            ((5637, 5648),(5797, 5800),(5810, 5820),(5823, 6507),(6509, 6623),
+            ((5637, 5648), (5797, 5800), (5810, 5820), (5823, 6507), (6509, 6623),
              6625),
             6625
         ),
         (
-            ((152, 165),(168, 171),(177, 180),192,195,197,199,(205, 224),
-             (226, 227),(229, 231),(233, 234),(236, 244),(246, 248),260,268,275,
-             (278, 279),281,290,303,308,(316, 320),325,(330, 334),"*"),
+            ((152, 165), (168, 171), (177, 180), 192, 195, 197, 199, (205, 224),
+             (226, 227), (229, 231), (233, 234), (236, 244), (246, 248), 260, 268, 275,
+             (278, 279), 281, 290, 303, 308, (316, 320), 325, (330, 334), "*"),
             336
         ),
         (
-            ((3, 6),(10, 15),(17, 18),20,(22, 27),(30, 33),(35, 47),(49, 59),66,
-             (68, 69),72,75,77,(79, 80),85,(87, 90),92,(95, 96),(98, 101),
-             (104, 107),110,(113, 120),(122, 123),(126, 132),(134, 145),151,
-             (153, 158),(160, 167),(169, 172),(174, 175),177,(179, 181),186,
-             (189, 190),(194, 197),200,202,(204, 206),(209, 211),(213, 234),
-             237,239,242,(252, 253),260,266,(271, "*")),
+            ((3, 6), (10, 15), (17, 18), 20, (22, 27), (30, 33), (35, 47), (49, 59), 66,
+             (68, 69), 72, 75, 77, (79, 80), 85, (87, 90), 92, (95, 96), (98, 101),
+             (104, 107), 110, (113, 120), (122, 123), (126, 132), (134, 145), 151,
+             (153, 158), (160, 167), (169, 172), (174, 175), 177, (179, 181), 186,
+             (189, 190), (194, 197), 200, 202, (204, 206), (209, 211), (213, 234),
+             237, 239, 242, (252, 253), 260, 266, (271, "*")),
             272
         ),
         (
-            (1100,(1104, 1113),(1115, 1120),(1122, 1129),(1131, 1146),
-             (1148, 1159),(1163, 1167),(1169, 1173),1176,(1178, 1181),
-             (1183, 1189),(1191, 1216),(1218, 1230),1232,(1234, 1236),1238,1240,
-             1242,(1244, 1246),(1248, 1249),1251,1260,1262,1268,1272,
-             (1274, 1282),1284,1288,(1291, 1293),1295,(1298, 1300),1305,1307,
+            (1100, (1104, 1113), (1115, 1120), (1122, 1129), (1131, 1146),
+             (1148, 1159), (1163, 1167), (1169, 1173), 1176, (1178, 1181),
+             (1183, 1189), (1191, 1216), (1218, 1230), 1232, (1234, 1236), 1238, 1240,
+             1242, (1244, 1246), (1248, 1249), 1251, 1260, 1262, 1268, 1272,
+             (1274, 1282), 1284, 1288, (1291, 1293), 1295, (1298, 1300), 1305, 1307,
              (1309, 1310)),
             1310
         ),
@@ -123,9 +126,11 @@ def test_sequence_set_to_list(faker):
             if isinstance(elt, int):
                 assert elt in coalesced
             if isinstance(elt, tuple):
-                if elt[1] == "*":
-                    elt = (elt[0], seq_max)
-                for i in range(elt[0], elt[1] + 1):
+                start = elt[0]
+                end = seq_max if elt[1] == "*" else elt[1]
+                assert isinstance(start, int)
+                assert isinstance(end, int)
+                for i in range(start, end + 1):
                     assert i in coalesced
             if elt == "*":
                 assert seq_max in coalesced
@@ -164,8 +169,8 @@ def test_sequence_set_to_list(faker):
         [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
         [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     ]
-    for (seq_set, seq_max), exp in zip(bad_seq_sets, expected):
-        coalesced = sequence_set_to_list(seq_set, seq_max, uid_cmd=True)
+    for bad_seq, exp in zip(bad_seq_sets, expected):
+        coalesced = sequence_set_to_list(bad_seq[0], bad_seq[1], uid_cmd=True)
         assert coalesced == exp
 
 
@@ -173,7 +178,7 @@ def test_sequence_set_to_list(faker):
 #
 @pytest.mark.asyncio
 @with_timeout(2)
-async def test_rwlock_basic():
+async def test_rwlock_basic() -> None:
     """
     oh goody. Testing locking code.  The UpgradeableReadWriteLock is a
     asyncio locking tool. Many tasks can have the read lock, but if any of them
@@ -214,7 +219,7 @@ async def test_rwlock_basic():
 #
 @pytest.mark.asyncio
 @with_timeout(2)
-async def test_rwlock_exceptions():
+async def test_rwlock_exceptions() -> None:
     """
     Make sure if we get an exception while holding a lock things are
     released properly.
@@ -244,7 +249,7 @@ async def test_rwlock_exceptions():
 #
 @pytest.mark.asyncio
 @with_timeout(2)
-async def test_rwlock_two_read_locks():
+async def test_rwlock_two_read_locks() -> None:
     """
     Make sure multiple tasks can have the read lock at the same time
     """
@@ -253,7 +258,7 @@ async def test_rwlock_two_read_locks():
         start_event: asyncio.Event,
         done_event: asyncio.Event,
         urw: UpgradeableReadWriteLock,
-    ):
+    ) -> None:
         """
         Acquire the read lock. Signal via an event when we have acquired
         the read lock.
@@ -298,7 +303,7 @@ async def test_rwlock_two_read_locks():
 #
 @pytest.mark.asyncio
 @with_timeout(5)
-async def test_rwlock_only_one_write_lock():
+async def test_rwlock_only_one_write_lock() -> None:
     """
     There Can Be Only One Task (that holds the write lock)
     """
@@ -307,7 +312,7 @@ async def test_rwlock_only_one_write_lock():
         start_event: asyncio.Event,
         done_event: asyncio.Event,
         urw: UpgradeableReadWriteLock,
-    ):
+    ) -> None:
         async with urw.read_lock():
             start_event.set()  # se #1
 
@@ -399,7 +404,7 @@ async def test_rwlock_only_one_write_lock():
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_rwlock_can_not_nest_write_locks():
+async def test_rwlock_can_not_nest_write_locks() -> None:
     urw_lock = UpgradeableReadWriteLock()
     async with urw_lock.read_lock():
         async with urw_lock.write_lock():
@@ -412,7 +417,7 @@ async def test_rwlock_can_not_nest_write_locks():
 #
 @pytest.mark.asyncio
 @with_timeout(2)
-async def test_rwlock_nesting_read_locks():
+async def test_rwlock_nesting_read_locks() -> None:
     """
     You can nest read locks ONLY if they do not try to upgrade to a write
     lock.
@@ -428,7 +433,7 @@ async def test_rwlock_nesting_read_locks():
 #
 @pytest.mark.asyncio
 @with_timeout(2)
-async def test_rwlock_nesting_read_locks_w_write_lock():
+async def test_rwlock_nesting_read_locks_w_write_lock() -> None:
     """
     This is going to fail with a deadlock because the writelock can never
     be obtained with how the UpgradeableReadWriteLock is written.
@@ -446,7 +451,7 @@ async def test_rwlock_nesting_read_locks_w_write_lock():
 #
 @pytest.mark.asyncio
 @with_timeout(2)
-async def test_rwlock_only_one_write_lock_delayed():
+async def test_rwlock_only_one_write_lock_delayed() -> None:
     """
     When we have two tasks, and one already has a write lock, the other
     one, only going for a read lock, blocks until the write lock is released.
@@ -460,7 +465,7 @@ async def test_rwlock_only_one_write_lock_delayed():
         event_one: asyncio.Event,
         event_two: asyncio.Event,
         urw: UpgradeableReadWriteLock,
-    ):
+    ) -> None:
         # Get a read lock. Get the write lock. Send a signal on `event_one`
         # once we have gotten the write lock.
         async with urw_lock.read_lock():
@@ -473,7 +478,7 @@ async def test_rwlock_only_one_write_lock_delayed():
     async def get_read_lock(
         sq: SimpleQueue,
         urw: UpgradeableReadWriteLock,
-    ):
+    ) -> None:
         async with urw_lock.read_lock():
             sq.put(2)
 
@@ -517,7 +522,7 @@ async def test_rwlock_only_one_write_lock_delayed():
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_rwlock_check_read_lock():
+async def test_rwlock_check_read_lock() -> None:
     """
     We can test if a task currently has a read lock.
     """
@@ -542,7 +547,9 @@ async def test_rwlock_check_read_lock():
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_find_header_in_binary_file(tmp_path, faker, email_factory):
+async def test_find_header_in_binary_file(
+    tmp_path: Path, faker: Faker, email_factory: EmailFactoryType
+) -> None:
     """
     Make some emails with and without the UID_HDR, save them to files and
     then validate that the UID_HDR can be found when it exists and returns None
@@ -579,8 +586,8 @@ async def test_find_header_in_binary_file(tmp_path, faker, email_factory):
 #
 @pytest.mark.asyncio
 async def test_update_replace_header_in_binary_file(
-    tmp_path, faker, email_factory
-):
+    tmp_path: Path, faker: Faker, email_factory: EmailFactoryType
+) -> None:
     """
     Create a bunch of files with email in them. Some without asimap uid
     hdrs, some with.
@@ -629,9 +636,10 @@ async def test_update_replace_header_in_binary_file(
 
         # Make sure that the UID_HDR only occurs once in the message.
         #
-        msg = email.message_from_bytes(msg_file.read_bytes())
-        assert UID_HDR in msg
-        hdrs = msg.get_all(UID_HDR)
+        parsed_msg = email.message_from_bytes(msg_file.read_bytes())
+        assert UID_HDR in parsed_msg
+        hdrs = parsed_msg.get_all(UID_HDR)
+        assert hdrs is not None
         assert len(hdrs) == 1
         assert hdrs[0] == value
 
@@ -646,7 +654,7 @@ async def test_update_replace_header_in_binary_file(
         ([1, 2, 9, 12, 13, 14, 15, 20, 21, 23], "1-2,9,12-15,20-21,23"),
     ],
 )
-def test_compact_expand_sequences(data, expected):
+def test_compact_expand_sequences(data: list[int], expected: str) -> None:
     """
     make sure compaction compacts to expected, and when that is expanded it
     matches the data.

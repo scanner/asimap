@@ -4,24 +4,29 @@ Test the user server.
 
 # system imports
 #
+from collections.abc import Callable
+from mailbox import MH
 from pathlib import Path
 
 # 3rd party imports
 #
 import pytest
+from faker import Faker
 
 # Project imports
 #
 from ..client import Authenticated
 from ..mbox import Mailbox, NoSuchMailbox
 from ..parse import IMAPClientCommand
-from ..user_server import IMAPUserServer
+from ..user_server import IMAPClientProxy, IMAPUserServer
 
 
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_user_server_instantiate(mh_folder):
+async def test_user_server_instantiate(
+    mh_folder: Callable[..., tuple[Path, MH, MH]],
+) -> None:
     (mh_dir, _, _) = mh_folder()
     try:
         user_server = await IMAPUserServer.new(mh_dir)
@@ -34,8 +39,10 @@ async def test_user_server_instantiate(mh_folder):
 #
 @pytest.mark.asyncio
 async def test_find_all_folders(
-    faker, mailbox_with_bunch_of_email, imap_user_server_and_client
-):
+    faker: Faker,
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
+) -> None:
     server, imap_client = imap_user_server_and_client
     _ = mailbox_with_bunch_of_email
 
@@ -73,8 +80,10 @@ async def test_find_all_folders(
 #
 @pytest.mark.asyncio
 async def test_check_folder(
-    faker, mailbox_with_bunch_of_email, imap_user_server_and_client
-):
+    faker: Faker,
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
+) -> None:
     server, imap_client = imap_user_server_and_client
     mbox = mailbox_with_bunch_of_email
 
@@ -88,7 +97,66 @@ async def test_check_folder(
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_there_is_a_root_folder(imap_user_server):
+async def test_check_folder_removes_stale_db_entry(
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
+) -> None:
+    """
+    GIVEN: a mailbox that exists in the database but whose folder has been
+           removed from disk (e.g., by an external MH client)
+    WHEN:  check_folder is called for that mailbox
+    THEN:  the stale database entry should be cleaned up
+    """
+    server, imap_client = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+
+    # Create a folder, make sure it's in the DB
+    #
+    folder_name = "test_stale_folder"
+    await Mailbox.create(folder_name, server)
+    mbox = await server.get_mailbox(folder_name)
+    assert mbox is not None
+
+    # Verify it exists in the database
+    #
+    row = await server.db.fetchone(
+        "SELECT name FROM mailboxes WHERE name = ?", (folder_name,)
+    )
+    assert row is not None
+    assert row[0] == folder_name
+
+    # Remove the folder from disk (simulating an external MH client
+    # removing it) and remove it from active mailboxes so check_folder
+    # will try to re-activate it.
+    #
+    import shutil
+
+    folder_path = Path(server.mailbox._path) / folder_name
+    shutil.rmtree(folder_path)
+    async with server.active_mailboxes_lock:
+        server.active_mailboxes.pop(folder_name, None)
+
+    # Now check_folder should detect the folder is gone and clean up
+    # the database entry.
+    #
+    await server.check_folder(folder_name, 0, force=True)
+
+    # The database entry should be gone
+    #
+    row = await server.db.fetchone(
+        "SELECT name FROM mailboxes WHERE name = ?", (folder_name,)
+    )
+    assert row is None
+
+    # And it should not be in active_mailboxes
+    #
+    assert folder_name not in server.active_mailboxes
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_there_is_a_root_folder(imap_user_server: IMAPUserServer) -> None:
     server = imap_user_server
     # In an attempt to see if the root folder would fix iOS 18's IMAP problems
     # we allow the root folder to exist. (But it still did not fix iOS 18)
@@ -101,8 +169,10 @@ async def test_there_is_a_root_folder(imap_user_server):
 #
 @pytest.mark.asyncio
 async def test_check_all_folders(
-    faker, mailbox_with_bunch_of_email, imap_user_server_and_client
-):
+    faker: Faker,
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
+) -> None:
     server, imap_client = imap_user_server_and_client
     _ = mailbox_with_bunch_of_email
 

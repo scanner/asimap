@@ -9,6 +9,7 @@ kept in this module to avoid ciruclar dependencies.
 
 # system imports
 #
+from typing import Any
 
 
 #######################################################################
@@ -17,10 +18,10 @@ kept in this module to avoid ciruclar dependencies.
 # to determine how we respond in exceptional situations
 #
 class ProtocolException(Exception):
-    def __init__(self, value="protocol exception"):
+    def __init__(self, value: str = "protocol exception") -> None:
         self.value = value
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.value
 
 
@@ -28,10 +29,10 @@ class ProtocolException(Exception):
 ##################################################################
 #
 class No(ProtocolException):
-    def __init__(self, value="no"):
+    def __init__(self, value: str = "no") -> None:
         self.value = value
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.value
 
 
@@ -39,10 +40,10 @@ class No(ProtocolException):
 ##################################################################
 #
 class Bad(ProtocolException):
-    def __init__(self, value="bad"):
+    def __init__(self, value: str = "bad") -> None:
         self.value = value
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.value
 
 
@@ -63,18 +64,17 @@ class MailboxInconsistency(ProtocolException):
     """
 
     def __init__(
-        self, value="mailbox inconsistencey", mbox_name=None, msg_key=None
-    ):
+        self,
+        value: str = "mailbox inconsistencey",
+        mbox_name: str | None = None,
+        msg_key: int | None = None,
+    ) -> None:
         self.value = value
         self.mbox_name = mbox_name
         self.msg_key = msg_key
 
-    def __str__(self):
-        return "%s in mailbox '%s', msg key: %s" % (
-            self.value,
-            self.mbox_name,
-            str(self.msg_key),
-        )
+    def __str__(self) -> str:
+        return f"{self.value} in mailbox '{self.mbox_name}', msg key: {str(self.msg_key)}"
 
 
 ##################################################################
@@ -87,7 +87,7 @@ class MailboxLock(ProtocolException):
 
     ##################################################################
     #
-    def __init__(self, value="Mailbox lock", mbox=None):
+    def __init__(self, value: str = "Mailbox lock", mbox: Any = None) -> None:
         """
         Arguments:
         - `value`:
@@ -98,11 +98,11 @@ class MailboxLock(ProtocolException):
 
     ##################################################################
     #
-    def __str__(self):
+    def __str__(self) -> str:
         if self.mbox is None:
             return self.value
         else:
-            return "%s on mailbox %s" % (self.value, self.mbox.name)
+            return f"{self.value} on mailbox {self.mbox.name}"
 
 
 ############################################################################
@@ -110,10 +110,10 @@ class MailboxLock(ProtocolException):
 # Our authentication system has its own set of exceptions.
 #
 class AuthenticationException(Exception):
-    def __init__(self, value="bad!"):
+    def __init__(self, value: str = "bad!") -> None:
         self.value = value
 
-    def __str__(self):
+    def __str__(self) -> str:
         return repr(self.value)
 
 

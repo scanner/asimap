@@ -66,6 +66,7 @@ XXX We communicate with the server via localhost TCP sockets. We REALLY should
     connecting to us. Perhaps we will use stdin for that in the
     future. Otherwise this is a bit of a nasty security hole.
 """
+
 # system imports
 #
 import asyncio
@@ -97,14 +98,14 @@ logger = logging.getLogger("asimap.asimapd_user")
 
 #############################################################################
 #
-async def create_and_start_user_server(maildir: Path, debug: bool):
+async def create_and_start_user_server(maildir: Path, debug: bool) -> None:
     server = await IMAPUserServer.new(maildir, debug=debug)
     await server.run()
 
 
 #############################################################################
 #
-def main():
+def main() -> None:
     """
     Parse arguments, setup logging, setup tracing, create the user server
     object and start the asyncio main event loop on the user server.

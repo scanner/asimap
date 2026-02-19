@@ -2,6 +2,7 @@
 Fetch.. the part that gets various bits and pieces of messages.
 """
 
+from collections.abc import Callable
 from email import message_from_bytes, message_from_string
 
 # System imports
@@ -18,12 +19,18 @@ import pytest
 #
 # from ..generator import msg_as_string, msg_headers_as_string
 from ..generator import msg_as_bytes, msg_headers_as_bytes
-from .conftest import PROBLEMATIC_EMAIL_MSG_KEYS, STATIC_EMAIL_MSG_KEYS
+from .conftest import (
+    PROBLEMATIC_EMAIL_MSG_KEYS,
+    STATIC_EMAIL_MSG_KEYS,
+    EmailFactoryType,
+)
 
 
 ####################################################################
 #
-def test_simple_email_text_generator_no_headers(email_factory):
+def test_simple_email_text_generator_no_headers(
+    email_factory: EmailFactoryType,
+) -> None:
     for _ in range(5):
         msg = email_factory()
         msg_text = msg_as_bytes(msg, render_headers=False)
@@ -52,8 +59,8 @@ def test_simple_email_text_generator_no_headers(email_factory):
 #
 @pytest.mark.parametrize("msg_key", STATIC_EMAIL_MSG_KEYS)
 def test_static_email_text_generator_no_headers(
-    msg_key, static_email_factory_bytes
-):
+    msg_key: int, static_email_factory_bytes: Callable[[int], bytes]
+) -> None:
 
     msg = message_from_bytes(
         static_email_factory_bytes(msg_key), policy=default
@@ -77,8 +84,8 @@ def test_static_email_text_generator_no_headers(
 #
 @pytest.mark.parametrize("msg_key", STATIC_EMAIL_MSG_KEYS)
 def test_static_email_text_generator_headers(
-    msg_key, static_email_factory_bytes
-):
+    msg_key: int, static_email_factory_bytes: Callable[[int], bytes]
+) -> None:
     """
     A message with headers is the same as the default generator with
     policy=SMTP.
@@ -100,8 +107,8 @@ def test_static_email_text_generator_headers(
 #
 @pytest.mark.parametrize("msg_key", STATIC_EMAIL_MSG_KEYS)
 def test_static_email_header_generator_all_headers(
-    msg_key, static_email_factory_bytes
-):
+    msg_key: int, static_email_factory_bytes: Callable[[int], bytes]
+) -> None:
 
     msg = message_from_bytes(
         static_email_factory_bytes(msg_key), policy=default
@@ -124,7 +131,7 @@ def test_static_email_header_generator_all_headers(
 
 ####################################################################
 #
-def test_header_generator_some_headers(lots_of_headers_email):
+def test_header_generator_some_headers(lots_of_headers_email: str) -> None:
     """
     Test selective getting of headers.
     """
@@ -142,7 +149,7 @@ def test_header_generator_some_headers(lots_of_headers_email):
 
 ####################################################################
 #
-def test_header_generator_skip_headers(lots_of_headers_email):
+def test_header_generator_skip_headers(lots_of_headers_email: str) -> None:
     """
     Test selective getting of headers.
     """
@@ -168,7 +175,7 @@ def test_header_generator_skip_headers(lots_of_headers_email):
         "x-originating-ip",
         "x-ms-publictraffictype",
         "x-microsoft-exchange-diagnostics",
-        "x-ms-exchange-antispam-srfa-diagnostics"
+        "x-ms-exchange-antispam-srfa-diagnostics",
         "x-ms-office365-filtering-correlation-id",
         "x-microsoft-antispam",
         "x-ms-traffictypediagnostic",
@@ -182,13 +189,14 @@ def test_header_generator_skip_headers(lots_of_headers_email):
         "spamdiagnosticmetadata",
         "X-Priority",
         "X-MSMail-Priority",
-        "X-Mailer" "X-MimeOLE",
+        "X-Mailer",
+        "X-MimeOLE",
         "X-Antivirus",
         "X-Antivirus-Status",
         "X-UIDL",
         "X-Antivirus",
         "X-Antivirus-Status",
-        "x-ms-EXCHANGE-ANTISPAM-srfa-diagnostics"
+        "x-ms-EXCHANGE-ANTISPAM-srfa-diagnostics",
         "x-ms-office365-FILTERING-correlation-id",
         "X-MIMEOLE",
     ]
@@ -232,12 +240,9 @@ Accept-Language: it-IT, en-US\r
 Content-Language: it-IT\r
 authentication-results: spf=none (sender IP is )\r
  smtp.mailfrom=jang.selca.tubi@linux.selca;\r
-x-ms-exchange-antispam-srfa-diagnostics: SSOS;\r
-x-ms-office365-filtering-correlation-id: b6800147-d5b4-494e-46ff-08d52c336e1f\r
 MIME-Version: 1.0\r
 Content-Type: multipart/alternative;\r
-\tboundary="----=_NextPart_000_0031_01D36222.8A648550"\r
-X-Mailer: Microsoft Outlook Express 6.00.2900.5931\r\n\r\n"""
+\tboundary="----=_NextPart_000_0031_01D36222.8A648550"\r\n\r\n"""
 
     headers = msg_headers_as_bytes(msg, tuple(to_skip), skip=True)
     assert headers == expected
@@ -246,7 +251,9 @@ X-Mailer: Microsoft Outlook Express 6.00.2900.5931\r\n\r\n"""
 ####################################################################
 #
 @pytest.mark.parametrize("msg_key", PROBLEMATIC_EMAIL_MSG_KEYS)
-def test_generator_problematic_email(msg_key, problematic_email_factory_bytes):
+def test_generator_problematic_email(
+    msg_key: int, problematic_email_factory_bytes: Callable[[int], bytes]
+) -> None:
     """
     Not all emails can be flattened out of the box without some jiggery
     pokery.  Such as messages that say they are 7-bit us-ascii but are actually

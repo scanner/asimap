@@ -3,10 +3,12 @@
 """
 Factories for various objects in the ASIMAP server.
 """
+
 # system imports
 #
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 # 3rd party imports
 #
@@ -40,6 +42,8 @@ class UserFactory(factory.Factory):
     password_hash = "!invalid_pw"  # NOTE: Fixed in post_generation below
 
     @post_generation
-    def password(self, create: bool, extracted: Sequence[Any], **kwargs):
-        password = extracted if extracted else fake.password(length=16)
+    def password(
+        self, create: bool, extracted: Sequence[Any], **kwargs: Any
+    ) -> None:
+        password = str(extracted) if extracted else fake.password(length=16)
         self.pw_hash = make_password(password)

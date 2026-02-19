@@ -8,11 +8,11 @@ structure.
 import asyncio
 import logging
 import os.path
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from email.message import EmailMessage
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Any
 
 # asimap imports
 #
@@ -29,17 +29,17 @@ logger = logging.getLogger("asimap.search")
 ############################################################################
 #
 class BadSearchOp(Exception):
-    def __init__(self, value="bad search operation"):
+    def __init__(self, value: str = "bad search operation"):
         self.value = value
 
-    def __str__(self):
-        return "BadSearchOp: %s" % self.value
+    def __str__(self) -> str:
+        return f"BadSearchOp: {self.value}"
 
 
 ##################################################################
 ##################################################################
 #
-class SearchContext(object):
+class SearchContext:
     """
     When running searches on we store various bits of context information that
     the IMAPSearch object may need to determine if a specific message is
@@ -79,12 +79,12 @@ class SearchContext(object):
         # in to the message. We use read only attributes to fill in these
         # values.
         #
-        self._internal_date: Optional[datetime] = None
-        self._msg: Optional[EmailMessage] = None
-        self._msg_size: Optional[int] = None
-        self._uid_vv: Optional[int] = None
-        self._uid: Optional[int] = None
-        self._sequences: Optional[List[str]] = None
+        self._internal_date: datetime | None = None
+        self._msg: EmailMessage | None = None
+        self._msg_size: int | None = None
+        self._uid_vv: int | None = None
+        self._uid: int | None = None
+        self._sequences: list[str] | None = None
 
     ####################################################################
     #
@@ -103,7 +103,7 @@ class SearchContext(object):
         internal_date = datetime.fromtimestamp(
             # await aiofiles.os.path.getmtime(self.path), timezone.utc
             self.path.stat().st_mtime,
-            timezone.utc,
+            UTC,
         )
         self._internal_date = internal_date
         return self._internal_date
@@ -131,7 +131,7 @@ class SearchContext(object):
 
     ##################################################################
     #
-    def uid(self) -> Optional[int]:
+    def uid(self) -> int | None:
         """
         The IMAP UID of the message
         """
@@ -143,7 +143,7 @@ class SearchContext(object):
 
     ##################################################################
     #
-    def uid_vv(self) -> Optional[int]:
+    def uid_vv(self) -> int | None:
         """
         The IMAP UID Validity Value for the mailbox
         """
@@ -155,7 +155,7 @@ class SearchContext(object):
     ##################################################################
     #
     @property
-    def sequences(self) -> List[str]:
+    def sequences(self) -> list[str]:
         """
         The list of sequences that this message is in. If the message is not
         loaded we avoid loading the message object by just getting the
@@ -204,7 +204,7 @@ STR_TO_SEARCH_OP = {op_enum.value: op_enum for op_enum in SearchOp}
 ############################################################################
 ############################################################################
 #
-class IMAPSearch(object):
+class IMAPSearch:
     """THis is an IMAPSearch object. It can instantiate all the possible
     criteria for a search of the messages in a mailbox. The possible search
     parameters are as defined in rfc2060.
@@ -218,7 +218,7 @@ class IMAPSearch(object):
 
     #########################################################################
     #
-    def __init__(self, op, **kwargs):
+    def __init__(self, op: str, **kwargs: Any):
         """This sets up the IMAPSearch object. It must be given at least the
         'search operation' keyword and a bunch of keyword arguments that are
         required for that search operation.
@@ -231,16 +231,16 @@ class IMAPSearch(object):
 
     #########################################################################
     #
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"IMAPSearch, operation: {self.op.value}"
 
     #########################################################################
     #
-    def __str__(self):
+    def __str__(self) -> str:
         result = [f"IMAPSearch('{self.op.value}'"]
         match self.op:
             case SearchOp.AND | SearchOp.OR:
-                elt: List[str] = []
+                elt: list[str] = []
                 for search in self.args["search_key"]:
                     elt.append(str(search))
                 result.append(f", [{', '.join(elt)}]")
@@ -260,7 +260,7 @@ class IMAPSearch(object):
             case SearchOp.TEXT | SearchOp.BODY:
                 result.append(f', string = "{self.args["string"]}"')
             case SearchOp.MESSAGE_SET:
-                result.append(f', msg_set = {self.args["msg_set"]}')
+                result.append(f", msg_set = {self.args['msg_set']}")
             case SearchOp.HEADER:
                 result.append(
                     f', header = "{self.args["header"]}", '
