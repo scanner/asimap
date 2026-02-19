@@ -269,7 +269,7 @@ PEEK_IMAP_MESSAGES = [
 @pytest.mark.parametrize(
     "received,expected", IMAP_MESSAGES + PEEK_IMAP_MESSAGES
 )
-def test_parse_good_messages(received, expected) -> None:
+def test_parse_good_messages(received: str, expected: str) -> None:
     """
     Test the set of messages we know should succeed and what we expect
     the parsed result to print out as.
@@ -282,7 +282,7 @@ def test_parse_good_messages(received, expected) -> None:
 ####################################################################
 #
 @pytest.mark.parametrize("received,expected", PEEK_IMAP_MESSAGES)
-def test_fetch_peek(received, expected) -> None:
+def test_fetch_peek(received: str, expected: str) -> None:
     """
     Make sure that `fetch_peek` is set properly on FETCH commans
     """
@@ -617,13 +617,13 @@ LIST_EXTENDED_BAD = [
     LIST_EXTENDED_VALID,
 )
 def test_list_extended_valid(
-    received,
-    exp_select,
-    exp_return,
-    exp_patterns,
-    exp_status,
-    exp_mbox_name,
-    exp_list_mbox,
+    received: str,
+    exp_select: set[ListSelectOpt],
+    exp_return: set[ListReturnOpt],
+    exp_patterns: list[str],
+    exp_status: list[StatusAtt],
+    exp_mbox_name: str,
+    exp_list_mbox: str | None,
 ) -> None:
     """
     GIVEN: a valid LIST or LIST-EXTENDED command
@@ -648,7 +648,7 @@ def test_list_extended_valid(
 ####################################################################
 #
 @pytest.mark.parametrize("received", LIST_EXTENDED_BAD)
-def test_list_extended_bad_syntax(received) -> None:
+def test_list_extended_bad_syntax(received: str) -> None:
     """
     GIVEN: a LIST-EXTENDED command with invalid option combinations
     WHEN:  parsed

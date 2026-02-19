@@ -102,7 +102,7 @@ def do_baked_appends(
                 extracted = tf.extractfile(member)
                 assert extracted is not None
                 content = extracted.read()
-                imap.append(mbox_name, None, None, content)
+                imap.append(mbox_name, None, None, content)  # type: ignore[arg-type]
 
 
 ####################################################################
@@ -118,7 +118,7 @@ def dump_all_messages(imap: imaplib.IMAP4) -> None:
         print(f"  Messages in mailbox: {data[0]}")
         for num in data[0].split():
             t, d = imap.fetch(num, "(RFC822.header)")
-            print(f"    Message {num} header info: {d[0][0]}")
+            print(f"    Message {num} header info: {d[0][0]!r}")  # type: ignore[index]
             # typ, data = imap.fetch(num, '(RFC822)')
             # print 'Message {}, length: {}'.format(num, len(d[0][1]))
 

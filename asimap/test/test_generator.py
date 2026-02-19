@@ -2,6 +2,7 @@
 Fetch.. the part that gets various bits and pieces of messages.
 """
 
+from collections.abc import Callable
 from email import message_from_bytes, message_from_string
 
 # System imports
@@ -18,12 +19,18 @@ import pytest
 #
 # from ..generator import msg_as_string, msg_headers_as_string
 from ..generator import msg_as_bytes, msg_headers_as_bytes
-from .conftest import PROBLEMATIC_EMAIL_MSG_KEYS, STATIC_EMAIL_MSG_KEYS
+from .conftest import (
+    PROBLEMATIC_EMAIL_MSG_KEYS,
+    STATIC_EMAIL_MSG_KEYS,
+    EmailFactoryType,
+)
 
 
 ####################################################################
 #
-def test_simple_email_text_generator_no_headers(email_factory) -> None:
+def test_simple_email_text_generator_no_headers(
+    email_factory: EmailFactoryType,
+) -> None:
     for _ in range(5):
         msg = email_factory()
         msg_text = msg_as_bytes(msg, render_headers=False)
@@ -52,7 +59,7 @@ def test_simple_email_text_generator_no_headers(email_factory) -> None:
 #
 @pytest.mark.parametrize("msg_key", STATIC_EMAIL_MSG_KEYS)
 def test_static_email_text_generator_no_headers(
-    msg_key, static_email_factory_bytes
+    msg_key: int, static_email_factory_bytes: Callable[[int], bytes]
 ) -> None:
 
     msg = message_from_bytes(
@@ -77,7 +84,7 @@ def test_static_email_text_generator_no_headers(
 #
 @pytest.mark.parametrize("msg_key", STATIC_EMAIL_MSG_KEYS)
 def test_static_email_text_generator_headers(
-    msg_key, static_email_factory_bytes
+    msg_key: int, static_email_factory_bytes: Callable[[int], bytes]
 ) -> None:
     """
     A message with headers is the same as the default generator with
@@ -100,7 +107,7 @@ def test_static_email_text_generator_headers(
 #
 @pytest.mark.parametrize("msg_key", STATIC_EMAIL_MSG_KEYS)
 def test_static_email_header_generator_all_headers(
-    msg_key, static_email_factory_bytes
+    msg_key: int, static_email_factory_bytes: Callable[[int], bytes]
 ) -> None:
 
     msg = message_from_bytes(
@@ -124,7 +131,7 @@ def test_static_email_header_generator_all_headers(
 
 ####################################################################
 #
-def test_header_generator_some_headers(lots_of_headers_email) -> None:
+def test_header_generator_some_headers(lots_of_headers_email: str) -> None:
     """
     Test selective getting of headers.
     """
@@ -142,7 +149,7 @@ def test_header_generator_some_headers(lots_of_headers_email) -> None:
 
 ####################################################################
 #
-def test_header_generator_skip_headers(lots_of_headers_email) -> None:
+def test_header_generator_skip_headers(lots_of_headers_email: str) -> None:
     """
     Test selective getting of headers.
     """
@@ -245,7 +252,7 @@ Content-Type: multipart/alternative;\r
 #
 @pytest.mark.parametrize("msg_key", PROBLEMATIC_EMAIL_MSG_KEYS)
 def test_generator_problematic_email(
-    msg_key, problematic_email_factory_bytes
+    msg_key: int, problematic_email_factory_bytes: Callable[[int], bytes]
 ) -> None:
     """
     Not all emails can be flattened out of the box without some jiggery

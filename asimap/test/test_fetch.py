@@ -6,6 +6,7 @@ Fetch.. the part that gets various bits and pieces of messages.
 #
 import random
 from collections import defaultdict
+from collections.abc import Callable
 from datetime import UTC, datetime
 from email import message_from_bytes
 from email.policy import SMTP
@@ -21,7 +22,7 @@ from pytest_mock import MockerFixture
 from ..constants import REV_SYSTEM_FLAG_MAP, SYSTEM_FLAGS
 from ..fetch import STR_TO_FETCH_OP, FetchAtt, FetchOp, encode_header
 from ..generator import msg_as_bytes, msg_headers_as_bytes
-from ..mbox import mbox_msg_path
+from ..mbox import Mailbox, mbox_msg_path
 from ..parse import _lit_ref_re
 from ..search import SearchContext
 from .conftest import assert_email_equal
@@ -78,9 +79,9 @@ def test_fetch_create_and_str() -> None:
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_fetch_body(mailbox_with_mimekit_email) -> None:
+async def test_fetch_body(mailbox_with_mimekit_email: Mailbox) -> None:
     mbox = mailbox_with_mimekit_email
-    msg_keys = mbox.mailbox.keys()
+    msg_keys = [int(k) for k in mbox.mailbox.keys()]
     seq_max = len(msg_keys)
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
@@ -225,7 +226,9 @@ BODYSTRUCTURE_BY_MSG_KEY = [
     "msg_key,expected_bodystructure", BODYSTRUCTURE_BY_MSG_KEY
 )
 def test_fetch_bodystructure(
-    msg_key, expected_bodystructure, mailbox_with_mimekit_email
+    msg_key: int,
+    expected_bodystructure: str,
+    mailbox_with_mimekit_email: Mailbox,
 ) -> None:
     mbox = mailbox_with_mimekit_email
     seq_max = mbox.num_msgs
@@ -366,7 +369,7 @@ ENVELOPE_BY_MSG_KEY = [
 #
 @pytest.mark.parametrize("msg_key,expected_envelope", ENVELOPE_BY_MSG_KEY)
 def test_fetch_envelope(
-    msg_key, expected_envelope, mailbox_with_mimekit_email
+    msg_key: int, expected_envelope: str, mailbox_with_mimekit_email: Mailbox
 ) -> None:
     mbox = mailbox_with_mimekit_email
     seq_max = mbox.num_msgs
@@ -414,7 +417,7 @@ MSG_SIZE_BY_MSG_KEY = [
 #
 @pytest.mark.parametrize("msg_key,expected_size", MSG_SIZE_BY_MSG_KEY)
 def test_fetch_rfc822_size(
-    msg_key, expected_size, mailbox_with_mimekit_email
+    msg_key: int, expected_size: int, mailbox_with_mimekit_email: Mailbox
 ) -> None:
     mbox = mailbox_with_mimekit_email
     seq_max = mbox.num_msgs
@@ -445,7 +448,7 @@ PROBLEMATIC_MSG_SIZE_BY_MSG_KEY = [
     "msg_key,expected_size", PROBLEMATIC_MSG_SIZE_BY_MSG_KEY
 )
 def test_fetch_problematic_rfc822_size(
-    msg_key, expected_size, mailbox_with_problematic_email
+    msg_key: int, expected_size: int, mailbox_with_problematic_email: Mailbox
 ) -> None:
     mbox = mailbox_with_problematic_email
     seq_max = mbox.num_msgs
@@ -465,7 +468,9 @@ def test_fetch_problematic_rfc822_size(
 ####################################################################
 #
 @pytest.mark.parametrize("msg_key", [1, 2, 3, 4])
-def test_probelmatic_encoding(msg_key, mailbox_with_problematic_email) -> None:
+def test_probelmatic_encoding(
+    msg_key: int, mailbox_with_problematic_email: Mailbox
+) -> None:
     """
     Testing fetch with encoding issues on problematic emails
     """
@@ -487,9 +492,9 @@ def test_probelmatic_encoding(msg_key, mailbox_with_problematic_email) -> None:
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_fetch_flags(mailbox_with_bunch_of_email) -> None:
+async def test_fetch_flags(mailbox_with_bunch_of_email: Mailbox) -> None:
     mbox = mailbox_with_bunch_of_email
-    msg_keys = mbox.mailbox.keys()
+    msg_keys = [int(k) for k in mbox.mailbox.keys()]
     seq_max = len(msg_keys)
     seqs = mbox.sequences
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
@@ -503,11 +508,11 @@ async def test_fetch_flags(mailbox_with_bunch_of_email) -> None:
         for k in msgs_by_flag[flag]:
             flags_by_msg[k].append(flag)
         if flag == r"\Seen":
-            seqs["unseen"] = list(set(msg_keys) - set(msgs_by_flag[flag]))
+            seqs["unseen"] = set(msg_keys) - set(msgs_by_flag[flag])
             for k in seqs["unseen"]:
                 flags_by_msg[k].append("unseen")
 
-        seqs[REV_SYSTEM_FLAG_MAP[flag]] = msgs_by_flag[flag]
+        seqs[REV_SYSTEM_FLAG_MAP[flag]] = set(msgs_by_flag[flag])
 
     for msg_idx, msg_key in enumerate(msg_keys):
         msg_idx += 1
@@ -526,9 +531,9 @@ async def test_fetch_flags(mailbox_with_bunch_of_email) -> None:
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_fetch_internaldate(mailbox_with_bunch_of_email) -> None:
+async def test_fetch_internaldate(mailbox_with_bunch_of_email: Mailbox) -> None:
     mbox = mailbox_with_bunch_of_email
-    msg_keys = mbox.mailbox.keys()
+    msg_keys = [int(k) for k in mbox.mailbox.keys()]
     seq_max = len(msg_keys)
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
@@ -558,9 +563,9 @@ async def test_fetch_internaldate(mailbox_with_bunch_of_email) -> None:
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_fetch_uid(mailbox_with_bunch_of_email) -> None:
+async def test_fetch_uid(mailbox_with_bunch_of_email: Mailbox) -> None:
     mbox = mailbox_with_bunch_of_email
-    msg_keys = mbox.mailbox.keys()
+    msg_keys = [int(k) for k in mbox.mailbox.keys()]
     seq_max = len(msg_keys)
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
@@ -568,6 +573,7 @@ async def test_fetch_uid(mailbox_with_bunch_of_email) -> None:
     uid_by_msg: dict[int, int] = {}
     for msg_key in msg_keys:
         uid_vv, uid = mbox.get_uid_from_msg(msg_key)
+        assert uid is not None
         uid_by_msg[msg_key] = uid
 
     for msg_idx, msg_key in enumerate(msg_keys):
@@ -583,12 +589,14 @@ async def test_fetch_uid(mailbox_with_bunch_of_email) -> None:
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_fetch_body_section_text(mailbox_with_mimekit_email) -> None:
+async def test_fetch_body_section_text(
+    mailbox_with_mimekit_email: Mailbox,
+) -> None:
     """
     We only need to test one message, with lots of headers.
     """
     mbox = mailbox_with_mimekit_email
-    msg_keys = mbox.mailbox.keys()
+    msg_keys = [int(k) for k in mbox.mailbox.keys()]
     seq_max = len(msg_keys)
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
@@ -650,12 +658,14 @@ async def test_fetch_body_section_text(mailbox_with_mimekit_email) -> None:
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_fetch_body_section_header(mailbox_with_mimekit_email) -> None:
+async def test_fetch_body_section_header(
+    mailbox_with_mimekit_email: Mailbox,
+) -> None:
     """
     We only need to test one message, with lots of headers.
     """
     mbox = mailbox_with_mimekit_email
-    msg_keys = mbox.mailbox.keys()
+    msg_keys = [int(k) for k in mbox.mailbox.keys()]
     seq_max = len(msg_keys)
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
@@ -734,10 +744,10 @@ async def test_fetch_body_section_header(mailbox_with_mimekit_email) -> None:
 #
 @pytest.mark.asyncio
 async def test_fetch_body_section_header_fields(
-    mailbox_with_mimekit_email,
+    mailbox_with_mimekit_email: Mailbox,
 ) -> None:
     mbox = mailbox_with_mimekit_email
-    msg_keys = mbox.mailbox.keys()
+    msg_keys = [int(k) for k in mbox.mailbox.keys()]
     seq_max = len(msg_keys)
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
@@ -792,10 +802,10 @@ async def test_fetch_body_section_header_fields(
 #
 @pytest.mark.asyncio
 async def test_fetch_body_text_with_partials(
-    mailbox_with_mimekit_email,
+    mailbox_with_mimekit_email: Mailbox,
 ) -> None:
     mbox = mailbox_with_mimekit_email
-    msg_keys = mbox.mailbox.keys()
+    msg_keys = [int(k) for k in mbox.mailbox.keys()]
     seq_max = len(msg_keys)
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
@@ -835,9 +845,9 @@ async def test_fetch_body_text_with_partials(
 ####################################################################
 #
 @pytest.mark.asyncio
-async def test_fetch_body_braces(mailbox_with_bunch_of_email) -> None:
+async def test_fetch_body_braces(mailbox_with_bunch_of_email: Mailbox) -> None:
     mbox = mailbox_with_bunch_of_email
-    msg_keys = mbox.mailbox.keys()
+    msg_keys = [int(k) for k in mbox.mailbox.keys()]
     seq_max = len(msg_keys)
     uid_vv, uid_max = mbox.get_uid_from_msg(msg_keys[-1])
     assert uid_max
@@ -914,11 +924,11 @@ class TestBadlyEncodedHeaders:
     def test_fold_binary_fallback(
         self,
         mocker: MockerFixture,
-        func,
-        kwargs,
-        expected_present,
-        expected_absent,
-    ):
+        func: Callable[..., bytes],
+        kwargs: dict[str, Any],
+        expected_present: list[bytes],
+        expected_absent: list[bytes],
+    ) -> None:
         """
         GIVEN: A message where fold_binary raises UnicodeEncodeError
                for the Subject header
@@ -937,7 +947,7 @@ class TestBadlyEncodedHeaders:
 
         original_fold_binary = SMTP.fold_binary
 
-        def failing_fold_binary(name, value):
+        def failing_fold_binary(name: str, value: str) -> bytes:
             if name.lower() == "subject":
                 raise UnicodeEncodeError(
                     "ascii",
@@ -961,7 +971,7 @@ class TestBadlyEncodedHeaders:
     ################################################################
     #
     def test_real_message_with_raw_utf8_headers(
-        self, problematic_email_factory_bytes
+        self, problematic_email_factory_bytes: Callable[[int], bytes]
     ) -> None:
         """
         GIVEN: A real email message (fixture problems/5) with raw
