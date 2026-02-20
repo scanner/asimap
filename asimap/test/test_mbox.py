@@ -1535,6 +1535,7 @@ COMMANDS_WITH_NO_CONFLICTS = [
         "A001 EXAMINE foo",
         "A001 EXPUNGE",
         "A001 FETCH 2:4 ALL",
+        "A001 MOVE 2:4 bar",
         "A001 NOOP",
         "A001 RENAME foo bar",
         "A001 SEARCH unseen",
@@ -1544,7 +1545,7 @@ COMMANDS_WITH_NO_CONFLICTS = [
     ]
 ]
 
-# If these cmmands are executing, they would conflict with every other
+# If these commands are executing, they would conflict with every other
 # command. We are not testing every other command here, but will use NOOP which
 # is the most innocuous of the commands.
 #
@@ -1566,6 +1567,7 @@ CONFLICTING_COMMANDS = [
         "A001 CLOSE",
         "A001 DELETE foo",
         "A001 EXPUNGE",
+        "A001 MOVE 2:4 bar",
         "A001 RENAME foo bar",
     ]
 ]
@@ -1592,6 +1594,7 @@ CONFLICTING_CMD_VS_NOOP = [
         ["A001 DELETE foo", True, {}],
         ["A001 EXPUNGE", False, {}],
         ["A001 EXPUNGE", True, {"Deleted": {1}}],
+        ["A001 MOVE 2:4 bar", True, {}],
         ["A001 RENAME foo bar", True, {}],
     ]
 ]

@@ -115,6 +115,12 @@ IMAP_MESSAGES = [
         "A003 COPY 2:4 MEETING\r\n", "A003 COPY 2:4 MEETING", id="COPY"
     ),
     pytest.param(
+        "A003 MOVE 2:4 MEETING\r\n", "A003 MOVE 2:4 MEETING", id="MOVE"
+    ),
+    pytest.param(
+        "A003 MOVE 1:* Trash\r\n", "A003 MOVE 1:* Trash", id="MOVE star"
+    ),
+    pytest.param(
         'A282 SEARCH FLAGGED SINCE 1-Feb-1994 NOT FROM "Smith"\r\n',
         "A282 SEARCH IMAPSearch('and', [IMAPSearch('keyword', keyword = \"\\Flagged\"), IMAPSearch('since', date = \"1994-02-01\"), IMAPSearch('not', search_key = IMAPSearch('header', header = \"from\", string = \"smith\"))])",
         id="SEARCH 01",
