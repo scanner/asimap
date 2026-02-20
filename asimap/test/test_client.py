@@ -984,6 +984,182 @@ async def test_authenticated_client_copy(
 ####################################################################
 #
 @pytest.mark.asyncio
+async def test_authenticated_client_move(
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
+) -> None:
+    """
+    GIVEN: A selected mailbox with messages and a destination mailbox
+    WHEN:  The MOVE command is issued
+    THEN:  Messages are copied to the destination, COPYUID is sent
+           before EXPUNGE notifications, and the source messages are
+           removed.
+    """
+    server, imap_client = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+    client_handler = Authenticated(imap_client, server)
+
+    # MOVE before SELECT should fail.
+    #
+    cmd = IMAPClientCommand("A001 MOVE 2:6 Trash")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == ["A001 NO Client must be in the selected state"]
+
+    # SELECT the inbox.
+    #
+    cmd = IMAPClientCommand("A002 SELECT inbox")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+
+    # MOVE to non-existent mailbox should fail with TRYCREATE.
+    #
+    cmd = IMAPClientCommand("A003 MOVE 2:6 Trash")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == ["A003 NO [TRYCREATE] No such mailbox: 'Trash'"]
+
+    # Create the destination mailbox and MOVE messages.
+    #
+    cmd = IMAPClientCommand("A004 CREATE Trash")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+
+    src_mbox = await server.get_mailbox("inbox")
+    src_msg_count_before = src_mbox.num_msgs
+
+    cmd = IMAPClientCommand("A005 MOVE 2:6 Trash")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+
+    # RFC 6851 requires: untagged OK with COPYUID, then EXPUNGE
+    # notifications, then tagged OK.
+    #
+    assert results[0] == "* OK [COPYUID 2 2:6 1:5]"
+    expunge_results = [r for r in results[1:] if "EXPUNGE" in r]
+    assert len(expunge_results) == 5
+    assert results[-1] == "A005 OK MOVE command completed"
+
+    # Verify the destination has the messages.
+    #
+    dst_mbox = await server.get_mailbox("Trash")
+    assert len(dst_mbox.mailbox.keys()) == 5
+
+    # Verify the source lost the messages.
+    #
+    await src_mbox.check_new_msgs_and_flags(optional=False)
+    assert src_mbox.num_msgs == src_msg_count_before - 5
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_authenticated_client_move_examine_mode(
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
+) -> None:
+    """
+    GIVEN: A mailbox opened in EXAMINE (read-only) mode
+    WHEN:  The MOVE command is issued
+    THEN:  The server responds with NO (read-only)
+    """
+    server, imap_client = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+    client_handler = Authenticated(imap_client, server)
+
+    cmd = IMAPClientCommand("A001 EXAMINE inbox")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+
+    cmd = IMAPClientCommand("A002 CREATE Trash")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+
+    cmd = IMAPClientCommand("A003 MOVE 1:5 Trash")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    assert results == ["A003 NO Mailbox is read-only"]
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_authenticated_client_uid_move(
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
+) -> None:
+    """
+    GIVEN: A selected mailbox with messages and a destination mailbox
+    WHEN:  The UID MOVE command is issued
+    THEN:  Messages are moved by UID rather than sequence number.
+    """
+    server, imap_client = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+    client_handler = Authenticated(imap_client, server)
+
+    cmd = IMAPClientCommand("A001 SELECT inbox")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+
+    cmd = IMAPClientCommand("A002 CREATE Archive")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+
+    src_mbox = await server.get_mailbox("inbox")
+    src_msg_count_before = src_mbox.num_msgs
+
+    cmd = IMAPClientCommand("A003 UID MOVE 1:5 Archive")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+
+    assert results[0] == "* OK [COPYUID 2 1:5 1:5]"
+    expunge_results = [r for r in results[1:] if "EXPUNGE" in r]
+    assert len(expunge_results) == 5
+    assert results[-1] == "A003 OK MOVE command completed"
+
+    dst_mbox = await server.get_mailbox("Archive")
+    assert len(dst_mbox.mailbox.keys()) == 5
+
+    await src_mbox.check_new_msgs_and_flags(optional=False)
+    assert src_mbox.num_msgs == src_msg_count_before - 5
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_authenticated_client_move_capability(
+    imap_client_proxy: Callable[..., Any],
+) -> None:
+    """
+    GIVEN: A connected IMAP client
+    WHEN:  The CAPABILITY command is issued
+    THEN:  The MOVE capability is advertised
+    """
+    imap_client = await imap_client_proxy()
+    client_handler = BaseClientHandler(imap_client)
+
+    cmd = IMAPClientCommand("A001 CAPABILITY")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+    cap_line = results[0]
+    assert "MOVE" in cap_line
+
+
+####################################################################
+#
+@pytest.mark.asyncio
 async def test_authenticated_client_create_delete_folder(
     mailbox_with_bunch_of_email: Mailbox,
     imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],

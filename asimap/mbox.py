@@ -412,6 +412,7 @@ class Mailbox:
                 IMAPCommand.APPEND
                 | IMAPCommand.CHECK
                 | IMAPCommand.DELETE
+                | IMAPCommand.MOVE
                 | IMAPCommand.RENAME
             ):
                 # Can only run when there are no other commands running
@@ -1974,54 +1975,87 @@ class Mailbox:
 
     ##################################################################
     #
-    async def expunge(self, uid_msg_set: list[int] | None = None) -> None:
+    async def expunge(
+        self,
+        uid_msg_set: list[int] | None = None,
+        check_deleted: bool = True,
+    ) -> None:
         """
-        Perform an expunge. All messages in the 'Deleted' sequence are removed.
+        Perform an expunge. By default, only messages in the 'Deleted'
+        sequence are removed.
 
-        We will send untagged EXPUNGE messages to all clients on this mbox that
-        are idling.
+        We will send untagged EXPUNGE messages to all clients on this mbox
+        that are idling.
 
-        For clients that have this mailbox selected but are NOT idling, we will
-        put the EXPUNGE messages on the notifications list for delivery to
-        those clients when possible.
+        For clients that have this mailbox selected but are NOT idling, we
+        will put the EXPUNGE messages on the notifications list for delivery
+        to those clients when possible.
 
-        XXX We need to handle two more cases here either with this expunge
-            method or having several methods that use a common core.
-            1) The normal expunge case: expunge all messages in `Deleted`
-            2) UID expunge: expunge all messages that are both in `Deleted`
-               and in a passed in message set.
-            3) expunge the given set of messages, regardless of whether or
-               not they are in the `Deleted` sequence (this is ussed by `move`)
+        There are three cases:
+        1) Normal expunge: expunge all messages in `Deleted`
+        2) UID expunge: expunge all messages that are both in `Deleted`
+           and in a passed in uid message set.
+        3) Force expunge (used by MOVE): expunge the messages whose UIDs
+           are in `uid_msg_set` regardless of whether or not they are in
+           the `Deleted` sequence.
+
+        Arguments:
+        - uid_msg_set: List of UIDs to restrict which messages are expunged.
+          In cases 1 & 2 this restricts the Deleted set. In case 3 (when
+          `check_deleted=False`) these are the UIDs to expunge directly.
+        - check_deleted: If True (default), only expunge messages that are
+          in the `Deleted` sequence. If False, expunge the messages in
+          `uid_msg_set` regardless of their flags. `uid_msg_set` is
+          required when `check_deleted=False`.
         """
-        # If there are no messages in the 'Deleted' sequence then we have
-        # nothing to do.
-        #
-        if not self.sequences["Deleted"]:
-            return
-
-        msg_keys_to_delete = self.sequences["Deleted"]
-
-        # We go through the to be deleted messages in reverse order so that
-        # the expunges are "EXPUNGE <n>" "EXPUNGE <n-1>" etc. This is
-        # mostly a nicety making the expunge messages a bit easier to read.
-        #
-        to_delete = sorted(msg_keys_to_delete, reverse=True)
-        uids_to_delete = [self.uids[self._msg_key_to_idx[x]] for x in to_delete]
-
-        # NOTE: If a `uid_msg_set` was passed in this is a restriction on the
-        #       possible list of messages to delete. We do not delete all of
-        #       the ones flagged \Delete, only the ones that are flagged and
-        #       whose uid is in the list `uid_msg_set`.
-        if uid_msg_set:
-            new_to_delete = []
-            new_uids_to_delete = []
+        if not check_deleted:
+            # Case 3: MOVE — expunge messages by UID regardless of
+            # Deleted sequence.
+            #
+            if uid_msg_set is None:
+                return
+            to_delete = []
+            uids_to_delete = []
             for uid in uid_msg_set:
-                if uid in uids_to_delete:
-                    new_uids_to_delete.append(uid)
-                    pos = uids_to_delete.index(uid)
-                    new_to_delete.append(to_delete[pos])
-            to_delete = sorted(new_to_delete, reverse=True)
-            uids_to_delete = sorted(new_uids_to_delete, reverse=True)
+                if uid in self._uid_to_idx:
+                    idx = self._uid_to_idx[uid]
+                    to_delete.append(self.msg_keys[idx])
+                    uids_to_delete.append(uid)
+            to_delete = sorted(to_delete, reverse=True)
+            uids_to_delete = sorted(uids_to_delete, reverse=True)
+        else:
+            # Cases 1 and 2: require messages to be in Deleted sequence.
+            #
+            if not self.sequences["Deleted"]:
+                return
+
+            msg_keys_to_delete = self.sequences["Deleted"]
+
+            # We go through the to be deleted messages in reverse order so
+            # that the expunges are "EXPUNGE <n>" "EXPUNGE <n-1>" etc. This
+            # is mostly a nicety making the expunge messages a bit easier to
+            # read.
+            #
+            to_delete = sorted(msg_keys_to_delete, reverse=True)
+            uids_to_delete = [
+                self.uids[self._msg_key_to_idx[x]] for x in to_delete
+            ]
+
+            # NOTE: If a `uid_msg_set` was passed in this is a restriction
+            #       on the possible list of messages to delete. We do not
+            #       delete all of the ones flagged \Delete, only the ones
+            #       that are flagged and whose uid is in the list
+            #       `uid_msg_set`.
+            if uid_msg_set:
+                new_to_delete = []
+                new_uids_to_delete = []
+                for uid in uid_msg_set:
+                    if uid in uids_to_delete:
+                        new_uids_to_delete.append(uid)
+                        pos = uids_to_delete.index(uid)
+                        new_to_delete.append(to_delete[pos])
+                to_delete = sorted(new_to_delete, reverse=True)
+                uids_to_delete = sorted(new_uids_to_delete, reverse=True)
 
         logger.debug(
             "Mailbox: '%s', msg keys to delete: %s, uids to delete: %s",
@@ -2537,6 +2571,11 @@ class Mailbox:
         Copy the messages in msg_set to the destination mailbox.  Flags
         (sequences), and internal date are preserved.  Messages get the
         '\Recent' flag in the new mailbox.
+
+        Also used by the IMAP MOVE command (RFC 6851) for the copy phase.
+        MOVE passes `imap_cmd=cmd` so the source mailbox is released after
+        reading, avoiding deadlocks when writing to the destination. The
+        expunge phase is handled separately after re-acquiring the source.
 
         Arguments:
         - `msg_set`: Set of messages to copy.

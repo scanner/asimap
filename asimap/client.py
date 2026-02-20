@@ -21,6 +21,7 @@ from .exceptions import AuthenticationException, Bad, MailboxInconsistency, No
 from .mbox import Mailbox, NoSuchMailbox
 from .parse import (
     IMAPClientCommand,
+    IMAPCommand,
     ListReturnOpt,
     ListSelectOpt,
     StatusAtt,
@@ -41,6 +42,7 @@ CAPABILITIES = (
     "IMAP4REV1",
     "IDLE",
     "ID",
+    "MOVE",
     "UNSELECT",
     "UIDPLUS",
     "LITERAL+",
@@ -1592,10 +1594,127 @@ class Authenticated(BaseClientHandler):
                     f"[TRYCREATE] No such mailbox: '{cmd.mailbox_name}'"
                 ) from exc
 
-        # NOTE: I tip my hat to: http://stackoverflow.com/questions/3429510/
-        # pythonic-way-to-convert-a-list-of-integers-into-a-string-of-
-        # comma-separated-range/3430231#3430231
+        return self._format_copyuid(
+            dest_mbox,
+            [u for u in src_uids if u is not None],
+            [u for u in dst_uids if u is not None],
+        )
+
+    ##################################################################
+    #
+    async def do_move(self, cmd: IMAPClientCommand) -> str | None:
+        """
+        Move the given set of messages to the destination mailbox (RFC 6851).
+
+        This is an atomic COPY + expunge of the source messages. The source
+        messages are removed without requiring the \\Deleted flag.
+
+        To avoid deadlocks we do NOT hold the source mailbox while writing
+        to the destination. Instead we follow the same pattern as `copy()`:
+        read from source, release source, write to destination. Then we
+        re-acquire the source for the expunge phase using the UIDs returned
+        by copy().
+
+        RFC 6851 states that MOVE takes "no more and no less risk" than the
+        traditional COPY + STORE \\Deleted + EXPUNGE sequence, so this small
+        window between copy and expunge is acceptable.
+
+        Arguments:
+        - `cmd`: The IMAP command we are executing
+        """
+        assert self.server
+        if self.state != ClientState.SELECTED:
+            raise No("Client must be in the selected state")
+
+        if self.mbox is None:
+            await self.unceremonious_bye(
+                "Your selected mailbox no longer exists"
+            )
+            return None
+
+        if self.examine:
+            raise No("Mailbox is read-only")
+
+        await self.send_pending_notifications()
+
+        # Phase 1: Copy messages to the destination mailbox.
         #
+        # We pass `imap_cmd=cmd` so that copy() releases the source
+        # mailbox after reading (before writing to destination). This
+        # avoids holding both source and destination locks simultaneously,
+        # which could deadlock if two clients MOVE between the same pair
+        # of mailboxes in opposite directions.
+        #
+        async with cmd.ready_and_okay(self.mbox):
+            try:
+                dest_mbox = await self.server.get_mailbox(cmd.mailbox_name)
+                src_uids, dst_uids = await self.mbox.copy(
+                    cmd.msg_set,
+                    dest_mbox,
+                    cmd.uid_command,
+                    imap_cmd=cmd,
+                )
+            except NoSuchMailbox as exc:
+                raise No(
+                    f"[TRYCREATE] No such mailbox: '{cmd.mailbox_name}'"
+                ) from exc
+
+        # Phase 2: Send untagged OK with COPYUID before EXPUNGE
+        # notifications (required by RFC 6851).
+        #
+        src_uid_list = [u for u in src_uids if u is not None]
+        dst_uid_list = [u for u in dst_uids if u is not None]
+        copyuid = self._format_copyuid(dest_mbox, src_uid_list, dst_uid_list)
+        await self.client.push(f"* OK {copyuid}\r\n")
+
+        # Phase 3: Re-acquire the source mailbox and expunge the moved
+        # messages by their UIDs, regardless of the Deleted sequence.
+        #
+        # We use a phony EXPUNGE command to go through the management
+        # task queue (same pattern copy() uses for the destination).
+        # We use the idling hack so EXPUNGE notifications are delivered
+        # immediately to this client.
+        #
+        expunge_cmd = IMAPClientCommand("A001 EXPUNGE")
+        expunge_cmd.command = IMAPCommand.EXPUNGE
+        try:
+            idling = self.idling
+            self.idling = True
+            async with expunge_cmd.ready_and_okay(self.mbox):
+                await self.mbox.expunge(
+                    uid_msg_set=src_uid_list,
+                    check_deleted=False,
+                )
+        finally:
+            self.idling = idling
+
+        return None
+
+    ##################################################################
+    #
+    def _format_copyuid(
+        self,
+        dest_mbox: Mailbox,
+        src_uids: list[int],
+        dst_uids: list[int],
+    ) -> str:
+        """
+        Format a COPYUID response code from source and destination UID lists.
+
+        Compresses consecutive UIDs into ranges (e.g., [1,2,3,5] -> "1:3,5").
+
+        NOTE: I tip my hat to: http://stackoverflow.com/questions/3429510/
+        pythonic-way-to-convert-a-list-of-integers-into-a-string-of-
+        comma-separated-range/3430231#3430231
+
+        Arguments:
+        - `dest_mbox`: The destination mailbox
+        - `src_uids`: List of source UIDs
+        - `dst_uids`: List of destination UIDs
+
+        Returns:
+            A string like "[COPYUID <uidvalidity> <src_uids> <dst_uids>]"
+        """
         try:
             new_src_uids = [
                 list(x)
@@ -1618,7 +1737,7 @@ class Authenticated(BaseClientHandler):
                 "Unable to generate src and dst uid lists. Source mailbox: "
                 "%s, dest mailbox: %s Exception: %s, src_uids: %s, dst_uids: "
                 "%s",
-                self.mbox.name,
+                self.mbox.name if self.mbox else "<None>",
                 dest_mbox.name,
                 str(e),
                 str(src_uids),

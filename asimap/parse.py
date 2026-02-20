@@ -138,6 +138,7 @@ class IMAPCommand(StrEnum):
     LOGIN = "login"
     LOGOUT = "logout"
     LSUB = "lsub"
+    MOVE = "move"
     NAMESPACE = "namespace"
     NOOP = "noop"
     RENAME = "rename"
@@ -220,6 +221,7 @@ CONFLICTING_COMMANDS = (
     IMAPCommand.CLOSE,
     IMAPCommand.DELETE,
     IMAPCommand.EXPUNGE,
+    IMAPCommand.MOVE,
     IMAPCommand.RENAME,
 )
 
@@ -236,7 +238,7 @@ system_flags = [
 
 # The list of commands that can be called via 'UID'
 #
-uid_commands = ("copy", "fetch", "search", "store", "expunge")
+uid_commands = ("copy", "fetch", "move", "search", "store", "expunge")
 
 _month = {
     "jan": 1,
@@ -528,7 +530,7 @@ class IMAPClientCommand:
                 case IMAPCommand.EXPUNGE:
                     if self.uid_command:
                         result.append(msg_set_to_str(self.msg_set))
-                case IMAPCommand.COPY:
+                case IMAPCommand.COPY | IMAPCommand.MOVE:
                     result.append(msg_set_to_str(self.msg_set))
                     result.append(self.mailbox_name)
                 case IMAPCommand.FETCH:
@@ -749,7 +751,7 @@ class IMAPClientCommand:
 
             case IMAPCommand.STORE:
                 self._p_store()
-            case IMAPCommand.COPY:
+            case IMAPCommand.COPY | IMAPCommand.MOVE:
                 self._p_simple_string(" ")
                 self.msg_set = self._p_msg_set()
                 self._p_simple_string(" ")

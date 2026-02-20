@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-02-18
+
+### Added
+
+- Support for IMAP MOVE extension (RFC 6851)
+
 ## [2.2.5] - 2026-02-11
 
 ### Changed
