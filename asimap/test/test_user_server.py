@@ -16,6 +16,7 @@ from faker import Faker
 # Project imports
 #
 from ..client import Authenticated
+from ..constants import SPECIAL_USE_ATTRS
 from ..mbox import Mailbox, NoSuchMailbox
 from ..parse import IMAPClientCommand
 from ..user_server import IMAPClientProxy, IMAPUserServer
@@ -65,6 +66,14 @@ async def test_find_all_folders(
     folders = sorted(folders)
 
     await server.find_all_folders()
+
+    # find_all_folders() also auto-creates SPECIAL-USE mailboxes. Add
+    # any that were not already present to our expected list.
+    #
+    for su_folder in SPECIAL_USE_ATTRS:
+        if su_folder not in folders:
+            folders.append(su_folder)
+    folders = sorted(folders)
 
     # After it finds all the folders they will be active for a bit.
     #

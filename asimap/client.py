@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Union
 from asimap import __version__
 
 from .auth import PWUser, authenticate
+from .constants import SPECIAL_USE_ATTR_VALUES
 from .exceptions import AuthenticationException, Bad, MailboxInconsistency, No
 from .mbox import Mailbox, NoSuchMailbox
 from .parse import (
@@ -50,6 +51,7 @@ CAPABILITIES = (
     "LIST-EXTENDED",
     "LIST-STATUS",
     "NAMESPACE",
+    "SPECIAL-USE",
 )
 SERVER_ID = {
     "name": "asimapd",
@@ -1078,6 +1080,17 @@ class Authenticated(BaseClientHandler):
                     )
                     if row and row[0]:
                         attributes.add(r"\Subscribed")
+
+        # RFC 6154 SPECIAL-USE selection option: when the client uses
+        # SPECIAL-USE as a selection option, return only mailboxes that
+        # have a special-use attribute.
+        #
+        if ListSelectOpt.SPECIAL_USE in cmd.list_select_opts:
+            results = [
+                (name, attrs, ci)
+                for name, attrs, ci in results
+                if attrs & SPECIAL_USE_ATTR_VALUES
+            ]
 
         # Build a set of all returned folder names so we can verify
         # \HasChildren / \HasNoChildren correctness.

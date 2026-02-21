@@ -39,6 +39,7 @@ import aiofiles
 #
 from .constants import (
     PERMANENT_FLAGS,
+    SPECIAL_USE_ATTRS,
     SYSTEM_FLAG_MAP,
     SYSTEM_FLAGS,
     Sequences,
@@ -1542,6 +1543,8 @@ class Mailbox:
                 # far as we know.
                 #
                 self.check_set_haschildren_attr()
+                if self.name in SPECIAL_USE_ATTRS:
+                    self.attributes.add(SPECIAL_USE_ATTRS[self.name])
                 self.mtime = await Mailbox.get_actual_mtime(
                     self.server.mailbox, self.name
                 )
@@ -1607,6 +1610,8 @@ class Mailbox:
             ) = results
             self.subscribed = bool(self.subscribed)
             self.attributes = set(attributes.split(","))
+            if self.name in SPECIAL_USE_ATTRS:
+                self.attributes.add(SPECIAL_USE_ATTRS[self.name])
             # self.uids = [int(x) for x in uids.split(",")] if uids else []
             # self.msg_keys = (
             #     [int(x) for x in msg_keys.split(",")] if msg_keys else []

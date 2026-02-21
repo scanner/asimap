@@ -58,6 +58,18 @@ SYSTEM_FLAG_MAP = {
 
 REV_SYSTEM_FLAG_MAP = {v: k for k, v in SYSTEM_FLAG_MAP.items()}
 
+# RFC 6154 SPECIAL-USE mailbox attributes. Maps folder names (matching
+# as_email_service conventions) to their IMAP special-use attribute.
+#
+SPECIAL_USE_ATTRS: dict[str, str] = {
+    "Junk": r"\Junk",
+    "Archive": r"\Archive",
+    "Sent Messages": r"\Sent",
+    "Drafts": r"\Drafts",
+    "Deleted Messages": r"\Trash",
+}
+SPECIAL_USE_ATTR_VALUES: set[str] = set(SPECIAL_USE_ATTRS.values())
+
 
 ####################################################################
 #

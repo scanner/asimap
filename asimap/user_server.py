@@ -39,6 +39,7 @@ import asimap.mbox
 import asimap.trace
 
 from .client import Authenticated
+from .constants import SPECIAL_USE_ATTRS
 from .db import Database
 from .exceptions import MailboxInconsistency
 from .mbox import Mailbox, NoSuchMailbox
@@ -1029,6 +1030,16 @@ class IMAPUserServer:
                         found_folders += 1
                         tg.create_task(self.get_mailbox(dirname))
                         await asyncio.sleep(0)
+
+        # Ensure all RFC 6154 SPECIAL-USE mailboxes exist. Create any
+        # that are missing so IMAP clients can auto-discover folder roles.
+        #
+        for folder_name in SPECIAL_USE_ATTRS:
+            if not self.folder_exists(folder_name):
+                logger.info(
+                    "Auto-creating SPECIAL-USE mailbox '%s'", folder_name
+                )
+                await Mailbox.create(folder_name, self)
 
         logger.info(
             "Finished. Found %d new folders, Took %.3f seconds",

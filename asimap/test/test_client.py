@@ -29,6 +29,7 @@ from ..client import (
     ClientState,
     PreAuthenticated,
 )
+from ..constants import SPECIAL_USE_ATTRS
 from ..mbox import Mailbox
 from ..parse import IMAPClientCommand, StoreAction
 from ..user_server import IMAPClientProxy, IMAPUserServer
@@ -1745,3 +1746,169 @@ async def test_extended_list_legacy_backward_compat(
     assert "CHILDINFO" not in list_lines[0]
     assert r"\HasNoChildren" in list_lines[0]
     assert results[-1] == "A002 OK LIST command completed"
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_special_use_in_capabilities() -> None:
+    """
+    GIVEN: the CAPABILITIES tuple
+    WHEN:  checking for SPECIAL-USE support
+    THEN:  SPECIAL-USE is listed as a capability
+    """
+    assert "SPECIAL-USE" in CAPABILITIES
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_special_use_mailboxes_auto_created(
+    imap_user_server: IMAPUserServer,
+) -> None:
+    """
+    GIVEN: a freshly initialised user server
+    WHEN:  find_all_folders() is called
+    THEN:  all five SPECIAL-USE mailboxes are created on disk
+    """
+    server = imap_user_server
+    await server.find_all_folders()
+
+    for folder_name in SPECIAL_USE_ATTRS:
+        assert server.folder_exists(folder_name), (
+            f"SPECIAL-USE folder '{folder_name}' was not auto-created"
+        )
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_list_includes_special_use_attrs(
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
+) -> None:
+    """
+    GIVEN: a server with SPECIAL-USE mailboxes
+    WHEN:  a LIST "" "*" command is issued
+    THEN:  the special-use mailboxes include their RFC 6154 attributes
+    """
+    server, imap_client = imap_user_server_and_client
+    await server.find_all_folders()
+
+    client_handler = Authenticated(imap_client, server)
+    cmd = IMAPClientCommand('A001 LIST "" *\r\n')
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+
+    # Build a dict of folder_name -> response line for easy checking.
+    #
+    list_lines = [r for r in results if r.startswith("* LIST")]
+    folder_to_line: dict[str, str] = {}
+    for line in list_lines:
+        # The folder name is the last token, quoted.
+        #
+        folder_name = line.rsplit('"', 2)[-2]
+        folder_to_line[folder_name] = line
+
+    for folder_name, attr in SPECIAL_USE_ATTRS.items():
+        assert folder_name in folder_to_line, (
+            f"SPECIAL-USE folder '{folder_name}' missing from LIST"
+        )
+        assert attr in folder_to_line[folder_name], (
+            f"Expected {attr} in LIST for '{folder_name}'"
+        )
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_list_special_use_selection_option(
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
+) -> None:
+    """
+    GIVEN: a server with SPECIAL-USE and non-special-use mailboxes
+    WHEN:  LIST (SPECIAL-USE) "" "*" is issued
+    THEN:  only the five special-use mailboxes are returned
+    """
+    server, imap_client = imap_user_server_and_client
+    await server.find_all_folders()
+
+    # Create a regular mailbox to verify it is excluded.
+    #
+    await Mailbox.create("regular_folder", server)
+
+    client_handler = Authenticated(imap_client, server)
+    cmd = IMAPClientCommand('A001 LIST (SPECIAL-USE) "" "*"\r\n')
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+
+    list_lines = [r for r in results if r.startswith("* LIST")]
+
+    # Should have exactly 5 special-use mailboxes.
+    #
+    assert len(list_lines) == len(SPECIAL_USE_ATTRS)
+
+    # Verify each has the correct attribute and regular_folder is excluded.
+    #
+    all_response = " ".join(list_lines)
+    assert "regular_folder" not in all_response
+
+    for folder_name, attr in SPECIAL_USE_ATTRS.items():
+        found = any(
+            f'"{folder_name}"' in line and attr in line for line in list_lines
+        )
+        assert found, (
+            f"Expected '{folder_name}' with {attr} in SPECIAL-USE results"
+        )
+
+    assert results[-1] == "A001 OK LIST command completed"
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_list_special_use_return_option(
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
+) -> None:
+    """
+    GIVEN: a server with SPECIAL-USE mailboxes and a regular mailbox
+    WHEN:  LIST "" "*" RETURN (SPECIAL-USE) is issued
+    THEN:  all mailboxes are returned but special-use ones include their
+           RFC 6154 attributes
+    """
+    server, imap_client = imap_user_server_and_client
+    await server.find_all_folders()
+
+    await Mailbox.create("regular_folder", server)
+
+    client_handler = Authenticated(imap_client, server)
+    cmd = IMAPClientCommand('A001 LIST "" "*" RETURN (SPECIAL-USE)\r\n')
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+
+    list_lines = [r for r in results if r.startswith("* LIST")]
+
+    # All mailboxes should be returned (inbox + 5 special-use + regular).
+    #
+    assert len(list_lines) >= len(SPECIAL_USE_ATTRS) + 1
+
+    # Special-use folders should have their attributes.
+    #
+    for folder_name, attr in SPECIAL_USE_ATTRS.items():
+        found = any(
+            f'"{folder_name}"' in line and attr in line for line in list_lines
+        )
+        assert found, (
+            f"Expected '{folder_name}' with {attr} in RETURN SPECIAL-USE"
+        )
+
+    # Regular folder should NOT have any special-use attribute.
+    #
+    regular_lines = [r for r in list_lines if "regular_folder" in r]
+    assert len(regular_lines) == 1
+    for attr in SPECIAL_USE_ATTRS.values():
+        assert attr not in regular_lines[0]
+
+    assert results[-1] == "A001 OK LIST command completed"

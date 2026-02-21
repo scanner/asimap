@@ -168,6 +168,7 @@ class ListSelectOpt(StrEnum):
     SUBSCRIBED = "subscribed"
     REMOTE = "remote"
     RECURSIVEMATCH = "recursivematch"
+    SPECIAL_USE = "special-use"
 
 
 #######################################################################
@@ -176,6 +177,7 @@ class ListReturnOpt(StrEnum):
     SUBSCRIBED = "subscribed"
     CHILDREN = "children"
     STATUS = "status"
+    SPECIAL_USE = "special-use"
 
 
 #######################################################################
