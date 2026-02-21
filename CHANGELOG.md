@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-02-20
+
+### Added
+
+- Support for IMAP SPECIAL-USE extension (RFC 6154) — auto-create and advertise \Trash, \Sent, \Drafts, \Junk, \Archive mailboxes
+
 ## [2.3.0] - 2026-02-19
 
 ### Added
