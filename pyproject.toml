@@ -10,7 +10,7 @@ dependencies = [
     "aioretry",
     "aiosqlite",
     "charset-normalizer",
-    "docopt",
+    "docopt-ng",
     "python-dotenv",
     "python-json-logger",
     "sentry-sdk",
