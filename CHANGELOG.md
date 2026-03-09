@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.1] - 2026-03-09
+
+### Fixed
+
+- Replace unmaintained `docopt` with `docopt-ng` to eliminate `SyntaxWarning` on Python 3.13
+
 ## [2.4.0] - 2026-02-20
 
 ### Added
