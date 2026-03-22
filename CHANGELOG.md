@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-03-22
+
+### Added
+
+- Support for POP3S (POP3 over TLS) server, enabled via `--enable-pop3` flag or `ENABLE_POP3` env var
+
 ## [2.4.1] - 2026-03-09
 
 ### Fixed
