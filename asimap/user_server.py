@@ -211,6 +211,7 @@ class IMAPClientProxy:
             #
             self.trace("CONNECT", {})
             self.client_connected = True
+            first_message = True
             while self.client_connected:
                 # Read until b'\n'. Trim off the '\n'. If the message is
                 # not of 0 length then append it to our incremental buffer.
@@ -231,6 +232,30 @@ class IMAPClientProxy:
                     break
                 length = int(m.group(1))
                 msg = await self.reader.readexactly(length)
+
+                # Check if this is a POP3 connection. The root server
+                # sends "POP3" as the first framed message for POP3
+                # clients.
+                #
+                if first_message and msg == b"POP3":
+                    from .pop3_client import POP3ClientProxy
+
+                    pop3 = POP3ClientProxy(
+                        self.server,
+                        self.name,
+                        self.client_num,
+                        self.rem_addr,
+                        self.port,
+                        self.reader,
+                        self.writer,
+                    )
+                    task = asyncio.current_task()
+                    if task is not None:
+                        self.server.clients[task] = pop3
+                    await pop3.run()
+                    return
+                first_message = False
+
                 imap_msg = str(msg, "latin-1")
                 self.trace("RECEIVED", {"data": imap_msg})
 

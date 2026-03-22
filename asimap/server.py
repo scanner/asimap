@@ -347,11 +347,27 @@ class IMAPServer:
             tasks = list(self.imap_client_tasks.keys())
             await asyncio.gather(*clients, return_exceptions=True)
             await asyncio.gather(*tasks, return_exceptions=True)
+            subprocesses: list[asyncio.subprocess.Process] = []
             async with USER_IMAP_SUBPROCESSES_LOCK.read_lock():
                 async with USER_IMAP_SUBPROCESSES_LOCK.write_lock():
                     for subp in USER_IMAP_SUBPROCESSES.values():
                         if subp.is_alive:
                             subp.terminate()
+                        if (
+                            subp.subprocess
+                            and subp.subprocess.returncode is None
+                        ):
+                            subprocesses.append(subp.subprocess)
+
+            # Wait for all subprocesses to actually exit so they
+            # are not still accessing the filesystem after
+            # shutdown completes.
+            #
+            if subprocesses:
+                await asyncio.gather(
+                    *(p.wait() for p in subprocesses),
+                    return_exceptions=True,
+                )
 
     ####################################################################
     #

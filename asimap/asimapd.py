@@ -12,7 +12,7 @@ NOTE: For all command line options that can also be specified via an env. var:
 Usage:
   asimapd [--address=<i>] [--port=<p>] [--cert=<cert>] [--key=<key>]
           [--trace] [--trace-dir=<td>] [--debug] [--log-config=<lc>]
-          [--pwfile=<pwfile>]
+          [--pwfile=<pwfile>] [--enable-pop3] [--pop3-port=<pp>]
 
 Options:
   --version
@@ -58,6 +58,12 @@ Options:
 
   --pwfile=<pwfile>  The file that contains the users and their hashed passwords
                      The env. var is `PWFILE`. Defaults to `/opt/asimap/pwfile`
+
+  --enable-pop3      Enable POP3S (POP3 over TLS) server. Disabled by default.
+                     The env. var is `ENABLE_POP3`.
+
+  --pop3-port=<pp>   Port for POP3S. Defaults to: 995.
+                     The env. var is `POP3_PORT`
 """
 
 # system imports
@@ -78,6 +84,7 @@ from dotenv import load_dotenv
 import asimap.trace
 from asimap import __version__ as VERSION
 from asimap import auth
+from asimap.pop3_server import POP3Server
 from asimap.server import IMAPServer
 from asimap.user_server import set_user_server_program
 from asimap.utils import setup_asyncio_logging, setup_logging
@@ -104,6 +111,9 @@ def main() -> None:
     debug = args["--debug"]
     log_config = args["--log-config"]
     pwfile = args["--pwfile"]
+    enable_pop3 = args["--enable-pop3"]
+    pop3_port = args["--pop3-port"]
+    pop3_port = int(pop3_port) if pop3_port else None
 
     load_dotenv()
 
@@ -152,6 +162,16 @@ def main() -> None:
             os.environ["PWFILE"]
             if "PWFILE" in os.environ
             else "/opt/asimap/pwfile"
+        )
+    if not enable_pop3:
+        enable_pop3 = (
+            bool(os.environ["ENABLE_POP3"])
+            if "ENABLE_POP3" in os.environ
+            else False
+        )
+    if pop3_port is None:
+        pop3_port = (
+            int(os.environ["POP3_PORT"]) if "POP3_PORT" in os.environ else 995
         )
 
     # If a password file was specified overwrote the default location for the
@@ -219,8 +239,28 @@ def main() -> None:
         log_config=log_config,
         debug=debug,
     )
+
+    pop3_server = None
+    if enable_pop3:
+        logger.info("POP3S enabled, binding address: %s:%d", address, pop3_port)
+        pop3_server = POP3Server(
+            address,
+            pop3_port,
+            ssl_context,
+            trace=trace,
+            trace_dir=trace_dir,
+            log_config=log_config,
+            debug=debug,
+        )
+
+    async def run_servers() -> None:
+        tasks = [server.run()]
+        if pop3_server:
+            tasks.append(pop3_server.run())
+        await asyncio.gather(*tasks)
+
     try:
-        asyncio.run(server.run())
+        asyncio.run(run_servers())
     except KeyboardInterrupt:
         logger.warning("Keyboard interrupt, exiting")
     finally:

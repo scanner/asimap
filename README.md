@@ -54,7 +54,7 @@ NOTE: For all command line options that can also be specified via an env. var:
 Usage:
   asimapd [--address=<i>] [--port=<p>] [--cert=<cert>] [--key=<key>]
           [--trace] [--trace-dir=<td>] [--debug] [--log-config=<lc>]
-          [--pwfile=<pwfile>]
+          [--pwfile=<pwfile>] [--enable-pop3] [--pop3-port=<pp>]
 
 Options:
   --version
@@ -100,6 +100,41 @@ Options:
 
   --pwfile=<pwfile>  The file that contains the users and their hashed passwords
                      The env. var is `PWFILE`. Defaults to `/opt/asimap/pwfile`
+
+  --enable-pop3      Enable POP3S (POP3 over TLS) server. Disabled by default.
+                     The env. var is `ENABLE_POP3`.
+
+  --pop3-port=<pp>   Port for POP3S. Defaults to: 995.
+                     The env. var is `POP3_PORT`
+```
+
+** POP3 Support
+
+asimap includes an optional POP3S (POP3 over TLS) server. POP3 access is
+restricted to the INBOX only — no other folders are visible. Messages are
+snapshotted at session start; deletions via `DELE` are only committed on a
+clean `QUIT`. Disconnecting without `QUIT` leaves all messages intact.
+
+The POP3 server reuses the same per-user subprocess as IMAP connections, so
+a user can have both IMAP and POP3 clients connected simultaneously.
+
+To enable POP3, either pass `--enable-pop3` on the command line or set the
+`ENABLE_POP3` environment variable. In a Docker deployment, expose port 995
+and add the env var:
+
+``` yaml
+# docker-compose.yml
+services:
+  asimap:
+    ports:
+      - "993:993"
+      - "995:995"
+    env_file: .env
+```
+
+``` shell
+# .env
+ENABLE_POP3=1
 ```
 
 ** Environment Variables
