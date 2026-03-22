@@ -23,8 +23,6 @@ from asimap.pop3_client import POP3ClientProxy, POP3CommandHandler, dot_stuff
 from asimap.pop3_parse import BadPOP3Command, parse_pop3_command
 from asimap.user_server import IMAPUserServer
 
-pytestmark = pytest.mark.asyncio
-
 
 ########################################################################
 #
@@ -69,14 +67,23 @@ class TestPOP3Parse:
 
     ################################################################
     #
-    def test_parse_empty_raises(self) -> None:
+    @pytest.mark.parametrize(
+        "bad_input",
+        [
+            "",
+            "BOGUS",
+            "XYZZY 1 2 3",
+            "LOGIN user pass",
+        ],
+    )
+    def test_parse_invalid_raises(self, bad_input: str) -> None:
         """
-        GIVEN: an empty command string
+        GIVEN: an empty or unknown POP3 command string
         WHEN:  parse_pop3_command is called
         THEN:  BadPOP3Command is raised
         """
         with pytest.raises(BadPOP3Command):
-            parse_pop3_command("")
+            parse_pop3_command(bad_input)
 
 
 ########################################################################
@@ -179,6 +186,8 @@ def client_push_responses(
 class TestPOP3CommandHandler:
     """Tests for POP3 command handling in the user subprocess."""
 
+    pytestmark = pytest.mark.asyncio
+
     ################################################################
     #
     @pytest.mark.asyncio
@@ -253,7 +262,6 @@ class TestPOP3CommandHandler:
             ("RETR 99", "-ERR"),
             ("DELE 99", "-ERR"),
             ("NOOP", "+OK"),
-            ("BOGUS", "-ERR"),
         ],
     )
     async def test_single_line_responses(

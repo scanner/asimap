@@ -22,6 +22,22 @@ class BadPOP3Command(Exception):
         return f"BadPOP3Command: {self.value}"
 
 
+VALID_POP3_COMMANDS = {
+    "USER",
+    "PASS",
+    "STAT",
+    "LIST",
+    "RETR",
+    "DELE",
+    "NOOP",
+    "RSET",
+    "QUIT",
+    "TOP",
+    "UIDL",
+    "CAPA",
+}
+
+
 ########################################################################
 #
 class POP3Command:
@@ -40,6 +56,8 @@ class POP3Command:
         if not parts:
             raise BadPOP3Command("empty command")
         self.command = parts[0].upper()
+        if self.command not in VALID_POP3_COMMANDS:
+            raise BadPOP3Command(f"unknown command: {self.command}")
         self.args = parts[1].strip() if len(parts) > 1 else ""
 
     def __str__(self) -> str:
