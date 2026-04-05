@@ -7,10 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.1] - 2026-04-05
+
 ### Changed
 
 - Add mypy to pre-commit hooks and CI pipeline
-- Comprehensive Google-style docstring coverage across all non-test modules
+- Unify our docstrings with Google-style docstring coverage
+- Update packages
+- Remove some dead sections pyproject.toml
 
 ### Fixed
 
