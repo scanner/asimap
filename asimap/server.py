@@ -26,6 +26,7 @@ import asimap.user_server
 
 from .auth import PWUser
 from .client import CAPABILITIES, ClientState, PreAuthenticated
+from .constants import MAX_INPUT_SIZE
 from .parse import BadCommand, parse_cmd_from_msg
 from .utils import UpgradeableReadWriteLock
 
@@ -467,6 +468,7 @@ class IMAPClient:
         self.reading_string_literal = False
         self.stream_buffer_size = 65536
         self.ibuffer: list[bytes] = []
+        self.ibuffer_size = 0
         self.subprocess_intf = IMAPSubprocessInterface(self)
 
     ####################################################################
@@ -505,6 +507,7 @@ class IMAPClient:
             capabilities = " ".join(CAPABILITIES)
             await self.push(f"* OK [CAPABILITY {capabilities}]\r\n")
             self.ibuffer = []
+            self.ibuffer_size = 0
             client_connected = True
             while client_connected:
                 # Read until b'\r\n'. Trim off the '\r\n'. If the message is
@@ -514,6 +517,7 @@ class IMAPClient:
                 msg = msg.rstrip()
                 if msg:
                     self.ibuffer.append(msg)
+                    self.ibuffer_size += len(msg)
 
                 # If after reading up to a line terminator our incremental
                 # buffer is empty then this is an empty message from the client
@@ -530,6 +534,29 @@ class IMAPClient:
                 m = RE_LITERAL_STRING_START.search(msg)
                 if m:
                     literal_str_length = int(m.group(1))
+
+                    # Reject literals that exceed the maximum input
+                    # size to prevent memory exhaustion.
+                    #
+                    if literal_str_length > MAX_INPUT_SIZE:
+                        logger.warning(
+                            "%s: literal size %d exceeds maximum "
+                            "of %d, rejecting",
+                            self.name,
+                            literal_str_length,
+                            MAX_INPUT_SIZE,
+                        )
+                        await self.push(
+                            b"* BAD literal size exceeds maximum "
+                            b"allowed size\r\n"
+                        )
+                        self.ibuffer = []
+                        self.ibuffer_size = 0
+                        # Drain the line terminator that follows the
+                        # literal declaration so we stay in sync.
+                        #
+                        await self.reader.readuntil(self.LINE_TERMINATOR)
+                        continue
 
                     # If this is a synchronizing string literal (does not have
                     # '+' as the second to last character in its length prefix)
@@ -549,10 +576,46 @@ class IMAPClient:
                     #       is '{\d}\r\n'
                     self.ibuffer.append(b"\r\n")
                     self.ibuffer.append(msg)
+                    self.ibuffer_size += len(msg) + 2
+
+                    # Check accumulated ibuffer size after adding the
+                    # literal.
+                    #
+                    if self.ibuffer_size > MAX_INPUT_SIZE:
+                        logger.warning(
+                            "%s: command buffer size %d exceeds "
+                            "maximum of %d, rejecting",
+                            self.name,
+                            self.ibuffer_size,
+                            MAX_INPUT_SIZE,
+                        )
+                        await self.push(
+                            b"* BAD command exceeds maximum allowed size\r\n"
+                        )
+                        self.ibuffer = []
+                        self.ibuffer_size = 0
+                        continue
 
                     # Loop back to read what is either a b'\r\n' or maybe
                     # another string literal.
                     #
+                    continue
+
+                # Check accumulated ibuffer size before assembling.
+                #
+                if self.ibuffer_size > MAX_INPUT_SIZE:
+                    logger.warning(
+                        "%s: command buffer size %d exceeds "
+                        "maximum of %d, rejecting",
+                        self.name,
+                        self.ibuffer_size,
+                        MAX_INPUT_SIZE,
+                    )
+                    await self.push(
+                        b"* BAD command exceeds maximum allowed size\r\n"
+                    )
+                    self.ibuffer = []
+                    self.ibuffer_size = 0
                     continue
 
                 # We only get here if we have read the complete message from
@@ -566,6 +629,7 @@ class IMAPClient:
                 #
                 msg = b"".join(self.ibuffer)
                 self.ibuffer = []
+                self.ibuffer_size = 0
                 client_connected = await self.subprocess_intf.message(msg)
 
         except (
