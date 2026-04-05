@@ -102,7 +102,7 @@ def do_baked_appends(
                 extracted = tf.extractfile(member)
                 assert extracted is not None
                 content = extracted.read()
-                imap.append(mbox_name, None, None, content)  # type: ignore[arg-type]
+                imap.append(mbox_name, None, None, content)
 
 
 ####################################################################
