@@ -50,6 +50,8 @@ from .trace import toggle_trace, trace
 if TYPE_CHECKING:
     from _typeshed import StrPath
 
+    from .pop3_client import POP3ClientProxy
+
 # By default every file is its own logging module. Kind of simplistic
 # but it works for now.
 #
@@ -531,7 +533,7 @@ class IMAPUserServer:
         #
         # The key is the port number of the attached client.
         #
-        self.clients: dict[asyncio.Task, IMAPClientProxy] = {}
+        self.clients: dict[asyncio.Task, IMAPClientProxy | POP3ClientProxy] = {}
 
         # When we have any connected clients self.expiry gets set to
         # None. Otherwise use it to determine when we have hung around long

@@ -1,8 +1,9 @@
 """
-This module contains utility functions that do not properly belong to any
-class or module. This started with the utilities to pass an fd betwene
-processes. If we build a decently sized set of messaging routines many of these
-may move over in to a module dedicated for that.
+Utility functions, logging setup, and lock primitives for asimap.
+
+Contains helpers that do not belong to any single module: IMAP sequence-set
+parsing, message UID header I/O, the :class:`UpgradeableReadWriteLock` asyncio
+primitive, logging initialisation, and assorted file utilities.
 """
 
 # system imports
@@ -82,9 +83,17 @@ utime = aiofiles_wrap(os.utime)
 ####################################################################
 #
 def encoding_search_fn(encoding: str) -> codecs.CodecInfo | None:
-    """
-    Handle some of the weird encodings we run into with all the email we
-    have gotten from different eras of the internet.
+    """Codec search function that maps non-standard encoding names to stdlib codecs.
+
+    Register with :func:`codecs.register` to handle unusual encoding labels
+    found in older email messages.
+
+    Args:
+        encoding: Encoding name as supplied by the email parser.
+
+    Returns:
+        A :class:`codecs.CodecInfo` for the closest standard equivalent, or
+        ``None`` if the name is not a known alias.
     """
     match encoding:
         case "ansi_x3.110_1983":
@@ -335,20 +344,28 @@ def setup_logging(
     remote_addr: str | None = None,
     trace_dir: Optional["StrPath"] = None,
 ) -> None:
-    """
-    Set up the logger. We log either to files in 'logdir'
-    or to stderr.
+    """Initialise the logging system for an asimap process.
 
-    NOTE: It does not make sense to log to stderr if we are running in
-          daemon mode.. maybe we should exit with a warning before we
-          try to enter daemon mode if logdir == 'stderr'
+    Attempts to load a logging configuration file in this order: the path
+    given via ``log_config``, then each path in ``DEFAULT_LOG_CONFIG_FILES``,
+    then a built-in default that writes to stderr (or to a rotating file under
+    ``LOG_DIR`` if that directory exists).
 
-    NOTE: We also use a custom log record factory to add `username` and
-          `remaddr` fields to the log record.
+    A custom log-record factory is installed that injects a ``username`` field
+    into every log record, making it possible to distinguish per-user
+    subprocess output when logs are aggregated (e.g. by Docker).
 
-    XXX Move this to use a logging config file if one is provided.
-        ie: log to stderr normally, but if there is a logging config file
-        use that.
+    NOTE: Logging to stderr is not useful in daemon mode.
+
+    Args:
+        log_config: Path to a JSON or INI-style logging configuration file,
+            or ``None`` to use the auto-discovery logic.
+        debug: When ``True``, sets the root logger level to ``DEBUG``.
+        username: The authenticated username to stamp onto log records.
+        remote_addr: The remote client address (reserved for future use).
+        trace_dir: Directory in which to write JSON trace files.  If the
+            directory does not exist a warning is logged and tracing is
+            silently disabled.
     """
     global LOGGED_IN_USER
     LOGGED_IN_USER = username if username else "no_user"
@@ -485,12 +502,14 @@ def setup_logging(
 ############################################################################
 #
 def parsedate(datetime_str: str) -> datetime:
-    """
-    All date time data is stored as a datetime object in UTC.
-    This routine uses common routines provided by python to parse a rfc822
-    formatted date time in to a datetime object.
+    """Parse an RFC 2822 date string into a timezone-aware UTC datetime.
 
-    It is pretty simple, but makes the code a lot shorter and easier to read.
+    Args:
+        datetime_str: An RFC 2822 formatted date/time string as found in
+            email headers (e.g. ``"Thu, 01 Jan 2026 00:00:00 +0000"``).
+
+    Returns:
+        A timezone-aware :class:`datetime` in UTC.
     """
     # email.utils.parsedate_to_datetime creates a naive datetime if the tz
     # string is UTC (ie: "+0000") .. so in that case we set the timezone to be
@@ -516,21 +535,28 @@ def sequence_set_to_list(
     seq_max: int,
     uid_cmd: bool = False,
 ) -> list[int]:
-    """
-    Convert a squence set in to a list of numbers.
+    """Convert an IMAP sequence set to a sorted, deduplicated list of integers.
 
-    We collapse any overlaps and return the list sorted.
+    Handles individual numbers, ``"*"`` (largest message number), and
+    ``(start, end)`` range tuples — the three element types produced by the
+    IMAP parser.
 
-    NOTE: Using '*' in a mailbox that has no messages raises the Bad
-          exception. If any sequence number is greater than the size
-          of the mailbox actually.
+    NOTE: Using ``"*"`` in an empty mailbox (``seq_max == 0``) raises
+          :class:`~asimap.exceptions.Bad` unless this is a UID command.
 
-    Arguments:
-    - `seq_set`: The sequence set we want to convert to a list of numbers.
-    - `seq_max`: The largest possible number in the sequence. We
-                 replace '*' with this value.
-    - `uid_cmd`: This is a UID command sequence and the sequence set can include
-                 numbers larger than seq_max.
+    Args:
+        seq_set: The parsed sequence set — an iterable of ints, ``"*"``
+            strings, or ``(start, end)`` tuples.
+        seq_max: The largest valid message sequence number (``0`` for an empty
+            mailbox). ``"*"`` elements are replaced with this value.
+        uid_cmd: When ``True``, sequence numbers larger than ``seq_max`` are
+            allowed (UID space may exceed the message count).
+
+    Returns:
+        Sorted list of unique integer message sequence numbers.
+
+    Raises:
+        Bad: If any sequence number is out of range for a non-UID command.
     """
     result = []
     for elt in seq_set:
@@ -585,22 +611,17 @@ def sequence_set_to_list(
 ####################################################################
 #
 def get_uidvv_uid(hdr: str) -> tuple:
-    """
-    Given a string that is supposedly the value of the 'x-asimapd-uid'
-    header from an email message return a tuple comprised of the
-    uid_vv, and uid parsed out of that header's contents.
+    """Parse the uid_vv and uid integers from an ``X-asimapd-uid`` header value.
 
-    This deals with the case where we get a malformed header that
-    actually has a continuation of the next line mangled into it. It
-    does not happen often but some historical messages look like this.
+    Tolerates malformed headers where a continuation line has been mangled
+    into the value (a known issue with some historical messages).
 
-    If we can not parse the uid_vv, uid then we return (None, None)
-    which is supposed to be a signal to our caller that this message
-    does not have a valid uid_vv, uid.
+    Args:
+        hdr: The raw string value of the ``X-asimapd-uid`` header.
 
-    Arguments:
-    - `hdr`: A string that is the contents of the 'x-asimapd-uid' header from
-             an email message.
+    Returns:
+        A ``(uid_vv, uid)`` tuple of ints if parsing succeeds, or
+        ``(None, None)`` if the header value is not parseable.
     """
     s = UID_RE.search(hdr)
     if s:
@@ -630,24 +651,22 @@ def with_timeout(t: int) -> Callable[..., Any]:
 ##################################################################
 #
 def find_header_in_binary_file(fname: "StrPath", header: str) -> str | None:
-    """
-    Convert the header string given as an argument to bytes. The string
-    must be encodable as `latin-1`. If not an encoding error will be
-    raised.
+    """Search for an email header in a binary message file.
 
-    The file indicated by fname is opened "rb" and read as binary line by
-    line. If any line begins with the `header`, the line is converted to a
-    string, again using `latin-1` encoding, and returned. If that fails an
-    encoding error will be raised.
+    Reads the file as raw bytes line by line (latin-1 encoding). The search
+    stops at the first blank line (end of headers) or end of file. The
+    comparison is case-insensitive.
 
-    NOTE: The entire line, including the matched `header` string is
-    returned, but it will be `strip()`d of any leading or trailing white
-    space.
+    NOTE: The full matched line, including the header name, is returned
+          after stripping leading and trailing whitespace.
 
-    The search progresses until two blank lines or the end of the file is
-    reached.
+    Args:
+        fname: Path to the message file to search.
+        header: The header name to look for, e.g. ``"X-asimapd-uid"``.
+            Must be encodable as ``latin-1``.
 
-    If no match is found `None` is returned.
+    Returns:
+        The matched header line as a string, or ``None`` if not found.
     """
     fname = str(fname)
     header_b = bytes(header, "latin-1").lower()
@@ -666,34 +685,25 @@ def find_header_in_binary_file(fname: "StrPath", header: str) -> str | None:
 async def update_replace_header_in_binary_file(
     fname: "StrPath", header: str
 ) -> None:
-    """
-    This will go through the file indicating by fname, as a binary file,
-    and if it encounters a line that begins with the same header as `header` it
-    will replace that existing line with `header`.
+    """Replace or insert an email header in a binary message file.
 
-    It will only replace/update a line in the _headers_ of the file. The
-    headers are separated from the rest of the file by a blank line.
+    Scans the header section of the file (everything before the first blank
+    line). If a line starting with the same header name is found it is
+    replaced with ``header``; if no such line exists the header is appended
+    just before the blank separator line. The body of the message is
+    passed through unchanged.
 
-    If the header can not be found in the files existing headers, then the
-    given header line will be added to the headers of the file.
+    The update is performed atomically: a temporary sibling file is written,
+    its permissions and mtime are set to match the original, and then it is
+    renamed over the original.
 
-    `header` must be encodable via `latin-1` to a bytes.
+    ``header`` must be encodable as ``latin-1`` and must follow the format
+    ``"header-name: value"`` (no spaces in the header name).
 
-    `header` is expected to consist of the "header name" followed by a colon,
-    followed by the "header data".
-
-    eg: "foo: hello there"
-
-    `foo` is the header. ` hello there` is the header data.
-    Spaces are not allowed in the header.
-
-    So with `foo: hello there` if a line begins with `foo:` it will be replaced
-    with `foo: hello there`.
-
-    This operation is done by writing a new file adjacent to the one specfied
-    via `fname`. When the new file has been written, its timestamp and mode
-    will be set to the same as the file it is replacing and then renamed over
-    the existing file.
+    Args:
+        fname: Path to the message file to update.
+        header: Full header line to insert or replace, e.g.
+            ``"X-asimapd-uid: 1.42"``.
     """
     fname = str(fname)
     headerb = bytes(header, "latin-1")
@@ -728,11 +738,18 @@ async def update_replace_header_in_binary_file(
 ####################################################################
 #
 def compact_sequence(keys: Iterable[int]) -> str:
-    """
-    Turns a msg set in to a compact string. Contiguous ranges are turned
-    from 1,3,4,5,6 to '1,3-6'
+    """Compact a set of integers into an MH sequence string.
 
-    Based on the truncation routine from mailbox.py:set_sequences
+    Contiguous runs are collapsed into ``start-end`` notation, e.g.
+    ``[1, 3, 4, 5, 6]`` becomes ``"1,3-6"``.
+
+    Based on the truncation routine from ``mailbox.py:set_sequences``.
+
+    Args:
+        keys: Iterable of integer message keys to compact.
+
+    Returns:
+        A comma-separated string of numbers and ranges.
     """
 
     def as_range(
@@ -756,11 +773,18 @@ def compact_sequence(keys: Iterable[int]) -> str:
 ####################################################################
 #
 def expand_sequence(contents: str) -> list[int]:
-    """
-    Turns a compacted sequence in to a list of integers.
-    The string '1,3-6' becomes [1,3,4,5,6]
+    """Expand an MH sequence string into a sorted list of integers.
 
-    Based on the expansion routine from mailbox.py:get_sequences
+    The inverse of :func:`compact_sequence`. For example ``"1,3-6"``
+    becomes ``[1, 3, 4, 5, 6]``.
+
+    Based on the expansion routine from ``mailbox.py:get_sequences``.
+
+    Args:
+        contents: An MH sequence string such as ``"1,3-6,10"``.
+
+    Returns:
+        Sorted list of integer message keys.
     """
     if not contents.strip():
         return []

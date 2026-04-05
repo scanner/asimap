@@ -51,13 +51,19 @@ USED_REGEXPS: dict[str, re.Pattern] = {}
 ####################################################################
 #
 def regexp(expr: str, item: str) -> bool | None:
-    """
-    sqlite supports a regexp syntax but needs us to supply the function to
-    use. This is that function.
+    """SQLite REGEXP user-defined function.
 
-    Arguments:
-    - `expr`: regular expression
-    - `item`: item to apply regular expression to
+    SQLite supports a ``REGEXP`` operator but requires the application to
+    supply the implementation.  Compiled patterns are cached in
+    ``USED_REGEXPS`` to avoid repeated recompilation.
+
+    Args:
+        expr: The regular expression pattern string.
+        item: The value to test against the pattern.
+
+    Returns:
+        ``True`` if the pattern matches, ``False`` if it does not, or
+        ``None`` if an exception occurs during matching.
     """
     try:
         if expr in USED_REGEXPS:
@@ -84,12 +90,14 @@ class Database:
     ##################################################################
     #
     def __init__(self, maildir: "StrPath"):
-        """
-        Opens/creates the sqlite3 database and applies any migrations
-        we might need to bring the database up to snuff.
+        """Initialise the Database wrapper (sync portion).
 
-        Arguments:
-        - `maildir`: The directory where our database file lives.
+        Sets up the paths but does not open the connection — use
+        :meth:`new` to get a fully-initialised instance.
+
+        Args:
+            maildir: Path to the user's mail directory where ``asimap.db``
+                will be created or opened.
         """
         maildir = Path(maildir)
         self.maildir = maildir
@@ -101,8 +109,17 @@ class Database:
     #
     @classmethod
     async def new(cls, maildir: "StrPath") -> "Database":
-        """
-        Create the database object and do the bits that need to be async.
+        """Create and fully initialise a :class:`Database` instance.
+
+        Opens (or creates) the SQLite database, registers the ``REGEXP``
+        user-defined function, runs ``VACUUM``, and applies any pending
+        schema migrations.
+
+        Args:
+            maildir: Path to the user's mail directory.
+
+        Returns:
+            A ready-to-use :class:`Database` instance.
         """
         db = cls(maildir)
         db.conn = await aiosqlite.connect(

@@ -1,5 +1,9 @@
 """
-Re-implement some of the methods on mailbox.MH using aiofiles for async access
+Async-capable MH mailbox wrapper for asimap.
+
+Subclasses :class:`mailbox.MH` to replace blocking I/O operations with
+async equivalents from ``aiofiles``.  Also adds optional suppression of MH
+advisory file locking to avoid file-descriptor exhaustion on mail stores with a large number of folders.
 """
 
 # System imports
@@ -53,8 +57,11 @@ def set_file_locking(enabled: bool) -> None:
 ########################################################################
 #
 class MH(mailbox.MH):
-    """
-    Replace some of the mailbox.MH methods with ones that use aiofiles
+    """Async-capable subclass of :class:`mailbox.MH`.
+
+    Replaces blocking I/O methods with ``aiofiles``-based equivalents and
+    adds :meth:`lock_folder` as an async context manager for safe concurrent
+    access.
     """
 
     ####################################################################
@@ -65,6 +72,12 @@ class MH(mailbox.MH):
         factory: "Callable[[IO[Any]], EmailMessage] | None" = None,
         create: bool = True,
     ):
+        """
+        Args:
+            path: Path to the MH mailbox directory.
+            factory: Optional callable used to instantiate message objects.
+            create: When ``True``, create the directory if it does not exist.
+        """
         self._locked: bool = False
         path = str(path)
         super().__init__(path, factory=factory, create=create)  # type: ignore[arg-type]
@@ -172,11 +185,20 @@ class MH(mailbox.MH):
     ####################################################################
     #
     def get_message_path(self, key: int) -> Path:
+        """Return the filesystem path for the message with the given key.
+
+        Args:
+            key: The integer MH message key.
+
+        Returns:
+            A :class:`~pathlib.Path` pointing to the message file.
+        """
         return Path(os.path.join(self._path, str(key)))
 
     ####################################################################
     #
     async def aclear(self) -> None:
+        """Remove all messages from the mailbox, yielding to the event loop between removals."""
         for key in [int(x) for x in self.keys()]:
             try:
                 self.remove(str(key))

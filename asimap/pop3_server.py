@@ -58,6 +58,16 @@ class POP3Server:
         log_config: str | None = None,
         debug: bool = False,
     ):
+        """
+        Args:
+            address: IP address to listen on.
+            port: TCP port to listen on.
+            ssl_context: SSL context for TLS connections.
+            trace: When ``True``, enable protocol tracing.
+            trace_dir: Directory to write trace files into.
+            log_config: Path to an optional logging configuration file.
+            debug: When ``True``, enable debug-level logging.
+        """
         self.address = address
         self.port = port
         self.ssl_context = ssl_context
@@ -160,6 +170,15 @@ class POP3Client:
         reader: asyncio.StreamReader,
         writer: asyncio.StreamWriter,
     ):
+        """
+        Args:
+            pop3_server: The parent :class:`POP3Server` instance.
+            name: Human-readable identifier for this client (``"addr:port"``).
+            rem_addr: Remote IP address of the client.
+            port: Remote port of the client.
+            reader: Async stream reader for the client connection.
+            writer: Async stream writer for the client connection.
+        """
         self.name = name
         self.rem_addr = rem_addr
         self.port = port
@@ -252,6 +271,11 @@ class POP3SubprocessInterface:
     ####################################################################
     #
     def __init__(self, pop3_client: POP3Client):
+        """
+        Args:
+            pop3_client: The :class:`POP3Client` this interface sends
+                responses back to.
+        """
         self.pop3_client = pop3_client
         self.peername = self.pop3_client.writer.get_extra_info("peername")
         self.debug = pop3_client.debug

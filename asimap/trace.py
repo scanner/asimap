@@ -105,11 +105,15 @@ TRACE_LAST_TIME = 0.0
 ####################################################################
 #
 def toggle_trace(turn_on: bool | None = None) -> None:
-    """
-    If `turn_on` is True, tracing is turned on.
-    If `turn_on` is False, tracing is truned off.
-    If `turn_on` is None, tracing is toggled: Turned on if it is off,
-                          turned off it is on.
+    """Enable, disable, or toggle protocol tracing.
+
+    When tracing is turned on the ``TRACE_START_TIME`` is reset and a
+    ``{"trace_format": "1.0"}`` header record is emitted so that trace files
+    are self-describing.
+
+    Args:
+        turn_on: ``True`` to enable tracing, ``False`` to disable it, or
+            ``None`` to toggle the current state.
     """
     global TRACE_ENABLED, TRACE_LAST_TIME, TRACE_START_TIME
     match turn_on:
@@ -139,9 +143,15 @@ def toggle_trace(turn_on: bool | None = None) -> None:
 ####################################################################
 #
 def trace(msg: dict[str, Any]) -> None:
-    """
-    Keyword Arguments:
-    msg --
+    """Emit a trace record if tracing is currently enabled.
+
+    Injects ``trace_time`` (seconds since tracing was enabled) and
+    ``trace_delta_time`` (seconds since the previous trace record) into the
+    message dict before logging it via the ``asimap.trace`` logger.
+
+    Args:
+        msg: Arbitrary dict of key/value pairs to include in the trace record.
+            The dict is mutated in place to add timing fields.
     """
     global TRACE_ENABLED, TRACE_LAST_TIME, TRACE_START_TIME
     if TRACE_ENABLED:

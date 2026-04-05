@@ -1,13 +1,16 @@
-## NOTE: Copied from:
-#
-#   https://github.com/django/django/blob/main/django/contrib/auth/hashers.py
-#
-# so that ASIMAP can use the same password hashes as django (this lets
-# us have the pasword generated and maintained by users via a django
-# app, which then copies it to the password file ASIMAP uses.
-#
-# NOTE: B-/ lotta goop. Still do not want to include django in the requirements
-#       to only use its hashing functions.
+"""
+Django-compatible password hashing for asimap.
+
+Adapted from ``django.contrib.auth.hashers`` so that asimap can verify
+passwords that were hashed by a Django-based companion service without
+requiring Django as a dependency.  Supports PBKDF2 (SHA-256 and SHA-1),
+Argon2, BCrypt-SHA-256, and Scrypt hashers.
+
+NOTE: Copied from
+  https://github.com/django/django/blob/main/django/contrib/auth/hashers.py
+  and then trimmed to the subset needed by asimap.
+"""
+
 #
 import base64
 import binascii
@@ -222,7 +225,23 @@ async def acheck_password(
     setter: Callable[[str], Awaitable[None]] | None = None,
     preferred: str = "default",
 ) -> bool:
-    """See check_password()."""
+    """Async version of :func:`check_password`.
+
+    Verifies a plaintext password against a stored hash.  If the hash
+    needs to be upgraded and ``setter`` is provided, ``setter`` is
+    awaited with the raw password so the caller can persist the new hash.
+
+    Args:
+        password: The plaintext password to verify, or ``None``.
+        encoded: The stored password hash string.
+        setter: An optional async callable that receives the raw password
+            and persists an upgraded hash.
+        preferred: Algorithm name (or ``"default"``) to use when deciding
+            whether the hash needs to be regenerated.
+
+    Returns:
+        ``True`` if ``password`` matches ``encoded``, ``False`` otherwise.
+    """
     is_correct, must_update = verify_password(
         password, encoded, preferred=preferred
     )

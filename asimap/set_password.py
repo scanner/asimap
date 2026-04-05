@@ -66,8 +66,24 @@ async def update_pw_file(
     password: str | None = None,
     maildir: Path | None = None,
 ) -> None:
-    """
-    Read in the password file. If the given user does not exist, add it to the
+    """Read the password file and create or update an account entry.
+
+    If the user does not exist a new entry is created (``maildir`` is
+    required in that case). If the user already exists their password hash
+    is updated, and their mail directory is updated if ``maildir`` is given.
+    Passing ``None`` for ``password`` stores an unusable ``"XXX"`` hash,
+    effectively disabling the account.
+
+    Args:
+        pwfile: Path to the password file.
+        username: The account username to create or update.
+        password: Plaintext password to hash and store, or ``None`` for an
+            unusable hash.
+        maildir: Path to the user's mail directory root.  Required when
+            creating a new account.
+
+    Raises:
+        RuntimeError: If the user does not exist and ``maildir`` is not given.
     """
     pwfile = Path(pwfile)
     pw_hash = make_password(password) if password else "XXX"
@@ -91,7 +107,7 @@ async def update_pw_file(
 #############################################################################
 #
 def main() -> None:
-    """ """
+    """Parse command-line arguments and update the password file for the given user."""
     args = docopt(__doc__, version=VERSION)
     pwfile: StrPath = args["--pwfile"]
     username = args["<username>"]
