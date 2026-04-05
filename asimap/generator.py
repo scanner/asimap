@@ -520,6 +520,15 @@ def _msg_as_string(msg: Message, headers: bool = True) -> str:
 ####################################################################
 #
 def msg_as_string(msg: Message, headers: bool = True) -> str:
+    """Render a message as a UTF-8 string suitable for IMAP clients.
+
+    Args:
+        msg: The email message to render.
+        headers: When ``False``, omit the top-level message headers.
+
+    Returns:
+        The rendered message string, always ending with ``\\r\\n``.
+    """
     return _msg_as_string(msg, headers=headers)
 
 
@@ -564,17 +573,33 @@ def _msg_as_bytes(msg: Message, render_headers: bool = True) -> bytes:
 ####################################################################
 #
 def msg_as_bytes(msg: Message, render_headers: bool = True) -> bytes:
+    """Render a message as raw bytes suitable for IMAP clients.
+
+    Args:
+        msg: The email message to render.
+        render_headers: When ``False``, omit the top-level message headers.
+
+    Returns:
+        The rendered message bytes, always ending with ``b"\\r\\n"``.
+    """
     return _msg_as_bytes(msg, render_headers=render_headers)
 
 
 ####################################################################
 #
 def get_msg_size(msg: Message, render_headers: bool = True) -> int:
-    """
-    We need to know the size of a message in octets in several different
-    contexts. Our TextGenerator is what we use to flatten messages for sending
-    to IMAP clients, so we want to also use it to be the canonical description
-    of a message's size.
+    """Return the canonical octet count for a message as sent to IMAP clients.
+
+    Uses :func:`msg_as_bytes` so that the size matches the actual bytes sent
+    on the wire.
+
+    Args:
+        msg: The email message to measure.
+        render_headers: When ``False``, exclude the top-level headers from the
+            size calculation.
+
+    Returns:
+        Number of bytes in the rendered message.
     """
     msg_bytes = msg_as_bytes(msg, render_headers=render_headers)
     return len(msg_bytes)

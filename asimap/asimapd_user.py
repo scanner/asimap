@@ -3,7 +3,7 @@
 # File: $Id$
 #
 """
-This is the 'user mail store' agent for the asimpad server. This is invoked
+This is the 'user mail store' agent for the asimapd server. This is invoked
 as a subprocess by asimapd when a user has authenticated. It is not intended to
 be run directly from the command line by a user.
 
@@ -24,7 +24,7 @@ Options:
   -h, --help    Show this text and exit
 
   --debug            Will set the default logging level to `DEBUG` thus
-                     enabling all of the debuggign logging.
+                     enabling all of the debugging logging.
 
   --log-config=<lc>  The log config file. This file may be either a JSON file
                      that follows the python logging configuration dictionary
@@ -99,6 +99,12 @@ logger = logging.getLogger("asimap.asimapd_user")
 #############################################################################
 #
 async def create_and_start_user_server(maildir: Path, debug: bool) -> None:
+    """Create and run an IMAP user server for the given mail directory.
+
+    Args:
+        maildir: Path to the user's MH mail directory.
+        debug: When ``True``, enable debug-level logging.
+    """
     server = await IMAPUserServer.new(maildir, debug=debug)
     await server.run()
 

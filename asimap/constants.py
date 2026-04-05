@@ -3,7 +3,11 @@
 # File: $Id$
 #
 """
-Various global constants.
+Global constants and flag/sequence conversion utilities for asimap.
+
+Defines IMAP system flags, their MH sequence name mappings, RFC 6154
+special-use attributes, the maximum allowed input size, and helper
+functions for converting between IMAP flag names and MH sequence names.
 """
 
 from collections import defaultdict
@@ -23,6 +27,13 @@ MAX_INPUT_SIZE = 10 * 1024 * 1024
 # XXX Convert these to StrEnum's.
 #
 class SystemFlags(StrEnum):
+    """IMAP system flags as defined in RFC 3501.
+
+    These are the standard per-message flags that all IMAP servers must
+    support. Each value is the wire-format flag name including the leading
+    backslash.
+    """
+
     ANSWERED = r"\Answered"
     DELETED = r"\Deleted"
     DRAFT = r"\Draft"
@@ -79,8 +90,14 @@ SPECIAL_USE_ATTR_VALUES: set[str] = set(SPECIAL_USE_ATTRS.values())
 ####################################################################
 #
 def flags_to_seqs(flags: list[str] | None) -> list[str]:
-    """
-    Converts an array of IMAP flags to MH sequence names.
+    """Convert a list of IMAP flag names to their MH sequence name equivalents.
+
+    Args:
+        flags: List of IMAP flag strings (e.g. `[r"\\Answered", "custom"]`).
+            Pass `None` to get an empty list back.
+
+    Returns:
+        List of MH sequence names corresponding to the input flags.
     """
     flags = [] if flags is None else flags
     return [flag_to_seq(x) for x in flags]
@@ -89,12 +106,17 @@ def flags_to_seqs(flags: list[str] | None) -> list[str]:
 ####################################################################
 #
 def flag_to_seq(flag: str) -> str:
-    """
-    Map an IMAP flag to an mh sequence name. This basically sees if the flag
-    is one we need to translate or not.
+    """Map a single IMAP flag name to its MH sequence name.
 
-    Arguments:
-    - `flag`: The IMAP flag we are going to translate.
+    System flags that have a known MH equivalent (e.g. `\\Answered` maps
+    to `replied`) are translated; all other flags are returned unchanged.
+
+    Args:
+        flag: An IMAP flag string such as `r"\\Answered"` or a keyword flag.
+
+    Returns:
+        The corresponding MH sequence name, or the original flag if no
+        mapping exists.
     """
     return REV_SYSTEM_FLAG_MAP[flag] if flag in REV_SYSTEM_FLAG_MAP else flag
 
@@ -102,8 +124,14 @@ def flag_to_seq(flag: str) -> str:
 ####################################################################
 #
 def seqs_to_flags(seqs: list[str] | None) -> list[str]:
-    """
-    Converts an array of MH sequence names to IMAP flags
+    """Convert a list of MH sequence names to their IMAP flag equivalents.
+
+    Args:
+        seqs: List of MH sequence name strings (e.g. `["replied", "Seen"]`).
+            Pass `None` to get an empty list back.
+
+    Returns:
+        List of IMAP flag names corresponding to the input sequences.
     """
     seqs = [] if seqs is None else seqs
     return [seq_to_flag(x) for x in seqs]
@@ -112,10 +140,17 @@ def seqs_to_flags(seqs: list[str] | None) -> list[str]:
 ####################################################################
 #
 def seq_to_flag(seq: str) -> str:
-    """
-    The reverse of flag to seq - map an MH sequence name to the IMAP flag.
+    """Map a single MH sequence name to its IMAP flag equivalent.
 
-    Arguments:
-    - `seq`: The MH sequence name
+    This is the inverse of :func:`flag_to_seq`. Known MH sequences (e.g.
+    `replied` maps to `\\Answered`) are translated; all others are returned
+    unchanged.
+
+    Args:
+        seq: An MH sequence name string such as `"replied"` or `"Seen"`.
+
+    Returns:
+        The corresponding IMAP flag string, or the original sequence name if
+        no mapping exists.
     """
     return SYSTEM_FLAG_MAP[seq] if seq in SYSTEM_FLAG_MAP else seq

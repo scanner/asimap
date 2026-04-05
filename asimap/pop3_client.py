@@ -83,6 +83,17 @@ class POP3ClientProxy:
         reader: asyncio.StreamReader,
         writer: asyncio.StreamWriter,
     ):
+        """
+        Args:
+            server: The :class:`~asimap.user_server.IMAPUserServer` this
+                proxy belongs to.
+            name: Human-readable identifier for the connection.
+            client_num: Monotonically increasing client index for logging.
+            rem_addr: Remote IP address of the originating POP3 client.
+            port: Remote port of the originating POP3 client.
+            reader: Async stream reader connected to the root server.
+            writer: Async stream writer connected to the root server.
+        """
         self.log = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self.client_num = client_num
         self.name = name
@@ -136,7 +147,7 @@ class POP3ClientProxy:
             self.trace("CONNECT", {})
             self.client_connected = True
 
-            # Initialize the POP3 session — snapshot the INBOX.
+            # Initialize the POP3 session -- snapshot the INBOX.
             #
             self.cmd_handler = POP3CommandHandler(self, self.server)
             await self.cmd_handler.init_session()
@@ -265,6 +276,12 @@ class POP3CommandHandler:
         client: POP3ClientProxy,
         server: "IMAPUserServer",
     ):
+        """
+        Args:
+            client: The :class:`POP3ClientProxy` that receives responses.
+            server: The :class:`~asimap.user_server.IMAPUserServer` used to
+                access the user's mailboxes.
+        """
         self.client = client
         self.server = server
         self.mbox: Mailbox | None = None

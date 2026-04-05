@@ -143,36 +143,9 @@ warn_unused_configs = true
 plugins = [
 ]
 
-[[tool.mypy.overrides]]
-module = [
-    'boto3',
-    'click',
-    'funcy',
-]
-
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "function"
 markers = [
     "smoke: marks tests as smoke (deselect with '-m \"not smoke\"')",
     "integration",
-]
-
-[tool.pylint.MASTER]
-ignore-paths=[ ".*/migrations/.*" ]
-
-[tool.pylint.FORMAT]
-max-module-lines=2000
-
-[tool.pylint.DESIGN]
-max-attributes=15
-max-branches=15
-
-[tool.pylint.BASIC]
-no-docstring-rgx='^_|^Meta$|.+Serializer$|.+ViewSet$|^[Tt]est'
-
-[tool.pylint.'MESSAGES CONTROL']
-disable=[
-    "unnecessary-pass",
-    "import-error",
-    "too-few-public-methods"
 ]

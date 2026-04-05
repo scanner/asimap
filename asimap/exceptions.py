@@ -3,8 +3,11 @@
 # File: $Id$
 #
 """
-Some exceptions need to be generally available to many modules so they are
-kept in this module to avoid ciruclar dependencies.
+Exceptions shared across multiple asimap modules.
+
+These are defined here to avoid circular import dependencies. The module
+provides both IMAP protocol-level exceptions (ProtocolException, No, Bad)
+and authentication-related exceptions.
 """
 
 # system imports
@@ -18,6 +21,12 @@ from typing import Any
 # to determine how we respond in exceptional situations
 #
 class ProtocolException(Exception):
+    """Base class for IMAP protocol-level exceptions.
+
+    Subclasses map to IMAP tagged response codes (NO, BAD) that are sent
+    back to the client when a command cannot be completed.
+    """
+
     def __init__(self, value: str = "protocol exception") -> None:
         self.value = value
 
@@ -29,6 +38,13 @@ class ProtocolException(Exception):
 ##################################################################
 #
 class No(ProtocolException):
+    """Raised when a valid IMAP command cannot be completed (NO response).
+
+    Used to signal that the command was syntactically correct but failed
+    for a logical reason, such as a mailbox not existing or a flag being
+    read-only.
+    """
+
     def __init__(self, value: str = "no") -> None:
         self.value = value
 
@@ -40,6 +56,12 @@ class No(ProtocolException):
 ##################################################################
 #
 class Bad(ProtocolException):
+    """Raised when an IMAP command is malformed or violates protocol (BAD response).
+
+    Used to signal client errors such as unknown commands, invalid arguments,
+    or protocol violations.
+    """
+
     def __init__(self, value: str = "bad") -> None:
         self.value = value
 
@@ -65,7 +87,7 @@ class MailboxInconsistency(ProtocolException):
 
     def __init__(
         self,
-        value: str = "mailbox inconsistencey",
+        value: str = "mailbox inconsistency",
         mbox_name: str | None = None,
         msg_key: int | None = None,
     ) -> None:
@@ -89,9 +111,9 @@ class MailboxLock(ProtocolException):
     #
     def __init__(self, value: str = "Mailbox lock", mbox: Any = None) -> None:
         """
-        Arguments:
-        - `value`:
-        - `mbox`: the mbox.Mailbox object we had a problem getting a lock on
+        Args:
+            value: Human-readable description of the lock failure.
+            mbox: The Mailbox object we were unable to acquire a lock on.
         """
         self.value = value
         self.mbox = mbox
@@ -110,6 +132,8 @@ class MailboxLock(ProtocolException):
 # Our authentication system has its own set of exceptions.
 #
 class AuthenticationException(Exception):
+    """Base class for authentication-related exceptions."""
+
     def __init__(self, value: str = "bad!") -> None:
         self.value = value
 
@@ -120,16 +144,22 @@ class AuthenticationException(Exception):
 ############################################################################
 #
 class BadAuthentication(AuthenticationException):
+    """Raised when a user provides an incorrect password."""
+
     pass
 
 
 ############################################################################
 #
 class NoSuchUser(AuthenticationException):
+    """Raised when the given username does not exist in the password file."""
+
     pass
 
 
 ############################################################################
 #
 class AuthenticationError(AuthenticationException):
+    """Raised for unexpected errors during the authentication process."""
+
     pass

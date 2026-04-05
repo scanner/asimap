@@ -61,28 +61,23 @@ logger = logging.getLogger("asimap.throttle")
 ####################################################################
 #
 def login_failed(user: str, addr: str) -> None:
-    """
-    We had a login attempt that failed, likely due to a bad password.
-    Record this attempt.
+    """Record a failed login attempt for throttling purposes.
 
-    The failure is recorded both for the username and the address it came from.
+    The failure is recorded against both the username and the client address.
+    Accumulating too many failures within ``PURGE_TIME`` seconds causes
+    subsequent :func:`check_allow` calls to return ``False``, blocking further
+    attempts until the window expires.
 
-    So a number of bad attempts locks both that username from being logged in
-    from and the address the login attempt came from.
+    NOTE: The address-based lockout is designed to shut down IPs that probe
+          many different usernames.
 
-    XXX There is a fundamental flaw with this in that a malicious agent that
-        knows how our throttling works can esssentially conduct a denial of
-        service against usernames it knows about.
+    XXX A malicious agent that knows how throttling works can conduct a DoS
+        against known usernames. The address lockout mitigates this somewhat by
+        triggering before the per-user lockout.
 
-        To mitigate this somewhat we will block an IP address that has too many
-        failures before we will block a username that has too many failures.
-
-    NOTE: The purpose of the address based lockout is to shut down IP addresses
-          that are trying a bunch of different user names.
-
-    Arguments:
-    - `user`: The username that they tried to login with
-    - `addr`: The IP address of the client that tried to login
+    Args:
+        user: The username that was attempted.
+        addr: The IP address of the client making the attempt.
     """
     now = time.time()
     if user in BAD_USER_AUTHS:
@@ -99,14 +94,20 @@ def login_failed(user: str, addr: str) -> None:
 ####################################################################
 #
 def check_allow(user: str, addr: str) -> bool:
-    """
-    Check the given user and client address to see if they are ones
-    that are currently being throttled. Retrun True if either the
-    username or client address is being throttled.
+    """Determine whether a login attempt should be allowed.
 
-    Arguments:
-    - `user`: The username that they are trying to login with
-    - `addr`: The IP address that they are trying to login from
+    Expired throttle entries (older than ``PURGE_TIME``) are removed on each
+    call. Returns ``False`` if the username has exceeded ``MAX_USER_ATTEMPTS``
+    or the address has exceeded ``MAX_ADDR_ATTEMPTS`` within the current
+    window; returns ``True`` otherwise.
+
+    Args:
+        user: The username being attempted.
+        addr: The IP address of the client making the attempt.
+
+    Returns:
+        ``True`` if the attempt should proceed, ``False`` if it should be
+        rejected due to throttling.
     """
 
     # If user and/or client addr are in the tracking dicts, but the

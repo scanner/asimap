@@ -7,9 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.1] - 2026-04-05
+
+### Changed
+
+- Add mypy to pre-commit hooks and CI pipeline
+- Unify our docstrings with Google-style docstring coverage
+- Update packages
+- Remove some dead sections pyproject.toml
+
 ### Fixed
 
 - Enforce 10 MiB maximum on IMAP literal strings and accumulated command buffer to prevent memory exhaustion DoS
+- Resolve all mypy type errors across the codebase
 
 ## [2.5.0] - 2026-03-22
 

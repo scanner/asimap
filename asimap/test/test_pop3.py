@@ -5,7 +5,7 @@
 # system imports
 #
 import asyncio
-from collections.abc import Callable
+from collections.abc import AsyncGenerator, Callable
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock
@@ -117,7 +117,7 @@ class TestDotStuff:
 @pytest_asyncio.fixture
 async def pop3_client_proxy(
     faker: Faker, mocker: MockerFixture, imap_user_server: IMAPUserServer
-) -> Callable[..., Any]:
+) -> AsyncGenerator[Callable[..., Any]]:
     """
     Creates a POP3ClientProxy with a mocked push method for testing
     command handling without network I/O.
@@ -170,14 +170,15 @@ def client_push_responses(
     Extract all push responses from a mocked POP3ClientProxy since
     the last call to this function.
     """
+    push_mock: AsyncMock = client.push  # type: ignore[assignment]
     results: list[str] = []
-    for args, _ in client.push.call_args_list:
+    for args, _ in push_mock.call_args_list:
         for d in args:
             if isinstance(d, bytes):
                 results.append(d.decode("latin-1"))
             else:
                 results.append(d)
-    client.push.reset_mock()
+    push_mock.reset_mock()
     return results
 
 

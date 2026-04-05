@@ -60,7 +60,12 @@ class PWUser:
     ##################################################################
     #
     def __init__(self, username: str, maildir: "StrPath", password_hash: str):
-        """ """
+        """
+        Args:
+            username: The user's login name.
+            maildir: Path to the root of the user's MH mail directory.
+            password_hash: A Django-compatible password hash string.
+        """
         self.username = username
         self.maildir = Path(maildir)
         self.pw_hash = password_hash
@@ -74,16 +79,23 @@ class PWUser:
 ####################################################################
 #
 async def authenticate(username: str, password: str) -> PWUser:
-    """
-    Authenticate the given username with the given password against our set
-    of users.
+    """Authenticate a user by username and plaintext password.
 
-    If the password file has been a modification time more recent then
-    PW_FILE_LAST_TIMESTAMP, then before we lookup and authenticate a user we
-    will re-read all the users into memory.
+    If the password file has a modification time more recent than
+    ``PW_FILE_LAST_TIMESTAMP``, the user list is reloaded before the lookup.
 
-    NOTE: Obviously this is meant for "small" numbers of users in the hundreds
-          range.
+    NOTE: This is designed for small deployments (hundreds of users at most).
+
+    Args:
+        username: The login name to authenticate.
+        password: The plaintext password to verify.
+
+    Returns:
+        The authenticated :class:`PWUser` object.
+
+    Raises:
+        NoSuchUser: If ``username`` does not exist in the password file.
+        BadAuthentication: If the password does not match.
     """
     global PW_FILE_LAST_TIMESTAMP
     mtime = await aiofiles.os.path.getmtime(PW_FILE_LOCATION)
@@ -106,15 +118,21 @@ async def authenticate(username: str, password: str) -> PWUser:
 ####################################################################
 #
 async def read_users_from_file(pw_file_name: "StrPath") -> None:
-    """
-    Reads all the user entries from the password file, construction User
-    objects for each one. Then updates `USERS` with new dict of User objects.
+    """Read and parse the password file, replacing the in-memory user list.
 
-    NOTE: If the `maildir` path in the password file is not absolute then the
-          path is considered relative to the location of the password file.
+    Each non-comment line must have the format::
 
-    NOTE: We should put this in to a common "apricot systematic" module that
-          can be shared by both asimapd and as_email_service.
+        <username>:<password_hash>:<maildir>
+
+    If ``maildir`` is a relative path it is resolved relative to the
+    directory containing the password file. After reading, any users no
+    longer present in the file are removed from ``USERS``.
+
+    NOTE: If the ``maildir`` path in the password file is not absolute it is
+          treated as relative to the directory containing the password file.
+
+    Args:
+        pw_file_name: Path to the password file to read.
     """
     pw_file_name = Path(pw_file_name)
     users = {}
@@ -152,13 +170,16 @@ async def read_users_from_file(pw_file_name: "StrPath") -> None:
 ####################################################################
 #
 def write_pwfile(pwfile: Path, accounts: dict[str, PWUser]) -> None:
-    """
-    we support a password file by email account with the password hash and
-    maildir for that email account. This is for inteegration with other
-    services (such as the asimap service)
+    """Write a set of user accounts to the asimap password file.
 
-    This will write all the entries in the accounts dict in to the indicated
-    password file.
+    Writes atomically by first writing to ``<pwfile>.new`` and then renaming
+    it over the destination. The maildir paths are stored relative to the
+    password file's parent directory so that they remain valid regardless of
+    where external services mount the file.
+
+    Args:
+        pwfile: Destination path for the password file.
+        accounts: Mapping of username to PWUser objects to persist.
     """
     new_pwfile = pwfile.with_suffix(".new")
     with new_pwfile.open("w") as f:

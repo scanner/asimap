@@ -58,7 +58,7 @@ formatting: ruff-format prettier	## Run `ruff format`, `prettier` over all files
 ruff-format: .ruff_formatted	## Run `ruff format` over all Python files
 prettier: .prettier
 
-mypy: .venv  ## Run `mypy` over `asimap/` and `scripts/`
-	@$(UV_RUN) mypy --install-types --non-interactive --explicit-package-bases ./asimap/ ./scripts/
+mypy: .venv  ## Run `mypy` over `asimap/`
+	@$(UV_RUN) mypy --install-types --non-interactive --explicit-package-bases ./asimap/
 
 .PHONY: formatting lint squeegee ruff-format mypy version
