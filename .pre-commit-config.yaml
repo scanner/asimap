@@ -21,3 +21,4 @@ repos:
         additional_dependencies:
           - types-aiofiles
           - types-cachetools
+          - factory-boy==3.3.3

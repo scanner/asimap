@@ -31,7 +31,7 @@ fake = Faker()
 ########################################################################
 ########################################################################
 #
-class UserFactory(factory.Factory):
+class UserFactory(factory.Factory[PWUser]):
     class Meta:
         model = PWUser
 

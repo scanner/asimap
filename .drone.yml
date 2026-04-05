@@ -15,7 +15,7 @@ steps:
     commands:
       - pip install uv
       - uv sync --frozen
-      - uv run mypy asimap/ scripts/
+      - uv run mypy asimap/
       - uv run pytest
 
 ---

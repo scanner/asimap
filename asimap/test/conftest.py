@@ -202,7 +202,7 @@ def user_factory(
     mailbox_dir: Path,
 ) -> Generator[Callable[..., asimap.auth.PWUser], None, None]:
     def make_user(*args: Any, **kwargs: Any) -> asimap.auth.PWUser:
-        user: asimap.auth.PWUser = UserFactory(*args, **kwargs)
+        user = UserFactory.build(*args, **kwargs)
         if "maildir" not in kwargs:
             maildir = mailbox_dir / user.username
             maildir.mkdir(parents=True, exist_ok=True)
