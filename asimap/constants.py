@@ -93,8 +93,8 @@ def flags_to_seqs(flags: list[str] | None) -> list[str]:
     """Convert a list of IMAP flag names to their MH sequence name equivalents.
 
     Args:
-        flags: List of IMAP flag strings (e.g. ``[r"\\Answered", "custom"]``).
-            Pass ``None`` to get an empty list back.
+        flags: List of IMAP flag strings (e.g. `[r"\\Answered", "custom"]`).
+            Pass `None` to get an empty list back.
 
     Returns:
         List of MH sequence names corresponding to the input flags.
@@ -108,11 +108,11 @@ def flags_to_seqs(flags: list[str] | None) -> list[str]:
 def flag_to_seq(flag: str) -> str:
     """Map a single IMAP flag name to its MH sequence name.
 
-    System flags that have a known MH equivalent (e.g. ``\\Answered`` →
-    ``replied``) are translated; all other flags are returned unchanged.
+    System flags that have a known MH equivalent (e.g. `\\Answered` maps
+    to `replied`) are translated; all other flags are returned unchanged.
 
     Args:
-        flag: An IMAP flag string such as ``r"\\Answered"`` or a keyword flag.
+        flag: An IMAP flag string such as `r"\\Answered"` or a keyword flag.
 
     Returns:
         The corresponding MH sequence name, or the original flag if no
@@ -127,8 +127,8 @@ def seqs_to_flags(seqs: list[str] | None) -> list[str]:
     """Convert a list of MH sequence names to their IMAP flag equivalents.
 
     Args:
-        seqs: List of MH sequence name strings (e.g. ``["replied", "Seen"]``).
-            Pass ``None`` to get an empty list back.
+        seqs: List of MH sequence name strings (e.g. `["replied", "Seen"]`).
+            Pass `None` to get an empty list back.
 
     Returns:
         List of IMAP flag names corresponding to the input sequences.
@@ -143,11 +143,11 @@ def seq_to_flag(seq: str) -> str:
     """Map a single MH sequence name to its IMAP flag equivalent.
 
     This is the inverse of :func:`flag_to_seq`. Known MH sequences (e.g.
-    ``replied`` → ``\\Answered``) are translated; all others are returned
+    `replied` maps to `\\Answered`) are translated; all others are returned
     unchanged.
 
     Args:
-        seq: An MH sequence name string such as ``"replied"`` or ``"Seen"``.
+        seq: An MH sequence name string such as `"replied"` or `"Seen"`.
 
     Returns:
         The corresponding IMAP flag string, or the original sequence name if

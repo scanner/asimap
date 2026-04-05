@@ -2014,7 +2014,7 @@ class Mailbox:
           required when `check_deleted=False`.
         """
         if not check_deleted:
-            # Case 3: MOVE — expunge messages by UID regardless of
+            # Case 3: MOVE -- expunge messages by UID regardless of
             # Deleted sequence.
             #
             if uid_msg_set is None:
@@ -3253,7 +3253,7 @@ class Mailbox:
         option (e.g. SUBSCRIBED), the server returns:
 
         1. Folders that match **both** the selection criteria **and** the
-           LIST pattern — yielded normally with ``childinfo=None``.
+           LIST pattern -- yielded normally with ``childinfo=None``.
         2. Parent folders that match the LIST pattern but do **not** satisfy
            the selection criteria, provided they have at least one
            descendant that **does** satisfy the criteria and that

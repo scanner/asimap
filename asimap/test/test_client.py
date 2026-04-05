@@ -1572,7 +1572,7 @@ async def test_extended_list_status_skips_recursivematch(
 
     status_lines = [r for r in results if r.startswith("* STATUS")]
 
-    # "team" appears via RECURSIVEMATCH with CHILDINFO — no STATUS.
+    # "team" appears via RECURSIVEMATCH with CHILDINFO -- no STATUS.
     # No subscribed top-level folders match "%" so no STATUS at all.
     #
     assert not any('"team"' in s for s in status_lines)

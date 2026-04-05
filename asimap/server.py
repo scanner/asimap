@@ -96,11 +96,11 @@ class IMAPSubprocess:
     ):
         """
 
-        Arguments:
-        - `user`: The user that has authenticated to us and thus represents
-                  the unique identifier for the subprocess we handle. The user
-                  is passed to the subprocess so that it can look up which unix
-                  user to switch to for handling that user's mailbox.
+        Args:
+            user: The user that has authenticated to us and thus represents the
+                unique identifier for the subprocess we handle. The user is
+                passed to the subprocess so that it can look up which unix user
+                to switch to for handling that user's mailbox.
         """
         self.log_config = log_config
         self.debug = debug
@@ -783,9 +783,11 @@ class IMAPSubprocessInterface:
         If the client IS authenticated then we send it on to the subprocess
         that is dealing with the user's actual mail spool.
 
-        Arguments: - `msg`: A full IMAP message from an IMAP client
+        Args:
+            msg: A full IMAP message from an IMAP client.
 
-        Return : bool
+        Returns:
+            `True` if the client connection should remain open.
         """
         # If the IMAP client is authenticated then we can just push the IMAP
         # messages off to the subprocess to handle.

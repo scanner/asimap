@@ -147,7 +147,7 @@ class POP3ClientProxy:
             self.trace("CONNECT", {})
             self.client_connected = True
 
-            # Initialize the POP3 session — snapshot the INBOX.
+            # Initialize the POP3 session -- snapshot the INBOX.
             #
             self.cmd_handler = POP3CommandHandler(self, self.server)
             await self.cmd_handler.init_session()

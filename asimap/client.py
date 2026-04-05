@@ -130,10 +130,10 @@ class BaseClientHandler:
     #
     def __init__(self, client: Union["IMAPClient", "IMAPClientProxy"]):
         """
-        Arguments:
-        - `client`: An asynchat.async_chat object that is connected to the IMAP
-                    client we are handling. This lets us send messages to that
-                    IMAP client.
+        Args:
+            client: An asynchat.async_chat object that is connected to the IMAP
+                client we are handling. This lets us send messages to that IMAP
+                client.
         """
         self.client = client
         self.state: ClientState = ClientState.NOT_AUTHENTICATED
@@ -210,8 +210,8 @@ class BaseClientHandler:
         We use introspection to find out what IMAP commands this handler
         actually supports.
 
-        Arguments:
-        - `imap_command`: An instance parse.IMAPClientCommand
+        Args:
+            imap_command: An instance parse.IMAPClientCommand
         """
         if self.mbox:
             logger.debug(
@@ -409,8 +409,8 @@ class BaseClientHandler:
 
         This method handles the basics of disconnecting a client.
 
-        Arguments:
-        - `msg`: The message to send to the client in the BYE.
+        Args:
+            msg: The message to send to the client in the BYE.
         """
         mbox_name = None
         if self.mbox:
@@ -441,8 +441,8 @@ class BaseClientHandler:
         """
         We have gotten a DONE. This is only called when we are idling.
 
-        Arguments:
-        - `cmd`: This is ignored.
+        Args:
+            cmd: This is ignored.
         """
         self.idling = False
         await self.send_pending_notifications()
@@ -457,8 +457,8 @@ class BaseClientHandler:
         pending notifies this client may have, if this client has a selected
         mailbox.
 
-        Arguments:
-        - `cmd`: The full IMAP command object.
+        Args:
+            cmd: The full IMAP command object.
         """
         if self.mbox:
             async with cmd.ready_and_okay(self.mbox):
@@ -471,8 +471,8 @@ class BaseClientHandler:
         """
         Return the capabilities of this server.
 
-        Arguments:
-        - `cmd`: The full IMAP command object.
+        Args:
+            cmd: The full IMAP command object.
         """
         await self.send_pending_notifications()
 
@@ -492,8 +492,8 @@ class BaseClientHandler:
         leading prefix on personal mailboxes and '/' is the hierarchy
         delimiter.
 
-        Arguments:
-        - `cmd`: The full IMAP command object.
+        Args:
+            cmd: The full IMAP command object.
         """
         await self.send_pending_notifications()
         await self.client.push('* NAMESPACE (("" "/")) NIL NIL\r\n')
@@ -505,8 +505,8 @@ class BaseClientHandler:
         """
         Construct an ID response... uh.. lookup the rfc that defines this.
 
-        Arguments:
-        - `cmd`: The full IMAP command object.
+        Args:
+            cmd: The full IMAP command object.
         """
         await self.send_pending_notifications()
         self.client_id = cmd.id_dict
@@ -527,8 +527,8 @@ class BaseClientHandler:
         any commands to the server. However, the client can still get
         asynchronous messages from the server.
 
-        Arguments:
-        - `cmd`: The full IMAP command object.
+        Args:
+            cmd: The full IMAP command object.
         """
         # Because this is a blocking command the main server read-loop
         # for this connection is not going to hit the read() again
@@ -550,8 +550,8 @@ class BaseClientHandler:
         This just sets our state to 'logged out'. Our caller will take the
         appropriate actions to finishing a client's log out request.
 
-        Arguments:
-        - `cmd`: The full IMAP command object.
+        Args:
+            cmd: The full IMAP command object.
         """
         self.pending_notifications = []
         await self.client.push(
@@ -595,8 +595,8 @@ class PreAuthenticated(BaseClientHandler):
         We do not support any authentication mechanisms at this time.. just
         password authentication via the 'login' IMAP client command.
 
-        Arguments:
-        - `cmd`: The full IMAP command object.
+        Args:
+            cmd: The full IMAP command object.
         """
         await self.send_pending_notifications()
         if self.state == ClientState.AUTHENTICATED:
@@ -610,8 +610,8 @@ class PreAuthenticated(BaseClientHandler):
         Process a LOGIN command with a username and password from the IMAP
         client.
 
-        Arguments:
-        - `cmd`: The full IMAP command object.
+        Args:
+            cmd: The full IMAP command object.
         """
         # If this client has been trying to log in too often with failed
         # results then we are going to throttle them and not accept their
@@ -731,12 +731,14 @@ class Authenticated(BaseClientHandler):
     #########################################################################
     #
     async def do_authenticate(self, cmd: IMAPClientCommand) -> None:
+        """Always raises No -- client is already authenticated."""
         await self.send_pending_notifications()
         raise No("client already is in the authenticated state")
 
     #########################################################################
     #
     async def do_login(self, cmd: IMAPClientCommand) -> None:
+        """Always raises No -- client is already authenticated."""
         await self.send_pending_notifications()
         raise No("client already is in the authenticated state")
 
@@ -750,9 +752,9 @@ class Authenticated(BaseClientHandler):
         """
         Select a folder, enter in to 'selected' mode.
 
-        Arguments:
-        - `cmd`: The IMAP command we are executing
-        - `examine`: Opens the folder in read only mode if True
+        Args:
+            cmd: The IMAP command we are executing
+            examine: Opens the folder in read only mode if True
         """
         # Selecting a mailbox, even if the attempt fails, automatically
         # deselects any already selected mailbox.
@@ -811,8 +813,8 @@ class Authenticated(BaseClientHandler):
         """
         Unselect a mailbox. Similar to close, except it does not do an expunge.
 
-        Arguments:
-        - `cmd`: The IMAP command we are executing
+        Args:
+            cmd: The IMAP command we are executing
         """
         # NOTE: If this client currently has messages being processed in the
         # command queue for this mailbox then they are all tossed when they
@@ -847,8 +849,8 @@ class Authenticated(BaseClientHandler):
         """
         Create the specified mailbox.
 
-        Arguments:
-        - `cmd`: The IMAP command we are executing
+        Args:
+            cmd: The IMAP command we are executing
         """
         await self.send_pending_notifications()
         assert self.server
@@ -861,8 +863,8 @@ class Authenticated(BaseClientHandler):
         """
         Delete the specified mailbox.
 
-        Arguments:
-        - `cmd`: The IMAP command we are executing
+        Args:
+            cmd: The IMAP command we are executing
         """
         assert self.server
         await self.send_pending_notifications()
@@ -876,8 +878,8 @@ class Authenticated(BaseClientHandler):
         """
         Renames a mailbox from one name to another.
 
-        Arguments:
-        - `cmd`: The IMAP command we are executing
+        Args:
+            cmd: The IMAP command we are executing
         """
         await self.send_pending_notifications()
         assert self.server
@@ -897,8 +899,8 @@ class Authenticated(BaseClientHandler):
         the LSUB command.  This command returns a tagged OK response only
         if the subscription is successful.
 
-        Arguments:
-        - `cmd`: The IMAP command we are executing
+        Args:
+            cmd: The IMAP command we are executing
         """
         await self.send_pending_notifications()
 
@@ -916,8 +918,8 @@ class Authenticated(BaseClientHandler):
         returned by the LSUB command.  This command returns a tagged
         OK response only if the unsubscription is successful.
 
-        Arguments:
-        - `cmd`: The IMAP command we are executing
+        Args:
+            cmd: The IMAP command we are executing
         """
         await self.send_pending_notifications()
 
@@ -1001,10 +1003,10 @@ class Authenticated(BaseClientHandler):
         are forwarded to ``Mailbox.list()`` and the response may include
         extended data items (CHILDINFO).
 
-        Arguments:
-        - `cmd`: The IMAP command we are executing
-        - `lsub`: If True this will only match folders that have their
-          subscribed bit set (legacy LSUB command).
+        Args:
+            cmd: The IMAP command we are executing
+            lsub: If True this will only match folders that have their
+                subscribed bit set (legacy LSUB command).
         """
         await self.send_pending_notifications()
 
@@ -1022,7 +1024,7 @@ class Authenticated(BaseClientHandler):
 
         # Handle the special case where the client is probing for the
         # hierarchy separation character.  In extended mode (RFC 5258)
-        # this probe is not defined — return nothing.
+        # this probe is not defined -- return nothing.
         #
         # NOTE: when ``list_patterns`` is populated the patterns live
         # there and ``list_mailbox`` is empty, so we must also check
@@ -1136,8 +1138,8 @@ class Authenticated(BaseClientHandler):
         The lsub command lists mailboxes we are subscribed to with the
         'SUBSCRIBE' command.
 
-        Arguments:
-        - `cmd`: The IMAP command we are executing
+        Args:
+            cmd: The IMAP command we are executing
         """
         return await self.do_list(cmd, lsub=True)
 
@@ -1148,8 +1150,8 @@ class Authenticated(BaseClientHandler):
         Get the designated mailbox and return the requested status
         attributes to our client.
 
-        Arguments:
-        - `cmd`: The IMAP command we are executing
+        Args:
+            cmd: The IMAP command we are executing
         """
         await self.send_pending_notifications()
 
@@ -1180,8 +1182,8 @@ class Authenticated(BaseClientHandler):
         """
         Append a message to a mailbox.
 
-        Arguments:
-        - `cmd`: The IMAP command we are executing
+        Args:
+            cmd: The IMAP command we are executing
         """
         assert self.server
         await self.send_pending_notifications()
@@ -1216,8 +1218,8 @@ class Authenticated(BaseClientHandler):
         okay. Clients should be prepared for that (but they should not
         expect this to happen.)
 
-        Arguments:
-        - `cmd`: The IMAP command we are executing
+        Args:
+            cmd: The IMAP command we are executing
         """
         if self.state != ClientState.SELECTED:
             raise No("Client must be in the selected state")
@@ -1260,8 +1262,8 @@ class Authenticated(BaseClientHandler):
         No messages are removed, and no error is given, if the mailbox is
         selected by an EXAMINE command or is otherwise selected read-only.
 
-        Arguments:
-        - `cmd`: The IMAP command we are executing
+        Args:
+            cmd: The IMAP command we are executing
         """
         if self.state != ClientState.SELECTED:
             raise No("Client must be in the selected state")
@@ -1303,8 +1305,8 @@ class Authenticated(BaseClientHandler):
         Delete all messages marked with 'Delete' from the mailbox and send out
         untagged expunge messages...
 
-        Arguments:
-        - `cmd`: The IMAP command we are executing
+        Args:
+            cmd: The IMAP command we are executing
         """
         if self.state != ClientState.SELECTED:
             raise No("Client must be in the selected state")
@@ -1354,8 +1356,8 @@ class Authenticated(BaseClientHandler):
         Search... NOTE: Can not send untagged EXPUNGE messages during this
         command.
 
-        Arguments:
-        - `cmd`: The IMAP command we are executing
+        Args:
+            cmd: The IMAP command we are executing
         """
         if self.state != ClientState.SELECTED:
             raise No("Client must be in the selected state")
@@ -1401,8 +1403,8 @@ class Authenticated(BaseClientHandler):
         """
         Fetch data from the messages indicated in the command.
 
-        Arguments:
-        - `cmd`: The IMAP command we are executing
+        Args:
+            cmd: The IMAP command we are executing
         """
         if self.state != ClientState.SELECTED:
             raise No("Client must be in the selected state")
@@ -1487,8 +1489,8 @@ class Authenticated(BaseClientHandler):
 
         By data we mean the flags on a message.
 
-        Arguments:
-        - `cmd`: The IMAP command we are executing
+        Args:
+            cmd: The IMAP command we are executing
         """
         if self.state != ClientState.SELECTED:
             raise No("Client must be in the selected state")
@@ -1568,8 +1570,8 @@ class Authenticated(BaseClientHandler):
 
         NOTE: Causes a resync of the destination mailbox.
 
-        Arguments:
-        - `cmd`: The IMAP command we are executing
+        Args:
+            cmd: The IMAP command we are executing
         """
         assert self.server
         if self.state != ClientState.SELECTED:
@@ -1632,8 +1634,8 @@ class Authenticated(BaseClientHandler):
         traditional COPY + STORE \\Deleted + EXPUNGE sequence, so this small
         window between copy and expunge is acceptable.
 
-        Arguments:
-        - `cmd`: The IMAP command we are executing
+        Args:
+            cmd: The IMAP command we are executing
         """
         assert self.server
         if self.state != ClientState.SELECTED:
@@ -1720,10 +1722,10 @@ class Authenticated(BaseClientHandler):
         pythonic-way-to-convert-a-list-of-integers-into-a-string-of-
         comma-separated-range/3430231#3430231
 
-        Arguments:
-        - `dest_mbox`: The destination mailbox
-        - `src_uids`: List of source UIDs
-        - `dst_uids`: List of destination UIDs
+        Args:
+            dest_mbox: The destination mailbox
+            src_uids: List of source UIDs
+            dst_uids: List of destination UIDs
 
         Returns:
             A string like "[COPYUID <uidvalidity> <src_uids> <dst_uids>]"

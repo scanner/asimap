@@ -1309,7 +1309,7 @@ async def test_mailbox_list_recursivematch_basic(
     ):
         results[name] = (attrs, child_info)
 
-    # "personal" is subscribed and matches "%" — normal result.
+    # "personal" is subscribed and matches "%" -- normal result.
     #
     assert "personal" in results
     assert r"\Subscribed" in results["personal"][0]
@@ -1355,7 +1355,7 @@ async def test_mailbox_list_recursivematch_deep_hierarchy(
     leaf.subscribed = True
     await leaf.commit_to_db()
 
-    # Pattern "*" matches everything — so the subscribed descendant
+    # Pattern "*" matches everything -- so the subscribed descendant
     # also matches the pattern.  Per RFC 5258, RECURSIVEMATCH only
     # fires when the descendant does NOT match the pattern.
     #

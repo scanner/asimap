@@ -77,8 +77,8 @@ def set_user_server_program(prg: "StrPath") -> None:
     Sets the 'USER_SERVER_PROGRAM' attribute on this module (so other modules
     will known how to launch the user server.)
 
-    Arguments:
-    - `prg`: An absolute path to the user server program.
+    Args:
+        prg: An absolute path to the user server program.
     """
     global USER_SERVER_PROGRAM
     prg = Path(prg)
@@ -377,9 +377,10 @@ class IMAPClientProxy:
         trace method that fills in various parts of the message being
         logged automatically.
 
-        Keyword Arguments:
-        msg_type -- 'SEND','RECEIVE','EXCEPTION','CONNECT','REMOTE_CLOSE'
-        msg -- a dict that contains the rest of the message to trace log
+        Args:
+            msg_type: One of 'SEND', 'RECEIVE', 'EXCEPTION', 'CONNECT',
+                or 'REMOTE_CLOSE'.
+            msg: Dict containing the rest of the trace record fields.
         """
         msg["connection"] = self.name
         msg["remote"] = f"{self.rem_addr}:{self.port}"
@@ -475,9 +476,9 @@ class IMAPUserServer:
         connections on. When something connects to it create an
         IMAPClientHandler and pass it the socket.
 
-        Arguments:
-        - `options` : The options set on the command line
-        - `maildir` : The directory our mailspool and database are in
+        Args:
+        options: The options set on the command line
+        maildir: The directory our mailspool and database are in
         """
         self.maildir = maildir
         self.debug = debug
@@ -952,12 +953,13 @@ class IMAPUserServer:
         If we do not instantiate an instance of that mailbox and add it to our
         list of active mailboxes.
 
-        Arguments:
-        - `name`: The name of the mailbox our caller wants.
-        - `expiry`: If we have to instantiate a mailbox give it this expiry
-          time. Used so that boxes that are just being updated rarely expire
-          and do not take up excess memory in the server. NOTE: As long as a
-          mailbox has an active clients, the expiry timer will NOT be active.
+        Args:
+            name: The name of the mailbox our caller wants.
+            expiry: If we have to instantiate a mailbox give it this expiry
+                time. Used so that boxes that are just being updated rarely
+                expire and do not take up excess memory in the server. NOTE: As
+                long as a mailbox has an active clients, the expiry timer will
+                NOT be active.
         """
         # If the mailbox name begins with a forward slash strip it off. We
         # specify `/` as the prefix character in the name space, but do not use

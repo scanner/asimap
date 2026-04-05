@@ -179,7 +179,7 @@ def write_pwfile(pwfile: Path, accounts: dict[str, PWUser]) -> None:
 
     Args:
         pwfile: Destination path for the password file.
-        accounts: Mapping of username → :class:`PWUser` to persist.
+        accounts: Mapping of username to PWUser objects to persist.
     """
     new_pwfile = pwfile.with_suffix(".new")
     with new_pwfile.open("w") as f:

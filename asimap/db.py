@@ -92,7 +92,7 @@ class Database:
     def __init__(self, maildir: "StrPath"):
         """Initialise the Database wrapper (sync portion).
 
-        Sets up the paths but does not open the connection — use
+        Sets up the paths but does not open the connection -- use
         :meth:`new` to get a fully-initialised instance.
 
         Args:
