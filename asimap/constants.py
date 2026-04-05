@@ -11,6 +11,11 @@ from enum import StrEnum
 
 type Sequences = defaultdict[str, set[int]]
 
+# Maximum size for any single IMAP input (literal strings and accumulated
+# command buffer). 10 MiB. Clients exceeding this are rejected with BAD.
+#
+MAX_INPUT_SIZE = 10 * 1024 * 1024
+
 
 # Here we set the list of defined system flags (flags that may be set on a
 # message) and the subset of those flags that may not be set by a  user.

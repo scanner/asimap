@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Enforce 10 MiB maximum on IMAP literal strings and accumulated command buffer to prevent memory exhaustion DoS
+
 ## [2.5.0] - 2026-03-22
 
 ### Added

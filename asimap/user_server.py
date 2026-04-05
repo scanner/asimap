@@ -39,7 +39,7 @@ import asimap.mbox
 import asimap.trace
 
 from .client import Authenticated
-from .constants import SPECIAL_USE_ATTRS
+from .constants import MAX_INPUT_SIZE, SPECIAL_USE_ATTRS
 from .db import Database
 from .exceptions import MailboxInconsistency
 from .mbox import Mailbox, NoSuchMailbox
@@ -231,6 +231,15 @@ class IMAPClientProxy:
                     self.client_connected = False
                     break
                 length = int(m.group(1))
+                if length > MAX_INPUT_SIZE:
+                    self.log.warning(
+                        "IPC message size %d exceeds maximum of %d, "
+                        "disconnecting",
+                        length,
+                        MAX_INPUT_SIZE,
+                    )
+                    self.client_connected = False
+                    break
                 msg = await self.reader.readexactly(length)
 
                 # Check if this is a POP3 connection. The root server
