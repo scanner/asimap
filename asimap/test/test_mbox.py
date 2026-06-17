@@ -26,7 +26,7 @@ from pytest_mock import MockerFixture
 # Project imports
 #
 from ..constants import flag_to_seq
-from ..exceptions import Bad, No
+from ..exceptions import Bad, MailboxInconsistency, No
 from ..fetch import FetchAtt, FetchOp
 from ..mbox import InvalidMailbox, Mailbox, MailboxExists, NoSuchMailbox
 from ..parse import (
@@ -771,6 +771,133 @@ async def test_mailbox_store(mailbox_with_bunch_of_email: Mailbox) -> None:
         assert flag_to_seq(r"\Answered") in msg_seq
         assert flag_to_seq(r"\Seen") in msg_seq
         assert flag_to_seq("unseen") not in msg_seq
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_store_stale_seq_raises_mailbox_inconsistency(
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_client_proxy: Callable[..., Any],
+) -> None:
+    """
+    GIVEN: two clients share a mailbox; client B's EXPUNGE removes the last
+           message, shrinking msg_keys from 20 to 19 elements
+    WHEN:  client A's STORE runs with seq num 20 -- a value the management
+           task computed as valid before the expunge ran but that is now
+           past the end of msg_keys (the stale-msg_set_as_set race)
+    THEN:  mbox.store() raises MailboxInconsistency, not a raw IndexError
+           that would silently crash the user-process asyncio task
+
+    This is the Layer 1 safety net.  Before the fix, self.msg_keys[20 - 1]
+    raises IndexError.  After the fix the same access raises
+    MailboxInconsistency, which do_store already catches and converts to a
+    BAD response.
+    """
+    mbox = mailbox_with_bunch_of_email
+    client_a = await imap_client_proxy()
+    client_b = await imap_client_proxy()
+    mbox.clients[client_a.cmd_processor.name] = client_a.cmd_processor
+    mbox.clients[client_b.cmd_processor.name] = client_b.cmd_processor
+
+    assert mbox.num_msgs == 20
+    last_msg_key = mbox.msg_keys[-1]
+    mbox.sequences["Deleted"].add(last_msg_key)
+    async with mbox.mh_sequences_lock:
+        mbox.set_sequences_in_folder(mbox.sequences)
+
+    # Capture the seq num the management task would have handed to store()
+    # before the expunge ran.
+    #
+    stale_msg_set = [mbox.num_msgs]  # [20]
+
+    client_b.cmd_processor.idling = True
+    client_a.cmd_processor.idling = False
+
+    await mbox.expunge()
+    assert mbox.num_msgs == 19
+    assert client_a.cmd_processor.pending_expunges()
+
+    # Before fix: IndexError crashes the task.
+    # After fix:  MailboxInconsistency is raised and caught by do_store.
+    #
+    with pytest.raises(MailboxInconsistency):
+        await mbox.store(stale_msg_set, StoreAction.ADD_FLAGS, [r"\Seen"])
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_uid_store_after_concurrent_expunge_is_silent_noop(
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_client_proxy: Callable[..., Any],
+) -> None:
+    """
+    GIVEN: two clients share a mailbox; both EXPUNGE and UID STORE are
+           queued at roughly the same time
+    WHEN:  the management task starts EXPUNGE, then computes msg_set_as_set
+           for the UID STORE using the still-stale _uid_to_idx (do_expunge
+           has not yet run when the management task dequeues the STORE), then
+           EXPUNGE finishes and check_new_msgs_and_flags returns changed=False
+           so the management task does NOT recompute msg_set_as_set -- the
+           stale seq num {20} is passed to mbox.store() while msg_keys has
+           only 19 elements
+    THEN:  the UID STORE completes without raising any exception
+           (after the fix the management task detects that msg_keys changed
+           since msg_set_as_set was computed and recomputes it, dropping the
+           now-invalid UID, so store() is called with an empty set)
+
+    This is the Layer 2 root fix.  Before the fix, IndexError propagates from
+    mbox.store().  After the fix the stale sequence number is silently dropped
+    and the STORE is a no-op.
+    """
+    mbox = mailbox_with_bunch_of_email
+    client_a = await imap_client_proxy()
+    client_b = await imap_client_proxy()
+    mbox.clients[client_a.cmd_processor.name] = client_a.cmd_processor
+    mbox.clients[client_b.cmd_processor.name] = client_b.cmd_processor
+
+    assert mbox.num_msgs == 20
+    last_msg_key = mbox.msg_keys[-1]  # key 20, uid 20
+    mbox.sequences["Deleted"].add(last_msg_key)
+    async with mbox.mh_sequences_lock:
+        mbox.set_sequences_in_folder(mbox.sequences)
+
+    client_b.cmd_processor.idling = True
+    client_a.cmd_processor.idling = False
+
+    # Both commands are put on the management-task queue as simultaneous
+    # asyncio tasks so the management task can start EXPUNGE and then
+    # immediately dequeue the UID STORE while _uid_to_idx is still stale
+    # (before do_expunge has rebuilt the index dicts).
+    #
+    async def run_expunge() -> None:
+        expunge_cmd = parse_cmd_from_msg("A001 EXPUNGE")
+        async with expunge_cmd.ready_and_okay(mbox):
+            await mbox.expunge()
+
+    async def run_uid_store() -> None:
+        # UID 20 -- the message about to be expunged.
+        uid_store_cmd = parse_cmd_from_msg(r"A002 UID STORE 20 +FLAGS (\Seen)")
+        async with uid_store_cmd.ready_and_okay(mbox):
+            msg_set = (
+                sorted(uid_store_cmd.msg_set_as_set)
+                if uid_store_cmd.msg_set_as_set
+                else []
+            )
+            await mbox.store(
+                msg_set,
+                uid_store_cmd.store_action,
+                uid_store_cmd.flag_list,
+                uid_store_cmd.uid_command,
+            )
+
+    # Before fix: IndexError propagates and the gather raises.
+    # After fix:  both coroutines complete cleanly; the UID STORE is a
+    #             no-op because the stale seq was dropped on recompute.
+    #
+    await asyncio.gather(run_expunge(), run_uid_store())
+    assert mbox.num_msgs == 19
 
 
 ####################################################################
