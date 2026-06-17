@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.2] - 2026-06-16
+
+### Fixed
+
+- Fix race condition where a concurrent EXPUNGE could leave a subsequent UID STORE with stale message sequence numbers, crashing the user process with an unhandled `IndexError`
+
 ## [2.5.1] - 2026-04-05
 
 ### Changed

@@ -9,6 +9,10 @@ UV_RUN := uv run
 	@echo "pre-commit hooks installed!"
 	@touch .git/hooks/pre-commit .git/hooks/pre-push
 
+$(ROOT_DIR)/.venv: pyproject.toml uv.lock
+	@uv sync --python $(PYTHON_VERSION)
+	@touch $@
+
 clean::	## Swab the decks! Does not touch docker images or volumes.
 	@find $(ROOT_DIR) -name \*~ -exec rm '{}' +
 	@find $(ROOT_DIR) -name \*.pyc -exec rm '{}' +
@@ -21,10 +25,6 @@ clean::	## Swab the decks! Does not touch docker images or volumes.
 	@rm -rf venv* .venv
 	@find $(ROOT_DIR) \( -name \*.orig -o -name \*.bak -o -name \*.rej \) -exec rm '{}' +
 	@mkdir -p .mypy_cache
-
-$(ROOT_DIR)/.venv: pyproject.toml uv.lock
-	@uv sync
-	@touch $@
 
 .venv:: $(ROOT_DIR)/.venv
 
