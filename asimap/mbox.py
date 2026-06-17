@@ -214,6 +214,13 @@ class Mailbox:
         self._msg_key_to_idx: dict[int, int] = {}
         self._uid_to_idx: dict[int, int] = {}
 
+        # Incremented every time _rebuild_index_dicts() runs so the
+        # management task can detect that msg_keys changed while a command
+        # was waiting for conflicts to clear in order to run in the
+        # management task (e.g. a concurrent EXPUNGE).
+        #
+        self._msg_keys_version: int = 0
+
         self.subscribed = False
 
         # Time in seconds since the unix epoch when a resync was last tried.
@@ -768,6 +775,10 @@ class Mailbox:
                 imap_cmd.msg_set_as_set = self.msg_set_to_msg_seq_set(
                     imap_cmd.msg_set, imap_cmd.uid_command
                 )
+                # Save version so we can tell if msg_keys was mutated while
+                # this command was blocked waiting for conflicts to clear.
+                #
+                msg_keys_version = self._msg_keys_version
 
                 # Block until the new IMAP command would not conflict with any
                 # of the currently executing IMAP commands.
@@ -778,18 +789,23 @@ class Mailbox:
                 # folder (doing it while there are no commands running to
                 # prevent any sort of sync between client and server errors.)
                 #
+                changed = False
                 if not self.executing_tasks:
                     async with self.mailbox.lock_folder():
                         changed = await self.check_new_msgs_and_flags()
 
-                    # Need to update this command's msg_set_as_set before we
-                    # add it to the list of executing commands (the list is
-                    # empty so we only need to update this one command)
-                    #
-                    if changed:
-                        imap_cmd.msg_set_as_set = self.msg_set_to_msg_seq_set(
-                            imap_cmd.msg_set, imap_cmd.uid_command
-                        )
+                # Recompute msg_set_as_set if the mailbox changed on disk
+                # (changed=True from resync) OR if a concurrent EXPUNGE
+                # mutated msg_keys while we waited in command_can_proceed.
+                # The version check catches the case where check_new_msgs_and_flags
+                # returns changed=False because EXPUNGE already updated the
+                # in-memory state directly -- leaving the seq nums computed
+                # above stale.
+                #
+                if changed or self._msg_keys_version != msg_keys_version:
+                    imap_cmd.msg_set_as_set = self.msg_set_to_msg_seq_set(
+                        imap_cmd.msg_set, imap_cmd.uid_command
+                    )
 
                 self.executing_tasks.append(imap_cmd)
                 imap_cmd.ready.set()
@@ -1513,6 +1529,7 @@ class Mailbox:
         """Rebuild the reverse-lookup dicts from the current lists."""
         self._msg_key_to_idx = {k: i for i, k in enumerate(self.msg_keys)}
         self._uid_to_idx = {u: i for i, u in enumerate(self.uids)}
+        self._msg_keys_version += 1
 
     ##################################################################
     #
@@ -2513,7 +2530,15 @@ class Mailbox:
         # Build a set of msg keys that are just the messages we want to
         # operate on.
         #
-        msg_keys = [self.msg_keys[x - 1] for x in msg_set]
+        try:
+            msg_keys = [self.msg_keys[x - 1] for x in msg_set]
+        except IndexError as exc:
+            log_msg = (
+                f"Mailbox '{self.name}': msg seq num in store is out of "
+                f"range, msg_set: {msg_set}, num_msgs: {self.num_msgs}"
+            )
+            logger.warning(log_msg)
+            raise MailboxInconsistency(log_msg, mbox_name=self.name) from exc
 
         # Convert the flags to MH sequence names..
         #
@@ -2652,7 +2677,17 @@ class Mailbox:
                     # list of msg keys. This is because IMAP message sequence
                     # numbers start at 1.
                     #
-                    msg_key = self.msg_keys[idx - 1]
+                    try:
+                        msg_key = self.msg_keys[idx - 1]
+                    except IndexError as exc:
+                        log_msg = (
+                            f"Mailbox '{self.name}': msg seq num {idx} in "
+                            f"copy is out of range, num_msgs: {self.num_msgs}"
+                        )
+                        logger.warning(log_msg)
+                        raise MailboxInconsistency(
+                            log_msg, mbox_name=self.name
+                        ) from exc
 
                     # Copy the messages from the src mbox to our temporary
                     # directory.

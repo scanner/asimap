@@ -1608,6 +1608,10 @@ class Authenticated(BaseClientHandler):
                 raise No(
                     f"[TRYCREATE] No such mailbox: '{cmd.mailbox_name}'"
                 ) from exc
+            except MailboxInconsistency as exc:
+                self.optional_resync = False
+                self.full_search = True
+                raise Bad(f"Problem while copying: {exc}") from exc
 
         return self._format_copyuid(
             dest_mbox,
