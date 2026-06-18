@@ -27,9 +27,9 @@ NOTE: Placeholder instructions
 `make package` will build the installable package.
 `make install` will install that built package
 
-* How to Run
+# How to Run
 
-** `asimapd`
+## `asimapd`
 
 Whether inside a docker container or from the command line `asimapd` tries to
 assume reasonable defaults to run without needing to specify any command line
@@ -108,7 +108,7 @@ Options:
                      The env. var is `POP3_PORT`
 ```
 
-** POP3 Support
+## POP3 Support
 
 asimap includes an optional POP3S (POP3 over TLS) server. POP3 access is
 restricted to the INBOX only — no other folders are visible. Messages are
@@ -137,7 +137,7 @@ services:
 ENABLE_POP3=1
 ```
 
-** Environment Variables
+## Environment Variables
 
 `ENABLE_MH_FILE_LOCKING` -- By default asimap does not use advisory file
 locking on MH mailbox folders. Set this to `true` to re-enable file locking
@@ -146,14 +146,14 @@ for environments where external MH command-line clients (e.g., `inc`, `scan`,
 locking prevents file descriptor exhaustion on systems with large numbers of
 mailboxes.
 
-** Performance Profiling
+## Performance Profiling
 
 The Docker images include [py-spy](https://github.com/benfred/py-spy), a
 sampling profiler that can attach to running processes and follow subprocesses.
 This is useful for understanding CPU usage across asimap's multi-process
 architecture.
 
-*** Dev container
+### Dev container
 
 The dev container is already configured with `SYS_PTRACE` capability. Start it
 and open a root shell:
@@ -181,7 +181,7 @@ The `raw` format produces collapsed stack traces with sample counts, one line
 per unique call stack. Output written to `/opt/asimap/traces/` is accessible
 from the host via the mounted volume.
 
-*** Prod container
+### Prod container
 
 For production profiling, add `SYS_PTRACE` when starting the container:
 
@@ -202,7 +202,7 @@ Then exec in as root to run py-spy:
 docker exec -u root -ti asimap /bin/bash
 ```
 
-** `asimapd_set_password`
+## `asimapd_set_password`
 
 ``` text
 A script to set passwords for asimap accounts (creates the account if it
