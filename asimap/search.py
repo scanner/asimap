@@ -73,12 +73,12 @@ class SearchContext:
         self.seq_max = seq_max
         self.uid_max = uid_max
         self.msg_number = msg_number
-        self.path = Path(os.path.join(mailbox.mailbox._path, str(msg_key)))
 
         # msg & uid are looked up and set ONLY if the search actually reaches
         # in to the message. We use read only attributes to fill in these
         # values.
         #
+        self._path: Path | None = None
         self._internal_date: datetime | None = None
         self._msg: EmailMessage | None = None
         self._msg_size: int | None = None
@@ -94,6 +94,21 @@ class SearchContext:
             f"{self.msg_key}, IMAP sequence num: {self.msg_number}, "
             f"path: {self.path}>"
         )
+
+    ####################################################################
+    #
+    @property
+    def path(self) -> Path:
+        """
+        The filesystem path to this message. Built lazily because most
+        searches never touch it (it is only needed for INTERNALDATE/size style
+        operations) and constructing a Path per message is not free.
+        """
+        if self._path is None:
+            self._path = Path(
+                os.path.join(self.mailbox.mailbox._path, str(self.msg_key))
+            )
+        return self._path
 
     ####################################################################
     #
@@ -339,21 +354,19 @@ class IMAPSearch:
         """
         We have a list of search keys. All of them must be True.
         """
-        tasks = []
-        try:
-            async with asyncio.TaskGroup() as tg:
-                for search_op in self.args["search_key"]:
-                    tasks.append(tg.create_task(search_op.match(self.ctx)))
-        except* Exception as e:
-            for err in e.exceptions:
-                logger.error(
-                    "Unable to perform search operation: %s", err, exc_info=err
-                )
-            raise
+        # Evaluate every sub-key (no short-circuit) so side effects such as
+        # `_match_keyword` setting `matched_recent` on the context still happen
+        # for all keys.
+        #
+        results = []
+        for op in self.args["search_key"]:
+            results.append(await op.match(self.ctx))
 
-        if all(x.result() for x in tasks):
-            return True
-        return False
+            # Yield between sub-key matches so other asyncio tasks get a chance
+            # to run during a long running search.
+            #
+            await asyncio.sleep(0)
+        return all(results)
 
     #########################################################################
     #
@@ -371,13 +384,19 @@ class IMAPSearch:
         We have a list of search keys. If any of these are true then
         the match is true.
         """
-        tasks = []
-        async with asyncio.TaskGroup() as tg:
-            for search_op in self.args["search_key"]:
-                tasks.append(tg.create_task(search_op.match(self.ctx)))
-        if any(x.result() for x in tasks):
-            return True
-        return False
+        # Evaluate every sub-key (no short-circuit) so side effects such as
+        # `_match_keyword` setting `matched_recent` on the context still happen
+        # for all keys.
+        #
+        results = []
+        for op in self.args["search_key"]:
+            results.append(await op.match(self.ctx))
+
+            # Yield between sub-key matches so other asyncio tasks get a chance
+            # to run during a long running search.
+            #
+            await asyncio.sleep(0)
+        return any(results)
 
     #########################################################################
     #

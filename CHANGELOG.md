@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `SENTRY_ASYNCIO_TASK_SPANS` env var to control whether the Sentry asyncio integration creates a span per task (defaults off, reducing CPU overhead)
 - Default sentry traces and porfiles sample rate to 0. It is still set by the env vars `SENTRY_TRACES_SAMPLE_RATE` and `SENTRY_PROFILES_SAMPLE_RATE` if they are set but the default is now off.
 
+### Changed
+
+- Reduce CPU usage of SEARCH commands by evaluating AND/OR search keys sequentially instead of spawning an asyncio task per key for every message
+
 ## [2.5.2] - 2026-06-16
 
 ### Fixed
