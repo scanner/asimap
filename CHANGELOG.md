@@ -7,10 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.3] - 2026-06-19
+
 ### Added
 
 - `SENTRY_ASYNCIO_TASK_SPANS` env var to control whether the Sentry asyncio integration creates a span per task (defaults off, reducing CPU overhead)
-- Default sentry traces and porfiles sample rate to 0. It is still set by the env vars `SENTRY_TRACES_SAMPLE_RATE` and `SENTRY_PROFILES_SAMPLE_RATE` if they are set but the default is now off.
+- Default sentry traces and profiles sample rate to 0. It is still set by the env vars `SENTRY_TRACES_SAMPLE_RATE` and `SENTRY_PROFILES_SAMPLE_RATE` if they are set but the default is now off.
 
 ### Changed
 
