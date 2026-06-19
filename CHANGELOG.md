@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Reduce CPU usage of SEARCH commands by evaluating AND/OR search keys sequentially instead of spawning an asyncio task per key for every message
+- Reduce CPU usage of LIST/LSUB for users with many mailboxes by computing `\HasChildren`/`\HasNoChildren` in O(N) instead of O(N²)
 
 ## [2.5.2] - 2026-06-16
 

@@ -1094,12 +1094,20 @@ class Authenticated(BaseClientHandler):
                 if attrs & SPECIAL_USE_ATTR_VALUES
             ]
 
-        # Build a set of all returned folder names so we can verify
-        # \HasChildren / \HasNoChildren correctness.
+        # Build the set of folder names that have at least one child among the
+        # returned results so we can set \HasChildren / \HasNoChildren. Every
+        # name is a child of each of its ancestor prefixes, so collect those
+        # prefixes once -- O(N) total -- instead of scanning all names for
+        # every folder (which is O(N^2) and costly with many mailboxes.)
         #
-        all_names = {name for name, _, _ in results}
+        parents_with_children: set[str] = set()
+        for name, _, _ in results:
+            parts = name.split("/")
+            for i in range(1, len(parts)):
+                parents_with_children.add("/".join(parts[:i]))
+
         for mbox_name, attributes, child_info in results:
-            has_children = any(n.startswith(mbox_name + "/") for n in all_names)
+            has_children = mbox_name in parents_with_children
             if has_children:
                 attributes.discard(r"\HasNoChildren")
                 attributes.add(r"\HasChildren")
