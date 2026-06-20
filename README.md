@@ -22,14 +22,14 @@ a highly scaleable one requiring a process for every logged in user.
 
 NOTE: Placeholder instructions
 
-* How to Build and Install
+# How to Build and Install
 
 `make package` will build the installable package.
 `make install` will install that built package
 
-* How to Run
+# How to Run
 
-** `asimapd`
+## `asimapd`
 
 Whether inside a docker container or from the command line `asimapd` tries to
 assume reasonable defaults to run without needing to specify any command line
@@ -108,7 +108,7 @@ Options:
                      The env. var is `POP3_PORT`
 ```
 
-** POP3 Support
+## POP3 Support
 
 asimap includes an optional POP3S (POP3 over TLS) server. POP3 access is
 restricted to the INBOX only — no other folders are visible. Messages are
@@ -137,23 +137,114 @@ services:
 ENABLE_POP3=1
 ```
 
-** Environment Variables
+## Environment Variables
 
-`ENABLE_MH_FILE_LOCKING` -- By default asimap does not use advisory file
-locking on MH mailbox folders. Set this to `true` to re-enable file locking
-for environments where external MH command-line clients (e.g., `inc`, `scan`,
-`rmm`) are actively modifying the same mail store concurrently. Disabling file
-locking prevents file descriptor exhaustion on systems with large numbers of
-mailboxes.
+Every command-line option also has a corresponding environment variable (noted
+in the CLI help above). The table below covers all recognised variables. Any
+variable that has a CLI equivalent can be overridden by the CLI flag at runtime.
 
-** Performance Profiling
+### Example `.env`
+
+```shell
+##############################################################################
+# Core server
+##############################################################################
+
+# Address to bind the IMAPS listener. Default: 0.0.0.0 (all interfaces)
+ADDRESS=0.0.0.0
+
+# IMAPS port. Default: 993
+PORT=993
+
+##############################################################################
+# SSL/TLS
+##############################################################################
+
+# Path to the PEM-encoded TLS certificate. Default: /opt/asimap/ssl/cert.pem
+SSL_CERT=/opt/asimap/ssl/cert.pem
+
+# Path to the TLS private key. Default: /opt/asimap/ssl/key.pem
+SSL_KEY=/opt/asimap/ssl/key.pem
+
+##############################################################################
+# Authentication
+##############################################################################
+
+# Password file (username:hash:maildir_root, one entry per line).
+# Default: /opt/asimap/pwfile
+# The hash format is compatible with Django's password hashers (PBKDF2,
+# Argon2, BCrypt, scrypt), so accounts can be imported from a Django app.
+PWFILE=/opt/asimap/pwfile
+
+##############################################################################
+# POP3S (optional — disabled by default)
+##############################################################################
+
+# Set to 1/true/yes to enable the POP3S server (INBOX only).
+# ENABLE_POP3=1
+
+# POP3S port. Default: 995
+# POP3_PORT=995
+
+##############################################################################
+# Logging and debugging
+##############################################################################
+
+# Set to 1/true/yes to enable DEBUG-level logging.
+# DEBUG=1
+
+# Path to a Python logging config file (JSON dict schema or .cfg format).
+# Searched in /opt/asimap, /etc, /usr/local/etc, /opt/local/etc if not set.
+# LOG_CONFIG=/opt/asimap/asimapd_log.json
+
+# Set to 1/true/yes to enable IMAP protocol tracing (post-auth only).
+# Produces JSON log entries on the `asimap.trace` logger. Very verbose.
+# TRACE=1
+
+# Directory for rotating trace log files. Default: /opt/asimap/traces/
+# TRACE_DIR=/opt/asimap/traces
+
+##############################################################################
+# Mail store
+##############################################################################
+
+# Set to true to enable advisory file locking on MH mailbox folders.
+# Useful when external MH command-line clients (inc, scan, rmm) access the
+# same mail store concurrently. Disabled by default because it can exhaust
+# file descriptors on systems with 1000+ mailboxes.
+# ENABLE_MH_FILE_LOCKING=true
+
+##############################################################################
+# Observability — Sentry (all optional; Sentry is disabled if DSN is unset)
+##############################################################################
+
+# Sentry DSN. Leave unset to disable Sentry entirely.
+# SENTRY_DSN=https://xxx@oyyy.ingest.sentry.io/zzz
+
+# Fraction (0.0–1.0) of IMAP command transactions to send to Sentry.
+# 0 disables performance tracing (errors are always captured regardless).
+# Default: 0
+# SENTRY_TRACES_SAMPLE_RATE=0.01
+
+# Fraction (0.0–1.0) for Sentry profiling. Requires a Sentry Business plan.
+# Default: 0
+# SENTRY_PROFILES_SAMPLE_RATE=0
+
+# Set to 1/true/yes to enable per-asyncio-task spans in Sentry.
+# Off by default: asimap spawns many short-lived tasks (e.g. per SEARCH
+# sub-term), so task spans add measurable CPU overhead for zero useful data
+# unless you are specifically debugging task scheduling.
+# SENTRY_ASYNCIO_TASK_SPANS=0
+```
+
+## Performance Profiling
 
 The Docker images include [py-spy](https://github.com/benfred/py-spy), a
 sampling profiler that can attach to running processes and follow subprocesses.
 This is useful for understanding CPU usage across asimap's multi-process
 architecture.
 
-*** Dev container
+### Dev container
 
 The dev container is already configured with `SYS_PTRACE` capability. Start it
 and open a root shell:
@@ -181,7 +272,7 @@ The `raw` format produces collapsed stack traces with sample counts, one line
 per unique call stack. Output written to `/opt/asimap/traces/` is accessible
 from the host via the mounted volume.
 
-*** Prod container
+### Prod container
 
 For production profiling, add `SYS_PTRACE` when starting the container:
 
@@ -202,7 +293,7 @@ Then exec in as root to run py-spy:
 docker exec -u root -ti asimap /bin/bash
 ```
 
-** `asimapd_set_password`
+## `asimapd_set_password`
 
 ``` text
 A script to set passwords for asimap accounts (creates the account if it

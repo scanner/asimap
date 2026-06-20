@@ -663,11 +663,20 @@ class IMAPUserServer:
         """
         if "SENTRY_DSN" in os.environ:
             traces_sample_rate = float(
-                os.environ.get("SENTRY_TRACES_SAMPLE_RATE", 0.1)
+                os.environ.get("SENTRY_TRACES_SAMPLE_RATE", 0)
             )
             profiles_sample_rate = float(
-                os.environ.get("SENTRY_PROFILES_SAMPLE_RATE", 0.1)
+                os.environ.get("SENTRY_PROFILES_SAMPLE_RATE", 0)
             )
+            # NOTE: AsyncioIntegration wraps every asyncio task. With
+            #       `task_spans` enabled it creates (and times) a span per task
+            #       regardless of `traces_sample_rate`, which is a measurable
+            #       CPU cost for a server that spawns many short-lived tasks.
+            #       Default it off; set SENTRY_ASYNCIO_TASK_SPANS to re-enable.
+            #
+            task_spans = os.environ.get(
+                "SENTRY_ASYNCIO_TASK_SPANS", ""
+            ).lower() in ("1", "true", "yes")
             logger.debug("Initializing sentry_sdk")
             sentry_sdk.init(
                 dsn=os.environ["SENTRY_DSN"],
@@ -676,7 +685,7 @@ class IMAPUserServer:
                 traces_sample_rate=traces_sample_rate,
                 profiles_sample_rate=profiles_sample_rate,
                 integrations=[
-                    AsyncioIntegration(),
+                    AsyncioIntegration(task_spans=task_spans),
                 ],
                 environment="devel" if self.debug else "production",
             )
