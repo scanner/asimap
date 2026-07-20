@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.4] - 2026-07-20
+
+### Fixed
+
+- Fix `UnicodeEncodeError` when appending a message containing non-ASCII (e.g. UTF-8) content, which previously caused the APPEND to fail
+
 ## [2.5.3] - 2026-06-19
 
 ### Added

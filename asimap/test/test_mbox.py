@@ -10,7 +10,9 @@ import random
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime
+from email.generator import BytesGenerator
 from email.message import EmailMessage
+from io import BytesIO
 from mailbox import MHMessage
 from pathlib import Path
 from typing import Any
@@ -269,6 +271,88 @@ async def test_mbox_append(
     # Make sure the messages match.
     #
     assert_email_equal(msg, folder_msg)
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mbox_append_non_ascii_message(
+    imap_user_server: IMAPUserServer,
+) -> None:
+    """
+    GIVEN: an APPEND command whose message has non-ASCII (UTF-8) content in a
+           nested multipart / message-rfc822 body
+    WHEN:  the command is parsed the way user_server does (wire bytes decoded
+           as latin-1) and the resulting message is appended to a mailbox
+    THEN:  the message is stored without a UnicodeEncodeError and round-trips
+           byte-for-byte.
+
+    This reproduces the crash in mailbox.MH.add -> BytesGenerator where a
+    latin-1 decoded message string could not be re-encoded as
+    'ascii'/'surrogateescape'.
+    """
+    server = imap_user_server
+    mbox = await Mailbox.new("inbox", server)
+
+    # A nested multipart message that embeds a message/rfc822 whose innermost
+    # text/plain body carries raw UTF-8 non-ASCII bytes -- mirroring the
+    # structure from the reported traceback.
+    #
+    inner = (
+        b"Content-Type: text/plain; charset=utf-8\r\n"
+        b"Content-Transfer-Encoding: 8bit\r\n"
+        b"\r\n"
+        b"Cont\xc3\xa9nt with n\xc3\xb6n-\xc3\xa4scii characters\r\n"
+    )
+    embedded = (
+        b"Content-Type: message/rfc822\r\n"
+        b"\r\n"
+        b"From: inner@example.com\r\n"
+        b"Subject: embedded\r\n"
+        b"Content-Type: text/plain; charset=utf-8\r\n"
+        b"Content-Transfer-Encoding: 8bit\r\n"
+        b"\r\n" + inner
+    )
+    message_bytes = (
+        b"From: sender@example.com\r\n"
+        b"To: recipient@example.com\r\n"
+        b"Subject: non-ascii append\r\n"
+        b"MIME-Version: 1.0\r\n"
+        b'Content-Type: multipart/mixed; boundary="BOUNDARY"\r\n'
+        b"\r\n"
+        b"--BOUNDARY\r\n" + embedded + b"\r\n"
+        b"--BOUNDARY--\r\n"
+    )
+
+    # The literal length in an IMAP command is a *byte* count.
+    #
+    wire = (
+        f"A001 APPEND inbox {{{len(message_bytes)}}}\r\n".encode("ascii")
+        + message_bytes
+    )
+
+    # user_server decodes the wire bytes as latin-1 before handing them to the
+    # parser (see IMAPClientProxy.run); mimic that exactly.
+    #
+    imap_msg = str(wire, "latin-1")
+    cmd = IMAPClientCommand(imap_msg)
+    cmd.parse()
+
+    # This is the path that used to raise UnicodeEncodeError.
+    #
+    await mbox.append(cmd.message)
+
+    msg_keys = [int(x) for x in mbox.mailbox.keys()]
+    assert len(msg_keys) == 1
+
+    # The stored message must round-trip back to the original wire bytes.
+    #
+    stored = mbox.get_msg(msg_keys[0])
+    buf = BytesIO()
+    BytesGenerator(buf, policy=stored.policy.clone(linesep="\r\n")).flatten(
+        stored
+    )
+    assert b"Cont\xc3\xa9nt with n\xc3\xb6n-\xc3\xa4scii" in buf.getvalue()
 
 
 ####################################################################
