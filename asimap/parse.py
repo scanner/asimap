@@ -14,7 +14,7 @@ import re
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import date, datetime
-from email import message_from_string
+from email import message_from_bytes
 from email.message import EmailMessage
 from enum import Enum, StrEnum
 from typing import (
@@ -837,8 +837,17 @@ class IMAPClientCommand:
         # as a message structure right away (I hope this works in all cases,
         # even with draft messages.)
         #
-        self.message = message_from_string(
-            self._p_string(), policy=email.policy.SMTP
+        # The message literal arrived as raw bytes on the wire but the parser
+        # operates on a latin-1 decoded string (see IMAPClientProxy.run). latin-1
+        # is a bijective, length-preserving byte<->codepoint map, so re-encoding
+        # recovers the exact wire bytes. We parse from bytes so `message_from_bytes`
+        # decodes them with 'ascii'/'surrogateescape' internally -- matching what
+        # `BytesGenerator` expects when the message is later flattened for storage.
+        # Using `message_from_string` here left real non-ASCII codepoints in text
+        # payloads that `BytesGenerator` could not encode, raising UnicodeEncodeError.
+        #
+        self.message = message_from_bytes(
+            self._p_string().encode("latin-1"), policy=email.policy.SMTP
         )
         # XXX Remove this after we are sure our MHMessage -> EmailMessage
         #     conversion.
