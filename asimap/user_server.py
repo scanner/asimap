@@ -15,6 +15,7 @@ import logging
 import os
 import os.path
 import re
+import resource
 import signal
 import sys
 import time
@@ -68,6 +69,12 @@ RE_LITERAL_STRING_START = re.compile(rb"\{(\d+)(\+)?\}$")
 TIME_BETWEEN_FULL_FOLDER_SCANS = 120
 TIME_BETWEEN_METRIC_DUMPS = 60
 TIME_BETWEEN_FOLDER_SCANS = 90
+
+# The idle mailbox caretaker task sleeps a random duration in this range
+# (seconds) between passes over the active mailboxes.
+#
+CARETAKER_SLEEP_MIN = 20
+CARETAKER_SLEEP_MAX = 30
 
 
 ####################################################################
@@ -548,10 +555,29 @@ class IMAPUserServer:
 
         self.management_task: asyncio.Task | None = None
 
+        # The idle mailbox caretaker task periodically checks active
+        # mailboxes that have no clients for new messages and flag changes
+        # (mailboxes with clients are polled by their own management task.)
+        #
+        self.caretaker_task: asyncio.Task | None = None
+
         # Statistics for the `check_all_folders` function
         # key is mbox name, value is a time duration in seconds.
         #
         self.folder_check_durations: dict[str, float] = {}
+
+        # Counters tracking mailbox polling & resync activity. Dumped and
+        # reset by `dump_metrics` so we can quantify how much periodic
+        # folder checking work the server is doing.
+        #
+        self.poll_stats: Counter[str] = Counter()
+
+        # Process CPU time (user, system) and the monotonic time at the last
+        # metrics dump, so `dump_metrics` can report CPU utilization over
+        # each dump interval.
+        #
+        self._last_rusage: tuple[float, float] | None = None
+        self._last_metrics_time: float = time.monotonic()
 
         # Updated by the IMAPClientProxy when it is processing commands.
         #
@@ -628,9 +654,19 @@ class IMAPUserServer:
         """
         Close various things when the server is shutting down.
         """
+        if self.caretaker_task and not self.caretaker_task.done():
+            self.caretaker_task.cancel()
+            try:
+                await self.caretaker_task
+            except asyncio.CancelledError:
+                pass
+
         if self.management_task and not self.management_task.done():
             self.management_task.cancel()
-            await self.management_task
+            try:
+                await self.management_task
+            except asyncio.CancelledError:
+                pass
 
         # Close all client connections
         #
@@ -721,6 +757,15 @@ class IMAPUserServer:
                 name="user_server_management_task",
             )
 
+            # Start the task that periodically checks active mailboxes that
+            # have no clients (their management tasks block until a command
+            # arrives and do no periodic polling of their own.)
+            #
+            self.caretaker_task = asyncio.create_task(
+                self.idle_mailbox_caretaker(),
+                name="idle_mailbox_caretaker",
+            )
+
             # Let the initial folder scan begin before we accept any clients to
             # give it a head start.
             #
@@ -778,6 +823,39 @@ class IMAPUserServer:
         exporter when we hook that up), and reset the counters after dumping
         the metrics.
         """
+        # Report process CPU time consumed since the last metrics dump so we
+        # can quantify the server's idle & active CPU cost over time.
+        #
+        now = time.monotonic()
+        usage = resource.getrusage(resource.RUSAGE_SELF)
+        if self._last_rusage is not None:
+            wall = now - self._last_metrics_time
+            cpu_user = usage.ru_utime - self._last_rusage[0]
+            cpu_sys = usage.ru_stime - self._last_rusage[1]
+            cpu_total = cpu_user + cpu_sys
+            cpu_pct = (100.0 * cpu_total / wall) if wall > 0 else 0.0
+            logger.info(
+                "Process CPU: %.3fs user, %.3fs system, %.3fs total over "
+                "%.1fs wall (%.2f%% CPU), max RSS: %d",
+                cpu_user,
+                cpu_sys,
+                cpu_total,
+                wall,
+                cpu_pct,
+                usage.ru_maxrss,
+            )
+        self._last_rusage = (usage.ru_utime, usage.ru_stime)
+        self._last_metrics_time = now
+
+        if self.poll_stats:
+            logger.info(
+                "Polling stats: %s",
+                ", ".join(
+                    f"{k}: {v}" for k, v in sorted(self.poll_stats.items())
+                ),
+            )
+            self.poll_stats.clear()
+
         cmds = ", ".join(
             [f"{x}: {y}" for x, y in self.num_rcvd_commands.most_common()]
         )
@@ -893,6 +971,96 @@ class IMAPUserServer:
             if self.asyncio_server.is_serving():
                 self.asyncio_server.close()
                 await self.asyncio_server.wait_closed()
+
+    ####################################################################
+    #
+    def _caretaker_should_skip(self, mbox: Mailbox) -> bool:
+        r"""
+        Returns True if the idle mailbox caretaker should NOT check the
+        given mailbox:
+
+        - the mailbox has been deleted
+        - `\Noselect` mailboxes are phantoms (and have no management task)
+        - mailboxes with clients are polled by their own management task
+        - mailboxes with executing or queued IMAP commands are resync'd by
+          their management task as part of command processing
+        """
+        return bool(
+            mbox.deleted
+            or r"\Noselect" in mbox.attributes
+            or mbox.clients
+            or mbox.executing_tasks
+            or not mbox.task_queue.empty()
+        )
+
+    ####################################################################
+    #
+    async def caretaker_pass(self) -> None:
+        """
+        A single pass over all of the active mailboxes, checking each idle
+        one (no clients, no executing or queued commands) for new messages
+        and flag changes, opportunistically packing ones that have not
+        changed.
+
+        Mutual exclusion with each mailbox's management task is via the
+        mailbox's `resync_lock` (held inside `Mailbox.idle_resync`.)
+        """
+        self.poll_stats["caretaker_passes"] += 1
+
+        # NOTE: We iterate over a snapshot of the mailbox names because
+        #       `active_mailboxes` may gain or lose entries while we await.
+        #
+        for mbox_name in list(self.active_mailboxes.keys()):
+            mbox = self.active_mailboxes.get(mbox_name)
+            if mbox is None or self._caretaker_should_skip(mbox):
+                self.poll_stats["caretaker_skipped"] += 1
+                continue
+            try:
+                await mbox.idle_resync()
+                self.poll_stats["caretaker_checked"] += 1
+            except (NoSuchMailbox, NoSuchMailboxError):
+                # The mailbox was deleted out from under us. The delete
+                # machinery handles cleanup; nothing for us to do.
+                #
+                pass
+            except MailboxInconsistency as e:
+                # Usually transient; the command processing path knows how
+                # to handle these better. Skip the mailbox this pass.
+                #
+                logger.warning(
+                    "caretaker: skipping '%s' due to: %s", mbox_name, str(e)
+                )
+            except Exception as e:
+                logger.exception(
+                    "caretaker: problem checking mailbox '%s': %s",
+                    mbox_name,
+                    e,
+                )
+
+            # Yield to let other tasks run between mailbox checks.
+            #
+            await asyncio.sleep(0)
+
+    ####################################################################
+    #
+    async def idle_mailbox_caretaker(self) -> None:
+        """
+        Instead of every active mailbox's management task waking up every
+        few seconds to poll the filesystem (a thundering herd when a user
+        has 1,000+ mailboxes), mailboxes with no clients block until a
+        command arrives and this single task periodically checks them all,
+        one at a time.
+        """
+        logger.debug("Idle mailbox caretaker task starting")
+        try:
+            while True:
+                await asyncio.sleep(
+                    randrange(CARETAKER_SLEEP_MIN, CARETAKER_SLEEP_MAX)
+                )
+                await self.caretaker_pass()
+        except asyncio.CancelledError:
+            logger.info("idle mailbox caretaker task has been cancelled")
+            raise
 
     ####################################################################
     #
