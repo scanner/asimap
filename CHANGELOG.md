@@ -114,13 +114,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - MH advisory file locking disabled by default to prevent file descriptor exhaustion with large mailbox counts (ASIMAP-5Q). Set env var `ENABLE_MH_FILE_LOCKING=true` to re-enable for environments coordinating with external MH command-line clients.
 
-## [2.1.34] - 2025-02-09
+## [2.1.34] - 2026-02-09
 
 ### Fixed
 
 - Fix Drone CI docker builds: pass PYTHON_VERSION as literal build arg since plugins/docker does not expand custom environment variables
 
-## [2.1.33] - 2025-02-09
+## [2.1.33] - 2026-02-09
 
 ### Fixed
 
@@ -131,13 +131,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Pin Python version (3.13.12) across Make.rules, Dockerfile, and Drone CI to ensure consistent behavior
 
-## [2.1.32] - 2025-02-08
+## [2.1.32] - 2026-02-08
 
 ### Fixed
 
 - Handle messages with badly encoded headers gracefully instead of crashing (GH-456): per-header error handling in email generator falls back to raw encoding when Python's fold_binary() fails
 
-## [2.1.31] - 2025-02-07
+## [2.1.31] - 2026-02-07
 
 ### Fixed
 
