@@ -288,6 +288,16 @@ class Mailbox:
         #
         self.deleted: bool = False
 
+        # Serializes folder resyncs (`check_new_msgs_and_flags` /
+        # `_pack_if_necessary`) between this mailbox's management task and the
+        # server-wide idle mailbox caretaker task. Any resync of a mailbox
+        # that is visible in `server.active_mailboxes` and not protected by
+        # the executing-command discipline (commands only start executing
+        # after the management task's pre-command resync, which holds this
+        # lock) must hold this lock.
+        #
+        self.resync_lock = asyncio.Lock()
+
     ####################################################################
     #
     def __del__(self) -> None:
@@ -711,6 +721,38 @@ class Mailbox:
 
     ####################################################################
     #
+    async def idle_resync(self) -> None:
+        """
+        Check for new messages and flag changes while the mailbox is
+        otherwise quiescent, and if nothing changed use the opportunity to
+        conditionally pack the folder.
+
+        Called from two places:
+        - the management task when its `task_queue.get()` times out (only
+          happens when clients have this mailbox selected)
+        - the server-wide idle mailbox caretaker task for mailboxes with no
+          clients
+
+        The `resync_lock` provides mutual exclusion between those two
+        callers. The skip conditions are re-checked after acquiring the lock
+        because an IMAP command may have started executing while we waited
+        for it (resyncing while a command is executing would corrupt that
+        command's view of the mailbox.)
+        """
+        async with self.resync_lock:
+            if self.deleted or self.executing_tasks:
+                return
+            async with self.mailbox.lock_folder():
+                changed = await self.check_new_msgs_and_flags()
+                if not changed:
+                    # We will take the mailbox not having changed and there
+                    # being no executing commands as a good opportunity to
+                    # conditionally pack it.
+                    #
+                    await self._pack_if_necessary()
+
+    ####################################################################
+    #
     async def management_task(self) -> None:
         """
         This task will loop until it is canceled. It will pull tasks as
@@ -725,9 +767,12 @@ class Mailbox:
         Once they have finished the loop repeat.
         """
         # Opportunistically pack before we start processing IMAP Commands.
+        # (The caretaker task may already be able to see this mailbox, so
+        # hold the resync lock.)
         #
-        async with self.mailbox.lock_folder():
-            await self._pack_if_necessary()
+        async with self.resync_lock:
+            async with self.mailbox.lock_folder():
+                await self._pack_if_necessary()
 
         # List of tasks currently acting on this mailbox.
         # (will only be one for conflicting commands)
@@ -741,29 +786,26 @@ class Mailbox:
                 # We will timeout giving the management task some time to check
                 # for new messages in this folder. How long we wait until we
                 # timeout depends on whether or not any clients have this
-                # mailbox selected. 1s to 5s if their are any
-                # clients. Otherwise 10s-20s if there are no clients.
+                # mailbox selected. 1s to 5s if there are any clients.
                 #
-                timeout = randrange(1, 5) if self.clients else randrange(10, 20)
+                # If there are no clients we block forever: the server-wide
+                # idle mailbox caretaker task is responsible for periodically
+                # checking mailboxes that have no clients. Any transition to
+                # having clients arrives as a queued command (SELECT/EXAMINE)
+                # which wakes us, and we re-evaluate the timeout every loop.
+                #
+                timeout = randrange(1, 5) if self.clients else None
                 try:
                     async with asyncio.timeout(timeout):
                         imap_cmd = await self.task_queue.get()
                 except TimeoutError:
+                    self.server.poll_stats["mgmt_poll_wakeups"] += 1
                     self._cleanup_executing_tasks()
                     # If there are no currently executing tasks then check for
                     # new messages. If there were no new messages see if we
                     # need to pack this folder.
                     #
-                    if not self.executing_tasks:
-                        async with self.mailbox.lock_folder():
-                            changed = await self.check_new_msgs_and_flags()
-                            if not changed:
-                                # We will take the mailbox not having
-                                # changed and ther being no executing
-                                # commands as a good opportunity to
-                                # conditionally pack it.
-                                #
-                                await self._pack_if_necessary()
+                    await self.idle_resync()
                     continue
 
                 # Compute the set() of imap message sequence numbers this
@@ -789,10 +831,16 @@ class Mailbox:
                 # folder (doing it while there are no commands running to
                 # prevent any sort of sync between client and server errors.)
                 #
+                # NOTE: Holding `resync_lock` here is what guarantees that no
+                #       IMAP command can begin executing while the caretaker
+                #       task is in the middle of a resync of this mailbox:
+                #       commands only start after this block completes.
+                #
                 changed = False
                 if not self.executing_tasks:
-                    async with self.mailbox.lock_folder():
-                        changed = await self.check_new_msgs_and_flags()
+                    async with self.resync_lock:
+                        async with self.mailbox.lock_folder():
+                            changed = await self.check_new_msgs_and_flags()
 
                 # Recompute msg_set_as_set if the mailbox changed on disk
                 # (changed=True from resync) OR if a concurrent EXPUNGE
@@ -1052,6 +1100,7 @@ class Mailbox:
         #
         start_time = time.monotonic()
         self.last_resync = time.time()
+        self.server.poll_stats["resync_checks"] += 1
 
         # We do NOT resync mailboxes marked '\Noselect'. These mailboxes
         # essentially do not exist as far as any IMAP client can really
@@ -1079,6 +1128,7 @@ class Mailbox:
         # of the mtime.
         #
         if start_mtime <= self.mtime and self.optional_resync and optional:
+            self.server.poll_stats["resync_mtime_skips"] += 1
             return False
 
         # We always reset `optional_resync` once we begin a non-optional
@@ -2903,8 +2953,15 @@ class Mailbox:
                 mbox.attributes.remove(r"\Noselect")
                 mbox.check_set_haschildren_attr()
                 await mbox.commit_to_db()
-                async with mbox.mailbox.lock_folder():
-                    await mbox.check_new_msgs_and_flags(optional=False)
+                # NOTE: CREATE does not go through the mailbox's task queue
+                #       and this mailbox is already visible in
+                #       `active_mailboxes`, so we must hold the resync lock
+                #       to exclude the caretaker task (once the `\Noselect`
+                #       attribute is removed it no longer skips this mailbox.)
+                #
+                async with mbox.resync_lock:
+                    async with mbox.mailbox.lock_folder():
+                        await mbox.check_new_msgs_and_flags(optional=False)
                 mbox.mgmt_task = asyncio.create_task(
                     mbox.management_task(),
                     name=f"mbox '{mbox.name}' mgmt task",

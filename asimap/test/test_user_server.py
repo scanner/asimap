@@ -4,14 +4,17 @@ Test the user server.
 
 # system imports
 #
+import asyncio
 from collections.abc import Callable
 from mailbox import MH
 from pathlib import Path
+from typing import Any
 
 # 3rd party imports
 #
 import pytest
 from faker import Faker
+from pytest_mock import MockerFixture
 
 # Project imports
 #
@@ -226,3 +229,183 @@ async def test_check_all_folders(
     # And stop idling on the inbox.
     #
     await client_handler.do_done()
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_caretaker_pass_resyncs_idle_mailbox(
+    bunch_of_email_in_folder: Callable[..., Path],
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server: IMAPUserServer,
+) -> None:
+    """
+    GIVEN: an active mailbox with no clients, no executing commands, and no
+           queued commands
+    WHEN:  new messages are delivered to the folder by an external agent and
+           the caretaker does a pass
+    THEN:  the caretaker resyncs the mailbox, picking up the new messages
+    """
+    server = imap_user_server
+    mbox = mailbox_with_bunch_of_email
+    num_msgs = mbox.num_msgs
+
+    # Deliver new messages "externally" (directly in to the MH folder.)
+    #
+    bunch_of_email_in_folder(num_emails=3, folder=mbox.name)
+
+    # The folder mtime has one second granularity so the delivery above may
+    # not be distinguishable from the resync done when the mailbox was
+    # instantiated. Clearing `optional_resync` forces the next resync to
+    # actually scan the folder.
+    #
+    mbox.optional_resync = False
+
+    await server.caretaker_pass()
+
+    assert mbox.num_msgs == num_msgs + 3
+    assert server.poll_stats["caretaker_passes"] == 1
+    assert server.poll_stats["caretaker_checked"] >= 1
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_caretaker_skips_busy_mailboxes(
+    mocker: MockerFixture,
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server: IMAPUserServer,
+) -> None:
+    r"""
+    GIVEN: a mailbox that has clients, executing commands, queued commands,
+           or the `\Noselect` attribute
+    WHEN:  the caretaker does a pass
+    THEN:  it does not resync that mailbox
+    """
+    server = imap_user_server
+    mbox = mailbox_with_bunch_of_email
+
+    # Cancel the management task so we can put commands on the task queue
+    # without them being consumed.
+    #
+    mbox.mgmt_task.cancel()
+
+    idle_resync = mocker.patch.object(mbox, "idle_resync")
+
+    # Has a client.
+    #
+    mbox.clients["fake_client"] = mocker.Mock()
+    await server.caretaker_pass()
+    idle_resync.assert_not_awaited()
+    mbox.clients.clear()
+
+    # Has an executing command.
+    #
+    cmd = IMAPClientCommand("A001 NOOP\r\n").parse()
+    mbox.executing_tasks.append(cmd)
+    await server.caretaker_pass()
+    idle_resync.assert_not_awaited()
+    mbox.executing_tasks.clear()
+
+    # Has a queued command.
+    #
+    mbox.task_queue.put_nowait(cmd)
+    await server.caretaker_pass()
+    idle_resync.assert_not_awaited()
+    mbox.task_queue.get_nowait()
+
+    # Has the `\Noselect` attribute.
+    #
+    mbox.attributes.add(r"\Noselect")
+    await server.caretaker_pass()
+    idle_resync.assert_not_awaited()
+    mbox.attributes.discard(r"\Noselect")
+
+    # And with none of the above the caretaker checks the mailbox.
+    #
+    await server.caretaker_pass()
+    idle_resync.assert_awaited_once()
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_caretaker_management_task_mutual_exclusion(
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server: IMAPUserServer,
+) -> None:
+    """
+    GIVEN: the caretaker holding a mailbox's resync_lock (as it does while
+           checking that mailbox)
+    WHEN:  an IMAP command arrives at the mailbox's management task
+    THEN:  the command is not allowed to begin executing until the lock is
+           released
+    """
+    mbox = mailbox_with_bunch_of_email
+
+    cmd = IMAPClientCommand("A001 NOOP\r\n").parse()
+
+    async def run_cmd() -> None:
+        async with cmd.ready_and_okay(mbox):
+            pass
+
+    async with mbox.resync_lock:
+        cmd_task = asyncio.create_task(run_cmd())
+        # Give the management task ample time to (incorrectly) let the
+        # command proceed.
+        #
+        await asyncio.sleep(0.2)
+        assert not cmd.ready.is_set()
+
+    # Once the lock is released the management task finishes its pre-command
+    # resync and lets the command proceed.
+    #
+    await asyncio.wait_for(cmd_task, timeout=5)
+    assert cmd.ready.is_set()
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_caretaker_resyncs_are_serialized(
+    mocker: MockerFixture,
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server: IMAPUserServer,
+) -> None:
+    """
+    GIVEN: the caretaker and other tasks calling `idle_resync` concurrently
+    WHEN:  they all run
+    THEN:  `check_new_msgs_and_flags` never runs concurrently with itself on
+           the same mailbox
+    """
+    server = imap_user_server
+    mbox = mailbox_with_bunch_of_email
+
+    active = 0
+    max_active = 0
+    orig_check = mbox.check_new_msgs_and_flags
+
+    async def instrumented(*args: Any, **kwargs: Any) -> bool:
+        nonlocal active, max_active
+        active += 1
+        max_active = max(max_active, active)
+        try:
+            # Give the other callers a chance to overlap with us.
+            #
+            await asyncio.sleep(0.05)
+            return await orig_check(*args, **kwargs)
+        finally:
+            active -= 1
+
+    mocker.patch.object(
+        mbox, "check_new_msgs_and_flags", side_effect=instrumented
+    )
+
+    await asyncio.gather(
+        server.caretaker_pass(),
+        mbox.idle_resync(),
+        mbox.idle_resync(),
+    )
+
+    assert max_active == 1
+    assert active == 0

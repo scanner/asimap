@@ -245,6 +245,42 @@ async def test_mbox_selected_unselected(
 ####################################################################
 #
 @pytest.mark.asyncio
+async def test_management_task_polls_while_clients_present(
+    bunch_of_email_in_folder: Callable[..., Path],
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
+) -> None:
+    """
+    GIVEN: a mailbox with a client that has it selected
+    WHEN:  new messages arrive from an external agent and no IMAP commands
+           are issued
+    THEN:  the management task's idle poll picks up the new messages within
+           a few seconds (mailboxes with no clients are instead checked by
+           the server's caretaker task)
+    """
+    NAME = "inbox"
+    bunch_of_email_in_folder()
+    server, imap_client_proxy = imap_user_server_and_client
+    mbox = await server.get_mailbox(NAME)
+    await mbox.selected(imap_client_proxy.cmd_processor)
+    num_msgs = mbox.num_msgs
+
+    # Deliver new messages "externally" (directly in to the MH folder.)
+    # Clearing `optional_resync` makes sure the next poll can not skip the
+    # folder scan due to the one second granularity of the folder's mtime.
+    #
+    bunch_of_email_in_folder(num_emails=3)
+    mbox.optional_resync = False
+
+    # The management task polls every 1-5s when clients are present.
+    #
+    async with asyncio.timeout(15):
+        while mbox.num_msgs != num_msgs + 3:
+            await asyncio.sleep(0.1)
+
+
+####################################################################
+#
+@pytest.mark.asyncio
 async def test_mbox_append(
     imap_user_server: IMAPUserServer, email_factory: EmailFactoryType
 ) -> None:

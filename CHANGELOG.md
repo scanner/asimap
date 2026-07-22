@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-07-21
+
+### Added
+
+- Log process CPU usage and mailbox polling statistics with the periodic metrics dump
+
+### Changed
+
+- Reduce idle CPU usage for accounts with many mailboxes: mailboxes with no clients attached are now checked for new mail by a single server-wide caretaker task instead of every mailbox polling the filesystem every 10-20 seconds
+
+### Fixed
+
+- Fix user server shutdown aborting early when cancelling its management task, which could leave the process hanging on exit
+
 ## [2.5.4] - 2026-07-20
 
 ### Fixed
