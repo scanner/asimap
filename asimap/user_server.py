@@ -1006,6 +1006,9 @@ class IMAPUserServer:
         mailbox's `resync_lock` (held inside `Mailbox.idle_resync`.)
         """
         self.poll_stats["caretaker_passes"] += 1
+        start_time = time.monotonic()
+        num_checked = 0
+        num_skipped = 0
 
         # NOTE: We iterate over a snapshot of the mailbox names because
         #       `active_mailboxes` may gain or lose entries while we await.
@@ -1014,7 +1017,9 @@ class IMAPUserServer:
             mbox = self.active_mailboxes.get(mbox_name)
             if mbox is None or self._caretaker_should_skip(mbox):
                 self.poll_stats["caretaker_skipped"] += 1
+                num_skipped += 1
                 continue
+            num_checked += 1
             try:
                 await mbox.idle_resync()
                 self.poll_stats["caretaker_checked"] += 1
@@ -1040,6 +1045,17 @@ class IMAPUserServer:
             # Yield to let other tasks run between mailbox checks.
             #
             await asyncio.sleep(0)
+
+        elapsed = time.monotonic() - start_time
+        mean_per_mbox = elapsed / num_checked if num_checked else 0.0
+        logger.info(
+            "caretaker pass: checked %d, skipped %d mailbox(es) in %.3fs "
+            "(%.4fs/mailbox checked)",
+            num_checked,
+            num_skipped,
+            elapsed,
+            mean_per_mbox,
+        )
 
     ####################################################################
     #
