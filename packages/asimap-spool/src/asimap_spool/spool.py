@@ -22,6 +22,7 @@ import secrets
 import time
 import uuid
 from collections.abc import Iterable
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from importlib import resources
@@ -70,6 +71,16 @@ _UUID_RE = re.compile(
 #
 class SpoolFormatError(ValueError):
     """A spool entry does not conform to the spool format."""
+
+
+########################################################################
+########################################################################
+#
+class SpoolUnavailableError(OSError):
+    """
+    The spool directory could not be created or written to. The message
+    was not spooled; the caller should deliver it some other way.
+    """
 
 
 ########################################################################
@@ -349,17 +360,32 @@ def write_entry(spool: str | os.PathLike[str], entry: SpoolEntry) -> Path:
     partial file.
 
     Args:
-        spool: The spool directory. Created if it does not exist.
+        spool: The spool directory. Created if it does not exist; its parent
+            (the mail store root) must exist.
         entry: The entry to write.
 
     Returns:
         The path of the ready entry.
+
+    Raises:
+        SpoolUnavailableError: if the spool directory can not be created or
+            the entry can not be written. Nothing is left in the spool.
     """
     spool = Path(spool)
-    spool.mkdir(exist_ok=True)
-    incoming = spool / f"{entry.id}{INCOMING_SUFFIX}"
-    ready = spool / f"{entry.id}{READY_SUFFIX}"
     data = json.dumps(entry.to_dict()).encode("utf-8")
+    try:
+        return _write_entry(spool, entry.id, data)
+    except OSError as e:
+        raise SpoolUnavailableError(f"can not spool to '{spool}': {e}") from e
+
+
+####################################################################
+#
+def _write_entry(spool: Path, entry_id: str, data: bytes) -> Path:
+    """Write `data` as a ready entry: incoming, fsync, rename, fsync dir."""
+    spool.mkdir(exist_ok=True)
+    incoming = spool / f"{entry_id}{INCOMING_SUFFIX}"
+    ready = spool / f"{entry_id}{READY_SUFFIX}"
 
     fd = os.open(incoming, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
     try:
@@ -372,7 +398,8 @@ def write_entry(spool: str | os.PathLike[str], entry: SpoolEntry) -> Path:
             os.close(fd)
         os.rename(incoming, ready)
     except BaseException:
-        incoming.unlink(missing_ok=True)
+        with suppress(OSError):
+            incoming.unlink(missing_ok=True)
         raise
     _fsync_dir(spool)
     return ready
@@ -399,6 +426,9 @@ def deliver(
 
     Returns:
         The path of the ready spool entry.
+
+    Raises:
+        SpoolUnavailableError: if the message could not be spooled.
     """
     entry = SpoolEntry(
         id=uuid7(),

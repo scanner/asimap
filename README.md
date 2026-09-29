@@ -225,7 +225,9 @@ PWFILE=/opt/asimap/pwfile
 
 # Other services deliver mail by writing files into `.asimap-spool/` at the
 # root of a user's mail store with the `asimap-spool` package
-# (packages/asimap-spool). The user's asimap process imports them.
+# (packages/asimap-spool). The user's asimap process imports them. If it
+# can not read and write the spool it logs an error and imports nothing from
+# it until that is fixed; mail written straight into folders is still found.
 
 # Seconds between spool checks. Default: 5
 # SPOOL_POLL_INTERVAL=5

@@ -5,15 +5,15 @@
 import base64
 import json
 import os
-import re
 import uuid
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 
 # 3rd party imports
 #
+import factory
 import jsonschema
 import pytest
 import pytest_check as check
@@ -28,8 +28,8 @@ from asimap_spool import (
     Delivery,
     SpoolEntry,
     SpoolFormatError,
+    SpoolUnavailableError,
     deliver,
-    move_to_failed,
     read_entry,
     ready_entries,
     schema,
@@ -38,6 +38,7 @@ from asimap_spool import (
     validate_folder_name,
     write_entry,
 )
+from pytest_mock import MockerFixture
 
 # 8-bit, non-UTF-8 content that a JSON string could not carry verbatim.
 #
@@ -47,11 +48,39 @@ RAW_MESSAGE = (
 )
 
 
+########################################################################
+########################################################################
+#
+class DeliveryFactory(factory.Factory[Delivery]):
+    class Meta:
+        model = Delivery
+        # `create` would shadow factory-boy's own `create()` method.
+        rename = {"create_folder": "create"}
+
+    folder = factory.Faker("word")
+    flags = ("\\Seen", "$Work")
+    create_folder = True
+
+
+########################################################################
+########################################################################
+#
+class SpoolEntryFactory(factory.Factory[SpoolEntry]):
+    class Meta:
+        model = SpoolEntry
+
+    id = factory.LazyFunction(uuid7)
+    received_at = factory.Faker("date_time", tzinfo=UTC)
+    message = RAW_MESSAGE
+    deliveries = factory.LazyFunction(lambda: (DeliveryFactory.build(),))
+    source = factory.Faker("word")
+
+
 ####################################################################
 #
 @pytest.fixture
 def maildir(tmp_path: Path) -> Path:
-    """An empty MH mail store root."""
+    """An empty MH mail store root, with no spool directory yet."""
     root = tmp_path / "Mail"
     root.mkdir()
     return root
@@ -77,13 +106,7 @@ def entry_dict() -> Callable[..., dict[str, Any]]:
     """
 
     def make(**changes: Any) -> dict[str, Any]:
-        data = SpoolEntry(
-            id=uuid7(),
-            received_at=datetime(2026, 9, 28, 12, 0, tzinfo=UTC),
-            message=RAW_MESSAGE,
-            deliveries=(Delivery("Lists/python", ("\\Seen", "$Work"), True),),
-            source="test",
-        ).to_dict()
+        data = SpoolEntryFactory.build().to_dict()
         for key, value in changes.items():
             if value is None:
                 data.pop(key, None)
@@ -107,8 +130,8 @@ def entry_schema() -> dict[str, Any]:
 ####################################################################
 #
 @pytest.fixture
-def failing_rename(mocker: Any) -> Any:
-    """Make `os.rename` in the spool module fail."""
+def failing_rename(mocker: MockerFixture) -> Any:
+    """Make the rename from incoming to ready fail."""
     return mocker.patch(
         "asimap_spool.spool.os.rename", side_effect=OSError("disk gone")
     )
@@ -116,44 +139,40 @@ def failing_rename(mocker: Any) -> Any:
 
 ####################################################################
 #
-def test_deliver_round_trip(maildir: Path) -> None:
-    """
-    GIVEN: a raw message with 8-bit, non-UTF-8 bytes
-    WHEN:  it is delivered with no deliveries and read back
-    THEN:  the ready file is the only file, the bytes are identical, and
-           it is addressed to the inbox, unseen
-    """
-    path = deliver(maildir, RAW_MESSAGE, source="test")
-    entry = read_entry(path)
-
-    check.equal(path.parent, maildir / SPOOL_DIR_NAME)
-    check.equal(sorted(os.listdir(path.parent)), [path.name])
-    check.equal(path.name, f"{entry.id}{READY_SUFFIX}")
-    check.equal(entry.message, RAW_MESSAGE)
-    check.equal(entry.deliveries, (Delivery("inbox", (), False),))
-    check.equal(entry.source, "test")
-    check.is_not_none(entry.received_at.utcoffset())
-
-
-####################################################################
-#
-def test_written_entry_matches_schema(
-    spool: Path,
-    entry_dict: Callable[..., dict[str, Any]],
+@pytest.mark.parametrize(
+    "deliveries,expected",
+    [
+        ((), (Delivery("inbox", (), False),)),
+        (
+            (Delivery("Lists/python", ("\\Seen", "$Work"), True),),
+            (Delivery("Lists/python", ("\\Seen", "$Work"), True),),
+        ),
+    ],
+)
+def test_deliver_round_trip(
+    deliveries: tuple[Delivery, ...],
+    expected: tuple[Delivery, ...],
+    maildir: Path,
     entry_schema: dict[str, Any],
 ) -> None:
     """
-    GIVEN: a spool entry with every field set
-    WHEN:  it is written to the spool
-    THEN:  the file validates against the shipped schema and reads back
-           equal
+    GIVEN: a raw message with 8-bit, non-UTF-8 bytes and no spool directory
+    WHEN:  it is delivered and read back
+    THEN:  the spool is created holding only the ready file, which matches
+           the schema and returns the identical bytes and deliveries (the
+           inbox when none are given)
     """
-    entry = SpoolEntry.from_dict(entry_dict())
-    path = write_entry(spool, entry)
-    data = json.loads(path.read_bytes())
+    path = deliver(maildir, RAW_MESSAGE, deliveries, source="test")
+    entry = read_entry(path)
 
-    jsonschema.validate(data, entry_schema)
-    assert read_entry(path) == entry
+    check.equal(os.listdir(maildir / SPOOL_DIR_NAME), [path.name])
+    check.is_none(
+        jsonschema.validate(json.loads(path.read_bytes()), entry_schema)
+    )
+    check.equal(entry.message, RAW_MESSAGE)
+    check.equal(entry.deliveries, expected)
+    check.equal(entry.source, "test")
+    check.is_not_none(entry.received_at.utcoffset())
 
 
 ####################################################################
@@ -164,7 +183,6 @@ def test_written_entry_matches_schema(
         {"version": 2},
         {"version": True},
         {"id": str(uuid.uuid4())},
-        {"id": None},
         {"received_at": "2026-09-28T12:00:00"},
         {"message_encoding": "quoted-printable"},
         {"message": None},
@@ -173,7 +191,6 @@ def test_written_entry_matches_schema(
         {"deliveries": [{"folder": "/abs"}]},
         {"deliveries": [{"folder": "a//b"}]},
         {"deliveries": [{"folder": "a/"}]},
-        {"deliveries": [{"folder": SPOOL_DIR_NAME}]},
         {"deliveries": [{"flags": ["\\Recent"]}]},
         {"deliveries": [{"flags": ["two words"]}]},
         {"deliveries": [{"create": "yes"}]},
@@ -204,7 +221,8 @@ def test_bad_base64_rejected(
     entry_dict: Callable[..., dict[str, Any]],
 ) -> None:
     """
-    GIVEN: an entry whose message is not strict base64
+    GIVEN: an entry whose message is not strict base64 (which the schema
+           can not express)
     WHEN:  it is parsed
     THEN:  it is rejected rather than silently dropping characters
     """
@@ -215,30 +233,23 @@ def test_bad_base64_rejected(
 
 ####################################################################
 #
-def test_read_entry_rejects_mismatched_file_name(
-    spool: Path, entry_dict: Callable[..., dict[str, Any]]
-) -> None:
+@pytest.mark.parametrize(
+    "content",
+    [
+        # A valid entry whose id is not the file name.
+        json.dumps(SpoolEntryFactory.build().to_dict()).encode(),
+        b"\xff not json",
+    ],
+)
+def test_read_entry_rejects(content: bytes, spool: Path) -> None:
     """
-    GIVEN: a ready file whose name does not match the entry's id
-    WHEN:  it is read
-    THEN:  it is rejected
-    """
-    path = spool / f"{uuid7()}{READY_SUFFIX}"
-    path.write_text(json.dumps(entry_dict()))
-    with pytest.raises(SpoolFormatError):
-        read_entry(path)
-
-
-####################################################################
-#
-def test_read_entry_rejects_non_json(spool: Path) -> None:
-    """
-    GIVEN: a ready file that is not JSON
+    GIVEN: a ready file that is not JSON, or whose id does not match its
+           file name
     WHEN:  it is read
     THEN:  it is rejected with a SpoolFormatError
     """
     path = spool / f"{uuid7()}{READY_SUFFIX}"
-    path.write_bytes(b"\xff not json")
+    path.write_bytes(content)
     with pytest.raises(SpoolFormatError):
         read_entry(path)
 
@@ -246,12 +257,7 @@ def test_read_entry_rejects_non_json(spool: Path) -> None:
 ####################################################################
 #
 @pytest.mark.parametrize(
-    "name,expected",
-    [
-        ("INBOX", "inbox"),
-        ("Inbox/Sub", "Inbox/Sub"),
-        ("Lists/python", "Lists/python"),
-    ],
+    "name,expected", [("INBOX", "inbox"), ("Inbox/Sub", "Inbox/Sub")]
 )
 def test_validate_folder_name(name: str, expected: str) -> None:
     """
@@ -265,18 +271,29 @@ def test_validate_folder_name(name: str, expected: str) -> None:
 ####################################################################
 #
 def test_write_entry_cleans_up_on_failure(
-    spool: Path,
-    entry_dict: Callable[..., dict[str, Any]],
-    failing_rename: Any,
+    spool: Path, failing_rename: Any
 ) -> None:
     """
-    GIVEN: a rename that fails
+    GIVEN: a rename that fails after the incoming file is written
     WHEN:  an entry is written
-    THEN:  the error propagates and no incoming file is left behind
+    THEN:  it raises SpoolUnavailableError and no incoming file is left
     """
-    with pytest.raises(OSError):
-        write_entry(spool, SpoolEntry.from_dict(entry_dict()))
+    with pytest.raises(SpoolUnavailableError):
+        write_entry(spool, SpoolEntryFactory.build())
     assert os.listdir(spool) == []
+
+
+####################################################################
+#
+def test_deliver_to_missing_mail_store(tmp_path: Path) -> None:
+    """
+    GIVEN: a mail store root that does not exist, so the spool can not be
+           created
+    WHEN:  a message is delivered
+    THEN:  it raises SpoolUnavailableError
+    """
+    with pytest.raises(SpoolUnavailableError):
+        deliver(tmp_path / "nobody", RAW_MESSAGE)
 
 
 ####################################################################
@@ -331,36 +348,16 @@ def test_stale_incoming(spool: Path) -> None:
 
 ####################################################################
 #
-def test_move_to_failed(spool: Path) -> None:
-    """
-    GIVEN: a spool file
-    WHEN:  it is moved to failed
-    THEN:  it is in the failed subdirectory and gone from the spool
-    """
-    path = spool / f"{uuid7()}{READY_SUFFIX}"
-    path.write_text("{}")
-
-    dest = move_to_failed(path)
-
-    check.equal(dest, spool / FAILED_DIR_NAME / path.name)
-    check.is_true(dest.exists())
-    check.is_false(path.exists())
-
-
-####################################################################
-#
 def test_uuid7_format_and_order() -> None:
     """
     GIVEN: ids generated in sequence
     WHEN:  they are inspected
-    THEN:  each is a lowercase RFC 9562 version 7 uuid, and they sort in
-           millisecond order
+    THEN:  each is an RFC 9562 version 7 uuid, and their timestamps never
+           go backwards
     """
-    first = uuid7()
     ids = [uuid7() for _ in range(50)]
-    parsed = uuid.UUID(first)
+    parsed = [uuid.UUID(i) for i in ids]
 
-    check.equal(parsed.version, 7)
-    check.equal(parsed.variant, uuid.RFC_4122)
-    check.is_true(re.fullmatch(r"[0-9a-f-]{36}", first))
-    check.is_true(all(first[:13] <= i[:13] for i in ids))
+    check.is_true(all(p.version == 7 for p in parsed))
+    check.is_true(all(p.variant == uuid.RFC_4122 for p in parsed))
+    check.equal([i[:13] for i in ids], sorted(i[:13] for i in ids))

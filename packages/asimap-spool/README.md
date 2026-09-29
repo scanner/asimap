@@ -30,6 +30,20 @@ does not treat it as a mail folder, and MH tools find no messages in it.
 
 Delivery is at least once: a crash during import can deliver a message twice.
 
+`deliver()` creates `.asimap-spool/` if it does not exist. If it can not
+create the directory or write into it, it raises `SpoolUnavailableError` (an
+`OSError`) and leaves nothing behind, so the caller can deliver the message
+some other way:
+
+```python
+from asimap_spool import SpoolUnavailableError, deliver
+
+try:
+    deliver(maildir, raw_message_bytes)
+except SpoolUnavailableError:
+    ...  # fall back, e.g. write straight into the MH folder
+```
+
 ## Entry format
 
 `asimap_spool.schema()` returns the JSON Schema

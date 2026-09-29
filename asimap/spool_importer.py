@@ -122,25 +122,27 @@ class SpoolImporter:
         self.attempts: dict[str, int] = {}
         self.delivered: dict[str, set[str]] = {}
         self.unremovable: set[Path] = set()
+        self.spool_problem: str | None = None
 
     ####################################################################
     #
     async def run(self) -> None:
         """
         Drain the spool, then wait for a watcher wake-up or the poll
-        interval, and repeat until cancelled.
+        interval, and repeat until cancelled. While the spool is not usable
+        nothing is imported; the watcher starts once it is.
         """
-        await asyncio.to_thread(self._ensure_dirs)
-        watcher = (
-            asyncio.create_task(self.watch(), name="spool watcher")
-            if self.settings.watch
-            else None
-        )
+        watcher: asyncio.Task | None = None
         try:
             while True:
                 self.wake.clear()
                 try:
-                    await self.drain()
+                    if await self.spool_usable():
+                        if self.settings.watch and watcher is None:
+                            watcher = asyncio.create_task(
+                                self.watch(), name="spool watcher"
+                            )
+                        await self.drain()
                 except Exception as e:
                     logger.exception("spool: drain failed: %r", e)
                 try:
@@ -159,9 +161,48 @@ class SpoolImporter:
 
     ####################################################################
     #
-    def _ensure_dirs(self) -> None:
-        """Create the spool and its `failed/` directory if missing."""
-        (self.spool / FAILED_DIR_NAME).mkdir(parents=True, exist_ok=True)
+    def check_spool(self) -> str | None:
+        """
+        Create the spool and its `failed/` directory if missing and check
+        that we can read and write both.
+
+        Returns:
+            None if the spool is usable, otherwise what is wrong with it.
+        """
+        failed = self.spool / FAILED_DIR_NAME
+        try:
+            failed.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            return f"can not create '{failed}': {e}"
+        effective_ids = os.access in os.supports_effective_ids
+        for path in (self.spool, failed):
+            if not os.access(
+                path, os.R_OK | os.W_OK | os.X_OK, effective_ids=effective_ids
+            ):
+                return f"no read/write access to '{path}'"
+        return None
+
+    ####################################################################
+    #
+    async def spool_usable(self) -> bool:
+        """
+        Check the spool. Log an error when it becomes unusable (and again
+        if the problem changes) and a notice when it recovers. Mail dropped
+        straight into folders is still found by the folder scan meanwhile.
+        """
+        problem = await asyncio.to_thread(self.check_spool)
+        if problem is None:
+            if self.spool_problem is not None:
+                logger.info("spool: '%s' is usable again", self.spool)
+                self.spool_problem = None
+            return True
+        if problem != self.spool_problem:
+            logger.error(
+                "spool: %s; not importing from the spool until this is fixed",
+                problem,
+            )
+            self.spool_problem = problem
+        return False
 
     ####################################################################
     #
