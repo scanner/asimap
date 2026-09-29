@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Delivery spool: other services deliver mail by dropping files into `.asimap-spool/` in the mail store, written with the new `asimap-spool` package, and asimap imports them within seconds while the user's server is running
+- `CARETAKER_SLEEP_MIN` and `CARETAKER_SLEEP_MAX` settings for how often mailboxes with no clients are checked
+
 ### Fixed
 
 - Report a FETCH that fails with a `UnicodeEncodeError` as a single error, without including the message content in the log

@@ -34,6 +34,7 @@ from typing import (
 # 3rd party imports
 #
 import aiofiles
+from asimap_spool import SPOOL_DIR_NAME
 
 # Project imports
 #
@@ -74,6 +75,16 @@ if TYPE_CHECKING:
     from .user_server import IMAPUserServer
 
 logger = logging.getLogger("asimap.mbox")
+
+
+####################################################################
+#
+def is_reserved_name(name: str) -> bool:
+    """
+    True if `name` is, or is inside, a directory in the mail store root that
+    asimap uses for something other than a mailbox (the delivery spool.)
+    """
+    return name.lstrip("/").split("/", 1)[0] == SPOOL_DIR_NAME
 
 
 ####################################################################
@@ -1977,7 +1988,7 @@ class Mailbox:
     #
     async def append(
         self,
-        msg: EmailMessage,
+        msg: EmailMessage | bytes,
         flags: list[str] | None = None,
         date_time: datetime | None = None,
     ) -> int:
@@ -1988,7 +1999,8 @@ class Mailbox:
         The internal date on the message is set to date_time.
 
         Arguments:
-        - `message`: The email.message being appended to this mailbox
+        - `message`: The message being appended to this mailbox. Raw bytes
+          are stored exactly as given; an EmailMessage is serialized.
         - `flags`: A list of flags to set on this message
         - `date_time`: The internal date on this message
         """
@@ -2923,6 +2935,8 @@ class Mailbox:
         #
         if name.lower() == "inbox":
             raise InvalidMailbox("Can not create a mailbox named 'inbox'")
+        if is_reserved_name(name):
+            raise InvalidMailbox(f"'{name}' is reserved and not a mailbox")
         if name.isdigit():
             raise InvalidMailbox(
                 "Due to MH restrictions you can not create a "
@@ -3153,6 +3167,8 @@ class Mailbox:
         - `new_name`: the new name of the mailbox
         - `server`: the user server object
         """
+        if is_reserved_name(new_name):
+            raise InvalidMailbox(f"'{new_name}' is reserved and not a mailbox")
         mbox = await server.get_mailbox(old_name)
         # The mailbox we are moving to must not exist.
         #

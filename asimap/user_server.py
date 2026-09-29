@@ -24,13 +24,14 @@ from datetime import datetime, timedelta
 from email import message_from_binary_file
 from mailbox import NoSuchMailboxError
 from pathlib import Path
-from random import randrange
+from random import randrange, uniform
 from statistics import fmean, median, stdev
 from typing import TYPE_CHECKING, Any
 
 # 3rd party imports
 #
 import sentry_sdk
+from asimap_spool import SPOOL_DIR_NAME
 from sentry_sdk.integrations.asyncio import AsyncioIntegration
 
 # asimap imports
@@ -43,10 +44,12 @@ from .client import Authenticated
 from .constants import MAX_INPUT_SIZE, SPECIAL_USE_ATTRS
 from .db import Database
 from .exceptions import MailboxInconsistency
-from .mbox import Mailbox, NoSuchMailbox
+from .mbox import Mailbox, NoSuchMailbox, is_reserved_name
 from .mh import MH
 from .parse import BadCommand, IMAPClientCommand
+from .spool_importer import SpoolImporter, SpoolSettings
 from .trace import toggle_trace, trace
+from .utils import env_float
 
 if TYPE_CHECKING:
     from _typeshed import StrPath
@@ -71,7 +74,8 @@ TIME_BETWEEN_METRIC_DUMPS = 60
 TIME_BETWEEN_FOLDER_SCANS = 90
 
 # The idle mailbox caretaker task sleeps a random duration in this range
-# (seconds) between passes over the active mailboxes.
+# (seconds) between passes over the active mailboxes. Override with the
+# CARETAKER_SLEEP_MIN and CARETAKER_SLEEP_MAX environment variables.
 #
 CARETAKER_SLEEP_MIN = 20
 CARETAKER_SLEEP_MAX = 30
@@ -560,6 +564,19 @@ class IMAPUserServer:
         # (mailboxes with clients are polled by their own management task.)
         #
         self.caretaker_task: asyncio.Task | None = None
+        self.caretaker_sleep_min = env_float(
+            "CARETAKER_SLEEP_MIN", CARETAKER_SLEEP_MIN
+        )
+        self.caretaker_sleep_max = max(
+            self.caretaker_sleep_min,
+            env_float("CARETAKER_SLEEP_MAX", CARETAKER_SLEEP_MAX),
+        )
+
+        # The spool importer delivers messages other services drop in the
+        # mail store's delivery spool.
+        #
+        self.spool_importer = SpoolImporter(self, SpoolSettings.from_env())
+        self.spool_task: asyncio.Task | None = None
 
         # Statistics for the `check_all_folders` function
         # key is mbox name, value is a time duration in seconds.
@@ -654,19 +671,17 @@ class IMAPUserServer:
         """
         Close various things when the server is shutting down.
         """
-        if self.caretaker_task and not self.caretaker_task.done():
-            self.caretaker_task.cancel()
-            try:
-                await self.caretaker_task
-            except asyncio.CancelledError:
-                pass
-
-        if self.management_task and not self.management_task.done():
-            self.management_task.cancel()
-            try:
-                await self.management_task
-            except asyncio.CancelledError:
-                pass
+        for task in (
+            self.spool_task,
+            self.caretaker_task,
+            self.management_task,
+        ):
+            if task and not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
 
         # Close all client connections
         #
@@ -764,6 +779,12 @@ class IMAPUserServer:
             self.caretaker_task = asyncio.create_task(
                 self.idle_mailbox_caretaker(),
                 name="idle_mailbox_caretaker",
+            )
+
+            # Start importing messages from the delivery spool.
+            #
+            self.spool_task = asyncio.create_task(
+                self.spool_importer.run(), name="spool_importer"
             )
 
             # Let the initial folder scan begin before we accept any clients to
@@ -1071,7 +1092,7 @@ class IMAPUserServer:
         try:
             while True:
                 await asyncio.sleep(
-                    randrange(CARETAKER_SLEEP_MIN, CARETAKER_SLEEP_MAX)
+                    uniform(self.caretaker_sleep_min, self.caretaker_sleep_max)
                 )
                 await self.caretaker_pass()
         except asyncio.CancelledError:
@@ -1166,8 +1187,11 @@ class IMAPUserServer:
         if name.lower() == "inbox":
             name = "inbox"
 
-        # if not self.folder_exists(name):
-        if not name.strip() or not self.folder_exists(name):
+        if (
+            not name.strip()
+            or is_reserved_name(name)
+            or not self.folder_exists(name)
+        ):
             raise NoSuchMailbox(f"No such mailbox: '{name}'")
 
         # If the mailbox is active we can return it immediately.
@@ -1255,6 +1279,8 @@ class IMAPUserServer:
         found_folders = 0
         async with asyncio.TaskGroup() as tg:
             for root, dirs, _files in self.maildir.walk(follow_symlinks=True):
+                if root == self.maildir and SPOOL_DIR_NAME in dirs:
+                    dirs.remove(SPOOL_DIR_NAME)
                 for dir in dirs:
                     dirname = str(root / dir)[maildir_root_len:]
                     if dirname not in extant_mboxes:

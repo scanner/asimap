@@ -9,7 +9,7 @@ import os
 import random
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from email.generator import BytesGenerator
 from email.message import EmailMessage
 from io import BytesIO
@@ -21,6 +21,7 @@ from typing import Any
 #
 import aiofiles
 import pytest
+import pytest_check as check
 from dirty_equals import IsNow
 from faker import Faker
 from pytest_mock import MockerFixture
@@ -389,6 +390,41 @@ async def test_mbox_append_non_ascii_message(
         stored
     )
     assert b"Cont\xc3\xa9nt with n\xc3\xb6n-\xc3\xa4scii" in buf.getvalue()
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_mbox_append_raw_bytes(
+    imap_user_server: IMAPUserServer,
+) -> None:
+    """
+    GIVEN: raw message bytes with 8-bit non-UTF-8 content and a header
+           folded in a way the email generator would rewrite
+    WHEN:  the bytes are appended with flags and a timezone-aware date
+    THEN:  the file on disk is byte-for-byte the input, its mtime is the
+           date, and the flags become sequences
+    """
+    mbox = await Mailbox.new("inbox", imap_user_server)
+    raw = (
+        b"From: a@example.com\n"
+        b"To: b@example.com\n"
+        b"Subject: caf\xe9\n"
+        b"X-Folded:   first\n\t\t second   \n"
+        b"\n"
+        b"na\xefve body \xff\n"
+    )
+    when = datetime(2026, 9, 28, 12, 0, tzinfo=UTC)
+
+    await mbox.append(raw, flags=[r"\Seen", "$Work"], date_time=when)
+
+    msg_key = int(mbox.mailbox.keys()[0])
+    path = mbox.mailbox.get_message_path(msg_key)
+    check.equal(path.read_bytes(), raw)
+    check.equal(path.stat().st_mtime, when.timestamp())
+    check.equal(
+        sorted(mbox.msg_sequences(msg_key)), ["$Work", "Recent", "Seen"]
+    )
 
 
 ####################################################################

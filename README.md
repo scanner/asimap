@@ -214,6 +214,30 @@ PWFILE=/opt/asimap/pwfile
 # file descriptors on systems with 1000+ mailboxes.
 # ENABLE_MH_FILE_LOCKING=true
 
+# Seconds the idle mailbox caretaker sleeps (a random value in this range)
+# between checks of mailboxes no client has selected. Default: 20 and 30
+# CARETAKER_SLEEP_MIN=20
+# CARETAKER_SLEEP_MAX=30
+
+##############################################################################
+# Delivery spool
+##############################################################################
+
+# Other services deliver mail by writing files into `.asimap-spool/` at the
+# root of a user's mail store with the `asimap-spool` package
+# (packages/asimap-spool). The user's asimap process imports them.
+
+# Seconds between spool checks. Default: 5
+# SPOOL_POLL_INTERVAL=5
+
+# Also watch the spool directory so new mail is imported at once. Polling
+# continues either way. Default: true
+# SPOOL_WATCH=true
+
+# Seconds after which an unfinished `-incoming.json` file is treated as
+# abandoned and moved to `.asimap-spool/failed/`. Default: 3600
+# SPOOL_STALE_INCOMING_AGE=3600
+
 ##############################################################################
 # Observability — Sentry (all optional; Sentry is disabled if DSN is unset)
 ##############################################################################
