@@ -5,7 +5,7 @@
 import asyncio
 import os
 import time
-from collections.abc import AsyncGenerator, Callable, Generator
+from collections.abc import AsyncGenerator, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -137,11 +137,27 @@ def failing_unlink(mocker: MockerFixture) -> Any:
 ####################################################################
 #
 @pytest.fixture
-def read_only_spool(importer: SpoolImporter) -> Generator[Path, None, None]:
-    """The importer's spool directory, made read-only for the test."""
-    importer.spool.chmod(0o500)
-    yield importer.spool
-    importer.spool.chmod(0o700)
+def spool_access_denied(
+    importer: SpoolImporter, mocker: MockerFixture
+) -> Callable[[], None]:
+    """
+    Make `os.access` deny access to the importer's spool directory. This
+    patches the check rather than the directory's mode because root passes
+    every access check regardless of mode, and CI runs the tests as root.
+
+    Returns:
+        A function that restores access to the spool.
+    """
+    real_access = os.access
+    denied = {importer.spool}
+
+    def access(path: Path, mode: int, **kwargs: Any) -> bool:
+        if Path(path) in denied:
+            return False
+        return real_access(path, mode, **kwargs)
+
+    mocker.patch("asimap.spool_importer.os.access", side_effect=access)
+    return denied.clear
 
 
 ####################################################################
@@ -437,7 +453,7 @@ async def test_run_imports_new_messages(
 @pytest.mark.asyncio
 async def test_unusable_spool_is_reported_once_and_recovers(
     importer: SpoolImporter,
-    read_only_spool: Path,
+    spool_access_denied: Callable[[], None],
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """
@@ -449,7 +465,7 @@ async def test_unusable_spool_is_reported_once_and_recovers(
         check.is_false(await importer.spool_usable())
     errors = [r for r in caplog.records if r.levelname == "ERROR"]
 
-    read_only_spool.chmod(0o700)
+    spool_access_denied()
 
     check.equal(len(errors), 1)
     check.is_in("no read/write access", errors[0].getMessage())
