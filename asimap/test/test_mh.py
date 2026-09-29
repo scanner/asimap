@@ -4,7 +4,11 @@ Tests for our subclass of `mailbox.MH` that adds some async methods
 
 # system imports
 #
+import mailbox
+import os
 import shutil
+import stat
+from collections import defaultdict
 from collections.abc import Callable, Generator
 from email import message_from_bytes
 from email.policy import SMTP
@@ -18,7 +22,8 @@ import pytest
 # Project imports
 #
 from .. import mh as mh_module
-from ..mh import MH
+from ..constants import Sequences
+from ..mh import MH, assign_unseen_to_new_keys, sequences_as_text
 
 
 ####################################################################
@@ -192,3 +197,209 @@ def test_mh_add_multipart_missing_start_boundary(
 
     expected = "Café crème brûlée — naïve résumé".encode()
     assert expected in (tmp_path / "inbox" / str(msg_key)).read_bytes()
+
+
+########################################################################
+########################################################################
+#
+class TestAssignUnseenToNewKeys:
+    """Tests for `assign_unseen_to_new_keys`."""
+
+    ####################################################################
+    #
+    @pytest.mark.parametrize(
+        "msg_keys,sequences,expected_unseen,expected_seen",
+        [
+            # Mail delivery writes the message and nothing else, so the
+            # whole folder arrives in no sequence at all.
+            ([1, 2, 3], {}, {1, 2, 3}, set()),
+            # Messages we have already processed keep their `Seen`.
+            ([1, 2, 3], {"Seen": {1, 2}}, {3}, {1, 2}),
+            # An existing `unseen` survives and is extended.
+            ([1, 2, 3], {"unseen": {1}, "Seen": {2}}, {1, 3}, {2}),
+            # A key named by both sequences is unseen.
+            ([1, 2], {"unseen": {1}, "Seen": {1, 2}}, {1}, {2}),
+            # Keys that have left the folder are dropped from both.
+            ([1], {"unseen": {1, 98}, "Seen": {99}}, {1}, set()),
+            # An empty folder produces empty sequences.
+            ([], {"Seen": {1}}, set(), set()),
+        ],
+    )
+    def test_seen_and_unseen(
+        self,
+        msg_keys: list[int],
+        sequences: dict[str, set[int]],
+        expected_unseen: set[int],
+        expected_seen: set[int],
+    ) -> None:
+        """
+        GIVEN: a folder's message keys and its sequences
+        WHEN:  new keys are assigned to `unseen`
+        THEN:  `unseen` holds every unprocessed key and `Seen` the rest
+        """
+        seqs: Sequences = defaultdict(set, sequences)
+
+        result = assign_unseen_to_new_keys(msg_keys, seqs)
+
+        assert result["unseen"] == expected_unseen
+        assert result["Seen"] == expected_seen
+
+    ####################################################################
+    #
+    def test_other_sequences_are_untouched(self) -> None:
+        """
+        GIVEN: sequences carrying flags other than `Seen`/`unseen`
+        WHEN:  new keys are assigned to `unseen`
+        THEN:  those other sequences come back unchanged
+        """
+        seqs: Sequences = defaultdict(
+            set, {"replied": {1}, "flagged": {2}, "Seen": {1, 2}}
+        )
+
+        result = assign_unseen_to_new_keys([1, 2, 3], seqs)
+
+        assert result["replied"] == {1}
+        assert result["flagged"] == {2}
+        assert result["unseen"] == {3}
+
+    ####################################################################
+    #
+    def test_argument_is_not_modified(self) -> None:
+        """
+        GIVEN: a sequences dict
+        WHEN:  new keys are assigned to `unseen`
+        THEN:  the dict passed in is left as it was
+        """
+        seqs: Sequences = defaultdict(set, {"Seen": {1}})
+
+        assign_unseen_to_new_keys([1, 2], seqs)
+
+        assert seqs == {"Seen": {1}}
+
+
+########################################################################
+########################################################################
+#
+class TestSetSequences:
+    """Tests for writing `.mh_sequences`."""
+
+    ####################################################################
+    #
+    @pytest.mark.parametrize(
+        "sequences,expected",
+        [
+            ({"unseen": [1]}, "unseen: 1\n"),
+            # Two in a row is already a range.
+            ({"unseen": [1, 2]}, "unseen: 1-2\n"),
+            ({"unseen": [1, 2, 3, 5]}, "unseen: 1-3 5\n"),
+            ({"unseen": [1, 3, 5]}, "unseen: 1 3 5\n"),
+            # Keys are sorted and de-duplicated.
+            ({"unseen": [3, 1, 2, 1]}, "unseen: 1-3\n"),
+            # A sequence with no keys is left out of the file.
+            ({"unseen": []}, ""),
+            ({"Seen": [1], "unseen": []}, "Seen: 1\n"),
+            ({}, ""),
+        ],
+    )
+    def test_sequences_as_text(
+        self, sequences: dict[str, list[int]], expected: str
+    ) -> None:
+        """
+        GIVEN: a mapping of sequence name to message keys
+        WHEN:  it is rendered for `.mh_sequences`
+        THEN:  consecutive runs collapse and empty sequences are dropped
+        """
+        assert sequences_as_text(sequences) == expected
+
+    ####################################################################
+    #
+    def test_round_trips_through_stock_mailbox_mh(self, tmp_path: Path) -> None:
+        """
+        GIVEN: sequences written by our MH subclass
+        WHEN:  stock `mailbox.MH` reads them back
+        THEN:  it returns what we wrote
+        """
+        folder = MH(tmp_path / "inbox")
+        for _ in range(10):
+            folder.add(b"From: a@b.c\n\nbody\n")
+
+        sequences = {
+            "unseen": [1, 2, 3, 5, 9, 10],
+            "Seen": [4],
+            "replied": [7],
+        }
+        folder.set_sequences(sequences)
+
+        stock = mailbox.MH(str(tmp_path / "inbox"), create=False)
+        assert stock.get_sequences() == sequences
+
+    ####################################################################
+    #
+    def test_write_is_atomic(self, tmp_path: Path) -> None:
+        """
+        GIVEN: a folder with sequences already written
+        WHEN:  they are written again
+        THEN:  the file is replaced rather than truncated in place
+
+        A reader holding the old file keeps seeing the whole old file, which
+        is what stops a torn read (ASIMAP-68).
+        """
+        folder = MH(tmp_path / "inbox")
+        for _ in range(3):
+            folder.add(b"From: a@b.c\n\nbody\n")
+        folder.set_sequences({"unseen": [1, 2, 3]})
+
+        seq_path = tmp_path / "inbox" / ".mh_sequences"
+        before_inode = seq_path.stat().st_ino
+        with open(seq_path, encoding="ASCII") as reader:
+            folder.set_sequences({"Seen": [1]})
+            # The open handle still sees the file as it was.
+            #
+            assert reader.read() == "unseen: 1-3\n"
+
+        assert seq_path.stat().st_ino != before_inode
+        assert seq_path.read_text(encoding="ASCII") == "Seen: 1\n"
+
+    ####################################################################
+    #
+    def test_leaves_no_stray_files_in_the_folder(self, tmp_path: Path) -> None:
+        """
+        GIVEN: a folder with messages in it
+        WHEN:  sequences are written
+        THEN:  no temp file is left behind and no message key is invented
+        """
+        folder = MH(tmp_path / "inbox")
+        for _ in range(3):
+            folder.add(b"From: a@b.c\n\nbody\n")
+
+        folder.set_sequences({"unseen": [1, 2, 3]})
+
+        assert sorted(folder.keys()) == [1, 2, 3]
+        assert sorted(os.listdir(tmp_path / "inbox")) == [
+            ".mh_sequences",
+            "1",
+            "2",
+            "3",
+        ]
+
+    ####################################################################
+    #
+    def test_preserves_the_file_mode(self, tmp_path: Path) -> None:
+        """
+        GIVEN: a `.mh_sequences` with a non-default mode
+        WHEN:  sequences are written over it
+        THEN:  the mode is kept
+
+        A rename brings the temp file's mode with it unless we carry the
+        old one across.
+        """
+        folder = MH(tmp_path / "inbox")
+        folder.add(b"From: a@b.c\n\nbody\n")
+        folder.set_sequences({"unseen": [1]})
+
+        seq_path = tmp_path / "inbox" / ".mh_sequences"
+        os.chmod(seq_path, 0o640)
+
+        folder.set_sequences({"Seen": [1]})
+
+        assert stat.S_IMODE(seq_path.stat().st_mode) == 0o640

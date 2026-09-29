@@ -14,7 +14,9 @@ import logging
 import mailbox
 import os
 import stat
-from contextlib import asynccontextmanager
+import tempfile
+from collections import defaultdict
+from contextlib import asynccontextmanager, suppress
 from email.message import Message
 from io import BytesIO
 from mailbox import NoSuchMailboxError, _lock_file  # type: ignore[attr-defined]
@@ -28,12 +30,11 @@ import aiofiles.os
 
 # Project imports
 #
+from .constants import Sequences
 from .generator import ASGenerator
 
-# from charset_normalizer import from_bytes
-
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Callable
+    from collections.abc import AsyncIterator, Callable, Iterable, Mapping
     from email.message import EmailMessage
     from typing import IO
 
@@ -57,6 +58,75 @@ def set_file_locking(enabled: bool) -> None:
     """Enable or disable MH advisory file locking."""
     global FILE_LOCKING_ENABLED
     FILE_LOCKING_ENABLED = enabled
+
+
+####################################################################
+#
+def assign_unseen_to_new_keys(
+    msg_keys: "Iterable[int]", sequences: Sequences
+) -> Sequences:
+    """
+    Put messages that are in neither `Seen` nor `unseen` into `unseen`, then
+    derive `Seen` as every other message in the folder.
+
+    asimap is the only thing that writes `.mh_sequences`. Mail delivery drops
+    the message file into the folder and stops there, so a key in neither
+    sequence is one asimap has not processed yet -- which for IMAP means it
+    has not been seen. Where both sequences name the same key, `unseen` wins.
+
+    Args:
+        msg_keys: Every message key currently in the folder.
+        sequences: Sequences as read from the folder.
+
+    Returns:
+        A new Sequences. The argument is left alone.
+    """
+    keys = set(msg_keys)
+    result: Sequences = defaultdict(set)
+    for name, members in sequences.items():
+        result[name] = set(members)
+
+    orphans = keys - result["Seen"] - result["unseen"]
+    result["unseen"] = (result["unseen"] & keys) | orphans
+    result["Seen"] = keys - result["unseen"]
+    return result
+
+
+####################################################################
+#
+def sequences_as_text(sequences: "Mapping[str, Iterable[int]]") -> str:
+    """
+    Render sequences in `.mh_sequences` form.
+
+    Runs of two or more consecutive keys collapse to `start-end`, which is
+    what `mailbox.MH.get_sequences` expects. A sequence with no keys is left
+    out of the file entirely.
+
+    Args:
+        sequences: Mapping of sequence name to that sequence's message keys.
+
+    Returns:
+        The complete contents of a `.mh_sequences` file.
+    """
+    lines: list[str] = []
+    for name, keys in sequences.items():
+        sorted_keys = sorted(set(keys))
+        if not sorted_keys:
+            continue
+
+        specs: list[str] = []
+        start = prev = sorted_keys[0]
+        for key in sorted_keys[1:]:
+            if key == prev + 1:
+                prev = key
+                continue
+            specs.append(f"{start}-{prev}" if prev > start else str(start))
+            start = prev = key
+        specs.append(f"{start}-{prev}" if prev > start else str(start))
+
+        lines.append(f"{name}: {' '.join(specs)}\n")
+
+    return "".join(lines)
 
 
 ########################################################################
@@ -224,6 +294,51 @@ class MH(mailbox.MH):
             A :class:`~pathlib.Path` pointing to the message file.
         """
         return Path(os.path.join(self._path, str(key)))
+
+    ####################################################################
+    #
+    def set_sequences(self, sequences: "Mapping[str, Iterable[int]]") -> None:
+        """
+        Write the folder's `.mh_sequences` file.
+
+        The new contents go to a temp file in the same directory which is
+        then renamed over the old one, so a reader sees either the whole
+        previous file or the whole new one.
+
+        `mailbox.MH.set_sequences` truncates and rewrites in place, which
+        leaves the tail of a longer previous file behind whenever anything
+        else touches the file at the same time (ASIMAP-68).
+
+        NOTE: A rename replaces the inode, so it supersedes any advisory
+              lock held on the old one. asimap is the only thing that writes
+              this file, and it serializes its own writes on
+              `Mailbox.mh_sequences_lock`.
+
+        Args:
+            sequences: Mapping of sequence name to that sequence's message
+                keys.
+        """
+        seq_path = os.path.join(self._path, ".mh_sequences")
+        try:
+            mode = stat.S_IMODE(os.stat(seq_path).st_mode)
+        except FileNotFoundError:
+            mode = stat.S_IRUSR | stat.S_IWUSR
+
+        # `MH.iterkeys` reads every all-digit name in the folder as a
+        # message, so the temp file is named so that it cannot be one.
+        #
+        fd, tmp_path = tempfile.mkstemp(dir=self._path, prefix=".mh_sequences-")
+        try:
+            with os.fdopen(fd, "w", encoding="ASCII") as f:
+                f.write(sequences_as_text(sequences))
+                f.flush()
+                os.fsync(f.fileno())
+            os.chmod(tmp_path, mode)
+            os.rename(tmp_path, seq_path)
+        except BaseException:
+            with suppress(OSError):
+                os.unlink(tmp_path)
+            raise
 
     ####################################################################
     #

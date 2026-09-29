@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Report a FETCH that fails with a `UnicodeEncodeError` as a single error, without including the message content in the log
+- Treat a message that is in no MH sequence as unseen instead of seen, so mail delivered straight into a folder is no longer marked read (ASIMAP-68)
+- Write `.mh_sequences` atomically, via a temp file and a rename, so a reader never sees a partially rewritten file (ASIMAP-68)
 
 ## [2.6.1] - 2026-10-02
 

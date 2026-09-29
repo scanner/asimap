@@ -2,5 +2,5 @@
 Apricot Systematic IMAP server
 """
 
-__version__ = "2.6.1"
+__version__ = "2.7.0"
 __authors__ = ["Scanner Luce <scanner@apricot.com>"]
