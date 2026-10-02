@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.1] - 2026-10-02
+
+### Fixed
+
+- Fix `UnicodeEncodeError` on FETCH and APPEND of a message containing a multipart part that is missing its start boundary and holds non-ASCII (e.g. UTF-8) text
+
 ## [2.6.0] - 2026-07-21
 
 ### Added

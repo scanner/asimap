@@ -1,0 +1,30 @@
+From: Alice <alice@example.com>
+To: Bob <bob@example.com>
+Subject: Fwd: Café résumé
+Date: Thu, 01 Oct 2026 10:00:00 -0700
+Message-ID: <outer-6@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="outer-boundary"
+
+--outer-boundary
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+See the forwarded message below.
+
+--outer-boundary
+Content-Type: message/rfc822
+
+From: Carol <carol@example.com>
+To: Alice <alice@example.com>
+Subject: Menu
+Date: Wed, 30 Sep 2026 09:00:00 -0700
+Message-ID: <inner-6@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; charset="utf-8"; boundary="missing-boundary"
+Content-Transfer-Encoding: 8bit
+
+The start boundary for this multipart never appears.
+Café crème brûlée — naïve résumé
+
+--outer-boundary--

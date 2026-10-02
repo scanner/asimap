@@ -15,6 +15,8 @@ import mailbox
 import os
 import stat
 from contextlib import asynccontextmanager
+from email.message import Message
+from io import BytesIO
 from mailbox import NoSuchMailboxError, _lock_file  # type: ignore[attr-defined]
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -23,6 +25,10 @@ from typing import TYPE_CHECKING, Any
 #
 import aiofiles
 import aiofiles.os
+
+# Project imports
+#
+from .generator import ASGenerator
 
 # from charset_normalizer import from_bytes
 
@@ -99,6 +105,30 @@ class MH(mailbox.MH):
         return MH(
             os.path.join(self._path, str(folder)),
             factory=self._factory,  # type: ignore[arg-type]
+        )
+
+    ####################################################################
+    #
+    def _dump_message(
+        self, message: Any, target: Any, mangle_from_: bool = False
+    ) -> None:
+        """
+        Flatten a 'Message' with 'ASGenerator' and hand the resulting bytes
+        to the base class to write. 'ASGenerator' writes the body of a
+        multipart that is missing its start boundary as its original bytes,
+        which 'BytesGenerator' cannot do when that body holds 8bit data.
+
+        The generator is set up the same way the base class sets up its
+        'BytesGenerator': the message's own policy and no header wrapping.
+        """
+        if isinstance(message, Message):
+            buffer = BytesIO()
+            gen = ASGenerator(buffer, mangle_from_, 0, policy=message.policy)
+            gen.flatten(message)
+            message = buffer.getvalue()
+            mangle_from_ = False
+        super()._dump_message(  # type: ignore[misc]
+            message, target, mangle_from_
         )
 
     ####################################################################

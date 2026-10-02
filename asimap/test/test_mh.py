@@ -6,6 +6,8 @@ Tests for our subclass of `mailbox.MH` that adds some async methods
 #
 import shutil
 from collections.abc import Callable, Generator
+from email import message_from_bytes
+from email.policy import SMTP
 from mailbox import NoSuchMailboxError
 from pathlib import Path
 
@@ -170,3 +172,23 @@ async def test_mh_aremove(
         [int(x.name) for x in inbox_dir.iterdir() if x.name.isdigit()]
     )
     assert len(dir_keys) == 0
+
+
+####################################################################
+#
+def test_mh_add_multipart_missing_start_boundary(
+    tmp_path: Path, problematic_email_factory_bytes: Callable[[int], bytes]
+) -> None:
+    """
+    GIVEN: a parsed message, as APPEND produces, whose inner multipart never
+           has its start boundary and holds 8bit UTF-8 text
+    WHEN:  the message is added to an MH folder
+    THEN:  the file on disk holds that text as its original bytes
+    """
+    msg = message_from_bytes(problematic_email_factory_bytes(6), policy=SMTP)
+    mh = MH(tmp_path / "inbox")
+
+    msg_key = mh.add(msg)
+
+    expected = "Café crème brûlée — naïve résumé".encode()
+    assert expected in (tmp_path / "inbox" / str(msg_key)).read_bytes()
