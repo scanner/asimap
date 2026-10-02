@@ -281,15 +281,10 @@ class FetchAtt:
                         case FetchOp.RFC822_SIZE:
                             result = str(ctx.msg_size()).encode("latin-1")
                 except UnicodeEncodeError as e:
-                    logger.error(
-                        (
-                            "Unable to perform fetch %s, failed on message %s, "
-                            "exception: %r",
-                        ),
-                        self.attribute,
-                        self.ctx,
-                        e,
-                    )
+                    # The caller logs this exception. The note puts the
+                    # message that failed into that one log record.
+                    #
+                    e.add_note(f"FETCH {self} failed on message {self.ctx}")
                     raise
             case FetchOp.FLAGS:
                 flags = " ".join([seq_to_flag(x) for x in self.ctx.sequences])
