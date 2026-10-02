@@ -16,7 +16,7 @@ from email.headerregistry import Address
 from email.message import EmailMessage, Message
 from email.policy import SMTP, default
 from email.utils import format_datetime
-from mailbox import MH, MHMessage
+from mailbox import MHMessage
 from pathlib import Path
 from typing import (
     Any,
@@ -35,6 +35,7 @@ from pytest_mock import MockerFixture
 import asimap.auth
 
 from ..mbox import Mailbox
+from ..mh import MH
 from ..server import IMAPClient, IMAPServer
 from ..user_server import (
     IMAPClientProxy,

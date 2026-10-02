@@ -57,6 +57,26 @@ class ASGenerator(BytesGenerator):
             s.encode("ascii", "surrogateescape")
         )
 
+    ####################################################################
+    #
+    def _handle_multipart(self, msg: Message) -> None:
+        """
+        A multipart whose start boundary was never found is left by the
+        parser with its body as a single string. Write that string as-is,
+        as the base class does, but from 'msg._payload' so any 8bit data
+        stays surrogate-escaped and is written back out as its original
+        bytes.
+
+        'msg.get_payload()', which the base class uses here, re-decodes the
+        surrogate-escaped 8bit bytes using the part's charset with
+        'errors="replace"', and the resulting non-ASCII characters cannot be
+        written by 'write()'.
+        """
+        if isinstance(msg._payload, str):  # type: ignore[attr-defined]
+            self.write(msg._payload)  # type: ignore[attr-defined]
+            return
+        super()._handle_multipart(msg)  # type: ignore[misc]
+
 
 ########################################################################
 ########################################################################

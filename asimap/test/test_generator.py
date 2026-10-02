@@ -266,3 +266,22 @@ def test_generator_problematic_email(
     assert msg_text
     msg_hdrs = msg_headers_as_bytes(msg)
     assert msg_hdrs
+
+
+####################################################################
+#
+def test_generator_multipart_missing_start_boundary(
+    problematic_email_factory_bytes: Callable[[int], bytes],
+) -> None:
+    """
+    GIVEN: a forwarded message whose inner multipart never has its start
+           boundary, with 8bit UTF-8 text in that unparsed body
+    WHEN:  the message is rendered as bytes
+    THEN:  the inner body is written with its original bytes
+    """
+    msg = message_from_bytes(problematic_email_factory_bytes(6), policy=default)
+
+    msg_bytes = msg_as_bytes(msg)
+
+    expected = "Café crème brûlée — naïve résumé".encode()
+    assert expected in msg_bytes
