@@ -434,6 +434,50 @@ def test_fetch_rfc822_size(
     assert int(result[12:]) == expected_size
 
 
+####################################################################
+#
+@pytest.fixture
+def msg_size_raises_unicode_error(mocker: MockerFixture) -> None:
+    """
+    Make 'SearchContext.msg_size' fail the way rendering a message with
+    unencodable 8bit text does.
+    """
+    mocker.patch.object(
+        SearchContext,
+        "msg_size",
+        side_effect=UnicodeEncodeError(
+            "ascii", "secret body \xe9", 12, 13, "ordinal not in range(128)"
+        ),
+    )
+
+
+####################################################################
+#
+@pytest.mark.usefixtures("msg_size_raises_unicode_error")
+def test_fetch_unicode_error_adds_note(
+    mailbox_with_mimekit_email: Mailbox, caplog: pytest.LogCaptureFixture
+) -> None:
+    """
+    GIVEN: a message whose RFC822.SIZE raises UnicodeEncodeError
+    WHEN:  that attribute is fetched
+    THEN:  the error is re-raised with a note naming the fetch and message,
+           and nothing is logged
+    """
+    mbox = mailbox_with_mimekit_email
+    _, uid_max = mbox.get_uid_from_msg(mbox.msg_keys[-1])
+    assert uid_max
+    ctx = SearchContext(mbox, 1, 1, mbox.num_msgs, uid_max)
+    fetch = FetchAtt(FetchOp.RFC822_SIZE)
+
+    with pytest.raises(UnicodeEncodeError) as exc_info:
+        fetch.fetch(ctx)
+
+    assert exc_info.value.__notes__ == [
+        f"FETCH RFC822.SIZE failed on message {ctx}"
+    ]
+    assert not caplog.records
+
+
 PROBLEMATIC_MSG_SIZE_BY_MSG_KEY = [
     pytest.param(1, 1162, id="1"),
     pytest.param(2, 4393, id="2"),

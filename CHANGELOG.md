@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Report a FETCH that fails with a `UnicodeEncodeError` as a single error, without including the message content in the log
+
 ## [2.6.1] - 2026-10-02
 
 ### Fixed
