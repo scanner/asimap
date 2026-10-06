@@ -6,16 +6,16 @@ DOCKER_BUILDKIT := 1
 .PHONY: clean lint test test-units test-integrations mypy logs shell restart delete down up build dirs help package publish tag publish-tag uv-sync uv-lock uv-add uv-add-dev uv-upgrade profile
 
 test-integrations: .venv
-	PYTHONPATH=`pwd` $(UV_RUN) pytest -m integration asimap/
+	PYTHONPATH=`pwd` $(UV_RUN) pytest -m integration asimap/ packages/
 
 test-units: .venv
-	PYTHONPATH=`pwd` $(UV_RUN) pytest -m "not integration" asimap/
+	PYTHONPATH=`pwd` $(UV_RUN) pytest -m "not integration" asimap/ packages/
 
 test: .venv
-	PYTHONPATH=`pwd` $(UV_RUN) pytest asimap/
+	PYTHONPATH=`pwd` $(UV_RUN) pytest asimap/ packages/
 
 coverage: .venv
-	PYTHONPATH=`pwd` $(UV_RUN) coverage run -m pytest asimap/
+	PYTHONPATH=`pwd` $(UV_RUN) coverage run -m pytest asimap/ packages/
 	$(UV_RUN) coverage html
 	open 'htmlcov/index.html'
 
@@ -94,6 +94,7 @@ profile:  ## Open a root shell in the running dev container for py-spy profiling
 
 .package: version .venv $(PY_FILES) pyproject.toml README.md LICENSE Makefile
 	@PYTHONPATH=`pwd` $(UV_RUN) python -m build
+	@uv build --package asimap-spool --out-dir dist
 	@touch .package
 
 package: .package ## build python package (.tar.gz and .whl)

@@ -34,6 +34,7 @@ from typing import (
 # 3rd party imports
 #
 import aiofiles
+from asimap_spool import SPOOL_DIR_NAME
 
 # Project imports
 #
@@ -50,7 +51,7 @@ from .constants import (
 )
 from .exceptions import Bad, MailboxInconsistency, No
 from .fetch import FetchAtt, FetchOp
-from .mh import MH
+from .mh import MH, assign_unseen_to_new_keys
 from .parse import (
     CONFLICTING_COMMANDS,
     IMAPClientCommand,
@@ -74,6 +75,16 @@ if TYPE_CHECKING:
     from .user_server import IMAPUserServer
 
 logger = logging.getLogger("asimap.mbox")
+
+
+####################################################################
+#
+def is_reserved_name(name: str) -> bool:
+    """
+    True if `name` is, or is inside, a directory in the mail store root that
+    asimap uses for something other than a mailbox (the delivery spool.)
+    """
+    return name.lstrip("/").split("/", 1)[0] == SPOOL_DIR_NAME
 
 
 ####################################################################
@@ -227,13 +238,12 @@ class Mailbox:
         #
         self.last_resync = 0.0
 
-        # An in-memory copy of the .mh_sequences file.  Whenever it is changed
-        # in memory the file on disk is updated at the same time while a lock
-        # on the MH folder is held.
+        # An in-memory copy of the .mh_sequences file. Whenever it is changed
+        # in memory the file on disk is updated at the same time.
         #
-        # The only time the .mh_sequences folder on disk is changed outside of
-        # our control is when new messages are added to a folder and the unseen
-        # sequence is updated.
+        # asimap is the only thing that writes this file. Mail delivery adds
+        # the message to the folder and leaves the sequences alone, so a
+        # message in no sequence is one we have not processed yet.
         #
         self.sequences: Sequences = defaultdict(set)
         self.mh_sequences_lock = asyncio.Lock()
@@ -966,22 +976,14 @@ class Mailbox:
             )
             raise MailboxInconsistency(str(exc)) from exc
 
-        modified = False
-        if seq["unseen"]:
-            # Create the 'Seen' sequence by the difference between all
-            # the messages in the mailbox and the unseen ones.
-            #
-            new_seen = set(self.msg_keys) - seq["unseen"]
-            if new_seen != seq["Seen"]:
-                seq["Seen"] = set(new_seen)
-                modified = True
-        else:
-            # There are no unseen messages in the mailbox thus the Seen
-            # sequence mirrors the set of all messages.
-            #
-            if seq["Seen"] != set(self.msg_keys):
-                modified = True
-                seq["Seen"] = set(self.msg_keys)
+        # Messages delivered since our last pass are in no sequence at all.
+        # This puts them in `unseen` and rebuilds `Seen` from the rest.
+        #
+        updated = assign_unseen_to_new_keys(self.msg_keys, seq)
+        modified = (
+            updated["Seen"] != seq["Seen"] or updated["unseen"] != seq["unseen"]
+        )
+        seq = updated
 
         if recent_msg_keys:
             modified = True
@@ -1263,7 +1265,13 @@ class Mailbox:
         #
         self.marked(True)
         async with self.mh_sequences_lock:
-            msg_seqs = self.get_sequences_from_folder()
+            # Delivery writes the message file and nothing else, so a newly
+            # delivered message is in no sequence. Sort those into `unseen`
+            # before reading each message's flags back out.
+            #
+            msg_seqs = assign_unseen_to_new_keys(
+                self.msg_keys, self.get_sequences_from_folder()
+            )
             for key in new_msg_keys:
                 msg = self.get_msg(key)
                 new_msgs[key] = msg
@@ -1273,7 +1281,8 @@ class Mailbox:
                     if key in msg_seqs[seq]:
                         msg_sequences.add(seq)
 
-                # Make sure `unseen` and `Seen` are set properly.
+                # Every key is in exactly one of `Seen`/`unseen` by now;
+                # this keeps that true for the per-message copy.
                 #
                 if "unseen" in msg_sequences:
                     msg_sequences.discard("Seen")
@@ -1522,7 +1531,7 @@ class Mailbox:
         #
         assert self.mh_sequences_lock.locked()
         seqs = self.mailbox.get_sequences()
-        res = defaultdict(set)
+        res: Sequences = defaultdict(set)
         for k, v in seqs.items():
             res[k] = set(v)
         return res
@@ -1979,7 +1988,7 @@ class Mailbox:
     #
     async def append(
         self,
-        msg: EmailMessage,
+        msg: EmailMessage | bytes,
         flags: list[str] | None = None,
         date_time: datetime | None = None,
     ) -> int:
@@ -1990,7 +1999,8 @@ class Mailbox:
         The internal date on the message is set to date_time.
 
         Arguments:
-        - `message`: The email.message being appended to this mailbox
+        - `message`: The message being appended to this mailbox. Raw bytes
+          are stored exactly as given; an EmailMessage is serialized.
         - `flags`: A list of flags to set on this message
         - `date_time`: The internal date on this message
         """
@@ -2925,6 +2935,8 @@ class Mailbox:
         #
         if name.lower() == "inbox":
             raise InvalidMailbox("Can not create a mailbox named 'inbox'")
+        if is_reserved_name(name):
+            raise InvalidMailbox(f"'{name}' is reserved and not a mailbox")
         if name.isdigit():
             raise InvalidMailbox(
                 "Due to MH restrictions you can not create a "
@@ -3155,6 +3167,8 @@ class Mailbox:
         - `new_name`: the new name of the mailbox
         - `server`: the user server object
         """
+        if is_reserved_name(new_name):
+            raise InvalidMailbox(f"'{new_name}' is reserved and not a mailbox")
         mbox = await server.get_mailbox(old_name)
         # The mailbox we are moving to must not exist.
         #

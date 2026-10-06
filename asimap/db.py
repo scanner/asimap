@@ -372,6 +372,22 @@ async def add_msg_keys_to_mbox(c: aiosqlite.Connection) -> None:
     await c.execute("alter table mailboxes add column msg_keys text default ''")
 
 
+####################################################################
+#
+async def add_spool_imported(c: aiosqlite.Connection) -> None:
+    """
+    Adds the table of delivery spool entry ids that have been imported.
+
+    The spool importer records an entry's id after appending its message and
+    before removing its file. If the file is still there on a later pass (a
+    crash, or a spool directory we can not delete from) the recorded id tells
+    the importer to retry the removal instead of importing it again.
+    """
+    await c.execute(
+        "create table spool_imported (id text primary key, imported_at real)"
+    )
+
+
 # The list of migrations we have so far. These are executed in order. They are
 # executed only once. They are executed when the database is opened. We track
 # which ones have been executed and new ones are executed when the database is
@@ -385,4 +401,5 @@ MIGRATIONS = [
     get_rid_of_root_folder,
     add_msg_keys_to_mbox,
     get_rid_of_root_folder,  # For real this time.
+    add_spool_imported,
 ]

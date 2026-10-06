@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/scanner/asimap/packages/asimap-spool/spool-entry.schema.json",
+  "title": "asimap delivery spool entry",
+  "description": "A message dropped in a user's .asimap-spool directory for asimap to deliver. Written as <id>-incoming.json and renamed to <id>-ready.json when complete.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "id", "received_at", "message_encoding", "message"],
+  "properties": {
+    "version": {
+      "description": "Spool format version.",
+      "const": 1
+    },
+    "id": {
+      "description": "Lowercase uuid7. Must match the file name stem.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "received_at": {
+      "description": "When the message was received, ISO 8601 with a timezone offset. Becomes the message's internal date.",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+    },
+    "source": {
+      "description": "Name of the producer, for logging.",
+      "type": "string"
+    },
+    "deliveries": {
+      "description": "Where to deliver the message. Missing or empty means the inbox.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/delivery" }
+    },
+    "message_encoding": {
+      "description": "Encoding of the 'message' field.",
+      "const": "base64"
+    },
+    "message": {
+      "description": "The raw RFC 5322 message bytes, base64 encoded.",
+      "type": "string",
+      "minLength": 1,
+      "contentEncoding": "base64"
+    }
+  },
+  "$defs": {
+    "delivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "folder": {
+          "description": "MH folder relative to the mail store root. No empty, '.', '..', or dot-prefixed components. 'inbox' is case-insensitive. Defaults to 'inbox'.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(^|/)\\.)(?!.*//)(?!.*/$)[^\\u0000]+$"
+        },
+        "flags": {
+          "description": "IMAP flags to set. Without '\\Seen' the message is unseen.",
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "enum": ["\\Answered", "\\Deleted", "\\Draft", "\\Flagged", "\\Seen"]
+              },
+              {
+                "type": "string",
+                "pattern": "^[^\\u0000-\\u0020\\u007f(){%*\"\\\\\\]]+$"
+              }
+            ]
+          }
+        },
+        "create": {
+          "description": "Create the folder if missing. When false, a missing folder means delivery to the inbox.",
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}
