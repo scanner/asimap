@@ -1,13 +1,19 @@
 # -*- Mode: Makefile -*-
 
-PYTHON_VERSION := 3.13.12
+PYTHON_VERSION := $(shell cat $(ROOT_DIR)/.python-version)
 
 UV_RUN := uv run
 
-.git/hooks/pre-commit .git/hooks/pre-push: .venv
-	@$(UV_RUN) pre-commit install
-	@echo "pre-commit hooks installed!"
-	@touch .git/hooks/pre-commit .git/hooks/pre-push
+# The hook runs pre-commit through `uv run` so that it uses whichever
+# machine's local `.venv` it is run on. `pre-commit install` would
+# write an absolute interpreter path into the hook, and `.git/hooks` is
+# shared between machines that sync the repository.
+#
+.git/hooks/pre-commit: Make.rules
+	@printf '%s\n' '#!/usr/bin/env bash' \
+	  'exec uv run --quiet pre-commit hook-impl --config=.pre-commit-config.yaml --hook-type=pre-commit --hook-dir "$$(cd "$$(dirname "$$0")" && pwd)" -- "$$@"' > $@
+	@chmod +x $@
+	@echo "pre-commit hook installed!"
 
 $(ROOT_DIR)/.venv: pyproject.toml uv.lock
 	@uv sync --python $(PYTHON_VERSION)

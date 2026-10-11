@@ -2,6 +2,7 @@
 #
 # Builder stage
 #
+# NOTE: Keep the default in sync with .python-version
 ARG PYTHON_VERSION=3.13.12
 FROM python:${PYTHON_VERSION} AS builder
 
@@ -58,6 +59,7 @@ CMD ["python", "/app/asimap/asimapd.py"]
 #
 # `prod` - The docker image for the production service
 #
+# NOTE: Keep the default in sync with .python-version
 ARG PYTHON_VERSION=3.13.12
 FROM python:${PYTHON_VERSION}-slim AS prod
 
