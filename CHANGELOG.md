@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-10-11
+
 ### Added
 
 - Delivery spool: other services deliver mail by dropping files into `.asimap-spool/` in the mail store, written with the new `asimap-spool` package, and asimap imports them within seconds while the user's server is running
