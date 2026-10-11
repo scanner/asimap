@@ -4,7 +4,7 @@ name: AS IMAP Tests
 
 steps:
   - name: test
-    # NOTE: Keep this version in sync with PYTHON_VERSION in Make.rules
+    # NOTE: Keep this version in sync with .python-version
     image: "python:3.13.12"
     environment:
       PYTHONUNBUFFERED: 1
@@ -38,7 +38,7 @@ steps:
       auto_tag: true
       target: prod
       build_args:
-        # NOTE: Keep PYTHON_VERSION in sync with Make.rules
+        # NOTE: Keep PYTHON_VERSION in sync with .python-version
         - PYTHON_VERSION=3.13.12
         - VERSION=${DRONE_TAG}
 
@@ -55,7 +55,7 @@ steps:
       auto_tag_suffix: dev
       target: dev
       build_args:
-        # NOTE: Keep PYTHON_VERSION in sync with Make.rules
+        # NOTE: Keep PYTHON_VERSION in sync with .python-version
         - PYTHON_VERSION=3.13.12
         - VERSION=${DRONE_TAG}
 

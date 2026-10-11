@@ -2,6 +2,7 @@
 #
 # Builder stage
 #
+# NOTE: Keep the default in sync with .python-version
 ARG PYTHON_VERSION=3.13.12
 FROM python:${PYTHON_VERSION} AS builder
 
@@ -11,9 +12,11 @@ ARG APP_HOME=/app
 WORKDIR ${APP_HOME}
 COPY pyproject.toml uv.lock README.md LICENSE /app/
 COPY asimap /app/asimap
+COPY packages /app/packages
 
 RUN uv sync --frozen --no-dev
 RUN uv run python -m build
+RUN uv build --package asimap-spool --wheel --out-dir dist
 
 #########################
 #
@@ -56,6 +59,7 @@ CMD ["python", "/app/asimap/asimapd.py"]
 #
 # `prod` - The docker image for the production service
 #
+# NOTE: Keep the default in sync with .python-version
 ARG PYTHON_VERSION=3.13.12
 FROM python:${PYTHON_VERSION}-slim AS prod
 
@@ -75,7 +79,8 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 ARG VERSION
 RUN uv venv /venv && \
-    VIRTUAL_ENV=/venv uv pip install /app/dist/asimap-${VERSION}-py3-none-any.whl
+    VIRTUAL_ENV=/venv uv pip install --find-links /app/dist \
+        /app/dist/asimap-${VERSION}-py3-none-any.whl
 RUN VIRTUAL_ENV=/venv uv pip install py-spy
 
 # Puts the venv's python (and other executables) at the front of the

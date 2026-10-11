@@ -88,5 +88,6 @@ async def test_db_init_migrate(db: Database) -> None:
             "sequence": "TEXT",
             "date": "TEXT",
         },
+        "spool_imported": {"id": "TEXT", "imported_at": "REAL"},
     }
     assert schema == expected

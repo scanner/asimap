@@ -2121,3 +2121,94 @@ async def test_msg_set_to_msg_seq_set(
     mbox._rebuild_index_dicts()
     msg_set_as_set = mbox.msg_set_to_msg_seq_set(sequence_set, uid_cmd)
     assert msg_set_as_set == expected
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_message_delivered_without_sequences_is_unseen(
+    bunch_of_email_in_folder: Callable[..., Path],
+    email_factory: EmailFactoryType,
+    imap_user_server: IMAPUserServer,
+) -> None:
+    """
+    GIVEN: a mailbox whose messages have all been read
+    WHEN:  a message arrives the way mail delivery adds one -- the message
+           file only, with no `.mh_sequences` update
+    THEN:  the resync puts it in `unseen` and leaves it out of `Seen`
+    """
+    NAME = "inbox"
+    bunch_of_email_in_folder(folder=NAME)
+    server = imap_user_server
+    mbox = await server.get_mailbox(NAME)
+
+    # Empty `unseen` first, so the only message that can come back unseen is
+    # the one we are about to deliver.
+    #
+    async with mbox.mh_sequences_lock:
+        mbox.sequences["unseen"] = set()
+        mbox.sequences["Seen"] = set(mbox.msg_keys)
+        mbox.set_sequences_in_folder(mbox.sequences)
+
+    # What as_email_service does: write the message, touch nothing else.
+    #
+    new_key = int(mbox.mailbox.add(email_factory().as_bytes()))
+
+    await mbox.check_new_msgs_and_flags(optional=False)
+
+    assert new_key in mbox.sequences["unseen"]
+    assert new_key not in mbox.sequences["Seen"]
+    assert mbox.sequences["Seen"] == set(mbox.msg_keys) - {new_key}
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_unchanged_sequences_are_not_rewritten(
+    bunch_of_email_in_folder: Callable[..., Path],
+    imap_user_server: IMAPUserServer,
+    mocker: MockerFixture,
+) -> None:
+    """
+    GIVEN: a mailbox whose sequences already agree with the folder
+    WHEN:  the sequences are read again
+    THEN:  the folder is not rewritten
+
+    A needless write bumps the folder's mtime on every caretaker pass, which
+    would undo the idle-CPU win from the caretaker (GH-484).
+    """
+    NAME = "inbox"
+    bunch_of_email_in_folder(folder=NAME)
+    server = imap_user_server
+    mbox = await server.get_mailbox(NAME)
+
+    async with mbox.mh_sequences_lock:
+        await mbox._get_sequences_update_seen()
+
+    spy = mocker.spy(mbox, "set_sequences_in_folder")
+    async with mbox.mh_sequences_lock:
+        await mbox._get_sequences_update_seen()
+
+    spy.assert_not_called()
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+async def test_empty_mailbox_sequences_are_not_rewritten(
+    imap_user_server: IMAPUserServer,
+    mocker: MockerFixture,
+) -> None:
+    """
+    GIVEN: a mailbox with no messages in it
+    WHEN:  the sequences are read
+    THEN:  the folder is not rewritten
+    """
+    server = imap_user_server
+    mbox = await server.get_mailbox("inbox")
+
+    spy = mocker.spy(mbox, "set_sequences_in_folder")
+    async with mbox.mh_sequences_lock:
+        await mbox._get_sequences_update_seen()
+
+    spy.assert_not_called()

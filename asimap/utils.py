@@ -73,6 +73,39 @@ DEFAULT_LOG_CONFIG_FILES = [
 LOGGED_IN_USER: str | None = None
 # REMOTE_ADDRESS:Optional[str] = None
 
+
+####################################################################
+#
+def env_float(name: str, default: float) -> float:
+    """
+    Return the environment variable `name` as a float, or `default` if it
+    is unset or not a number.
+    """
+    value = os.environ.get(name)
+    if value is None or not value.strip():
+        return default
+    try:
+        return float(value)
+    except ValueError:
+        logging.getLogger("asimap.utils").warning(
+            "Ignoring %s=%r: not a number, using %s", name, value, default
+        )
+        return default
+
+
+####################################################################
+#
+def env_bool(name: str, default: bool) -> bool:
+    """
+    Return the environment variable `name` as a bool ('1', 'true', 'yes',
+    'on' are true), or `default` if it is unset.
+    """
+    value = os.environ.get(name)
+    if value is None or not value.strip():
+        return default
+    return value.strip().lower() in ("1", "true", "yes", "on")
+
+
 ####################################################################
 #
 # Provide os.utime as an asyncio function via aiosfiles `wrap` async decorator

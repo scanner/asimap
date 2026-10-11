@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "asimap-spool"
+dynamic = ["version"]
+dependencies = []
+authors = [
+  { name="Scanner Luce", email="scanner@apricot.com" },
+]
+maintainers = [
+  { name="Scanner Luce", email="scanner@apricot.com" },
+]
+description = "Deliver messages to the asimap IMAP server through its spool directory"
+keywords = ["email", "imap", "mh"]
+readme = "README.md"
+requires-python = ">=3.12"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/scanner/asimap"
+Issues = "https://github.com/scanner/asimap/issues"
+
+[tool.hatch.version]
+path = "src/asimap_spool/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/asimap_spool"]

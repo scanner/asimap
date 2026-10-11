@@ -1,13 +1,19 @@
 # -*- Mode: Makefile -*-
 
-PYTHON_VERSION := 3.13.12
+PYTHON_VERSION := $(shell cat $(ROOT_DIR)/.python-version)
 
 UV_RUN := uv run
 
-.git/hooks/pre-commit .git/hooks/pre-push: .venv
-	@$(UV_RUN) pre-commit install
-	@echo "pre-commit hooks installed!"
-	@touch .git/hooks/pre-commit .git/hooks/pre-push
+# The hook runs pre-commit through `uv run` so that it uses whichever
+# machine's local `.venv` it is run on. `pre-commit install` would
+# write an absolute interpreter path into the hook, and `.git/hooks` is
+# shared between machines that sync the repository.
+#
+.git/hooks/pre-commit: Make.rules
+	@printf '%s\n' '#!/usr/bin/env bash' \
+	  'exec uv run --quiet pre-commit hook-impl --config=.pre-commit-config.yaml --hook-type=pre-commit --hook-dir "$$(cd "$$(dirname "$$0")" && pwd)" -- "$$@"' > $@
+	@chmod +x $@
+	@echo "pre-commit hook installed!"
 
 $(ROOT_DIR)/.venv: pyproject.toml uv.lock
 	@uv sync --python $(PYTHON_VERSION)
@@ -38,16 +44,16 @@ version: .venv
 # linting and formatting commands directly. It also runs mypy.
 #
 squeegee: .venv ruff-format mypy	## Manually run ruff format, mypy, and ruff check over all project files
-	@$(UV_RUN) ruff check $(ROOT_DIR)/asimap/ $(ROOT_DIR)/scripts/
+	@$(UV_RUN) ruff check $(ROOT_DIR)/asimap/ $(ROOT_DIR)/packages/ $(ROOT_DIR)/scripts/
 
 lint: .venv .git/hooks/pre-commit	## Run all pre-commit hooks. Note: this only runs over files in the git repo (and staged files)
 	@$(UV_RUN) pre-commit run -a
 
-PY_FILES=$(shell find $(ROOT_DIR)/asimap/ $(ROOT_DIR)/scripts/ -type f -name '*.py' 2>/dev/null)
-JS_FILES=$(shell find $(ROOT_DIR)/asimap/ $(ROOT_DIR)/scripts/ -type f -name '*.js' 2>/dev/null)
+PY_FILES=$(shell find $(ROOT_DIR)/asimap/ $(ROOT_DIR)/packages/ $(ROOT_DIR)/scripts/ -type f -name '*.py' 2>/dev/null)
+JS_FILES=$(shell find $(ROOT_DIR)/asimap/ $(ROOT_DIR)/packages/ $(ROOT_DIR)/scripts/ -type f -name '*.js' 2>/dev/null)
 
 .ruff_formatted: $(PY_FILES) .venv
-	@$(UV_RUN) ruff format $(ROOT_DIR)/asimap/ $(ROOT_DIR)/scripts/
+	@$(UV_RUN) ruff format $(ROOT_DIR)/asimap/ $(ROOT_DIR)/packages/ $(ROOT_DIR)/scripts/
 	@touch .ruff_formatted
 
 .prettier: $(JS_FILES)
@@ -58,7 +64,7 @@ formatting: ruff-format prettier	## Run `ruff format`, `prettier` over all files
 ruff-format: .ruff_formatted	## Run `ruff format` over all Python files
 prettier: .prettier
 
-mypy: .venv  ## Run `mypy` over `asimap/`
-	@$(UV_RUN) mypy --install-types --non-interactive --explicit-package-bases ./asimap/
+mypy: .venv  ## Run `mypy` over `asimap/` and `packages/`
+	@$(UV_RUN) mypy --install-types --non-interactive --explicit-package-bases ./asimap/ ./packages/asimap-spool/src/ ./packages/asimap-spool/tests/
 
 .PHONY: formatting lint squeegee ruff-format mypy version

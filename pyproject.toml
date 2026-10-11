@@ -9,11 +9,13 @@ dependencies = [
     "aiofiles",
     "aioretry",
     "aiosqlite",
+    "asimap-spool>=0.1.0",
     "charset-normalizer",
     "docopt-ng",
     "python-dotenv",
     "python-json-logger",
     "sentry-sdk",
+    "watchfiles>=1.3.0",
 ]
 authors = [
   { name="Scanner Luce", email="scanner@apricot.com" },
@@ -51,9 +53,11 @@ dev = [
     "codetiming",
     "dirty-equals",
     "imapclient",
+    "jsonschema",
     "ipython",
     "pytest",
     "pytest-asyncio",
+    "pytest-check",
     "pytest-coverage",
     "pytest-factoryboy",
     "pytest-mock",
@@ -78,14 +82,20 @@ dev = [
     "hatch",
 ]
 
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+asimap-spool = { workspace = true }
+
 [tool.hatch.version]
 path = "asimap/__init__.py"
 
 [tool.hatch.build.targets.sdist]
 include = [
-   "asimap",
-   "LICENSE",
-   "README.md",
+   "/asimap",
+   "/LICENSE",
+   "/README.md",
 ]
 exclude = [
    "asimap/test",
