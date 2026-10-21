@@ -1,0 +1,36 @@
+# Docker Compose deployment of asimapd for production, staging and integration
+# hosts.  Copy this directory to the host, create .env from dot-env.example
+# and secrets.env from secrets.env.example, then: docker compose up -d
+#
+# Required in .env:
+#   VERSION         -- release to run (e.g. "2.7.0"; there is no "latest" tag)
+#   OPT_ASIMAP_DIR  -- host directory mounted at /opt/asimap: the mail store,
+#                      the password file and the TLS certificate
+#
+# secrets.env holds SENTRY_DSN.  asimapd reads every setting from plain
+# environment variables, so the secret is a second env_file kept at mode 0600
+# while .env stays safe to read.  Create it empty if you do not use Sentry.
+#
+# For POP3S, set ENABLE_POP3 in .env and uncomment the 995 port below.
+name: asimap
+
+services:
+  asimap:
+    image: "ghcr.io/scanner/asimap:${VERSION}"
+    restart: unless-stopped
+    env_file:
+      - .env
+      - secrets.env
+    ports:
+      - "993:993"
+      # - "995:995"
+    volumes:
+      - "${OPT_ASIMAP_DIR}:/opt/asimap"
+    # One user's server can be pushed into heavy CPU and memory use by a
+    # large mailbox or a misbehaving client; the limits keep that from
+    # starving the rest of the host.
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 1.5G

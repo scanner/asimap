@@ -22,9 +22,9 @@ Options:
   --port=<p>         Port to listen on. Defaults to: 993.
                      The env. var is `PORT`
   --cert=<cert>      SSL Certificate file. If not set defaults to
-                     `/opt/asimap/ssl/cert.pem`. The env var is SSL_CERT
+                     `/opt/asimap/ssl/ssl_crt.pem`. The env var is SSL_CERT
   --key=<key>        SSL Certificate key file. If not set defaults to
-                     `/opt/asimap/ssl/key.pem`. The env var is SSL_KEY
+                     `/opt/asimap/ssl/ssl_key.pem`. The env var is SSL_KEY
 
   --trace            For debugging and generating protocol test data `trace`
                      can be enabled. When enabled messages will appear on the
