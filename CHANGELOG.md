@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Docker Compose deployment in `deployment/compose/`: compose file, `.env` and `secrets.env` templates, and a deployment guide
+
+### Fixed
+
+- `asimapd --help` and the README give the real default certificate paths, `/opt/asimap/ssl/ssl_crt.pem` and `ssl_key.pem`
+- The README says that `DEBUG`, `TRACE` and `ENABLE_POP3` are enabled by any non-empty value
+
 ## [2.7.0] - 2026-10-11
 
 ### Added

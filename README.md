@@ -29,6 +29,9 @@ NOTE: Placeholder instructions
 
 # How to Run
 
+To deploy `asimapd` on a server with Docker Compose, see
+[`deployment/compose/README.md`](deployment/compose/README.md).
+
 ## `asimapd`
 
 Whether inside a docker container or from the command line `asimapd` tries to
@@ -64,9 +67,9 @@ Options:
   --port=<p>         Port to listen on. Defaults to: 993.
                      The env. var is `PORT`
   --cert=<cert>      SSL Certificate file. If not set defaults to
-                     `/opt/asimap/ssl/cert.pem`. The env var is SSL_CERT
+                     `/opt/asimap/ssl/ssl_crt.pem`. The env var is SSL_CERT
   --key=<key>        SSL Certificate key file. If not set defaults to
-                     `/opt/asimap/ssl/key.pem`. The env var is SSL_KEY
+                     `/opt/asimap/ssl/ssl_key.pem`. The env var is SSL_KEY
 
   --trace            For debugging and generating protocol test data `trace`
                      can be enabled. When enabled messages will appear on the
@@ -160,11 +163,11 @@ PORT=993
 # SSL/TLS
 ##############################################################################
 
-# Path to the PEM-encoded TLS certificate. Default: /opt/asimap/ssl/cert.pem
-SSL_CERT=/opt/asimap/ssl/cert.pem
+# Path to the PEM-encoded TLS certificate. Default: /opt/asimap/ssl/ssl_crt.pem
+SSL_CERT=/opt/asimap/ssl/ssl_crt.pem
 
-# Path to the TLS private key. Default: /opt/asimap/ssl/key.pem
-SSL_KEY=/opt/asimap/ssl/key.pem
+# Path to the TLS private key. Default: /opt/asimap/ssl/ssl_key.pem
+SSL_KEY=/opt/asimap/ssl/ssl_key.pem
 
 ##############################################################################
 # Authentication
@@ -180,7 +183,8 @@ PWFILE=/opt/asimap/pwfile
 # POP3S (optional — disabled by default)
 ##############################################################################
 
-# Set to 1/true/yes to enable the POP3S server (INBOX only).
+# Set to any non-empty value to enable the POP3S server (INBOX only).
+# 0 and false enable it too; leave it unset to keep it off.
 # ENABLE_POP3=1
 
 # POP3S port. Default: 995
@@ -190,14 +194,16 @@ PWFILE=/opt/asimap/pwfile
 # Logging and debugging
 ##############################################################################
 
-# Set to 1/true/yes to enable DEBUG-level logging.
+# Set to any non-empty value to enable DEBUG-level logging.
+# 0 and false enable it too; leave it unset to keep it off.
 # DEBUG=1
 
 # Path to a Python logging config file (JSON dict schema or .cfg format).
 # Searched in /opt/asimap, /etc, /usr/local/etc, /opt/local/etc if not set.
 # LOG_CONFIG=/opt/asimap/asimapd_log.json
 
-# Set to 1/true/yes to enable IMAP protocol tracing (post-auth only).
+# Set to any non-empty value to enable IMAP protocol tracing (post-auth
+# only). 0 and false enable it too; leave it unset to keep it off.
 # Produces JSON log entries on the `asimap.trace` logger. Very verbose.
 # TRACE=1
 

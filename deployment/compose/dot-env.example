@@ -1,0 +1,70 @@
+# Non-secret configuration for a Docker Compose deployment of asimapd.
+# Copy to .env and fill in values before starting the stack.
+#
+# SENTRY_DSN is not set here -- it goes in secrets.env (mode 0600); see
+# secrets.env.example and docker-compose.yml.
+#
+# NOTE: DEBUG, TRACE and ENABLE_POP3 are on when set to ANY non-empty value,
+#       including 0 and false.  Comment them out to turn them off.
+
+# Image
+# ------------------------------------------------------------------------------
+# The release to run; images have no "latest" tag.  A "-dev" suffix (e.g.
+# 2.7.0-dev) selects the image with the development tools installed.
+VERSION=2.7.0
+
+# Mail store
+# ------------------------------------------------------------------------------
+# Host directory mounted at /opt/asimap.  It holds the users' MH mail
+# directories, the password file and ssl/.  Everything in it must be owned by
+# UID 900, the 'app' user asimapd runs as in the container.
+OPT_ASIMAP_DIR=/srv/asimap
+
+# Password file, one 'username:hash:maildir' line per account.  When
+# as_email_service manages the accounts it writes asimapd_passwords.txt at the
+# root of its mail directory tree, which is mounted here.
+PWFILE=/opt/asimap/asimapd_passwords.txt
+
+# TLS certificate and key, PEM encoded.  The defaults are shown.
+# SSL_CERT=/opt/asimap/ssl/ssl_crt.pem
+# SSL_KEY=/opt/asimap/ssl/ssl_key.pem
+
+TZ=America/Los_Angeles
+
+# POP3S
+# ------------------------------------------------------------------------------
+# Serves the INBOX only.  Also publish port 995 in docker-compose.yml.
+# ENABLE_POP3=1
+# POP3_PORT=995
+
+# Delivery spool
+# ------------------------------------------------------------------------------
+# Other services deliver mail by writing files into the spool in the mail
+# store.  Defaults shown.
+# SPOOL_WATCH=true
+# SPOOL_POLL_INTERVAL=5
+# SPOOL_STALE_INCOMING_AGE=3600
+
+# Mailboxes with no connected clients are checked for changes at a random
+# interval between these two values, in seconds.  Defaults shown.
+# CARETAKER_SLEEP_MIN=20
+# CARETAKER_SLEEP_MAX=30
+
+# Set to 1/true/yes to turn on MH advisory file locking.  Off by default: with
+# many mailboxes it can exhaust file descriptors.
+# ENABLE_MH_FILE_LOCKING=1
+
+# Logging and debugging
+# ------------------------------------------------------------------------------
+# DEBUG=1
+# LOG_CONFIG=/opt/asimap/asimapd_log.json
+# TRACE=1
+# TRACE_DIR=/opt/asimap/traces
+
+# Sentry
+# ------------------------------------------------------------------------------
+# Sentry is enabled when secrets.env sets SENTRY_DSN.
+SENTRY_TRACES_SAMPLE_RATE=0
+SENTRY_PROFILES_SAMPLE_RATE=0
+# Set to 1/true/yes to create a span per asyncio task -- a measurable CPU cost.
+SENTRY_ASYNCIO_TASK_SPANS=0
