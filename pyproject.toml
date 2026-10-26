@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "asimap"
-dynamic = ["version"]
+version = "2.7.1"
 dependencies = [
     "aiofiles",
     "aioretry",
@@ -87,9 +87,6 @@ members = ["packages/*"]
 
 [tool.uv.sources]
 asimap-spool = { workspace = true }
-
-[tool.hatch.version]
-path = "asimap/__init__.py"
 
 [tool.hatch.build.targets.sdist]
 include = [
