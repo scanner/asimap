@@ -200,31 +200,3 @@ steps:
         Duration: {{ since build.started }}
 
         <{{ build.link }}|Visit build page ↗>
-
----
-# XXX: TEMPORARY -- remove before merging.  Checks that plugins/docker's
-# docker-in-docker builds on the arm64 runner, without pushing anything.
-kind: pipeline
-name: TEMPORARY arm64 build check
-
-platform:
-  os: linux
-  arch: arm64
-
-steps:
-  - name: Build prod (dry run)
-    image: plugins/docker
-    settings:
-      repo: ghcr.io/scanner/asimap
-      registry: ghcr.io
-      dry_run: true
-      target: prod
-      build_args:
-        - PYTHON_VERSION=3.13.12
-        - VERSION=2.7.0
-
-trigger:
-  event:
-    - push
-  branch:
-    - feature/multi-arch-images
