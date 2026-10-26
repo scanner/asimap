@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Docker images for `linux/arm64` alongside `linux/amd64`, under the same tags
 - Docker Compose deployment in `deployment/compose/`: compose file, `.env` and `secrets.env` templates, and a deployment guide
 
 ### Fixed
