@@ -53,6 +53,7 @@ wheels = [
 
 [[package]]
 name = "asimap"
+version = "2.7.1"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
