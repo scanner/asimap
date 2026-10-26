@@ -6,8 +6,8 @@ and `secrets.env`, and start it. Nothing here is used by local development,
 which uses `docker-compose.yml` at the repo root.
 
 The stack runs one container from the pre-built image on GHCR
-(`ghcr.io/scanner/asimap`). It serves IMAPS on port 993 and, optionally,
-POP3S on 995.
+(`ghcr.io/scanner/asimap`), published for `linux/amd64` and `linux/arm64`.
+It serves IMAPS on port 993 and, optionally, POP3S on 995.
 
 ---
 

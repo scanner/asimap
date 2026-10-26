@@ -1,0 +1,19 @@
+# The dev target's counterpart of manifest.tmpl: the same tags with a '-dev'
+# suffix.
+image: ghcr.io/scanner/asimap:{{build.tag}}-dev
+{{#if build.tags}}
+tags:
+{{#each build.tags}}
+  - {{this}}-dev
+{{/each}}
+{{/if}}
+manifests:
+  - image: ghcr.io/scanner/asimap:{{build.tag}}-dev-linux-amd64
+    platform:
+      architecture: amd64
+      os: linux
+  - image: ghcr.io/scanner/asimap:{{build.tag}}-dev-linux-arm64
+    platform:
+      architecture: arm64
+      os: linux
+      variant: v8
