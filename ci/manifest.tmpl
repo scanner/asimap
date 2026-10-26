@@ -1,0 +1,19 @@
+# Joins the per-architecture images from .drone.yml into one multi-arch image.
+# With auto_tag, build.tags is the release's version tags (2, 2.7, 2.7.1).
+image: ghcr.io/scanner/asimap:{{build.tag}}
+{{#if build.tags}}
+tags:
+{{#each build.tags}}
+  - {{this}}
+{{/each}}
+{{/if}}
+manifests:
+  - image: ghcr.io/scanner/asimap:{{build.tag}}-linux-amd64
+    platform:
+      architecture: amd64
+      os: linux
+  - image: ghcr.io/scanner/asimap:{{build.tag}}-linux-arm64
+    platform:
+      architecture: arm64
+      os: linux
+      variant: v8
