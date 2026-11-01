@@ -45,6 +45,8 @@ steps:
       tags:
         - ${DRONE_TAG}-linux-amd64
       target: prod
+      build_args_from_env:
+        - GHCR_REGISTRY
       build_args:
         # NOTE: Keep PYTHON_VERSION in sync with .python-version
         - PYTHON_VERSION=3.13.12
@@ -62,6 +64,8 @@ steps:
       tags:
         - ${DRONE_TAG}-dev-linux-amd64
       target: dev
+      build_args_from_env:
+        - GHCR_REGISTRY
       build_args:
         # NOTE: Keep PYTHON_VERSION in sync with .python-version
         - PYTHON_VERSION=3.13.12
@@ -98,6 +102,8 @@ steps:
       tags:
         - ${DRONE_TAG}-linux-arm64
       target: prod
+      build_args_from_env:
+        - GHCR_REGISTRY
       build_args:
         # NOTE: Keep PYTHON_VERSION in sync with .python-version
         - PYTHON_VERSION=3.13.12
@@ -115,6 +121,8 @@ steps:
       tags:
         - ${DRONE_TAG}-dev-linux-arm64
       target: dev
+      build_args_from_env:
+        - GHCR_REGISTRY
       build_args:
         # NOTE: Keep PYTHON_VERSION in sync with .python-version
         - PYTHON_VERSION=3.13.12
