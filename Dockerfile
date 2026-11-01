@@ -1,12 +1,18 @@
+# NOTE: Keep the default in sync with .python-version
+ARG PYTHON_VERSION=3.13.12
+
+# Registry that ghcr.io images are pulled from.  CI may set it to a
+# pull-through cache of ghcr.io; the default is ghcr.io itself.
+ARG GHCR_REGISTRY=ghcr.io
+FROM ${GHCR_REGISTRY}/astral-sh/uv:latest AS uv
+
 #########################
 #
 # Builder stage
 #
-# NOTE: Keep the default in sync with .python-version
-ARG PYTHON_VERSION=3.13.12
 FROM python:${PYTHON_VERSION} AS builder
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY --from=uv /uv /uvx /bin/
 
 ARG APP_HOME=/app
 WORKDIR ${APP_HOME}
@@ -75,7 +81,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # We only want the installable dist we created in the builder.
 #
 COPY --from=builder /app/dist /app/dist
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY --from=uv /uv /uvx /bin/
 
 ARG VERSION
 RUN uv venv /venv && \

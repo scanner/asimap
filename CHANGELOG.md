@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `GHCR_REGISTRY` build argument: the registry the image build pulls its
+  ghcr.io images from (`uv`), for building through a mirror of ghcr.io;
+  defaults to `ghcr.io`
+
 ## [2.7.1] - 2026-10-25
 
 ### Added
