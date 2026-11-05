@@ -29,7 +29,7 @@ from ..client import (
     ClientState,
     PreAuthenticated,
 )
-from ..constants import SPECIAL_USE_ATTRS
+from ..constants import MAX_APPEND_SIZE, SPECIAL_USE_ATTRS
 from ..mbox import Mailbox
 from ..parse import IMAPClientCommand, StoreAction
 from ..user_server import IMAPClientProxy, IMAPUserServer
@@ -1700,6 +1700,40 @@ async def test_extended_list_status_all_attributes(
     assert "UIDVALIDITY" in status
     assert "UNSEEN" in status
     assert results[-1] == "A001 OK LIST command completed"
+
+
+####################################################################
+#
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "command",
+    [
+        "A001 STATUS inbox (APPENDLIMIT)",
+        'A001 LIST "" * RETURN (STATUS (APPENDLIMIT))',
+    ],
+)
+async def test_status_appendlimit(
+    mailbox_with_bunch_of_email: Mailbox,
+    imap_user_server_and_client: tuple[IMAPUserServer, IMAPClientProxy],
+    command: str,
+) -> None:
+    """
+    GIVEN: a folder with messages
+    WHEN:  a client asks for APPENDLIMIT through STATUS or LIST-STATUS
+    THEN:  the STATUS response gives the same limit as the capability
+    """
+    server, imap_client = imap_user_server_and_client
+    _ = mailbox_with_bunch_of_email
+    client_handler = Authenticated(imap_client, server)
+
+    cmd = IMAPClientCommand(f"{command}\r\n")
+    cmd.parse()
+    await client_handler.command(cmd)
+    results = client_push_responses(imap_client)
+
+    status_lines = [r for r in results if r.startswith("* STATUS")]
+    assert status_lines
+    assert all(f"(APPENDLIMIT {MAX_APPEND_SIZE})" in r for r in status_lines)
 
 
 ####################################################################

@@ -26,7 +26,12 @@ import asimap.user_server
 
 from .auth import PWUser
 from .client import CAPABILITIES, ClientState, PreAuthenticated
-from .constants import MAX_INPUT_SIZE
+from .constants import (
+    MAX_APPEND_SIZE,
+    MAX_DISCARD_SIZE,
+    MAX_INPUT_SIZE,
+    MAX_NON_APPEND_SIZE,
+)
 from .parse import BadCommand, parse_cmd_from_msg
 from .utils import UpgradeableReadWriteLock
 
@@ -47,6 +52,14 @@ BACKLOG = 5
 # string itself. This regexp is for matching these literal string declarations.
 #
 RE_LITERAL_STRING_START = re.compile(rb"\{(\d+)(\+)?\}$")
+
+# The tag and command name at the start of an IMAP command.
+#
+RE_COMMAND_START = re.compile(rb"([^\s{+]+) +(\S+)")
+
+# How much of a rejected literal we read at a time while discarding it.
+#
+DISCARD_CHUNK_SIZE = 64 * 1024
 
 # This dict is all of the subprocesses that we have created. One for each
 # authenticated user with at least one active connection.
@@ -544,27 +557,31 @@ class IMAPClient:
                 if m:
                     literal_str_length = int(m.group(1))
 
-                    # Reject literals that exceed the maximum input
-                    # size to prevent memory exhaustion.
+                    # Reject an oversized literal before reading it into
+                    # memory. A client using a synchronizing literal is still
+                    # waiting for our go-ahead, so the tagged response ends
+                    # its command. A client using a non-synchronizing literal
+                    # is already sending, so we consume the rest of the command
+                    # first.
                     #
-                    if literal_str_length > MAX_INPUT_SIZE:
-                        logger.warning(
-                            "%s: literal size %d exceeds maximum "
-                            "of %d, rejecting",
-                            self.name,
-                            literal_str_length,
-                            MAX_INPUT_SIZE,
+                    literal_limit, command_limit = self._size_limits()
+                    if (
+                        literal_str_length > literal_limit
+                        or self.ibuffer_size + literal_str_length + 2
+                        > command_limit
+                    ):
+                        if m.group(2) and not await self._discard_literals(
+                            literal_str_length
+                        ):
+                            await self.push(
+                                b"* BYE [TOOBIG] command exceeds maximum "
+                                b"allowed size\r\n"
+                            )
+                            client_connected = False
+                            continue
+                        await self._reject_oversized_command(
+                            self.ibuffer_size + literal_str_length
                         )
-                        await self.push(
-                            b"* BAD literal size exceeds maximum "
-                            b"allowed size\r\n"
-                        )
-                        self.ibuffer = []
-                        self.ibuffer_size = 0
-                        # Drain the line terminator that follows the
-                        # literal declaration so we stay in sync.
-                        #
-                        await self.reader.readuntil(self.LINE_TERMINATOR)
                         continue
 
                     # If this is a synchronizing string literal (does not have
@@ -587,24 +604,6 @@ class IMAPClient:
                     self.ibuffer.append(msg)
                     self.ibuffer_size += len(msg) + 2
 
-                    # Check accumulated ibuffer size after adding the
-                    # literal.
-                    #
-                    if self.ibuffer_size > MAX_INPUT_SIZE:
-                        logger.warning(
-                            "%s: command buffer size %d exceeds "
-                            "maximum of %d, rejecting",
-                            self.name,
-                            self.ibuffer_size,
-                            MAX_INPUT_SIZE,
-                        )
-                        await self.push(
-                            b"* BAD command exceeds maximum allowed size\r\n"
-                        )
-                        self.ibuffer = []
-                        self.ibuffer_size = 0
-                        continue
-
                     # Loop back to read what is either a b'\r\n' or maybe
                     # another string literal.
                     #
@@ -612,19 +611,8 @@ class IMAPClient:
 
                 # Check accumulated ibuffer size before assembling.
                 #
-                if self.ibuffer_size > MAX_INPUT_SIZE:
-                    logger.warning(
-                        "%s: command buffer size %d exceeds "
-                        "maximum of %d, rejecting",
-                        self.name,
-                        self.ibuffer_size,
-                        MAX_INPUT_SIZE,
-                    )
-                    await self.push(
-                        b"* BAD command exceeds maximum allowed size\r\n"
-                    )
-                    self.ibuffer = []
-                    self.ibuffer_size = 0
+                if self.ibuffer_size > self._size_limits()[1]:
+                    await self._reject_oversized_command(self.ibuffer_size)
                     continue
 
                 # We only get here if we have read the complete message from
@@ -668,6 +656,98 @@ class IMAPClient:
                 except asyncio.CancelledError:
                     pass
             await self.close()
+
+    ####################################################################
+    #
+    def _size_limits(self) -> tuple[int, int]:
+        """
+        Get the size limits for the command in our input buffer.
+
+        Only an APPEND from a logged in client may carry a whole message.
+
+        Returns:
+            The largest literal allowed and the largest complete command
+            allowed.
+        """
+        m = RE_COMMAND_START.match(self.ibuffer[0])
+        if (
+            m is not None
+            and m.group(2).upper() == b"APPEND"
+            and self.subprocess_intf.client_handler.state
+            == ClientState.AUTHENTICATED
+        ):
+            return MAX_APPEND_SIZE, MAX_INPUT_SIZE
+        return MAX_NON_APPEND_SIZE, MAX_NON_APPEND_SIZE
+
+    ####################################################################
+    #
+    async def _discard_literals(self, length: int) -> bool:
+        """
+        Read and drop a non-synchronizing literal and the rest of its command.
+
+        Reading stops at the end of the command, or at a synchronizing literal
+        that the client will not send until we answer it.
+
+        Args:
+            length: The size of the non-synchronizing literal being rejected.
+
+        Returns:
+            `False` if the command would exceed MAX_DISCARD_SIZE. The client
+            should be disconnected. Otherwise `True`.
+        """
+        discarded = 0
+        while True:
+            discarded += length
+            if discarded > MAX_DISCARD_SIZE:
+                logger.warning(
+                    "%s: command exceeds discard limit of %d, disconnecting",
+                    self.name,
+                    MAX_DISCARD_SIZE,
+                )
+                return False
+            while length > 0:
+                chunk = await self.reader.readexactly(
+                    min(length, DISCARD_CHUNK_SIZE)
+                )
+                length -= len(chunk)
+
+            line = await self.reader.readuntil(self.LINE_TERMINATOR)
+            m = RE_LITERAL_STRING_START.search(line.rstrip())
+            if not (m and m.group(2)):
+                return True
+            length = int(m.group(1))
+
+    ####################################################################
+    #
+    async def _reject_oversized_command(self, size: int) -> None:
+        """
+        Send the tagged rejection for the command in our input buffer and
+        clear the buffer.
+
+        APPEND gets the 'NO [TOOBIG]' that RFC 7889 requires and other commands
+        get a 'BAD'. Without a recognizable tag the response is untagged.
+
+        Args:
+            size: The size of the command, used for logging.
+        """
+        logger.warning(
+            "%s: command size %d exceeds maximum, rejecting", self.name, size
+        )
+        m = RE_COMMAND_START.match(self.ibuffer[0])
+        if m is None:
+            response = b"* BAD command exceeds maximum allowed size\r\n"
+        elif m.group(2).upper() == b"APPEND":
+            response = (
+                m.group(1) + b" NO [TOOBIG] message exceeds maximum "
+                b"allowed size\r\n"
+            )
+        else:
+            response = (
+                m.group(1) + b" BAD command exceeds maximum allowed size\r\n"
+            )
+        await self.push(response)
+        self.ibuffer = []
+        self.ibuffer_size = 0
 
     ####################################################################
     #

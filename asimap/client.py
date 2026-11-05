@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Union
 from asimap import __version__
 
 from .auth import PWUser, authenticate
-from .constants import SPECIAL_USE_ATTR_VALUES
+from .constants import MAX_APPEND_SIZE, SPECIAL_USE_ATTR_VALUES
 from .exceptions import AuthenticationException, Bad, MailboxInconsistency, No
 from .mbox import Mailbox, NoSuchMailbox
 from .parse import (
@@ -52,6 +52,7 @@ CAPABILITIES = (
     "LIST-STATUS",
     "NAMESPACE",
     "SPECIAL-USE",
+    f"APPENDLIMIT={MAX_APPEND_SIZE}",
 )
 SERVER_ID = {
     "name": "asimapd",
@@ -988,6 +989,8 @@ class Authenticated(BaseClientHandler):
                     result.append(f"UIDVALIDITY {mbox.uid_vv}")
                 case StatusAtt.UNSEEN:
                     result.append(f"UNSEEN {len(mbox.sequences['unseen'])}")
+                case StatusAtt.APPENDLIMIT:
+                    result.append(f"APPENDLIMIT {MAX_APPEND_SIZE}")
 
         return f'* STATUS "{mbox_name}" ({" ".join(result)})\r\n'
 
@@ -1179,6 +1182,8 @@ class Authenticated(BaseClientHandler):
                         result.append(f"UIDVALIDITY {mbox.uid_vv}")
                     case StatusAtt.UNSEEN:
                         result.append(f"UNSEEN {len(mbox.sequences['unseen'])}")
+                    case StatusAtt.APPENDLIMIT:
+                        result.append(f"APPENDLIMIT {MAX_APPEND_SIZE}")
 
         await self.client.push(
             f'* STATUS "{cmd.mailbox_name}" ({" ".join(result)})\r\n'

@@ -15,10 +15,31 @@ from enum import StrEnum
 
 type Sequences = defaultdict[str, set[int]]
 
-# Maximum size for any single IMAP input (literal strings and accumulated
-# command buffer). 10 MiB. Clients exceeding this are rejected with BAD.
+# Largest message APPEND accepts, and the limit on any single literal. It is
+# advertised to clients as APPENDLIMIT (RFC 7889).
 #
-MAX_INPUT_SIZE = 10 * 1024 * 1024
+MAX_APPEND_SIZE = 20 * 1024 * 1024
+
+# Longest line we read from a client, which is the default limit on the streams
+# reading from clients.
+#
+MAX_COMMAND_LINE_SIZE = 64 * 1024
+
+# Largest complete APPEND: a message of MAX_APPEND_SIZE plus the rest of the
+# command (tag, mailbox name, flags, date).
+#
+MAX_INPUT_SIZE = MAX_APPEND_SIZE + MAX_COMMAND_LINE_SIZE
+
+# Largest complete command other than an APPEND from a logged in client: a full
+# line plus as much again in literals. This also applies to every command
+# before login.
+#
+MAX_NON_APPEND_SIZE = 2 * MAX_COMMAND_LINE_SIZE
+
+# Most bytes we read and drop from one rejected command that used
+# non-synchronizing literals. Past this we disconnect the client.
+#
+MAX_DISCARD_SIZE = 10 * MAX_APPEND_SIZE
 
 
 # Here we set the list of defined system flags (flags that may be set on a
