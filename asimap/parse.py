@@ -160,6 +160,7 @@ class StatusAtt(StrEnum):
     UIDNEXT = "uidnext"
     UIDVALIDITY = "uidvalidity"
     UNSEEN = "unseen"
+    APPENDLIMIT = "appendlimit"
 
 
 #######################################################################
@@ -1965,14 +1966,15 @@ class IMAPClientCommand:
     #
     def _p_status_att(self) -> str:
         """status_att ::= "MESSAGES" / "RECENT" / "UIDNEXT" / "UIDVALIDITY" /
-        "UNSEEN"
+        "UNSEEN" / "APPENDLIMIT"
         """
-        stats_atts = ["messages", "recent", "uidnext", "uidvalidity", "unseen"]
         for status in StatusAtt:
             stat = self._p_simple_string(status, silent=True)
             if stat is not None:
                 return status
-        raise BadSyntax(value=f"expected a status attribute: {str(stats_atts)}")
+        raise BadSyntax(
+            value=f"expected a status attribute: {[str(s) for s in StatusAtt]}"
+        )
 
     #######################################################################
     #

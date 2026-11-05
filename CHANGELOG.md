@@ -12,6 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `GHCR_REGISTRY` build argument: the registry the image build pulls its
   ghcr.io images from (`uv`), for building through a mirror of ghcr.io;
   defaults to `ghcr.io`
+- `APPENDLIMIT` capability (RFC 7889), and `APPENDLIMIT` as a `STATUS` and `LIST ... RETURN (STATUS ...)` attribute, so clients can see the message size limit before uploading
+
+### Changed
+
+- Raise the maximum message size for `APPEND` from 10 MiB to 20 MiB
+- Limit commands other than `APPEND`, and every command before login, to 128 KiB (previously 10 MiB)
+
+### Fixed
+
+- Reject an oversized `APPEND` with a tagged `NO [TOOBIG]`, and other oversized commands with a tagged `BAD`, instead of an untagged `BAD`
+- Oversized literals no longer hang the connection or cause the rest of the message to be parsed as IMAP commands
 
 ## [2.7.1] - 2026-10-25
 
