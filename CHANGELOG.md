@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.8.0] - 2026-11-04
+
 ### Added
 
 - `GHCR_REGISTRY` build argument: the registry the image build pulls its
